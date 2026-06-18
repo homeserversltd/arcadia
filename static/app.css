@@ -42,7 +42,7 @@ button { font: inherit; }
   background: var(--chrome);
   color: var(--text);
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto auto;
+  grid-template-columns: minmax(140px, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 5px 16px;
@@ -52,7 +52,6 @@ button { font: inherit; }
 .eyebrow { margin: 0; color: var(--secondary); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .app-header h1 { margin: 0; font-size: 18px; line-height: 1.1; font-weight: 500; }
 .header-status { display: flex; align-items: stretch; gap: 8px; }
-.header-actions { display: flex; align-items: stretch; gap: 8px; }
 .status-pill {
   min-width: 104px;
   height: 38px;
@@ -87,6 +86,7 @@ button { font: inherit; }
 .plain-list li { padding: 11px 0; border-top: 1px solid var(--border); }
 .plain-list strong { display: block; margin-bottom: 2px; color: var(--text); font-size: 15px; font-weight: 500; }
 .plain-list span { color: var(--muted); font-size: 15px; }
+.power-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
 .detail-row { padding: 12px 0; border-top: 1px solid var(--border); }
 .detail-row h3 { margin: 0 0 3px; color: var(--text); font-size: 16px; line-height: 1.2; font-weight: 500; }
 .detail-row p { margin: 0; color: var(--muted); font-size: 15px; }
@@ -111,8 +111,6 @@ button { font: inherit; }
 .btn--secondary { background: color-mix(in srgb, var(--surface-strong) 88%, var(--chrome)); }
 .btn--danger { background: color-mix(in srgb, var(--chrome) 82%, var(--surface-strong)); color: var(--text); }
 .btn--danger:hover { background: #c4aeb1; border-color: rgba(139,30,30,.35); color: var(--danger); }
-.theme-toggle { min-width: 84px; }
-
 [data-popup-root] { position: fixed; inset: 0; z-index: 1000; pointer-events: none; }
 .modal-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.5); pointer-events: auto; }
 .modal-overlay[hidden] { display: none; }
@@ -130,9 +128,8 @@ button { font: inherit; }
   .app-header { grid-template-columns: 1fr; gap: 8px; padding: 8px; }
   .app-header h1 { font-size: 18px; }
   .header-status { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-  .header-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
   .status-pill { min-width: 0; border-radius: 5px; }
-  .app-header .btn { width: 100%; }
+  .power-controls { grid-template-columns: 1fr; gap: 8px; }
   .split-pane { grid-template-columns: 1fr; gap: 12px; padding: 12px; }
   .panel { padding: 16px; }
   .panel h2 { font-size: 20px; }
