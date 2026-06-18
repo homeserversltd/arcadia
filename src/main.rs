@@ -339,7 +339,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             schema: "arcadia.ui.contract.v2",
             button_variants: ["restart", "status", "quiet"],
             composition: "banner -> indicators -> left explanation pane + right placeholder pane",
-            modal: "one calm restart confirmation placeholder; two-pane dashboard",
+            modal: "restart confirmation placeholder; two-pane customer dashboard",
         },
     }
 }
