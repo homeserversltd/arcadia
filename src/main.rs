@@ -47,10 +47,18 @@ pub struct ConsoleStatus {
     pub product: String,
     pub canonical_url: String,
     pub arcadia: ArcadiaStatus,
+    pub runtime: RuntimeStatus,
     pub vault: VaultStatus,
-    pub portals: Vec<Portal>,
     pub surfaces: SurfaceStatus,
     pub ui_contract: UiContract,
+}
+
+#[derive(Clone, Serialize)]
+pub struct RuntimeStatus {
+    pub machine_uptime: String,
+    pub machine_uptime_seconds: u64,
+    pub arcadia_uptime: String,
+    pub arcadia_uptime_seconds: u64,
 }
 
 #[derive(Clone, Serialize)]
@@ -311,28 +319,60 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
 
 fn console_status(state: &AppState) -> ConsoleStatus {
     ConsoleStatus {
-        schema: "arcadia.status.v3",
+        schema: "arcadia.status.v4",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "fractal-portals-vault-gated",
-            ui: "centralized-tile-pane-modal-schema",
+            mode: "simple-console-dashboard",
+            ui: "header-status-two-pane-layout",
         },
+        runtime: runtime_status(state.started_unix),
         vault: vault_status(),
-        portals: portals(),
         surfaces: SurfaceStatus {
             http: "console.home.arpa -> :8080",
             mdns: "homeconsole.local",
             smb: "HOMECONSOLE",
         },
         ui_contract: UiContract {
-            schema: "arcadia.ui.contract.v1",
-            button_variants: ["primary", "secondary", "danger"],
-            composition: "button -> tile -> pane -> nested tile -> singleton modal pane",
-            modal: "one modal root receives every tile/button press",
+            schema: "arcadia.ui.contract.v2",
+            button_variants: ["restart", "status", "quiet"],
+            composition: "banner -> indicators -> left explanation pane + right placeholder pane",
+            modal: "one calm restart confirmation placeholder; two-pane dashboard",
         },
+    }
+}
+
+fn runtime_status(started_unix: u64) -> RuntimeStatus {
+    let machine_uptime_seconds = fs::read_to_string("/proc/uptime")
+        .ok()
+        .and_then(|uptime| uptime.split_whitespace().next().map(str::to_string))
+        .and_then(|seconds| seconds.split('.').next().unwrap_or("0").parse::<u64>().ok())
+        .unwrap_or(0);
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(started_unix);
+    let arcadia_uptime_seconds = now.saturating_sub(started_unix);
+    RuntimeStatus {
+        machine_uptime: format_duration(machine_uptime_seconds),
+        machine_uptime_seconds,
+        arcadia_uptime: format_duration(arcadia_uptime_seconds),
+        arcadia_uptime_seconds,
+    }
+}
+
+fn format_duration(total_seconds: u64) -> String {
+    let days = total_seconds / 86_400;
+    let hours = (total_seconds % 86_400) / 3_600;
+    let minutes = (total_seconds % 3_600) / 60;
+    if days > 0 {
+        format!("{days}d {hours}h {minutes}m")
+    } else if hours > 0 {
+        format!("{hours}h {minutes}m")
+    } else {
+        format!("{minutes}m")
     }
 }
 
@@ -343,7 +383,7 @@ fn vault_status() -> VaultStatus {
         state_path: VAULT_STATE_PATH,
         mapper_present: Path::new("/dev/mapper/homeconsole-vault").exists(),
         unlock_helper_present: Path::new(VAULT_UNLOCK_HELPER).exists(),
-        first_gate: "vault-status-before-portals",
+        first_gate: "vault-status-before-console-dashboard",
     }
 }
 
@@ -355,133 +395,6 @@ fn is_mountpoint(path: &str) -> bool {
                 .any(|line| line.split_whitespace().nth(1) == Some(path))
         })
         .unwrap_or(false)
-}
-
-fn portals() -> Vec<Portal> {
-    vec![
-        portal(
-            "Games",
-            "Runtime library and Steam tile sync.",
-            "#",
-            PortalState::Unknown,
-            "🎮",
-            "sync-games",
-            [
-                ("folders", "12 lanes", PortalState::Up),
-                ("sync", "declared", PortalState::Unknown),
-                ("payloads", "runtime", PortalState::Partial),
-            ],
-        ),
-        portal(
-            "Vault",
-            "Encrypted HomeConsole vault membrane.",
-            "#",
-            PortalState::Partial,
-            "🔐",
-            "vault-status",
-            [
-                ("gate", "first", PortalState::Up),
-                ("policy", "manual", PortalState::Partial),
-                ("helper", "pending", PortalState::Unknown),
-            ],
-        ),
-        portal(
-            "Files",
-            "HOMECONSOLE file/drop surface.",
-            "smb://HOMECONSOLE",
-            PortalState::Up,
-            "🗂️",
-            "open-files",
-            [
-                ("smb", "HOMECONSOLE", PortalState::Up),
-                ("drops", "direct", PortalState::Up),
-                ("source", "runtime", PortalState::Partial),
-            ],
-        ),
-        portal(
-            "Updates",
-            "Harmonia profile and Arcadia artifact membrane.",
-            "#",
-            PortalState::Unknown,
-            "🛠️",
-            "updates",
-            [
-                ("engine", "harmonia", PortalState::Partial),
-                ("profile", "homeconsole", PortalState::Up),
-                ("bridge", "manual", PortalState::Unknown),
-            ],
-        ),
-        portal(
-            "Network",
-            "LAN route, mDNS fallback, service identity.",
-            "/api/status",
-            PortalState::Up,
-            "🌐",
-            "network",
-            [
-                ("dns", "console.home.arpa", PortalState::Up),
-                ("mdns", "homeconsole.local", PortalState::Up),
-                ("port", "80→8080", PortalState::Up),
-            ],
-        ),
-        portal(
-            "Receipts",
-            "Source/runtime proof and transition readbacks.",
-            "#",
-            PortalState::Unknown,
-            "🧾",
-            "receipts",
-            [
-                ("source", "cibation", PortalState::Up),
-                ("runtime", "systemd+curl", PortalState::Up),
-                ("admit", "operator", PortalState::Unknown),
-            ],
-        ),
-    ]
-}
-
-fn portal(
-    name: &'static str,
-    description: &'static str,
-    local_url: &'static str,
-    status: PortalState,
-    icon: &'static str,
-    action: &'static str,
-    density: [(&'static str, &'static str, PortalState); 3],
-) -> Portal {
-    Portal {
-        name,
-        description,
-        local_url,
-        status,
-        icon,
-        action,
-        density: density
-            .into_iter()
-            .map(|(label, value, state)| TileDatum {
-                label,
-                value,
-                state,
-            })
-            .collect(),
-        buttons: vec![
-            ButtonAction {
-                label: "Open",
-                variant: ButtonVariant::Primary,
-                action,
-            },
-            ButtonAction {
-                label: "Details",
-                variant: ButtonVariant::Secondary,
-                action: "details",
-            },
-            ButtonAction {
-                label: "Hold",
-                variant: ButtonVariant::Danger,
-                action: "hold",
-            },
-        ],
-    }
 }
 
 mod anyhow_free {
