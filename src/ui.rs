@@ -22,7 +22,20 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                         }
                     }
 
-                    main class="console-pane" aria-label="HomeConsole intent modules" {
+                    main class="console-pane" aria-label="Cyber-alchemical HomeConsole command deck" {
+                        section class="aether-deck" aria-label="Living aether command feed" {
+                            div class="command-deck" {
+                                p class="eyebrow" { "Aether command rail" }
+                                div class="command-line" { span id="command-feed" { "distill --surface arcadia --alive" } span class="cursor" aria-hidden="true" {} }
+                            }
+                            aside class="lore-fragment" {
+                                p class="eyebrow" { "Brewing fragment" }
+                                p id="lore-feed" { "Mercury circuits warm behind the glass. The console waits for lawful intent." }
+                            }
+                        }
+                        div class="glyph-rail" aria-label="Transmutation sigils" {
+                            @for glyph in ["☿", "△", "🜂", "⬡", "🜄", "✦", "🜁"] { span class="glyph" aria-hidden="true" { (glyph) } }
+                        }
                         section class="intent-grid" {
                             article class="intent-module" aria-labelledby="system-status-title" data-module="system-status" {
                                 div class="module-head" {
