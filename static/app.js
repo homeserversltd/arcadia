@@ -40,13 +40,15 @@ const ThemeManager = (() => {
   const button = () => document.getElementById('theme-toggle');
 
   function preferredTheme() {
-    const stored = localStorage.getItem(storageKey);
+    let stored = null;
+    try { stored = localStorage.getItem(storageKey); } catch (_) { stored = null; }
     if (stored === 'light' || stored === 'dark') return stored;
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
   function apply(theme) {
     const next = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
     document.body.dataset.theme = next;
     const toggle = button();
     if (toggle) {
@@ -59,7 +61,7 @@ const ThemeManager = (() => {
   function toggle() {
     const current = document.body.dataset.theme === 'dark' ? 'dark' : 'light';
     const next = current === 'dark' ? 'light' : 'dark';
-    localStorage.setItem(storageKey, next);
+    try { localStorage.setItem(storageKey, next); } catch (_) {}
     apply(next);
     PopupManager.showToast(`${next[0].toUpperCase()}${next.slice(1)} theme`, 'info');
   }

@@ -1,4 +1,4 @@
-use maud::{html, Markup, DOCTYPE};
+use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{ButtonVariant, ConsoleStatus};
 
@@ -10,6 +10,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { (status.product) " / Arcadia" }
+                script { (theme_boot_script()) }
                 link rel="stylesheet" href="/static/app.css";
             }
             body data-ui-schema=(status.ui_contract.schema) {
@@ -162,9 +163,15 @@ fn yes_no(value: bool) -> &'static str {
     }
 }
 
+fn theme_boot_script() -> PreEscaped<&'static str> {
+    PreEscaped(
+        r#"(function(){try{var t=localStorage.getItem('arcadia-theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.dataset.theme=t;}catch(_){document.documentElement.dataset.theme='light';}})();"#,
+    )
+}
+
 fn theme_button() -> Markup {
     html! {
-        button id="theme-toggle" class="btn btn--secondary theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false" data-theme-toggle="true" { "Dark" }
+        button id="theme-toggle" class="btn btn--secondary theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false" data-theme-toggle="true" { "Dark" }
     }
 }
 
