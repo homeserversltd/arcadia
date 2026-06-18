@@ -166,15 +166,6 @@ document.addEventListener('click', (event) => {
     return;
   }
 
-  const navTile = event.target.closest('[data-nav-action]');
-  if (navTile) {
-    document.querySelectorAll('.nav-tile').forEach((tile) => tile.classList.remove('nav-tile--active'));
-    navTile.classList.add('nav-tile--active');
-    if (navTile.dataset.navAction !== 'vault-password') {
-      PopupManager.showToast(`${navTile.innerText.split('\n')[0]} panel is staged`, 'info');
-    }
-    return;
-  }
 
   const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
   if (close) return PopupManager.closeModal();

@@ -386,8 +386,8 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "appliance-control-dashboard",
-            ui: "left-pane-power-controls-smb-guide-and-vault-password-appliance",
+            mode: "single-pane-intent-modules",
+            ui: "header-plus-single-pane-fractal-intent-modules",
         },
         runtime: runtime_status(state.started_unix),
         vault: vault_status(),
@@ -399,7 +399,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         ui_contract: UiContract {
             schema: "arcadia.ui.contract.v3",
             button_variants: ["primary", "secondary", "danger"],
-            composition: "banner indicators -> left pane power controls and appliance tiles -> right Vault Password management pane with SMB guide",
+            composition: "header -> one single console pane -> ordered fractal intent modules; modules may contain nested button, text, status, or form bricks",
             modal: "confirmation/readback only; password mutation posts to local root-owned helpers",
         }
     }
