@@ -12,7 +12,7 @@ const PopupManager = (() => {
     title().textContent = modalTitle || 'Arcadia';
     content().textContent = body || '';
     el.hidden = false;
-    document.getElementById('modal-ok')?.focus();
+    document.querySelector('#modal-overlay [data-action="modal-ok"]')?.focus();
   }
 
   function closeModal() {
@@ -46,13 +46,11 @@ function openPortals() {
   document.body.dataset.vaultMounted = 'true';
   document.getElementById('app')?.removeAttribute('aria-hidden');
 }
-
 function keepVaultGate() {
   document.body.classList.remove('vault-open');
   document.body.dataset.vaultMounted = 'false';
-  document.querySelector('.vault-auth-input-password')?.focus();
+  document.querySelector('.field--password')?.focus();
 }
-
 async function initializeArcadia() {
   try {
     const vault = await checkVaultStatus();
@@ -64,29 +62,32 @@ async function initializeArcadia() {
 }
 
 document.addEventListener('click', (event) => {
-  const close = event.target.closest('#modal-close, #modal-ok');
+  const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
   if (close) return PopupManager.closeModal();
   if (event.target.id === 'modal-overlay') return PopupManager.closeModal();
-  const modalButton = event.target.closest('[data-modal-title]');
-  if (modalButton && !modalButton.classList.contains('portal-card')) {
-    PopupManager.showModal({ title: modalButton.dataset.modalTitle, body: modalButton.dataset.modalBody });
+
+  const button = event.target.closest('.btn[data-modal-title]');
+  if (button) {
+    event.stopPropagation();
+    PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody });
     return;
   }
-  const card = event.target.closest('.portal-card');
-  if (!card) return;
-  const action = card.dataset.action;
-  if (action === 'network') {
-    window.location.href = card.dataset.url || '/api/status';
+
+  const tile = event.target.closest('.tile--portal');
+  if (!tile) return;
+  if (tile.dataset.action === 'network') {
+    window.location.href = tile.dataset.url || '/api/status';
     return;
   }
-  PopupManager.showModal({
-    title: card.dataset.modalTitle || 'Arcadia portal',
-    body: `${card.dataset.modalBody || ''}\n\nTransition: ${action}\nThis portal is wired through the singleton popup manager. Exact action routes come next; no arbitrary shell exists here.`
-  });
+  PopupManager.showModal({ title: tile.dataset.modalTitle || 'Arcadia portal', body: tile.dataset.modalBody || '' });
 });
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') PopupManager.closeModal();
+  if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.tile--portal')) {
+    event.preventDefault();
+    event.target.click();
+  }
 });
 
 const unlockForm = document.getElementById('vault-unlock-form');
@@ -96,36 +97,18 @@ if (unlockForm) {
     const input = unlockForm.querySelector('input[name="password"]');
     const error = document.getElementById('vault-auth-error');
     const button = unlockForm.querySelector('button[type="submit"]');
-    if (!input?.value) {
-      error.textContent = 'Vault password is required';
-      error.hidden = false;
-      return;
-    }
-    error.hidden = true;
-    button.disabled = true;
-    button.textContent = 'Unlocking...';
+    if (!input?.value) { error.textContent = 'Vault password is required'; error.hidden = false; return; }
+    error.hidden = true; button.disabled = true; button.textContent = 'Unlocking...';
     try {
-      const res = await fetch('/pre-unlock', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ password: input.value })
-      });
+      const res = await fetch('/pre-unlock', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ password: input.value }) });
       input.value = '';
       const data = await res.json();
-      if (data.ok || data.mounted) {
-        openPortals();
-        PopupManager.showToast('Vault unlocked', 'success');
-      } else {
-        error.textContent = data.message || 'Failed to unlock vault.';
-        error.hidden = false;
-      }
+      if (data.ok || data.mounted) { openPortals(); PopupManager.showToast('Vault unlocked', 'success'); }
+      else { error.textContent = data.message || 'Failed to unlock vault.'; error.hidden = false; }
     } catch (err) {
-      input.value = '';
-      error.textContent = 'Vault unlock request failed.';
-      error.hidden = false;
+      input.value = ''; error.textContent = 'Vault unlock request failed.'; error.hidden = false;
     } finally {
-      button.disabled = false;
-      button.textContent = 'Unlock Vault';
+      button.disabled = false; button.textContent = 'Unlock Vault';
     }
   });
 }

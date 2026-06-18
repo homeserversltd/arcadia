@@ -5,7 +5,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use maud::{html, Markup, DOCTYPE};
 use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
@@ -17,6 +16,8 @@ use std::{
 };
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+
+mod ui;
 
 const APP_CSS: &str = include_str!("../static/app.css");
 const APP_JS: &str = include_str!("../static/app.js");
@@ -32,7 +33,7 @@ struct AppState {
 }
 
 #[derive(Clone, Serialize)]
-struct Health {
+pub struct Health {
     ok: bool,
     service: &'static str,
     product: String,
@@ -41,49 +42,110 @@ struct Health {
 }
 
 #[derive(Clone, Serialize)]
-struct ConsoleStatus {
-    schema: &'static str,
-    product: String,
-    canonical_url: String,
-    arcadia: ArcadiaStatus,
-    vault: VaultStatus,
-    portals: Vec<Portal>,
-    surfaces: SurfaceStatus,
+pub struct ConsoleStatus {
+    pub schema: &'static str,
+    pub product: String,
+    pub canonical_url: String,
+    pub arcadia: ArcadiaStatus,
+    pub vault: VaultStatus,
+    pub portals: Vec<Portal>,
+    pub surfaces: SurfaceStatus,
+    pub ui_contract: UiContract,
 }
 
 #[derive(Clone, Serialize)]
-struct ArcadiaStatus {
-    service: &'static str,
-    version: &'static str,
-    mode: &'static str,
-    ui: &'static str,
+pub struct ArcadiaStatus {
+    pub service: &'static str,
+    pub version: &'static str,
+    pub mode: &'static str,
+    pub ui: &'static str,
 }
 
 #[derive(Clone, Serialize)]
-struct VaultStatus {
-    mounted: bool,
-    mountpoint: &'static str,
-    state_path: &'static str,
-    mapper_present: bool,
-    unlock_helper_present: bool,
-    first_gate: &'static str,
+pub struct UiContract {
+    pub schema: &'static str,
+    pub button_variants: [&'static str; 3],
+    pub composition: &'static str,
+    pub modal: &'static str,
 }
 
 #[derive(Clone, Serialize)]
-struct SurfaceStatus {
-    http: &'static str,
-    mdns: &'static str,
-    smb: &'static str,
+pub struct VaultStatus {
+    pub mounted: bool,
+    pub mountpoint: &'static str,
+    pub state_path: &'static str,
+    pub mapper_present: bool,
+    pub unlock_helper_present: bool,
+    pub first_gate: &'static str,
 }
 
 #[derive(Clone, Serialize)]
-struct Portal {
-    name: &'static str,
-    description: &'static str,
-    local_url: &'static str,
-    status: &'static str,
-    icon: &'static str,
-    action: &'static str,
+pub struct SurfaceStatus {
+    pub http: &'static str,
+    pub mdns: &'static str,
+    pub smb: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+pub struct Portal {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub local_url: &'static str,
+    pub status: PortalState,
+    pub icon: &'static str,
+    pub action: &'static str,
+    pub density: Vec<TileDatum>,
+    pub buttons: Vec<ButtonAction>,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PortalState {
+    Up,
+    Down,
+    Partial,
+    Unknown,
+}
+impl PortalState {
+    pub fn class(self) -> &'static str {
+        match self {
+            Self::Up => "up",
+            Self::Down => "down",
+            Self::Partial => "partial",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct TileDatum {
+    pub label: &'static str,
+    pub value: &'static str,
+    pub state: PortalState,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ButtonAction {
+    pub label: &'static str,
+    pub variant: ButtonVariant,
+    pub action: &'static str,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ButtonVariant {
+    Primary,
+    Secondary,
+    Danger,
+}
+impl ButtonVariant {
+    pub fn class(self) -> &'static str {
+        match self {
+            Self::Primary => "primary",
+            Self::Secondary => "secondary",
+            Self::Danger => "danger",
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -132,9 +194,8 @@ async fn main() -> anyhow_free::Result<()> {
     Ok(())
 }
 
-async fn index(State(state): State<Arc<AppState>>) -> Markup {
-    let status = console_status(&state);
-    ui::layout(&status)
+async fn index(State(state): State<Arc<AppState>>) -> maud::Markup {
+    ui::layout(&console_status(&state))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
@@ -157,26 +218,19 @@ async fn vault_status_route() -> Json<VaultStatus> {
 
 async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<UnlockResponse>) {
     if body.password.is_empty() {
-        return (
+        return response(
             StatusCode::BAD_REQUEST,
-            Json(UnlockResponse {
-                ok: false,
-                mounted: false,
-                message: "Vault password is required.".to_string(),
-            }),
+            false,
+            false,
+            "Vault password is required.",
         );
     }
-
-    // The password is intentionally never logged and never persisted. Arcadia may only
-    // pass it to a fixed root-owned helper when that membrane exists on the appliance.
     if !Path::new(VAULT_UNLOCK_HELPER).exists() {
-        return (
+        return response(
             StatusCode::NOT_IMPLEMENTED,
-            Json(UnlockResponse {
-                ok: false,
-                mounted: vault_status().mounted,
-                message: "Vault unlock helper is not installed on this unit yet.".to_string(),
-            }),
+            false,
+            vault_status().mounted,
+            "Vault unlock helper is not installed on this unit yet.",
         );
     }
 
@@ -188,13 +242,11 @@ async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<Unlock
     {
         Ok(child) => child,
         Err(_) => {
-            return (
+            return response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(UnlockResponse {
-                    ok: false,
-                    mounted: vault_status().mounted,
-                    message: "Failed to start vault unlock helper.".to_string(),
-                }),
+                false,
+                vault_status().mounted,
+                "Failed to start vault unlock helper.",
             )
         }
     };
@@ -207,21 +259,34 @@ async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<Unlock
 
     let ok = child.wait().map(|s| s.success()).unwrap_or(false);
     let mounted = vault_status().mounted;
-    (
+    response(
         if ok && mounted {
             StatusCode::OK
         } else {
             StatusCode::FORBIDDEN
         },
+        ok && mounted,
+        mounted,
+        if ok && mounted {
+            "Vault unlocked."
+        } else {
+            "Vault unlock failed."
+        },
+    )
+}
+
+fn response(
+    status: StatusCode,
+    ok: bool,
+    mounted: bool,
+    message: &str,
+) -> (StatusCode, Json<UnlockResponse>) {
+    (
+        status,
         Json(UnlockResponse {
-            ok: ok && mounted,
+            ok,
             mounted,
-            message: if ok && mounted {
-                "Vault unlocked."
-            } else {
-                "Vault unlock failed."
-            }
-            .to_string(),
+            message: message.to_string(),
         }),
     )
 }
@@ -246,14 +311,14 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
 
 fn console_status(state: &AppState) -> ConsoleStatus {
     ConsoleStatus {
-        schema: "arcadia.status.v2",
+        schema: "arcadia.status.v3",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "portals-vault-gated",
-            ui: "homeserver-portals-vaultauth-popup-manager",
+            mode: "fractal-portals-vault-gated",
+            ui: "centralized-tile-pane-modal-schema",
         },
         vault: vault_status(),
         portals: portals(),
@@ -261,6 +326,12 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             http: "console.home.arpa -> :8080",
             mdns: "homeconsole.local",
             smb: "HOMECONSOLE",
+        },
+        ui_contract: UiContract {
+            schema: "arcadia.ui.contract.v1",
+            button_variants: ["primary", "secondary", "danger"],
+            composition: "button -> tile -> pane -> nested tile -> singleton modal pane",
+            modal: "one modal root receives every tile/button press",
         },
     }
 }
@@ -288,158 +359,128 @@ fn is_mountpoint(path: &str) -> bool {
 
 fn portals() -> Vec<Portal> {
     vec![
-        Portal {
-            name: "Games",
-            description: "Sync the runtime game library into Steam tiles.",
-            local_url: "#",
-            status: "unknown",
-            icon: "🎮",
-            action: "sync-games",
-        },
-        Portal {
-            name: "Vault",
-            description: "Unlock and inspect the encrypted HomeConsole vault.",
-            local_url: "#",
-            status: "partial",
-            icon: "🔐",
-            action: "vault-status",
-        },
-        Portal {
-            name: "Files",
-            description: "Open the HOMECONSOLE SMB file surface.",
-            local_url: "smb://HOMECONSOLE",
-            status: "up",
-            icon: "🗂️",
-            action: "open-files",
-        },
-        Portal {
-            name: "Updates",
-            description: "Harmonia profile and Arcadia update membrane.",
-            local_url: "#",
-            status: "unknown",
-            icon: "🛠️",
-            action: "updates",
-        },
-        Portal {
-            name: "Network",
-            description: "LAN route, mDNS fallback, and service identity.",
-            local_url: "/api/status",
-            status: "up",
-            icon: "🌐",
-            action: "network",
-        },
-        Portal {
-            name: "Receipts",
-            description: "Source, runtime, and transition proof surfaces.",
-            local_url: "#",
-            status: "unknown",
-            icon: "🧾",
-            action: "receipts",
-        },
+        portal(
+            "Games",
+            "Runtime library and Steam tile sync.",
+            "#",
+            PortalState::Unknown,
+            "🎮",
+            "sync-games",
+            [
+                ("folders", "12 lanes", PortalState::Up),
+                ("sync", "declared", PortalState::Unknown),
+                ("payloads", "runtime", PortalState::Partial),
+            ],
+        ),
+        portal(
+            "Vault",
+            "Encrypted HomeConsole vault membrane.",
+            "#",
+            PortalState::Partial,
+            "🔐",
+            "vault-status",
+            [
+                ("gate", "first", PortalState::Up),
+                ("policy", "manual", PortalState::Partial),
+                ("helper", "pending", PortalState::Unknown),
+            ],
+        ),
+        portal(
+            "Files",
+            "HOMECONSOLE file/drop surface.",
+            "smb://HOMECONSOLE",
+            PortalState::Up,
+            "🗂️",
+            "open-files",
+            [
+                ("smb", "HOMECONSOLE", PortalState::Up),
+                ("drops", "direct", PortalState::Up),
+                ("source", "runtime", PortalState::Partial),
+            ],
+        ),
+        portal(
+            "Updates",
+            "Harmonia profile and Arcadia artifact membrane.",
+            "#",
+            PortalState::Unknown,
+            "🛠️",
+            "updates",
+            [
+                ("engine", "harmonia", PortalState::Partial),
+                ("profile", "homeconsole", PortalState::Up),
+                ("bridge", "manual", PortalState::Unknown),
+            ],
+        ),
+        portal(
+            "Network",
+            "LAN route, mDNS fallback, service identity.",
+            "/api/status",
+            PortalState::Up,
+            "🌐",
+            "network",
+            [
+                ("dns", "console.home.arpa", PortalState::Up),
+                ("mdns", "homeconsole.local", PortalState::Up),
+                ("port", "80→8080", PortalState::Up),
+            ],
+        ),
+        portal(
+            "Receipts",
+            "Source/runtime proof and transition readbacks.",
+            "#",
+            PortalState::Unknown,
+            "🧾",
+            "receipts",
+            [
+                ("source", "cibation", PortalState::Up),
+                ("runtime", "systemd+curl", PortalState::Up),
+                ("admit", "operator", PortalState::Unknown),
+            ],
+        ),
     ]
 }
 
-mod ui {
-    use super::*;
-
-    pub fn layout(status: &ConsoleStatus) -> Markup {
-        html! {
-            (DOCTYPE)
-            html lang="en" {
-                head {
-                    meta charset="utf-8";
-                    meta name="viewport" content="width=device-width, initial-scale=1";
-                    title { (status.product) " / Arcadia" }
-                    link rel="stylesheet" href="/static/app.css";
-                }
-                body data-vault-mounted=(status.vault.mounted) {
-                    div id="vault-gate" class="vault-auth-container" data-mounted=(status.vault.mounted) {
-                        (vault_auth(status))
-                    }
-                    div id="app" class="portals-tablet" aria-hidden=(!status.vault.mounted) {
-                        header class="portal-page-header" {
-                            div {
-                                h1 { "Arcadia" }
-                                p { "HomeConsole portals" }
-                            }
-                            button class="small-status-button" data-modal-title="Vault status" data-modal-body=(vault_modal_text(status)) { "Vault status" }
-                        }
-                        main class="portals-grid" {
-                            @for portal in &status.portals {
-                                (portal_card(portal))
-                            }
-                        }
-                    }
-                    (popup_root())
-                    script src="/static/app.js" {}
-                }
-            }
-        }
-    }
-
-    fn vault_auth(status: &ConsoleStatus) -> Markup {
-        html! {
-            div class="vault-auth-card" {
-                div class="vault-auth-logo" aria-hidden="true" { "A" }
-                h1 { "HomeConsole" }
-                @if status.vault.mounted {
-                    h2 { "Vault Mounted" }
-                    p class="vault-auth-desc" { "The vault is unlocked. Opening Arcadia portals." }
-                } @else {
-                    h2 { "Vault Authentication" }
-                    p class="vault-auth-desc" { "Please enter your vault password to continue." }
-                    form id="vault-unlock-form" class="vault-auth-form" autocomplete="off" {
-                        div class="form-group" {
-                            input class="vault-auth-input vault-auth-input-password" type="password" name="password" placeholder="Enter vault password" autocomplete="current-password" autofocus;
-                        }
-                        div id="vault-auth-error" class="vault-auth-error" hidden {}
-                        button class="vault-auth-button" type="submit" { "Unlock Vault" }
-                    }
-                }
-                small { "Product of HOMESERVER LLC" }
-                div class="version-info" { small { "Version " (env!("CARGO_PKG_VERSION")) " / " (status.arcadia.mode) } }
-            }
-        }
-    }
-
-    fn portal_card(portal: &Portal) -> Markup {
-        html! {
-            div class=(format!("portal-card {}", portal.status))
-                role="button" tabindex="0"
-                data-action=(portal.action)
-                data-url=(portal.local_url)
-                data-modal-title=(portal.name)
-                data-modal-body=(portal.description) {
-                div class="portal-card-header" {
-                    div class="portal-icon" aria-hidden="true" { (portal.icon) }
-                    h3 class="portal-name" { (portal.name) }
-                    p class="portal-description" { (portal.description) }
-                }
-            }
-        }
-    }
-
-    fn popup_root() -> Markup {
-        html! {
-            div id="popup-root" data-popup-root="true" {
-                div id="modal-overlay" class="modal-overlay" hidden {
-                    div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" {
-                        button id="modal-close" class="modal-close" type="button" aria-label="Close modal" { "×" }
-                        h2 id="modal-title" class="modal-title" {}
-                        div id="modal-content" class="modal-content" {}
-                        div class="modal-buttons" { button id="modal-ok" type="button" { "OK" } }
-                    }
-                }
-                div id="toast-container" class="toast-container" aria-live="polite" {}
-            }
-        }
-    }
-
-    fn vault_modal_text(status: &ConsoleStatus) -> String {
-        format!(
-            "mounted: {}\nmountpoint: {}\nmapper_present: {}\nunlock_helper_present: {}\nstate_path: {}",
-            status.vault.mounted, status.vault.mountpoint, status.vault.mapper_present, status.vault.unlock_helper_present, status.vault.state_path
-        )
+fn portal(
+    name: &'static str,
+    description: &'static str,
+    local_url: &'static str,
+    status: PortalState,
+    icon: &'static str,
+    action: &'static str,
+    density: [(&'static str, &'static str, PortalState); 3],
+) -> Portal {
+    Portal {
+        name,
+        description,
+        local_url,
+        status,
+        icon,
+        action,
+        density: density
+            .into_iter()
+            .map(|(label, value, state)| TileDatum {
+                label,
+                value,
+                state,
+            })
+            .collect(),
+        buttons: vec![
+            ButtonAction {
+                label: "Open",
+                variant: ButtonVariant::Primary,
+                action,
+            },
+            ButtonAction {
+                label: "Details",
+                variant: ButtonVariant::Secondary,
+                action: "details",
+            },
+            ButtonAction {
+                label: "Hold",
+                variant: ButtonVariant::Danger,
+                action: "hold",
+            },
+        ],
     }
 }
 
