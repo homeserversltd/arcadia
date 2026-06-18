@@ -23,6 +23,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (indicator("Network", "Online"))
                             (indicator("Runtime", &status.runtime.machine_uptime))
                             (indicator("Vault", yes_no(status.vault.mounted)))
+                            (theme_button())
                         }
                     }
 
@@ -31,7 +32,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             article class="control-cluster" aria-label="Console power controls" {
                                 h2 { "Console controls" }
                                 div class="power-controls" {
-                                    (button(ButtonVariant::Primary, "Start", "start-console", "Start wakes or launches the console runtime through the governed HomeConsole path."))
+                                    (button(ButtonVariant::Primary, "Reboot console", "reboot-console", "Reboot console restarts the HomeConsole machine deliberately through the governed local path after confirmation and receipt wiring."))
                                     (button(ButtonVariant::Danger, "Shut down", "shutdown-console", "Shut down powers the console down deliberately after confirmation and receipt wiring."))
                                     (button(ButtonVariant::Secondary, "Update", "update-console", "Update runs the Harmonia HomeConsole update path and records an update receipt."))
                                 }
@@ -158,6 +159,12 @@ fn yes_no(value: bool) -> &'static str {
         "yes"
     } else {
         "no"
+    }
+}
+
+fn theme_button() -> Markup {
+    html! {
+        button id="theme-toggle" class="btn btn--secondary theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false" data-theme-toggle="true" { "Dark" }
     }
 }
 
