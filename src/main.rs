@@ -6,8 +6,11 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     env, fs,
+    fs::OpenOptions,
     io::Write,
     net::SocketAddr,
     path::Path,
@@ -28,6 +31,7 @@ const VAULT_UNLOCK_HELPER: &str = "/usr/local/sbin/homeconsole-vault-unlock";
 const VAULT_PASSWORD_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-vault-password-change";
 const VAULT_PASSWORD_RESET_HELPER: &str =
     "/usr/local/sbin/homeconsole-vault-password-reset-default";
+const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
 
 #[derive(Clone)]
 struct AppState {
@@ -134,6 +138,23 @@ struct PasswordResetRequest {
     confirm: String,
 }
 
+#[derive(Deserialize)]
+struct ProviderKeysRequest {
+    steamgriddb_api_key: Option<String>,
+    thegamesdb_api_key: Option<String>,
+    screenscraper_user: Option<String>,
+    screenscraper_password: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ProviderKeysResponse {
+    ok: bool,
+    action: &'static str,
+    path: &'static str,
+    written_keys: Vec<&'static str>,
+    message: String,
+}
+
 #[derive(Serialize)]
 struct VaultActionResponse {
     ok: bool,
@@ -165,6 +186,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/status", get(status))
         .route("/api/vault/status", get(vault_status_route))
         .route("/api/vault/password/change", post(change_vault_password))
+        .route("/api/provider-keys/save", post(save_provider_keys))
         .route(
             "/api/vault/password/reset-default",
             post(reset_vault_password_default),
@@ -202,6 +224,125 @@ async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
 
 async fn vault_status_route() -> Json<VaultStatus> {
     Json(vault_status())
+}
+
+async fn save_provider_keys(
+    Json(body): Json<ProviderKeysRequest>,
+) -> (StatusCode, Json<ProviderKeysResponse>) {
+    let mut lines: Vec<String> = Vec::new();
+    let mut written: Vec<&'static str> = Vec::new();
+    push_env_value(
+        &mut lines,
+        &mut written,
+        "STEAMGRIDDB_API_KEY",
+        body.steamgriddb_api_key,
+    );
+    push_env_value(
+        &mut lines,
+        &mut written,
+        "THEGAMESDB_API_KEY",
+        body.thegamesdb_api_key,
+    );
+    push_env_value(
+        &mut lines,
+        &mut written,
+        "SCREENSCRAPER_USER",
+        body.screenscraper_user,
+    );
+    push_env_value(
+        &mut lines,
+        &mut written,
+        "SCREENSCRAPER_PASSWORD",
+        body.screenscraper_password,
+    );
+
+    if lines.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ProviderKeysResponse {
+                ok: false,
+                action: "save-provider-keys",
+                path: PROVIDER_KEYS_PATH,
+                written_keys: Vec::new(),
+                message: "Enter at least one provider key.".to_string(),
+            }),
+        );
+    }
+
+    if let Some(parent) = Path::new(PROVIDER_KEYS_PATH).parent() {
+        if let Err(err) = fs::create_dir_all(parent) {
+            return provider_keys_error(format!(
+                "Provider key directory could not be created: {err}"
+            ));
+        }
+    }
+
+    let write_result = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(PROVIDER_KEYS_PATH)
+        .and_then(|mut file| file.write_all(lines.join("\n").as_bytes()))
+        .and_then(|_| fs::set_permissions(PROVIDER_KEYS_PATH, provider_file_permissions()));
+
+    match write_result {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ProviderKeysResponse {
+                ok: true,
+                action: "save-provider-keys",
+                path: PROVIDER_KEYS_PATH,
+                written_keys: written,
+                message: "Provider keys saved for game sync.".to_string(),
+            }),
+        ),
+        Err(err) => provider_keys_error(format!("Provider keys could not be saved: {err}")),
+    }
+}
+
+fn push_env_value(
+    lines: &mut Vec<String>,
+    written: &mut Vec<&'static str>,
+    key: &'static str,
+    value: Option<String>,
+) {
+    let Some(value) = value else { return };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    lines.push(format!("{}={}", key, shell_env_quote(trimmed)));
+    written.push(key);
+}
+
+fn shell_env_quote(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{}\"", escaped)
+}
+
+fn provider_keys_error(message: String) -> (StatusCode, Json<ProviderKeysResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ProviderKeysResponse {
+            ok: false,
+            action: "save-provider-keys",
+            path: PROVIDER_KEYS_PATH,
+            written_keys: Vec::new(),
+            message,
+        }),
+    )
+}
+
+#[cfg(unix)]
+fn provider_file_permissions() -> fs::Permissions {
+    fs::Permissions::from_mode(0o600)
+}
+
+#[cfg(not(unix))]
+fn provider_file_permissions() -> fs::Permissions {
+    fs::metadata(PROVIDER_KEYS_PATH)
+        .map(|m| m.permissions())
+        .unwrap_or_else(|_| fs::Permissions::readonly())
 }
 
 async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<VaultActionResponse>) {
@@ -386,8 +527,8 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "single-pane-intent-modules",
-            ui: "header-plus-single-pane-fractal-intent-modules",
+            mode: "compact-console-controls",
+            ui: "status-actions-smb-sync-keys-password",
         },
         runtime: runtime_status(state.started_unix),
         vault: vault_status(),
@@ -397,9 +538,9 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             smb: "HOMECONSOLE",
         },
         ui_contract: UiContract {
-            schema: "arcadia.ui.contract.v3",
+            schema: "arcadia.ui.contract.v4",
             button_variants: ["primary", "secondary", "danger"],
-            composition: "header -> one single console pane -> ordered fractal intent modules; modules may contain nested button, text, status, or form bricks",
+            composition: "slim app header, one compact pane, status, five buttons, SMB folders, sync explanation, API keys, vault password",
             modal: "confirmation/readback only; password mutation posts to local root-owned helpers",
         }
     }

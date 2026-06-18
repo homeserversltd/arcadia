@@ -15,70 +15,46 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
             }
             body data-ui-schema=(status.ui_contract.schema) {
                 div id="app" class="console-shell" {
-                    header class="app-header" {
-                        div class="header-title" {
-                            p class="eyebrow" { "Arcadia" }
-                            h1 { "HomeConsole" }
-                        }
-                    }
-
-                    main class="console-pane" aria-label="Cyber-alchemical HomeConsole command deck" {
-                        section class="aether-deck" aria-label="Living aether command feed" {
-                            div class="command-deck" {
-                                p class="eyebrow" { "Aether command rail" }
-                                div class="command-line" { span id="command-feed" { "distill --surface arcadia --alive" } span class="cursor" aria-hidden="true" {} }
-                            }
-                            aside class="lore-fragment" {
-                                p class="eyebrow" { "Brewing fragment" }
-                                p id="lore-feed" { "Mercury circuits warm behind the glass. The console waits for lawful intent." }
-                            }
-                        }
-                        div class="glyph-rail" aria-label="Transmutation sigils" {
-                            @for glyph in ["☿", "△", "🜂", "⬡", "🜄", "✦", "🜁"] { span class="glyph" aria-hidden="true" { (glyph) } }
-                        }
-                        section class="intent-grid" {
-                            article class="intent-module" aria-labelledby="system-status-title" data-module="system-status" {
-                                div class="module-head" {
-                                    p class="eyebrow" { "Intent module" }
-                                    h2 id="system-status-title" { "System status" }
-                                    p { "One brick for current machine state and display preference." }
-                                }
+                    main class="console-pane" aria-label="HomeConsole" {
+                        section class="control-grid" {
+                            article class="panel" data-module="status" {
                                 div class="status-strip" {
                                     (status_card("Network", "Online"))
                                     (status_card("Runtime", &status.runtime.machine_uptime))
                                     (status_card("Vault", yes_no(status.vault.mounted)))
-                                    div class="status-card status-card--action" { (theme_button()) }
                                 }
                             }
 
-                            article class="intent-module intent-module--controls" aria-labelledby="console-controls-title" data-module="console-controls" {
-                                div class="module-head" {
-                                    p class="eyebrow" { "Intent module" }
-                                    h2 id="console-controls-title" { "Console controls" }
-                                    p { "One brick for machine-level actions. Each button names the exact object it changes." }
-                                }
-                                div class="button-row" {
-                                    (button(ButtonVariant::Primary, "Reboot console", "reboot-console", "Reboot console restarts the HomeConsole machine deliberately through the governed local path after confirmation and receipt wiring."))
-                                    (button(ButtonVariant::Danger, "Shut down console", "shutdown-console", "Shut down console powers the HomeConsole machine down deliberately after confirmation and receipt wiring."))
-                                    (button(ButtonVariant::Secondary, "Update console", "update-console", "Update console runs the Harmonia HomeConsole update path and records an update receipt."))
+                            article class="panel panel--controls" data-module="actions" {
+                                div class="button-row button-row--five" {
+                                    (button(ButtonVariant::Primary, "Update GUI", "update-gui", "Update GUI installs the latest Arcadia build on this console."))
+                                    (button(ButtonVariant::Primary, "Sync games", "sync-games", "Sync games reads the game folders, refreshes shortcuts, and adds artwork when keys are present."))
+                                    (button(ButtonVariant::Secondary, "Add games", "add-games", "Add games by copying files to the SMB folders shown on this page, then press Sync games."))
+                                    (button(ButtonVariant::Secondary, "Reboot console", "reboot-console", "Reboot console restarts this HomeConsole."))
+                                    (button(ButtonVariant::Danger, "Shut down console", "shutdown-console", "Shut down console powers this HomeConsole off."))
                                 }
                             }
 
-                            article class="intent-module" aria-labelledby="vault-module-title" data-module="vault-password" {
-                                div class="module-head" {
-                                    p class="eyebrow" { "Intent module" }
-                                    h2 id="vault-module-title" { "Vault password" }
-                                    p { "Change the known Vault password or restore the appliance default. Secret values stay inside the local helper path." }
+                            article class="panel" data-module="smb-folders" {
+                                (smb_explainer(status))
+                            }
+
+                            article class="panel" data-module="provider-keys" {
+                                p class="tile-note" { "Provider keys let Sync games fetch artwork and metadata. Values are saved for the console and are not shown back." }
+                                form id="provider-keys-form" class="stack" autocomplete="off" {
+                                    label { span { "SteamGridDB API key" } input class="field" type="password" name="steamgriddb_api_key" autocomplete="off"; }
+                                    label { span { "TheGamesDB API key" } input class="field" type="password" name="thegamesdb_api_key" autocomplete="off"; }
+                                    label { span { "ScreenScraper user" } input class="field" type="text" name="screenscraper_user" autocomplete="off"; }
+                                    label { span { "ScreenScraper password" } input class="field" type="password" name="screenscraper_password" autocomplete="off"; }
+                                    div id="provider-keys-message" class="message" hidden {}
+                                    button class="btn btn--primary" type="submit" { "Save API keys" }
                                 }
-                                div class="status-strip" {
-                                    (status_card("Vault mounted", yes_no(status.vault.mounted)))
-                                    (status_card("Change helper", yes_no(status.vault.password_change_helper_present)))
-                                    (status_card("Default reset", yes_no(status.vault.default_reset_available)))
-                                }
+                            }
+
+                            article class="panel" data-module="vault-password" {
                                 div class="module-grid module-grid--forms" {
                                     article class="submodule control-card" {
-                                        h3 { "Change password" }
-                                        p { "Use this when the current Vault password is known." }
+                                        p { "Change the vault password when the current password is known." }
                                         form id="vault-password-change-form" class="stack" autocomplete="off" {
                                             label { span { "Current password" } input class="field" type="password" name="current_password" autocomplete="current-password" required; }
                                             label { span { "New password" } input class="field" type="password" name="new_password" autocomplete="new-password" required minlength="4"; }
@@ -87,38 +63,9 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                                             button class="btn btn--primary" type="submit" { "Change Vault password" }
                                         }
                                     }
-
-                                    article class="submodule control-card danger-zone" {
-                                        h3 { "Reset to default" }
-                                        p { "Use this recovery path only when the appliance default should become the Vault password again." }
-                                        form id="vault-password-reset-form" class="stack" autocomplete="off" {
-                                            label { span { "Confirmation" } input class="field" type="text" name="confirm" placeholder="RESET" autocomplete="off" required; }
-                                            div id="vault-password-reset-message" class="message" hidden {}
-                                            button class="btn btn--danger" type="submit" { "Reset Vault password" }
-                                        }
-                                    }
                                 }
                             }
 
-                            article class="intent-module" aria-labelledby="smb-module-title" data-module="smb-uploads" {
-                                (smb_explainer(status))
-                            }
-
-                            article class="intent-module" aria-labelledby="games-module-title" data-module="games" {
-                                div class="module-head" {
-                                    p class="eyebrow" { "Intent module" }
-                                    h2 id="games-module-title" { "Games" }
-                                    p { "Library status, artwork sync, and idle-safe update actions will compose here as their own nested bricks." }
-                                }
-                            }
-
-                            article class="intent-module" aria-labelledby="receipts-module-title" data-module="receipts" {
-                                div class="module-head" {
-                                    p class="eyebrow" { "Intent module" }
-                                    h2 id="receipts-module-title" { "Receipts" }
-                                    p { "Last reboot, update, vault, and health proofs will land here as readable customer receipts." }
-                                }
-                            }
                         }
                     }
                 }
@@ -140,26 +87,21 @@ fn status_card(title: &str, value: &str) -> Markup {
 
 fn smb_explainer(status: &ConsoleStatus) -> Markup {
     html! {
-        div class="module-head" {
-            p class="eyebrow" { "Intent module" }
-            h2 id="smb-module-title" { "SMB uploads" }
-            p { "Copy files to the console over the local home network." }
-        }
         div class="text-block" {
             p {
-                "Open "
+                "Copy games and media at "
                 code { "\\\\" (status.surfaces.smb) }
                 " or "
                 code { "smb://" (status.surfaces.smb) }
-                " from a computer on the same network, then copy files into the shared folder."
+                "."
             }
             ol class="numbered-list" {
-                li { strong { "Connect" } span { "Use File Explorer, Finder, or your Linux file manager and open the SMB address above." } }
-                li { strong { "Upload" } span { "Drag ROMs, media, saves, or installer files into the matching share folder." } }
-                li { strong { "Wait" } span { "Let the copy finish before unplugging storage, rebooting, or launching the file." } }
+                li { strong { "Folders" } span { "Use the matching folder: gba, genesis, snes, nes, ps1, n64, ps2, sega-cd, psp, gamecube, wii, or dos." } }
+                li { strong { "Upload" } span { "Copy files into the matching folder and wait for the copy to finish." } }
+                li { strong { "Sync" } span { "Sync games scans those folders, creates Steam shortcuts, and adds artwork when keys are present." } }
             }
             p class="tile-note" {
-                "SMB writes across the local network to console storage. Nothing goes to the internet just because SMB is used."
+                "SMB writes to console storage on the local network."
             }
         }
     }
@@ -177,12 +119,6 @@ fn theme_boot_script() -> PreEscaped<&'static str> {
     PreEscaped(
         r#"(function(){try{var t=localStorage.getItem('arcadia-theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.dataset.theme=t;}catch(_){document.documentElement.dataset.theme='light';}})();"#,
     )
-}
-
-fn theme_button() -> Markup {
-    html! {
-        button id="theme-toggle" class="btn btn--secondary theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false" data-theme-toggle="true" { "Dark" }
-    }
 }
 
 fn button(variant: ButtonVariant, label: &str, action: &str, body: &str) -> Markup {
