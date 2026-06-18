@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HomeConsole / Arcadia</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">Arcadia scaffold</p>
+      <h1>HomeConsole</h1>
+      <p class="lede">Router, NAS, and game console in one local Rust appliance surface.</p>
+      <div class="actions">
+        <a href="/api/status">Status JSON</a>
+        <a href="/health">Health</a>
+      </div>
+    </section>
+
+    <section class="grid" aria-label="HomeConsole state cards">
+      <article class="card good">
+        <span>HTTP</span>
+        <strong>console.home.arpa</strong>
+        <p>LAN port 80 redirects to the unprivileged Arcadia backend on port 8080.</p>
+      </article>
+      <article class="card wait">
+        <span>Vault</span>
+        <strong>Manual unlock default</strong>
+        <p>The customer vault is born encrypted. GUI unlock and auto-unlock toggles land next.</p>
+      </article>
+      <article class="card">
+        <span>Games</span>
+        <strong>SMB: HOMECONSOLE</strong>
+        <p>Game folders remain runtime payload space; Arcadia only controls the surface.</p>
+      </article>
+      <article class="card">
+        <span>Update</span>
+        <strong>Manual SCP bridge</strong>
+        <p>This scaffold is deployed manually while Harmonia/HomeConsole update flow is crafted.</p>
+      </article>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
