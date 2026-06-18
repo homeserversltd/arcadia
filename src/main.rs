@@ -36,6 +36,7 @@ const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
 const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
 const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
+const SYSTEMD_RUN_BIN: &str = "/usr/bin/systemd-run";
 
 #[derive(Clone)]
 struct AppState {
@@ -256,8 +257,11 @@ async fn vault_status_route() -> Json<VaultStatus> {
 async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_console_command(
         "update-gui",
-        HARMONIA_BIN,
+        SYSTEMD_RUN_BIN,
         &[
+            "--unit=arcadia-gui-update",
+            "--collect",
+            HARMONIA_BIN,
             "homeconsole-arcadia-gui-update",
             HOMECONSOLE_PROFILE,
             "--repo",
@@ -274,8 +278,8 @@ async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
             "--receipt-dir",
             "/var/lib/harmonia/receipts/arcadia-gui-latest",
         ],
-        "Update GUI completed.",
-        "Update GUI failed. Read /var/lib/harmonia/receipts/arcadia-gui-latest.",
+        "Update GUI started. Read /var/lib/harmonia/receipts/arcadia-gui-latest after Arcadia restarts.",
+        "Update GUI could not start.",
     )
 }
 
