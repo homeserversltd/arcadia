@@ -23,7 +23,10 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (indicator("Network", "Online"))
                             (indicator("Runtime", &status.runtime.machine_uptime))
                         }
-                        (button(ButtonVariant::Danger, "Restart", "restart-console", "Restart is staged as the only primary control. The reboot action will require confirmation and a receipt before it is wired."))
+                        div class="header-actions" {
+                            (theme_button())
+                            (button(ButtonVariant::Danger, "Restart", "restart-console", "Restart is staged as the only primary control. The reboot action will require confirmation and a receipt before it is wired."))
+                        }
                     }
 
                     main class="split-pane" {
@@ -76,6 +79,12 @@ fn yes_no(value: bool) -> &'static str {
         "yes"
     } else {
         "no"
+    }
+}
+
+fn theme_button() -> Markup {
+    html! {
+        button id="theme-toggle" class="btn btn--secondary theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false" data-theme-toggle="true" { "Dark" }
     }
 }
 
