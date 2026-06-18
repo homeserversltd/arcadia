@@ -27,12 +27,13 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
 
                             article class="panel panel--controls" data-module="actions" {
                                 div class="button-row button-row--five" {
-                                    (button(ButtonVariant::Primary, "Update GUI", "update-gui", "Update GUI installs the latest Arcadia build on this console."))
-                                    (button(ButtonVariant::Primary, "Sync games", "sync-games", "Sync games reads the game folders, refreshes shortcuts, and adds artwork when keys are present."))
-                                    (button(ButtonVariant::Secondary, "Add games", "add-games", "Add games by copying files to the SMB folders shown on this page, then press Sync games."))
-                                    (button(ButtonVariant::Secondary, "Reboot console", "reboot-console", "Reboot console restarts this HomeConsole."))
-                                    (button(ButtonVariant::Danger, "Shut down console", "shutdown-console", "Shut down console powers this HomeConsole off."))
+                                    (action_button(ButtonVariant::Primary, "Update GUI", "update-gui", "/api/actions/update-gui"))
+                                    (action_button(ButtonVariant::Primary, "Sync games", "sync-games", "/api/actions/sync-games"))
+                                    (link_button(ButtonVariant::Secondary, "Add games", "add-games", "smb://HOMECONSOLE"))
+                                    (action_button(ButtonVariant::Secondary, "Reboot console", "reboot-console", "/api/actions/reboot-console"))
+                                    (action_button(ButtonVariant::Danger, "Shut down console", "shutdown-console", "/api/actions/shutdown-console"))
                                 }
+                                div id="console-action-message" class="message" hidden {}
                             }
 
                             article class="panel" data-module="smb-folders" {
@@ -119,6 +120,18 @@ fn theme_boot_script() -> PreEscaped<&'static str> {
     PreEscaped(
         r#"(function(){try{var t=localStorage.getItem('arcadia-theme');if(t!=='light'&&t!=='dark'){t=(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}document.documentElement.dataset.theme=t;}catch(_){document.documentElement.dataset.theme='light';}})();"#,
     )
+}
+
+fn action_button(variant: ButtonVariant, label: &str, action: &str, endpoint: &str) -> Markup {
+    html! {
+        button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-endpoint=(endpoint) { (label) }
+    }
+}
+
+fn link_button(variant: ButtonVariant, label: &str, action: &str, url: &str) -> Markup {
+    html! {
+        button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-url=(url) { (label) }
+    }
 }
 
 fn button(variant: ButtonVariant, label: &str, action: &str, body: &str) -> Markup {
