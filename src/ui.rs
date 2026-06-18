@@ -43,6 +43,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
 
                         section class="panel" aria-labelledby="status-details" {
                             h2 id="status-details" { "Status details" }
+                            (smb_explainer(status))
                             (placeholder("Games", "Library status and update-safe idle state."))
                             (placeholder("Vault", &format!("Mounted: {}. Unlock helper: {}.", yes_no(status.vault.mounted), yes_no(status.vault.unlock_helper_present))))
                             (placeholder("Updates", "Harmonia profile state and Arcadia artifact version."))
@@ -71,6 +72,30 @@ fn placeholder(title: &str, body: &str) -> Markup {
         article class="detail-row" {
             h3 { (title) }
             p { (body) }
+        }
+    }
+}
+
+fn smb_explainer(status: &ConsoleStatus) -> Markup {
+    html! {
+        article class="detail-row smb-guide" aria-labelledby="smb-guide-title" {
+            p class="tile-kicker" { "File uploads" }
+            h3 id="smb-guide-title" { "How SMB file sharing works" }
+            p {
+                "SMB is the normal Windows-style network file share for this console. When the console and your computer are on the same home network, open "
+                code { "\\\\" (status.surfaces.smb) }
+                " or "
+                code { "smb://" (status.surfaces.smb) }
+                ", sign in if prompted, then copy files into the shared folder."
+            }
+            ol class="numbered-list" {
+                li { strong { "Connect" } span { "Use File Explorer, Finder, or your Linux file manager and open the SMB address above." } }
+                li { strong { "Upload" } span { "Drag ROMs, media, saves, or installer files into the matching share folder; the copy dialog is the upload progress." } }
+                li { strong { "Let it finish" } span { "Wait for the copy to complete before unplugging storage, restarting, or launching the file." } }
+            }
+            p class="tile-note" {
+                "Under the hood, the console is running a local Samba service. It publishes a folder on the LAN; your computer writes the file across the network; the file lands on the console disk or vault-backed storage; Arcadia then reads from that local storage. Nothing goes to the internet just because you used SMB."
+            }
         }
     }
 }
