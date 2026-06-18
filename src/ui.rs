@@ -1,6 +1,6 @@
 use maud::{html, Markup, DOCTYPE};
 
-use crate::{ButtonAction, ButtonVariant, ConsoleStatus, Portal, TileDatum};
+use crate::{ButtonVariant, ConsoleStatus};
 
 pub fn layout(status: &ConsoleStatus) -> Markup {
     html! {
@@ -12,17 +12,47 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 title { (status.product) " / Arcadia" }
                 link rel="stylesheet" href="/static/app.css";
             }
-            body data-vault-mounted=(status.vault.mounted) data-ui-schema=(status.ui_contract.schema) {
-                (vault_gate(status))
-                div id="app" class="surface surface--portals" aria-hidden=(!status.vault.mounted) {
-                    (pane("Arcadia", "HomeConsole portals", html! {
-                        div class="surface-actions" {
-                            (button(ButtonVariant::Secondary, "Vault status", "vault-status", &vault_modal_text(status)))
-                            (button(ButtonVariant::Secondary, "UI contract", "ui-contract", status.ui_contract.composition))
+            body data-ui-schema=(status.ui_contract.schema) {
+                div id="app" class="console-shell" {
+                    header class="hero-banner" {
+                        div class="brand-mark" aria-hidden="true" { "A" }
+                        div class="hero-copy" {
+                            p class="eyebrow" { "Arcadia / HomeConsole" }
+                            h1 { "Console, calm and ready." }
+                            p { "One local appliance surface for network presence, runtime state, and operator-controlled transitions." }
                         }
-                    }))
-                    main class="tile-grid tile-grid--portal" {
-                        @for portal in &status.portals { (portal_tile(portal)) }
+                        div class="hero-action" {
+                            (button(ButtonVariant::Danger, "Restart Console", "restart-console", "Restart is intentionally staged here as the single primary control. The wired reboot action will land behind an explicit confirmation receipt."))
+                        }
+                    }
+
+                    section class="indicator-row" aria-label="Console indicators" {
+                        (indicator("Network", "online", status.surfaces.http, "DNS, mDNS, and SMB identity are declared."))
+                        (indicator("Machine runtime", "steady", &status.runtime.machine_uptime, "Time since this machine booted."))
+                        (indicator("Arcadia runtime", "steady", &status.runtime.arcadia_uptime, "Time since this Arcadia process started."))
+                    }
+
+                    main class="two-pane" {
+                        section class="pane pane--left" aria-labelledby="how-console-works" {
+                            p class="section-label" { "How this console works" }
+                            h2 id="how-console-works" { "HomeConsole is a local-first appliance." }
+                            p { "Arcadia is the graphical surface. It should explain the machine, show the health of the local route, and expose only deliberate controls." }
+                            ol class="console-steps" {
+                                li { strong { "Network presence" } span { "The console announces itself as console.home.arpa, homeconsole.local, and HOMECONSOLE." } }
+                                li { strong { "Runtime awareness" } span { "The banner keeps machine uptime and Arcadia process uptime visible without visual clutter." } }
+                                li { strong { "Manual control" } span { "Dangerous actions stay explicit. Restart begins as one calm button, not a field of controls." } }
+                                li { strong { "Receipts next" } span { "Future actions will show proof after the transition rather than spraying buttons before authority exists." } }
+                            }
+                        }
+
+                        section class="pane pane--right" aria-labelledby="console-placeholders" {
+                            p class="section-label" { "Console notes" }
+                            h2 id="console-placeholders" { "Placeholders for the next useful facts" }
+                            (placeholder("Games", "Library status, active game process, and update-safe idle state will land here."))
+                            (placeholder("Vault", &format!("Vault mount: {}. Unlock helper: {}.", yes_no(status.vault.mounted), yes_no(status.vault.unlock_helper_present))))
+                            (placeholder("Updates", "Harmonia profile state, Arcadia artifact SHA, and last update receipt will land here."))
+                            (placeholder("Receipts", "Last restart, last health check, and last operator action proof will land here."))
+                        }
                     }
                 }
                 (modal_root())
@@ -32,71 +62,30 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
     }
 }
 
-fn vault_gate(status: &ConsoleStatus) -> Markup {
+fn indicator(title: &str, state: &str, value: &str, detail: &str) -> Markup {
     html! {
-        section id="vault-gate" class="vault-auth-container" data-mounted=(status.vault.mounted) {
-            article class="tile tile--vault-auth" {
-                div class="vault-auth-logo" aria-hidden="true" { "A" }
-                h1 { "HomeConsole" }
-                @if status.vault.mounted {
-                    h2 { "Vault Mounted" }
-                    p class="tile-copy" { "The vault is unlocked. Opening Arcadia portals." }
-                } @else {
-                    h2 { "Vault Authentication" }
-                    p class="tile-copy" { "Please enter your vault password to continue." }
-                    form id="vault-unlock-form" class="stack" autocomplete="off" {
-                        input class="field field--password" type="password" name="password" placeholder="Enter vault password" autocomplete="current-password" autofocus;
-                        div id="vault-auth-error" class="message message--error" hidden {}
-                        (submit_button(ButtonVariant::Primary, "Unlock Vault"))
-                    }
-                }
-                small { "Product of HOMESERVER LLC" }
-                small class="mono" { "Version " (env!("CARGO_PKG_VERSION")) " / " (status.arcadia.mode) }
-            }
+        article class=(format!("indicator indicator--{}", state)) {
+            span { (title) }
+            strong { (value) }
+            p { (detail) }
         }
     }
 }
 
-fn pane(title: &str, subtitle: &str, tools: Markup) -> Markup {
+fn placeholder(title: &str, body: &str) -> Markup {
     html! {
-        header class="pane pane--header" {
-            div class="pane-copy" { h1 { (title) } p { (subtitle) } }
-            (tools)
+        article class="placeholder-card" {
+            h3 { (title) }
+            p { (body) }
         }
     }
 }
 
-fn portal_tile(portal: &Portal) -> Markup {
-    html! {
-        article class=(format!("tile tile--portal {}", portal.status.class())) data-tile=(portal.name) data-action=(portal.action) data-url=(portal.local_url) data-modal-title=(portal.name) data-modal-body=(portal_detail(portal)) tabindex="0" role="button" {
-            div class="tile-head" {
-                div class="tile-icon" aria-hidden="true" { (portal.icon) }
-                div { h2 { (portal.name) } p class="tile-copy" { (portal.description) } }
-            }
-            div class="tile-density" {
-                @for datum in &portal.density { (micro_tile(datum)) }
-            }
-            div class="tile-actions" {
-                @for action in &portal.buttons { (button_action(action, portal)) }
-            }
-        }
-    }
-}
-
-fn micro_tile(datum: &TileDatum) -> Markup {
-    html! {
-        div class=(format!("tile tile--micro {}", datum.state.class())) {
-            span { (datum.label) }
-            strong { (datum.value) }
-        }
-    }
-}
-
-fn button_action(action: &ButtonAction, portal: &Portal) -> Markup {
-    html! {
-        button class=(format!("btn btn--{}", action.variant.class())) type="button" data-button=(action.variant.class()) data-action=(action.action) data-modal-title=(format!("{} / {}", portal.name, action.label)) data-modal-body=(portal_detail(portal)) {
-            (action.label)
-        }
+fn yes_no(value: bool) -> &'static str {
+    if value {
+        "yes"
+    } else {
+        "no"
     }
 }
 
@@ -104,10 +93,6 @@ fn button(variant: ButtonVariant, label: &str, action: &str, body: &str) -> Mark
     html! {
         button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-modal-title=(label) data-modal-body=(body) { (label) }
     }
-}
-
-fn submit_button(variant: ButtonVariant, label: &str) -> Markup {
-    html! { button class=(format!("btn btn--{}", variant.class())) type="submit" data-button=(variant.class()) { (label) } }
 }
 
 fn modal_root() -> Markup {
@@ -124,24 +109,4 @@ fn modal_root() -> Markup {
             div id="toast-container" class="toast-container" aria-live="polite" {}
         }
     }
-}
-
-fn vault_modal_text(status: &ConsoleStatus) -> String {
-    format!(
-        "mounted: {}\nmountpoint: {}\nmapper_present: {}\nunlock_helper_present: {}\nstate_path: {}",
-        status.vault.mounted, status.vault.mountpoint, status.vault.mapper_present, status.vault.unlock_helper_present, status.vault.state_path
-    )
-}
-
-fn portal_detail(portal: &Portal) -> String {
-    let dense = portal
-        .density
-        .iter()
-        .map(|d| format!("{}: {}", d.label, d.value))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "{}\n\nAction: {}\n\n{}",
-        portal.description, portal.action, dense
-    )
 }
