@@ -2,14 +2,16 @@ use axum::{
     extract::State,
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use maud::{html, Markup, DOCTYPE};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
-    env,
+    env, fs,
     net::SocketAddr,
+    path::Path,
+    process::{Command, Stdio},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -18,6 +20,9 @@ use tower_http::trace::TraceLayer;
 
 const APP_CSS: &str = include_str!("../static/app.css");
 const APP_JS: &str = include_str!("../static/app.js");
+const VAULT_MOUNTPOINT: &str = "/vault";
+const VAULT_STATE_PATH: &str = "/var/lib/homeconsole/state.json";
+const VAULT_UNLOCK_HELPER: &str = "/usr/local/sbin/homeconsole-vault-unlock";
 
 #[derive(Clone)]
 struct AppState {
@@ -42,10 +47,8 @@ struct ConsoleStatus {
     canonical_url: String,
     arcadia: ArcadiaStatus,
     vault: VaultStatus,
-    games: GamesStatus,
-    update: UpdateStatus,
+    portals: Vec<Portal>,
     surfaces: SurfaceStatus,
-    receipts: ReceiptStatus,
 }
 
 #[derive(Clone, Serialize)]
@@ -58,23 +61,12 @@ struct ArcadiaStatus {
 
 #[derive(Clone, Serialize)]
 struct VaultStatus {
-    policy: &'static str,
+    mounted: bool,
+    mountpoint: &'static str,
     state_path: &'static str,
-    unlock_surface: &'static str,
-}
-
-#[derive(Clone, Serialize)]
-struct GamesStatus {
-    intake: &'static str,
-    sync_command: &'static str,
-    payload_boundary: &'static str,
-}
-
-#[derive(Clone, Serialize)]
-struct UpdateStatus {
-    engine: &'static str,
-    profile: &'static str,
-    arcadia_transition: &'static str,
+    mapper_present: bool,
+    unlock_helper_present: bool,
+    first_gate: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -85,10 +77,25 @@ struct SurfaceStatus {
 }
 
 #[derive(Clone, Serialize)]
-struct ReceiptStatus {
-    source: &'static str,
-    runtime: &'static str,
-    update: &'static str,
+struct Portal {
+    name: &'static str,
+    description: &'static str,
+    local_url: &'static str,
+    status: &'static str,
+    icon: &'static str,
+    action: &'static str,
+}
+
+#[derive(Deserialize)]
+struct UnlockRequest {
+    password: String,
+}
+
+#[derive(Serialize)]
+struct UnlockResponse {
+    ok: bool,
+    mounted: bool,
+    message: String,
 }
 
 #[tokio::main]
@@ -111,7 +118,8 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/", get(index))
         .route("/health", get(health))
         .route("/api/status", get(status))
-        .route("/fragments/receipt", get(receipt_fragment))
+        .route("/api/vault/status", get(vault_status_route))
+        .route("/pre-unlock", post(pre_unlock))
         .route("/static/app.css", get(css))
         .route("/static/app.js", get(js))
         .fallback(not_found)
@@ -126,32 +134,104 @@ async fn main() -> anyhow_free::Result<()> {
 
 async fn index(State(state): State<Arc<AppState>>) -> Markup {
     let status = console_status(&state);
-    ui::layout(&status, dashboard(&status))
+    ui::layout(&status)
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
-    Json(health_status(&state))
+    Json(Health {
+        ok: true,
+        service: "arcadia",
+        product: state.product.clone(),
+        version: env!("CARGO_PKG_VERSION"),
+        started_unix: state.started_unix,
+    })
 }
 
 async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
     Json(console_status(&state))
 }
 
-async fn receipt_fragment(State(state): State<Arc<AppState>>) -> Markup {
-    ui::receipt_panel(
-        &console_status(&state),
-        "Arcadia GUI rendered from Rust components.",
+async fn vault_status_route() -> Json<VaultStatus> {
+    Json(vault_status())
+}
+
+async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<UnlockResponse>) {
+    if body.password.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(UnlockResponse {
+                ok: false,
+                mounted: false,
+                message: "Vault password is required.".to_string(),
+            }),
+        );
+    }
+
+    // The password is intentionally never logged and never persisted. Arcadia may only
+    // pass it to a fixed root-owned helper when that membrane exists on the appliance.
+    if !Path::new(VAULT_UNLOCK_HELPER).exists() {
+        return (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(UnlockResponse {
+                ok: false,
+                mounted: vault_status().mounted,
+                message: "Vault unlock helper is not installed on this unit yet.".to_string(),
+            }),
+        );
+    }
+
+    let mut child = match Command::new(VAULT_UNLOCK_HELPER)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(UnlockResponse {
+                    ok: false,
+                    mounted: vault_status().mounted,
+                    message: "Failed to start vault unlock helper.".to_string(),
+                }),
+            )
+        }
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(body.password.as_bytes());
+        let _ = stdin.write_all(b"\n");
+    }
+
+    let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+    let mounted = vault_status().mounted;
+    (
+        if ok && mounted {
+            StatusCode::OK
+        } else {
+            StatusCode::FORBIDDEN
+        },
+        Json(UnlockResponse {
+            ok: ok && mounted,
+            mounted,
+            message: if ok && mounted {
+                "Vault unlocked."
+            } else {
+                "Vault unlock failed."
+            }
+            .to_string(),
+        }),
     )
 }
 
 async fn css() -> Response {
     asset(APP_CSS, "text/css; charset=utf-8")
 }
-
 async fn js() -> Response {
     asset(APP_JS, "application/javascript; charset=utf-8")
 }
-
 async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "not found")
 }
@@ -164,135 +244,105 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
     response
 }
 
-fn health_status(state: &AppState) -> Health {
-    Health {
-        ok: true,
-        service: "arcadia",
-        product: state.product.clone(),
-        version: env!("CARGO_PKG_VERSION"),
-        started_unix: state.started_unix,
-    }
-}
-
 fn console_status(state: &AppState) -> ConsoleStatus {
     ConsoleStatus {
-        schema: "arcadia.status.v1",
+        schema: "arcadia.status.v2",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "homeserver-ui-maud",
-            ui: "maud-components-home-server-class-grammar",
+            mode: "portals-vault-gated",
+            ui: "homeserver-portals-vaultauth-popup-manager",
         },
-        vault: VaultStatus {
-            policy: "manual-unlock-default",
-            state_path: "/var/lib/homeconsole/state.json",
-            unlock_surface: "arcadia-vault-panel-next",
-        },
-        games: GamesStatus {
-            intake: "samba-direct-folders",
-            sync_command: "/usr/local/bin/arch-game-sync",
-            payload_boundary: "runtime-only",
-        },
-        update: UpdateStatus {
-            engine: "harmonia",
-            profile: "homeconsole",
-            arcadia_transition: "manual-bridge-now-harmonia-next",
-        },
+        vault: vault_status(),
+        portals: portals(),
         surfaces: SurfaceStatus {
-            http: "0.0.0.0:8080 behind LAN port 80 redirect",
+            http: "console.home.arpa -> :8080",
             mdns: "homeconsole.local",
             smb: "HOMECONSOLE",
-        },
-        receipts: ReceiptStatus {
-            source: "cibation",
-            runtime: "systemd+curl",
-            update: "/var/lib/harmonia/receipts/arcadia-latest/run.json",
         },
     }
 }
 
-fn dashboard(status: &ConsoleStatus) -> Markup {
-    html! {
-        section class="hero-panel ui-card ui-card--active" {
-            div class="hero-copy" {
-                div class="eyebrow" { "HomeConsole Arcadia" }
-                h1 { "Providence Interface" }
-                p class="lede" {
-                    "A Rust-native control surface quarrying the Home Server UI language into a console appliance: router, NAS, and game console in one luminous membrane."
-                }
-            }
-            div class="hero-actions" {
-                (ui::action_link("Health", "/health", ui::ButtonVariant::Secondary))
-                (ui::action_link("Status JSON", "/api/status", ui::ButtonVariant::Primary))
-            }
-        }
-
-        section class="status-grid" aria-label="HomeConsole status" {
-            (ui::status_card("System", ui::BadgeVariant::Success, "Arcadia active", "Rust axum + Maud renders the GUI on the console itself.", "🜂"))
-            (ui::status_card("Vault", ui::BadgeVariant::Warning, status.vault.policy, "Encrypted /vault is born locked by default; unlock UI is the next blessed action.", "🔐"))
-            (ui::status_card("Games", ui::BadgeVariant::Info, status.games.intake, "Drop games into SMB folders and press the sync transition when ready.", "🎮"))
-            (ui::status_card("Network", ui::BadgeVariant::Success, "console.home.arpa", "LAN HTTP routes to the unprivileged backend on :8080.", "🌐"))
-        }
-
-        section class="console-columns" {
-            (ui::action_card("Game library", "Synchronize games", "Run the declared arch-game-sync transition and return a receipt.", "/actions/sync-games", "#receipt-panel", ui::ButtonVariant::Primary))
-            (ui::action_card("Vault", "Unlock vault", "Prepare the manual unlock flow without logging raw secrets.", "/actions/vault-unlock", "#receipt-panel", ui::ButtonVariant::Warning))
-            (ui::action_card("Harmonia", "Check updates", "Make the HomeConsole profile modern through the update manager.", "/actions/update-check", "#receipt-panel", ui::ButtonVariant::Secondary))
-        }
-
-        section class="row-stack" aria-label="Service surfaces" {
-            (ui::row_info_tile("HTTP", &status.canonical_url, "LAN route", &[ui::badge(ui::BadgeVariant::Success, "up")], "🛰️"))
-            (ui::row_info_tile("mDNS", status.surfaces.mdns, "Fallback discovery", &[ui::badge(ui::BadgeVariant::Info, "discoverable")], "📡"))
-            (ui::row_info_tile("SMB", status.surfaces.smb, "Direct game folders", &[ui::badge(ui::BadgeVariant::Secondary, "runtime payloads")], "🗂️"))
-            (ui::row_info_tile("Update", status.update.engine, "Harmonia profile spine", &[ui::badge(ui::BadgeVariant::Warning, "manual bridge")], "🛠️"))
-        }
-
-        div id="receipt-panel" {
-            (ui::receipt_panel(status, "Awaiting the next exact transition."))
-        }
+fn vault_status() -> VaultStatus {
+    VaultStatus {
+        mounted: is_mountpoint(VAULT_MOUNTPOINT),
+        mountpoint: VAULT_MOUNTPOINT,
+        state_path: VAULT_STATE_PATH,
+        mapper_present: Path::new("/dev/mapper/homeconsole-vault").exists(),
+        unlock_helper_present: Path::new(VAULT_UNLOCK_HELPER).exists(),
+        first_gate: "vault-status-before-portals",
     }
+}
+
+fn is_mountpoint(path: &str) -> bool {
+    fs::read_to_string("/proc/mounts")
+        .map(|mounts| {
+            mounts
+                .lines()
+                .any(|line| line.split_whitespace().nth(1) == Some(path))
+        })
+        .unwrap_or(false)
+}
+
+fn portals() -> Vec<Portal> {
+    vec![
+        Portal {
+            name: "Games",
+            description: "Sync the runtime game library into Steam tiles.",
+            local_url: "#",
+            status: "unknown",
+            icon: "🎮",
+            action: "sync-games",
+        },
+        Portal {
+            name: "Vault",
+            description: "Unlock and inspect the encrypted HomeConsole vault.",
+            local_url: "#",
+            status: "partial",
+            icon: "🔐",
+            action: "vault-status",
+        },
+        Portal {
+            name: "Files",
+            description: "Open the HOMECONSOLE SMB file surface.",
+            local_url: "smb://HOMECONSOLE",
+            status: "up",
+            icon: "🗂️",
+            action: "open-files",
+        },
+        Portal {
+            name: "Updates",
+            description: "Harmonia profile and Arcadia update membrane.",
+            local_url: "#",
+            status: "unknown",
+            icon: "🛠️",
+            action: "updates",
+        },
+        Portal {
+            name: "Network",
+            description: "LAN route, mDNS fallback, and service identity.",
+            local_url: "/api/status",
+            status: "up",
+            icon: "🌐",
+            action: "network",
+        },
+        Portal {
+            name: "Receipts",
+            description: "Source, runtime, and transition proof surfaces.",
+            local_url: "#",
+            status: "unknown",
+            icon: "🧾",
+            action: "receipts",
+        },
+    ]
 }
 
 mod ui {
     use super::*;
 
-    #[derive(Clone, Copy)]
-    pub enum ButtonVariant {
-        Primary,
-        Secondary,
-        Warning,
-    }
-    impl ButtonVariant {
-        fn class(self) -> &'static str {
-            match self {
-                Self::Primary => "primary",
-                Self::Secondary => "secondary",
-                Self::Warning => "warning",
-            }
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    pub enum BadgeVariant {
-        Secondary,
-        Success,
-        Warning,
-        Info,
-    }
-    impl BadgeVariant {
-        fn class(self) -> &'static str {
-            match self {
-                Self::Secondary => "secondary",
-                Self::Success => "success",
-                Self::Warning => "warning",
-                Self::Info => "info",
-            }
-        }
-    }
-
-    pub fn layout(status: &ConsoleStatus, body: Markup) -> Markup {
+    pub fn layout(status: &ConsoleStatus) -> Markup {
         html! {
             (DOCTYPE)
             html lang="en" {
@@ -302,135 +352,94 @@ mod ui {
                     title { (status.product) " / Arcadia" }
                     link rel="stylesheet" href="/static/app.css";
                 }
-                body {
-                    div class="app-shell" {
-                        header class="app-header" {
-                            div class="brand-cluster" {
-                                div class="brand-mark" { "A" }
-                                div {
-                                    div class="brand-title" { (status.product) }
-                                    div class="brand-subtitle" { "Arcadia control surface" }
-                                }
+                body data-vault-mounted=(status.vault.mounted) {
+                    div id="vault-gate" class="vault-auth-container" data-mounted=(status.vault.mounted) {
+                        (vault_auth(status))
+                    }
+                    div id="app" class="portals-tablet" aria-hidden=(!status.vault.mounted) {
+                        header class="portal-page-header" {
+                            div {
+                                h1 { "Arcadia" }
+                                p { "HomeConsole portals" }
                             }
-                            nav class="ui-tab-group" aria-label="Primary" {
-                                (tab("Dashboard", true, "#"))
-                                (tab("Vault", false, "#receipt-panel"))
-                                (tab("Games", false, "#receipt-panel"))
-                                (tab("Update", false, "#receipt-panel"))
-                                (tab("System", false, "#receipt-panel"))
-                            }
+                            button class="small-status-button" data-modal-title="Vault status" data-modal-body=(vault_modal_text(status)) { "Vault status" }
                         }
-                        main class="content" {
-                            (body)
+                        main class="portals-grid" {
+                            @for portal in &status.portals {
+                                (portal_card(portal))
+                            }
                         }
                     }
+                    (popup_root())
                     script src="/static/app.js" {}
                 }
             }
         }
     }
 
-    pub fn tab(label: &str, active: bool, href: &str) -> Markup {
-        let active_class = if active { " ui-tab--active" } else { "" };
+    fn vault_auth(status: &ConsoleStatus) -> Markup {
         html! {
-            a class=(format!("ui-tab{}", active_class)) href=(href) {
-                span class="ui-tab__content" {
-                    span class="ui-tab__label" { (label) }
-                }
-            }
-        }
-    }
-
-    pub fn action_link(label: &str, href: &str, variant: ButtonVariant) -> Markup {
-        html! { a class=(format!("ui-button ui-button--{} ui-button--large", variant.class())) href=(href) { (label) } }
-    }
-
-    pub fn badge(variant: BadgeVariant, label: &str) -> Markup {
-        html! { span class=(format!("ui-badge ui-badge--{} ui-badge--medium ui-badge--pill", variant.class())) { (label) } }
-    }
-
-    pub fn status_card(
-        title: &str,
-        variant: BadgeVariant,
-        value: &str,
-        detail: &str,
-        icon: &str,
-    ) -> Markup {
-        html! {
-            article class="ui-card status-card" {
-                div class="ui-card__header status-card__head" {
-                    span class="status-card__icon" { (icon) }
-                    span { (title) }
-                    (badge(variant, value))
-                }
-                div class="ui-card__body" {
-                    h2 { (value) }
-                    p { (detail) }
-                }
-            }
-        }
-    }
-
-    pub fn action_card(
-        title: &str,
-        action: &str,
-        detail: &str,
-        endpoint: &str,
-        target: &str,
-        variant: ButtonVariant,
-    ) -> Markup {
-        html! {
-            article class="ui-card ui-card--clickable action-card" {
-                div class="ui-card__header" { (title) }
-                div class="ui-card__body" {
-                    p { (detail) }
-                    button class=(format!("ui-button ui-button--{} ui-button--full-width", variant.class()))
-                        hx-post=(endpoint) hx-target=(target) hx-swap="innerHTML" disabled {
-                        (action)
+            div class="vault-auth-card" {
+                div class="vault-auth-logo" aria-hidden="true" { "A" }
+                h1 { "HomeConsole" }
+                @if status.vault.mounted {
+                    h2 { "Vault Mounted" }
+                    p class="vault-auth-desc" { "The vault is unlocked. Opening Arcadia portals." }
+                } @else {
+                    h2 { "Vault Authentication" }
+                    p class="vault-auth-desc" { "Please enter your vault password to continue." }
+                    form id="vault-unlock-form" class="vault-auth-form" autocomplete="off" {
+                        div class="form-group" {
+                            input class="vault-auth-input vault-auth-input-password" type="password" name="password" placeholder="Enter vault password" autocomplete="current-password" autofocus;
+                        }
+                        div id="vault-auth-error" class="vault-auth-error" hidden {}
+                        button class="vault-auth-button" type="submit" { "Unlock Vault" }
                     }
                 }
-                div class="ui-card__footer" { "Transition endpoint reserved; no arbitrary shell." }
+                small { "Product of HOMESERVER LLC" }
+                div class="version-info" { small { "Version " (env!("CARGO_PKG_VERSION")) " / " (status.arcadia.mode) } }
             }
         }
     }
 
-    pub fn row_info_tile(
-        title: &str,
-        subtitle: &str,
-        metadata: &str,
-        badges: &[Markup],
-        icon: &str,
-    ) -> Markup {
+    fn portal_card(portal: &Portal) -> Markup {
         html! {
-            div class="ui-row-info-tile" role="button" tabindex="0" {
-                div class="ui-row-info-tile__icon" { (icon) }
-                div class="ui-row-info-tile__content" {
-                    div class="ui-row-info-tile__title" { (title) }
-                    div class="ui-row-info-tile__subtitle" { (subtitle) }
-                    div class="ui-row-info-tile__metadata" { span { (metadata) } }
-                    div class="ui-row-info-tile__badges" { @for item in badges { (item) } }
+            div class=(format!("portal-card {}", portal.status))
+                role="button" tabindex="0"
+                data-action=(portal.action)
+                data-url=(portal.local_url)
+                data-modal-title=(portal.name)
+                data-modal-body=(portal.description) {
+                div class="portal-card-header" {
+                    div class="portal-icon" aria-hidden="true" { (portal.icon) }
+                    h3 class="portal-name" { (portal.name) }
+                    p class="portal-description" { (portal.description) }
                 }
             }
         }
     }
 
-    pub fn receipt_panel(status: &ConsoleStatus, message: &str) -> Markup {
+    fn popup_root() -> Markup {
         html! {
-            section class="ui-card receipt-card" aria-live="polite" {
-                div class="ui-card__header" {
-                    "Receipt membrane"
-                    (badge(BadgeVariant::Success, "rendered"))
-                }
-                div class="ui-card__body" {
-                    p { (message) }
-                    div class="receipt-grid" {
-                        code { "source=" (status.receipts.source) }
-                        code { "runtime=" (status.receipts.runtime) }
-                        code { "update=" (status.receipts.update) }
+            div id="popup-root" data-popup-root="true" {
+                div id="modal-overlay" class="modal-overlay" hidden {
+                    div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" {
+                        button id="modal-close" class="modal-close" type="button" aria-label="Close modal" { "×" }
+                        h2 id="modal-title" class="modal-title" {}
+                        div id="modal-content" class="modal-content" {}
+                        div class="modal-buttons" { button id="modal-ok" type="button" { "OK" } }
                     }
                 }
+                div id="toast-container" class="toast-container" aria-live="polite" {}
             }
         }
+    }
+
+    fn vault_modal_text(status: &ConsoleStatus) -> String {
+        format!(
+            "mounted: {}\nmountpoint: {}\nmapper_present: {}\nunlock_helper_present: {}\nstate_path: {}",
+            status.vault.mounted, status.vault.mountpoint, status.vault.mapper_present, status.vault.unlock_helper_present, status.vault.state_path
+        )
     }
 }
 
