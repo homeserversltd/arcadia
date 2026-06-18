@@ -326,7 +326,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
             mode: "simple-console-dashboard",
-            ui: "header-status-left-pane-power-controls",
+            ui: "header-status-left-pane-power-controls-with-smb-guide",
         },
         runtime: runtime_status(state.started_unix),
         vault: vault_status(),
@@ -336,9 +336,9 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             smb: "HOMECONSOLE",
         },
         ui_contract: UiContract {
-            schema: "arcadia.ui.contract.v2",
+            schema: "arcadia.ui.contract.v3",
             button_variants: ["start", "shut-down", "update"],
-            composition: "banner indicators -> left pane power controls + right placeholder pane",
+            composition: "banner indicators -> left pane power controls + right status pane with SMB upload guide",
             modal: "start/shut-down/update confirmation placeholder; two-pane customer dashboard",
         },
     }
