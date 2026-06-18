@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
+    io::Write,
     net::SocketAddr,
     path::Path,
     process::{Command, Stdio},
@@ -24,6 +25,9 @@ const APP_JS: &str = include_str!("../static/app.js");
 const VAULT_MOUNTPOINT: &str = "/vault";
 const VAULT_STATE_PATH: &str = "/var/lib/homeconsole/state.json";
 const VAULT_UNLOCK_HELPER: &str = "/usr/local/sbin/homeconsole-vault-unlock";
+const VAULT_PASSWORD_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-vault-password-change";
+const VAULT_PASSWORD_RESET_HELPER: &str =
+    "/usr/local/sbin/homeconsole-vault-password-reset-default";
 
 #[derive(Clone)]
 struct AppState {
@@ -84,6 +88,9 @@ pub struct VaultStatus {
     pub state_path: &'static str,
     pub mapper_present: bool,
     pub unlock_helper_present: bool,
+    pub password_change_helper_present: bool,
+    pub password_reset_helper_present: bool,
+    pub default_reset_available: bool,
     pub first_gate: &'static str,
 }
 
@@ -92,51 +99,6 @@ pub struct SurfaceStatus {
     pub http: &'static str,
     pub mdns: &'static str,
     pub smb: &'static str,
-}
-
-#[derive(Clone, Serialize)]
-pub struct Portal {
-    pub name: &'static str,
-    pub description: &'static str,
-    pub local_url: &'static str,
-    pub status: PortalState,
-    pub icon: &'static str,
-    pub action: &'static str,
-    pub density: Vec<TileDatum>,
-    pub buttons: Vec<ButtonAction>,
-}
-
-#[derive(Clone, Copy, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PortalState {
-    Up,
-    Down,
-    Partial,
-    Unknown,
-}
-impl PortalState {
-    pub fn class(self) -> &'static str {
-        match self {
-            Self::Up => "up",
-            Self::Down => "down",
-            Self::Partial => "partial",
-            Self::Unknown => "unknown",
-        }
-    }
-}
-
-#[derive(Clone, Serialize)]
-pub struct TileDatum {
-    pub label: &'static str,
-    pub value: &'static str,
-    pub state: PortalState,
-}
-
-#[derive(Clone, Serialize)]
-pub struct ButtonAction {
-    pub label: &'static str,
-    pub variant: ButtonVariant,
-    pub action: &'static str,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -161,10 +123,23 @@ struct UnlockRequest {
     password: String,
 }
 
+#[derive(Deserialize)]
+struct PasswordChangeRequest {
+    current_password: String,
+    new_password: String,
+}
+
+#[derive(Deserialize)]
+struct PasswordResetRequest {
+    confirm: String,
+}
+
 #[derive(Serialize)]
-struct UnlockResponse {
+struct VaultActionResponse {
     ok: bool,
     mounted: bool,
+    action: &'static str,
+    helper_present: bool,
     message: String,
 }
 
@@ -189,6 +164,11 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/health", get(health))
         .route("/api/status", get(status))
         .route("/api/vault/status", get(vault_status_route))
+        .route("/api/vault/password/change", post(change_vault_password))
+        .route(
+            "/api/vault/password/reset-default",
+            post(reset_vault_password_default),
+        )
         .route("/pre-unlock", post(pre_unlock))
         .route("/static/app.css", get(css))
         .route("/static/app.js", get(js))
@@ -224,25 +204,102 @@ async fn vault_status_route() -> Json<VaultStatus> {
     Json(vault_status())
 }
 
-async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<UnlockResponse>) {
+async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<VaultActionResponse>) {
     if body.password.is_empty() {
-        return response(
+        return action_response(
             StatusCode::BAD_REQUEST,
             false,
             false,
+            "unlock",
+            helper_exists(VAULT_UNLOCK_HELPER),
             "Vault password is required.",
         );
     }
-    if !Path::new(VAULT_UNLOCK_HELPER).exists() {
-        return response(
-            StatusCode::NOT_IMPLEMENTED,
+
+    run_vault_helper(
+        VAULT_UNLOCK_HELPER,
+        "unlock",
+        &[body.password.as_str()],
+        "Vault unlocked.",
+        "Vault unlock failed.",
+    )
+}
+
+async fn change_vault_password(
+    Json(body): Json<PasswordChangeRequest>,
+) -> (StatusCode, Json<VaultActionResponse>) {
+    if body.current_password.is_empty() || body.new_password.is_empty() {
+        return action_response(
+            StatusCode::BAD_REQUEST,
             false,
             vault_status().mounted,
-            "Vault unlock helper is not installed on this unit yet.",
+            "change-password",
+            helper_exists(VAULT_PASSWORD_CHANGE_HELPER),
+            "Current password and new password are required.",
+        );
+    }
+    if body.new_password.len() < 4 {
+        return action_response(
+            StatusCode::BAD_REQUEST,
+            false,
+            vault_status().mounted,
+            "change-password",
+            helper_exists(VAULT_PASSWORD_CHANGE_HELPER),
+            "New password is too short.",
         );
     }
 
-    let mut child = match Command::new(VAULT_UNLOCK_HELPER)
+    run_vault_helper(
+        VAULT_PASSWORD_CHANGE_HELPER,
+        "change-password",
+        &[body.current_password.as_str(), body.new_password.as_str()],
+        "Vault password changed.",
+        "Vault password change failed.",
+    )
+}
+
+async fn reset_vault_password_default(
+    Json(body): Json<PasswordResetRequest>,
+) -> (StatusCode, Json<VaultActionResponse>) {
+    if body.confirm != "RESET" {
+        return action_response(
+            StatusCode::BAD_REQUEST,
+            false,
+            vault_status().mounted,
+            "reset-default-password",
+            helper_exists(VAULT_PASSWORD_RESET_HELPER),
+            "Type RESET to restore the default vault password.",
+        );
+    }
+
+    run_vault_helper(
+        VAULT_PASSWORD_RESET_HELPER,
+        "reset-default-password",
+        &[],
+        "Vault password reset to the appliance default.",
+        "Vault password reset failed.",
+    )
+}
+
+fn run_vault_helper(
+    helper: &'static str,
+    action: &'static str,
+    secret_lines: &[&str],
+    success_message: &str,
+    failure_message: &str,
+) -> (StatusCode, Json<VaultActionResponse>) {
+    if !helper_exists(helper) {
+        return action_response(
+            StatusCode::NOT_IMPLEMENTED,
+            false,
+            vault_status().mounted,
+            action,
+            false,
+            "Vault password helper is not installed on this unit yet.",
+        );
+    }
+
+    let mut child = match Command::new(helper)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -250,50 +307,54 @@ async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<Unlock
     {
         Ok(child) => child,
         Err(_) => {
-            return response(
+            return action_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 false,
                 vault_status().mounted,
-                "Failed to start vault unlock helper.",
+                action,
+                true,
+                "Failed to start vault password helper.",
             )
         }
     };
 
     if let Some(mut stdin) = child.stdin.take() {
-        use std::io::Write;
-        let _ = stdin.write_all(body.password.as_bytes());
-        let _ = stdin.write_all(b"\n");
+        for line in secret_lines {
+            let _ = stdin.write_all(line.as_bytes());
+            let _ = stdin.write_all(b"\n");
+        }
     }
 
-    let ok = child.wait().map(|s| s.success()).unwrap_or(false);
-    let mounted = vault_status().mounted;
-    response(
-        if ok && mounted {
+    let ok = child.wait().map(|status| status.success()).unwrap_or(false);
+    action_response(
+        if ok {
             StatusCode::OK
         } else {
             StatusCode::FORBIDDEN
         },
-        ok && mounted,
-        mounted,
-        if ok && mounted {
-            "Vault unlocked."
-        } else {
-            "Vault unlock failed."
-        },
+        ok,
+        vault_status().mounted,
+        action,
+        true,
+        if ok { success_message } else { failure_message },
     )
 }
 
-fn response(
+fn action_response(
     status: StatusCode,
     ok: bool,
     mounted: bool,
+    action: &'static str,
+    helper_present: bool,
     message: &str,
-) -> (StatusCode, Json<UnlockResponse>) {
+) -> (StatusCode, Json<VaultActionResponse>) {
     (
         status,
-        Json(UnlockResponse {
+        Json(VaultActionResponse {
             ok,
             mounted,
+            action,
+            helper_present,
             message: message.to_string(),
         }),
     )
@@ -319,14 +380,14 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
 
 fn console_status(state: &AppState) -> ConsoleStatus {
     ConsoleStatus {
-        schema: "arcadia.status.v4",
+        schema: "arcadia.status.v5",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "simple-console-dashboard",
-            ui: "header-status-left-pane-power-controls-with-smb-guide",
+            mode: "appliance-control-dashboard",
+            ui: "left-pane-power-controls-smb-guide-and-vault-password-appliance",
         },
         runtime: runtime_status(state.started_unix),
         vault: vault_status(),
@@ -337,10 +398,10 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         },
         ui_contract: UiContract {
             schema: "arcadia.ui.contract.v3",
-            button_variants: ["start", "shut-down", "update"],
-            composition: "banner indicators -> left pane power controls + right status pane with SMB upload guide",
-            modal: "start/shut-down/update confirmation placeholder; two-pane customer dashboard",
-        },
+            button_variants: ["primary", "secondary", "danger"],
+            composition: "banner indicators -> left pane power controls and appliance tiles -> right Vault Password management pane with SMB guide",
+            modal: "confirmation/readback only; password mutation posts to local root-owned helpers",
+        }
     }
 }
 
@@ -377,14 +438,22 @@ fn format_duration(total_seconds: u64) -> String {
 }
 
 fn vault_status() -> VaultStatus {
+    let reset_helper_present = helper_exists(VAULT_PASSWORD_RESET_HELPER);
     VaultStatus {
         mounted: is_mountpoint(VAULT_MOUNTPOINT),
         mountpoint: VAULT_MOUNTPOINT,
         state_path: VAULT_STATE_PATH,
         mapper_present: Path::new("/dev/mapper/homeconsole-vault").exists(),
-        unlock_helper_present: Path::new(VAULT_UNLOCK_HELPER).exists(),
+        unlock_helper_present: helper_exists(VAULT_UNLOCK_HELPER),
+        password_change_helper_present: helper_exists(VAULT_PASSWORD_CHANGE_HELPER),
+        password_reset_helper_present: reset_helper_present,
+        default_reset_available: reset_helper_present,
         first_gate: "vault-status-before-console-dashboard",
     }
+}
+
+fn helper_exists(path: &str) -> bool {
+    Path::new(path).exists()
 }
 
 fn is_mountpoint(path: &str) -> bool {

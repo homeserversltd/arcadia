@@ -22,32 +22,64 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                         div class="header-status" aria-label="Console indicators" {
                             (indicator("Network", "Online"))
                             (indicator("Runtime", &status.runtime.machine_uptime))
+                            (indicator("Vault", yes_no(status.vault.mounted)))
                         }
                     }
 
-                    main class="split-pane" {
-                        section class="panel" aria-labelledby="how-console-works" {
-                            h2 id="how-console-works" { "How the console works" }
-                            p { "HomeConsole is a local appliance. This screen shows the essential status and keeps controls deliberate." }
-                            div class="power-controls" aria-label="Console power controls" {
-                                (button(ButtonVariant::Primary, "Start", "start-console", "Start wakes or launches the console runtime through the governed HomeConsole path."))
-                                (button(ButtonVariant::Danger, "Shut down", "shutdown-console", "Shut down powers the console down deliberately after confirmation and receipt wiring."))
-                                (button(ButtonVariant::Secondary, "Update", "update-console", "Update runs the Harmonia HomeConsole update path and records an update receipt."))
+                    main class="appliance-layout" {
+                        aside class="left-pane" aria-label="Arcadia appliance tiles" {
+                            article class="control-cluster" aria-label="Console power controls" {
+                                h2 { "Console controls" }
+                                div class="power-controls" {
+                                    (button(ButtonVariant::Primary, "Start", "start-console", "Start wakes or launches the console runtime through the governed HomeConsole path."))
+                                    (button(ButtonVariant::Danger, "Shut down", "shutdown-console", "Shut down powers the console down deliberately after confirmation and receipt wiring."))
+                                    (button(ButtonVariant::Secondary, "Update", "update-console", "Update runs the Harmonia HomeConsole update path and records an update receipt."))
+                                }
                             }
-                            ul class="plain-list" {
-                                li { strong { "Network" } span { "Available at console.home.arpa on the local network." } }
-                                li { strong { "Runtime" } span { "Machine uptime is " (status.runtime.machine_uptime) ". Arcadia uptime is " (status.runtime.arcadia_uptime) "." } }
-                                li { strong { "Control" } span { "Start, shut down, and update live in the left pane as deliberate appliance controls." } }
-                            }
+                            (nav_tile("Vault Password", "Change or reset the Vault appliance password", "vault-password", "🔐", true, ButtonVariant::Primary))
+                            (nav_tile("SMB Uploads", "How local file sharing works", "smb-uploads", "⇄", false, ButtonVariant::Secondary))
+                            (nav_tile("Games", "Library and idle-safe updates", "games", "🎮", false, ButtonVariant::Secondary))
+                            (nav_tile("Receipts", "Last local proof readbacks", "receipts", "🧾", false, ButtonVariant::Secondary))
                         }
 
-                        section class="panel" aria-labelledby="status-details" {
-                            h2 id="status-details" { "Status details" }
+                        section class="management-pane" aria-labelledby="vault-password-title" data-panel="vault-password" {
+                            div class="panel-head" {
+                                p class="eyebrow" { "Vault system" }
+                                h2 id="vault-password-title" { "Vault Password" }
+                                p { "Manage the Vault password like a router appliance: change it when known, or reset it to the HomeConsole default from this front end." }
+                            }
+
+                            div class="status-strip" {
+                                (status_card("Vault mounted", yes_no(status.vault.mounted)))
+                                (status_card("Change helper", yes_no(status.vault.password_change_helper_present)))
+                                (status_card("Default reset", yes_no(status.vault.default_reset_available)))
+                            }
+
+                            div class="form-grid" {
+                                article class="card control-card" {
+                                    h3 { "Change password" }
+                                    p { "Enter the current Vault password and the replacement password. Arcadia sends secrets only to the local helper stdin; responses stay redacted." }
+                                    form id="vault-password-change-form" class="stack" autocomplete="off" {
+                                        label { span { "Current password" } input class="field" type="password" name="current_password" autocomplete="current-password" required; }
+                                        label { span { "New password" } input class="field" type="password" name="new_password" autocomplete="new-password" required minlength="4"; }
+                                        label { span { "Confirm new password" } input class="field" type="password" name="confirm_password" autocomplete="new-password" required minlength="4"; }
+                                        div id="vault-password-change-message" class="message" hidden {}
+                                        button class="btn btn--primary" type="submit" { "Change Vault Password" }
+                                    }
+                                }
+
+                                article class="card control-card danger-zone" {
+                                    h3 { "Reset to default" }
+                                    p { "Restore the Vault password to the appliance default for recovery. Type RESET to confirm the router-style reset action." }
+                                    form id="vault-password-reset-form" class="stack" autocomplete="off" {
+                                        label { span { "Confirmation" } input class="field" type="text" name="confirm" placeholder="RESET" autocomplete="off" required; }
+                                        div id="vault-password-reset-message" class="message" hidden {}
+                                        button class="btn btn--danger" type="submit" { "Reset to Default" }
+                                    }
+                                }
+                            }
+
                             (smb_explainer(status))
-                            (placeholder("Games", "Library status and update-safe idle state."))
-                            (placeholder("Vault", &format!("Mounted: {}. Unlock helper: {}.", yes_no(status.vault.mounted), yes_no(status.vault.unlock_helper_present))))
-                            (placeholder("Updates", "Harmonia profile state and Arcadia artifact version."))
-                            (placeholder("Receipts", "Last restart, health check, and update proof."))
                         }
                     }
                 }
@@ -67,18 +99,39 @@ fn indicator(title: &str, value: &str) -> Markup {
     }
 }
 
-fn placeholder(title: &str, body: &str) -> Markup {
+fn status_card(title: &str, value: &str) -> Markup {
     html! {
-        article class="detail-row" {
-            h3 { (title) }
-            p { (body) }
+        div class="status-card" {
+            span { (title) }
+            strong { (value) }
+        }
+    }
+}
+
+fn nav_tile(
+    title: &str,
+    body: &str,
+    action: &str,
+    icon: &str,
+    active: bool,
+    variant: ButtonVariant,
+) -> Markup {
+    let class = if active {
+        "nav-tile nav-tile--active"
+    } else {
+        "nav-tile"
+    };
+    html! {
+        button class=(class) type="button" data-nav-action=(action) data-button=(variant.class()) {
+            span class="nav-icon" aria-hidden="true" { (icon) }
+            span class="nav-copy" { strong { (title) } small { (body) } }
         }
     }
 }
 
 fn smb_explainer(status: &ConsoleStatus) -> Markup {
     html! {
-        article class="detail-row smb-guide" aria-labelledby="smb-guide-title" {
+        article class="smb-guide" aria-labelledby="smb-guide-title" {
             p class="tile-kicker" { "File uploads" }
             h3 id="smb-guide-title" { "How SMB file sharing works" }
             p {
