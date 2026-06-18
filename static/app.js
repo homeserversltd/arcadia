@@ -68,6 +68,53 @@ function clearMessage(id) {
   node.hidden = true;
 }
 
+function formatActionResult(data) {
+  const bits = [data.message || (data.ok ? 'Done.' : 'Failed.')];
+  if (data.exit_code !== undefined && data.exit_code !== null) bits.push(`exit ${data.exit_code}`);
+  if (data.stdout) bits.push(data.stdout);
+  if (data.stderr) bits.push(data.stderr);
+  return bits.join('
+');
+}
+
+function confirmationFor(action) {
+  if (action === 'reboot-console') return window.confirm('Reboot this console now?') ? { confirm: 'REBOOT' } : null;
+  if (action === 'shutdown-console') return window.confirm('Shut down this console now?') ? { confirm: 'SHUTDOWN' } : null;
+  return {};
+}
+
+function bindConsoleActions() {
+  document.querySelectorAll('.button-row--five .btn[data-action]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const action = button.dataset.action;
+      const url = button.dataset.url;
+      const endpoint = button.dataset.endpoint;
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      if (!endpoint) return;
+      const body = confirmationFor(action);
+      if (body === null) return;
+      clearMessage('console-action-message');
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Running...';
+      try {
+        const data = await postJson(endpoint, body);
+        setMessage('console-action-message', formatActionResult(data), data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        setMessage('console-action-message', 'Action request failed.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+  });
+}
+
 async function postJson(url, body) {
   const res = await fetch(url, {
     method: 'POST',
@@ -144,6 +191,7 @@ function bindProviderKeys() {
 }
 
 ThemeManager.apply(ThemeManager.preferredTheme());
+bindConsoleActions();
 bindProviderKeys();
 bindVaultPasswordChange();
 

@@ -32,6 +32,10 @@ const VAULT_PASSWORD_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-vault-pa
 const VAULT_PASSWORD_RESET_HELPER: &str =
     "/usr/local/sbin/homeconsole-vault-password-reset-default";
 const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
+const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
+const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
+const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
+const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
 
 #[derive(Clone)]
 struct AppState {
@@ -155,6 +159,22 @@ struct ProviderKeysResponse {
     message: String,
 }
 
+#[derive(Deserialize)]
+struct ConsoleActionRequest {
+    confirm: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ConsoleActionResponse {
+    ok: bool,
+    action: &'static str,
+    command: &'static str,
+    exit_code: Option<i32>,
+    message: String,
+    stdout: String,
+    stderr: String,
+}
+
 #[derive(Serialize)]
 struct VaultActionResponse {
     ok: bool,
@@ -187,6 +207,13 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/vault/status", get(vault_status_route))
         .route("/api/vault/password/change", post(change_vault_password))
         .route("/api/provider-keys/save", post(save_provider_keys))
+        .route("/api/actions/update-gui", post(action_update_gui))
+        .route("/api/actions/sync-games", post(action_sync_games))
+        .route("/api/actions/reboot-console", post(action_reboot_console))
+        .route(
+            "/api/actions/shutdown-console",
+            post(action_shutdown_console),
+        )
         .route(
             "/api/vault/password/reset-default",
             post(reset_vault_password_default),
@@ -224,6 +251,174 @@ async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
 
 async fn vault_status_route() -> Json<VaultStatus> {
     Json(vault_status())
+}
+
+async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
+    run_console_command(
+        "update-gui",
+        HARMONIA_BIN,
+        &[
+            "homeconsole-arcadia-gui-update",
+            HOMECONSOLE_PROFILE,
+            "--repo",
+            "git@git.home.arpa:HOMESERVERSLTD/arcadia.git",
+            "--branch",
+            "main",
+            "--source-dir",
+            "/opt/arcadia/source",
+            "--apply",
+            "--install-bin",
+            "/usr/local/bin/arcadia",
+            "--service",
+            "arcadia.service",
+            "--receipt-dir",
+            "/var/lib/harmonia/receipts/arcadia-gui-latest",
+        ],
+        "Update GUI completed.",
+        "Update GUI failed. Read /var/lib/harmonia/receipts/arcadia-gui-latest.",
+    )
+}
+
+async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
+    run_console_command(
+        "sync-games",
+        HARMONIA_BIN,
+        &[
+            "homeconsole-sync",
+            HOMECONSOLE_PROFILE,
+            "--provider-env",
+            PROVIDER_KEYS_PATH,
+            "--adapter-command",
+            ARCH_GAME_SYNC_BIN,
+            "--apply",
+            "--receipt-dir",
+            "/var/lib/harmonia/receipts/game-sync-latest",
+        ],
+        "Sync games completed.",
+        "Sync games failed. Read /var/lib/harmonia/receipts/game-sync-latest.",
+    )
+}
+
+async fn action_reboot_console(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("REBOOT") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "reboot-console",
+            SYSTEMCTL_BIN,
+            "Type REBOOT to restart the console.",
+        );
+    }
+    run_console_command(
+        "reboot-console",
+        SYSTEMCTL_BIN,
+        &["reboot"],
+        "Reboot requested.",
+        "Reboot request failed.",
+    )
+}
+
+async fn action_shutdown_console(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("SHUTDOWN") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "shutdown-console",
+            SYSTEMCTL_BIN,
+            "Type SHUTDOWN to power off the console.",
+        );
+    }
+    run_console_command(
+        "shutdown-console",
+        SYSTEMCTL_BIN,
+        &["poweroff"],
+        "Shutdown requested.",
+        "Shutdown request failed.",
+    )
+}
+
+fn run_console_command(
+    action: &'static str,
+    command: &'static str,
+    args: &[&str],
+    success_message: &str,
+    failure_message: &str,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if !helper_exists(command) {
+        return console_action_error(
+            StatusCode::NOT_IMPLEMENTED,
+            action,
+            command,
+            "Required command is not installed on this console.",
+        );
+    }
+    match Command::new(command).args(args).output() {
+        Ok(output) => {
+            let ok = output.status.success();
+            (
+                if ok {
+                    StatusCode::OK
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
+                Json(ConsoleActionResponse {
+                    ok,
+                    action,
+                    command,
+                    exit_code: output.status.code(),
+                    message: if ok { success_message } else { failure_message }.to_string(),
+                    stdout: redacted_output(&output.stdout),
+                    stderr: redacted_output(&output.stderr),
+                }),
+            )
+        }
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            action,
+            command,
+            &format!("Command could not start: {err}"),
+        ),
+    }
+}
+
+fn console_action_error(
+    status: StatusCode,
+    action: &'static str,
+    command: &'static str,
+    message: &str,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    (
+        status,
+        Json(ConsoleActionResponse {
+            ok: false,
+            action,
+            command,
+            exit_code: None,
+            message: message.to_string(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }),
+    )
+}
+
+fn redacted_output(bytes: &[u8]) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    text.lines()
+        .take(80)
+        .map(|line| {
+            if line.to_ascii_lowercase().contains("key=")
+                || line.to_ascii_lowercase().contains("password")
+                || line.to_ascii_lowercase().contains("token")
+            {
+                "[REDACTED]".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 async fn save_provider_keys(
