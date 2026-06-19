@@ -193,12 +193,17 @@ h3 { margin: 0 0 8px; font-size: 18px; }
 .provider-status { padding: 12px; border-radius: 15px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
 .provider-status span { display: block; color: var(--muted); font-size: 12px; }
 .provider-status strong { color: var(--warn); }
-.model-card { display: grid; gap: 8px; padding: 18px; border-radius: 22px; border: 1px solid var(--line); background: rgba(0,0,0,.18); cursor: pointer; }
+.local-ai-section { margin: 16px 0; }
+.model-card { display: grid; gap: 10px; padding: 18px; border-radius: 22px; border: 1px solid var(--line); background: rgba(0,0,0,.18); }
 .model-card--selected { border-color: rgba(242,140,40,.7); background: rgba(242,140,40,.12); }
-.model-card input { justify-self: start; accent-color: var(--orange); }
-.model-name { font-size: 18px; font-weight: 900; }
-.model-card span:not(.model-name) { color: var(--muted); }
-.model-card strong { color: var(--good); }
+.model-choice { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.model-card input { flex: 0 0 auto; accent-color: var(--orange); }
+.model-name { font-size: 18px; font-weight: 900; color: var(--cream); }
+.model-filename { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.model-meta-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; margin-top: 8px; }
+.model-meta { display: grid; gap: 3px; padding: 9px; border-radius: 14px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+.model-meta em { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 800; }
+.model-meta strong, .model-status { color: var(--good); font-size: 14px; }
 .service-list { display: grid; gap: 10px; }
 .service-status-row { display: flex; justify-content: space-between; gap: 14px; padding: 14px; border-radius: 14px; background: rgba(0,0,0,.18); }
 .service-status-row span { color: var(--muted); }
