@@ -87,7 +87,7 @@ function bindNavigation() {
   const panels = Array.from(document.querySelectorAll('[data-view-panel]'));
   const activate = (view) => {
     if (view === 'advanced') view = 'system';
-    if (view === 'ai-model') view = 'local-ai';
+    if (view === 'ai-model' || view === 'lan-inference') view = 'local-ai';
     const next = panels.some((panel) => panel.dataset.viewPanel === view) ? view : 'home';
     buttons.forEach((button) => {
       const active = button.dataset.view === next;
@@ -789,6 +789,106 @@ function bindNetworkControls() {
 
 function escapeHtml(value) {
   return String(value || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+
+async function requestAIState() {
+  const res = await fetch('/api/ai/state', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error('AI state failed');
+  return await res.json();
+}
+
+async function postAI(endpoint, body = {}, label = 'Local AI action') {
+  const data = await postJson(endpoint, body);
+  setMessage('ai-message', data.message || label, data.ok ? 'success' : 'error');
+  PopupManager.showToast(data.message || label, data.ok ? 'success' : 'error');
+  return data;
+}
+
+function bindLocalAIControls() {
+  document.querySelectorAll('[data-ai-action]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const action = button.dataset.aiAction;
+      const modelId = button.dataset.modelId || null;
+      const filename = button.dataset.filename || null;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = action.includes('download') ? 'Downloading…' : 'Working…';
+      try {
+        if (action === 'runtime-check-update') await postAI('/api/ai/runtime/check-update', {}, 'Runtime check complete');
+        else if (action === 'runtime-update') await postAI('/api/ai/runtime/update', {}, 'Runtime update started');
+        else if (action === 'runtime-restart') await postAI('/api/ai/runtime/restart', {}, 'Runtime restart complete');
+        else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'inharmonia' }, 'Recommended model install');
+        else if (action === 'model-select') await postAI('/api/ai/model/select', { modelId }, 'Model selected');
+        else if (action === 'model-load') await postAI('/api/ai/model/load', { modelId }, 'Model load requested');
+        else if (action === 'model-unload') await postAI('/api/ai/model/unload', {}, 'Model unloaded');
+        else if (action === 'model-remove') {
+          if (!window.confirm('Remove this model from console storage?\nGames and artwork are not affected.')) return;
+          await postAI('/api/ai/models/remove', { modelId, filename, confirm: 'REMOVE_MODEL' }, 'Model removed');
+        }
+        else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'Inference enabled');
+        else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'Inference disabled');
+        else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'Inference tested');
+        else if (action === 'hf-list-files') await fetchHFFiles();
+        else if (action === 'hf-download') await downloadHFModel();
+      } catch (_) {
+        setMessage('ai-message', 'Local AI request failed.', 'error');
+        PopupManager.showToast('Local AI request failed', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+  });
+  document.querySelectorAll('[data-ai-logs]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+      const state = await requestAIState();
+      const a = state.activity || {};
+      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.' });
+    } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
+  }));
+}
+
+function hfForm() { return document.querySelector('[data-hf-installer]'); }
+function hfRequest() {
+  const form = hfForm();
+  return {
+    repoId: form?.querySelector('input[name="repoId"]')?.value.trim() || '',
+    filename: form?.querySelector('input[name="filename"]')?.value.trim() || '',
+    revision: form?.querySelector('input[name="revision"]')?.value.trim() || 'main',
+  };
+}
+async function fetchHFFiles() {
+  const req = hfRequest();
+  const data = await postJson('/api/ai/models/huggingface/list-files', { repoId: req.repoId, revision: req.revision });
+  const root = document.getElementById('hf-file-results');
+  if (root) {
+    root.textContent = '';
+    (data.files || []).forEach((file) => {
+      const row = document.createElement('div');
+      row.className = 'network-row';
+      row.innerHTML = `<span><strong>${escapeHtml(file.filename)}</strong><em>${file.sizeBytes ? formatBytes(file.sizeBytes) : 'Size unknown'}</em></span>`;
+      const select = document.createElement('button');
+      select.className = 'btn btn--secondary';
+      select.type = 'button';
+      select.textContent = 'Select';
+      select.addEventListener('click', () => { const f = hfForm()?.querySelector('input[name="filename"]'); if (f) f.value = file.filename; });
+      row.appendChild(select);
+      root.appendChild(row);
+    });
+    if (!data.files?.length) root.textContent = data.message || 'No compatible .gguf files found.';
+  }
+  PopupManager.showToast(data.message || 'Hugging Face files fetched', data.ok ? 'success' : 'error');
+}
+async function downloadHFModel() {
+  const req = hfRequest();
+  if (!req.filename.endsWith('.gguf')) return PopupManager.showToast('Only .gguf files are supported.', 'error');
+  await postAI('/api/ai/models/huggingface/download', req, 'Model download finished');
+}
+function formatBytes(bytes) {
+  const gb = bytes / 1024 / 1024 / 1024;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 / 1024)} MB`;
 }
 
 async function postJson(url, body) {
