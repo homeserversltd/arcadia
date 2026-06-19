@@ -135,7 +135,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .view { display: none; min-height: calc(100vh - 120px); padding: 16px 18px; }
 .view.is-active { display: block; animation: rise .18s ease-out; }
 @keyframes rise { from { opacity: .55; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.status-card-grid, .model-grid, .power-grid, .path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.status-card-grid, .model-grid, .path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
 .path-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .priority-strip { margin: 0 0 12px; min-height: 54px; padding: 10px 12px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid rgba(242,140,40,.42); border-radius: 20px; background: linear-gradient(145deg, rgba(242,140,40,.18), rgba(255,255,255,.07)); box-shadow: 0 12px 30px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.10); }
 .priority-strip strong { font-size: 18px; line-height: 1.12; }
@@ -176,7 +176,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .section-heading p { margin: 0; max-width: 520px; color: var(--muted); font-size: 14px; line-height: 1.35; }
 .section-heading--compact h3 { font-size: 18px; }
 .status-card-grid--compact .status-card { min-height: 92px; padding: 12px; }
-.status-card, .instruction-card, .path-card, .folder-card, .settings-panel, .form-card, .active-model, .power-card, .collapsible-log, .service-list, .storage-summary, .storage-category-card, .system-card {
+.status-card, .instruction-card, .path-card, .folder-card, .settings-panel, .form-card, .active-model, .collapsible-log, .service-list, .storage-summary, .storage-category-card, .system-card, .system-power-panel, .system-power-action {
 
   border-radius: var(--radius);
   background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.055));
@@ -185,8 +185,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .status-card { padding: 14px; min-height: 112px; }
 .status-card span, .path-card span, .active-model span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
 .status-card strong, .active-model strong { display: block; margin: 5px 0 7px; font-size: 18px; line-height: 1.12; color: var(--cream); overflow-wrap: anywhere; }
-.status-card p, .instruction-card p, .form-card p, .power-card p, .active-model p { margin: 0; color: var(--muted); line-height: 1.45; }
-.instruction-card, .folder-card, .settings-panel, .form-card, .active-model, .power-card, .collapsible-log, .service-list { padding: 14px; margin: 12px 0; }
+.status-card p, .instruction-card p, .form-card p, .active-model p { margin: 0; color: var(--muted); line-height: 1.45; }
+.instruction-card, .folder-card, .settings-panel, .form-card, .active-model, .collapsible-log, .service-list { padding: 14px; margin: 12px 0; }
 .storage-summary { padding: 14px; margin: 12px 0; }
 .storage-hero { display: grid; grid-template-columns: minmax(220px, .8fr) 1.2fr; gap: 14px; align-items: stretch; }
 .storage-hero-main { display: grid; align-content: center; gap: 5px; padding: 16px; border-radius: 20px; background: linear-gradient(145deg, rgba(95,210,143,.16), rgba(255,255,255,.06)); border: 1px solid rgba(95,210,143,.28); }
@@ -222,6 +222,24 @@ button { -webkit-tap-highlight-color: transparent; }
 .storage-model-row code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .storage-model-row em { color: var(--muted); font-style: normal; }
 .storage-model-row b { color: var(--good); }
+.system-power-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, .38fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  margin: 0 0 12px;
+  padding: 13px;
+  border-color: rgba(242,140,40,.34);
+  background: linear-gradient(145deg, rgba(242,140,40,.18), rgba(255,255,255,.07));
+}
+.system-power-state { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 5px 10px; align-content: center; padding: 10px; border-radius: 16px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+.system-power-icon { grid-row: 1 / span 2; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(145deg, var(--orange-strong), #c4521b); color: #23091d; font-size: 22px; font-weight: 900; }
+.system-power-state span:not(.system-power-icon) { align-self: end; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
+.system-power-state strong { align-self: start; font-size: 18px; line-height: 1.12; }
+.system-power-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.system-power-action { display: grid; gap: 9px; align-content: center; min-height: 96px; padding: 11px; background: rgba(0,0,0,.16); }
+.system-power-action span { color: var(--muted); font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.system-power-action .btn { width: 100%; min-height: 38px; padding: 8px 11px; font-size: 13px; }
 .system-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .system-card { padding: 16px; }
 .system-card--services, .system-card--logs, .system-card--networking { grid-column: 1 / -1; }
@@ -530,8 +548,9 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .sidebar-launcher { padding: 8px; }
   .launcher-button { min-height: 72px; }
   .launcher-label { font-size: 11px; }
-  .status-card-grid, .model-grid, .power-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .priority-strip { grid-template-columns: 1fr; align-items: start; }
+  .system-power-panel, .system-power-actions { grid-template-columns: 1fr; }
 .sync-command-center { grid-template-columns: 1fr; }
   .sync-step:not(:last-child)::after { content: "↓"; right: auto; left: 22px; top: auto; bottom: -19px; }
   .storage-hero { grid-template-columns: 1fr; }
@@ -544,7 +563,7 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
   .view { padding: 20px; }
-  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid { grid-template-columns: 1fr; }
+  .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }

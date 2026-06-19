@@ -10,7 +10,7 @@ const FOLDERS: [&str; 12] = [
     "dos",
 ];
 
-const VIEWS: [(&str, &str, &str); 10] = [
+const VIEWS: [(&str, &str, &str); 9] = [
     ("home", "⌂", "Home"),
     ("games", "▣", "Games"),
     ("sync", "↻", "Sync"),
@@ -19,7 +19,6 @@ const VIEWS: [(&str, &str, &str); 10] = [
     ("network", "◌", "Network"),
     ("access-pin", "●", "Access / PIN"),
     ("updates", "⬆", "Updates"),
-    ("power", "⏻", "Power"),
     ("system", "⚙", "System"),
 ];
 
@@ -49,7 +48,6 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (network_view(status))
                             (access_pin_view(status))
                             (updates_view(status))
-                            (power_view())
                             (system_view(status))
                         }
                     }
@@ -1240,16 +1238,6 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn power_view() -> Markup {
-    view_shell("power", "Safe shutdown", "Power", "Restart or shut down the appliance safely. Dangerous actions ask for confirmation before they run.", html! {
-        div class="power-grid" {
-            (power_action("Restart Console", "Full system reboot.", ButtonVariant::Danger, "reboot-console", "/api/actions/reboot-console"))
-            (power_action("Shut Down Console", "Powers off the appliance.", ButtonVariant::Danger, "shutdown-console", "/api/actions/shutdown-console"))
-            (power_action("Restart GameScope", "Restarts the game session only.", ButtonVariant::Secondary, "restart-gamescope", "/api/actions/restart-gamescope"))
-        }
-    })
-}
-
 fn system_view(status: &ConsoleStatus) -> Markup {
     view_shell(
         "system",
@@ -1257,6 +1245,7 @@ fn system_view(status: &ConsoleStatus) -> Markup {
         "System",
         "",
         html! {
+            (system_power_panel())
             section class="system-grid" aria-label="System" {
                 article class="system-card system-card--ssh" {
                     div class="system-field-grid" {
@@ -1386,6 +1375,38 @@ fn command_box(label: &str, value: &str) -> Markup {
     }
 }
 
+fn system_power_panel() -> Markup {
+    html! {
+        section class="system-power-panel" aria-label="Power" {
+            div class="system-power-state" {
+                span class="system-power-icon" aria-hidden="true" { "⏻" }
+                span { "Power" }
+                strong { "Console controls" }
+            }
+            div class="system-power-actions" {
+                (system_power_action("Restart", "Full system reboot", ButtonVariant::Danger, "reboot-console", "/api/actions/reboot-console"))
+                (system_power_action("Shut Down", "Power off appliance", ButtonVariant::Danger, "shutdown-console", "/api/actions/shutdown-console"))
+                (system_power_action("Restart GameScope", "Game session only", ButtonVariant::Secondary, "restart-gamescope", "/api/actions/restart-gamescope"))
+            }
+        }
+    }
+}
+
+fn system_power_action(
+    label: &str,
+    detail: &str,
+    variant: ButtonVariant,
+    action: &str,
+    endpoint: &str,
+) -> Markup {
+    html! {
+        article class="system-power-action" {
+            span { (detail) }
+            (action_button(variant, label, action, endpoint))
+        }
+    }
+}
+
 fn copy_button(label: &str, value: &str) -> Markup {
     html! { button class="btn btn--secondary" type="button" data-copy-value=(value) { (label) } }
 }
@@ -1422,16 +1443,6 @@ fn system_log_group(name: &str) -> Markup {
             pre { code {} }
         }
     }
-}
-
-fn power_action(
-    title: &str,
-    text: &str,
-    variant: ButtonVariant,
-    action: &str,
-    endpoint: &str,
-) -> Markup {
-    html! { article class="power-card" { h3 { (title) } p { (text) } (action_button(variant, title, action, endpoint)) } }
 }
 
 fn collapsible_log(title: &str, text: &str) -> Markup {
