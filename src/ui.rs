@@ -10,13 +10,12 @@ const FOLDERS: [&str; 12] = [
     "dos",
 ];
 
-const VIEWS: [(&str, &str, &str); 11] = [
+const VIEWS: [(&str, &str, &str); 10] = [
     ("home", "⌂", "Home"),
     ("games", "▣", "Games"),
     ("sync", "↻", "Sync"),
     ("storage", "▰", "Storage"),
     ("local-ai", "◉", "Local AI"),
-    ("lan-inference", "⇄", "LAN Inference"),
     ("network", "◌", "Network"),
     ("access-pin", "●", "Access / PIN"),
     ("updates", "⬆", "Updates"),
@@ -47,7 +46,6 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (sync_view(status))
                             (storage_view(status))
                             (ai_model_view(status))
-                            (lan_inference_view())
                             (network_view(status))
                             (access_pin_view(status))
                             (updates_view(status))
@@ -252,8 +250,8 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                         (nav_button("View Sync", "sync"))
                     } @else {
                         strong { "Local AI error" }
-                        span { "Open LAN settings or unload the failed model." }
-                        (nav_button("LAN Settings", "lan-inference"))
+                        span { "Open Local AI or unload the failed model." }
+                        (nav_button("Open Local AI", "local-ai"))
                     }
                 }
             }
@@ -326,8 +324,8 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
                 .selected_model_name
                 .clone()
                 .unwrap_or_else(|| "Model load failed".to_string()),
-            Some("LAN Settings"),
-            Some("lan-inference"),
+            Some("Open Local AI"),
+            Some("local-ai"),
             None,
         )
     } else {
@@ -468,7 +466,7 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
                 @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
                 @else if !status.local_ai.available_models.is_empty() { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
                 (nav_button("Open Local AI", "local-ai"))
-                (nav_button("LAN Settings", "lan-inference"))
+                (nav_button("Open Local AI", "local-ai"))
             }
         }
     }
@@ -847,78 +845,163 @@ fn human_or_zero(bytes: u64) -> String {
 }
 
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
-    view_shell("local-ai", "On-device assistant", "Local AI", "This console can run a local AI assistant without sending prompts to the cloud. Choose which model is loaded and whether it is available to devices on your home network.", html! {
-        section class="local-ai-section" aria-labelledby="loaded-model-title" {
-            div class="section-heading section-heading--compact" {
-                h3 id="loaded-model-title" { "Loaded Model" }
-                p { "No local AI model is currently loaded." }
-            }
-            div class="active-model" {
-                span { "Status" }
-                strong { "Not Loaded" }
-                p { "Only one model should be loaded at a time. Loading a model may take several seconds or minutes depending on size." }
-                div class="model-meta-row" {
-                    (model_meta("Current model", "None"))
-                    (model_meta("Memory estimate", "0 GB GPU memory"))
-                    (model_meta("LAN inference", "Off"))
+    let loaded_name = status
+        .local_ai
+        .loaded_model_name
+        .as_deref()
+        .or(status.local_ai.selected_model_name.as_deref())
+        .unwrap_or("No model loaded");
+    let endpoint = format!("{}:{}", status.identity.web_origin, 7777);
+    let inference_on = status.local_ai.lan_inference_enabled;
+    view_shell(
+        "local-ai",
+        "",
+        "",
+        "",
+        html! {
+            section class="local-ai-section ai-manager-section" aria-label="Runtime" {
+                div class="network-section-head" { h3 { "Runtime" } }
+                div class="system-field-grid" {
+                    (system_field("Runtime", "llama.cpp"))
+                    (system_field("Installed version", "Detected when installed"))
+                    (system_field("Status", if status.local_ai.load_state == "error" { "Error" } else { "Ready" }))
+                    (system_field("Server", if inference_on { "Running" } else { "Stopped" }))
                 }
-                div class="inline-actions" {
-                    (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "This removes the active local AI model from memory when unloading is supported."))
-                    (modal_button(ButtonVariant::Secondary, "Reload", "Reload local AI", "Reload the selected local AI model if it is already configured."))
-                    (nav_button("Open LAN Inference Settings", "lan-inference"))
+                div class="inline-actions inline-actions--compact" {
+                    button class="btn btn--secondary" type="button" data-ai-action="runtime-check-update" { "Check for Runtime Update" }
+                    button class="btn btn--secondary" type="button" data-ai-action="runtime-update" { "Update llama.cpp" }
+                    button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart Runtime" }
                 }
             }
-        }
 
-        section class="local-ai-section" aria-labelledby="available-models-title" {
-            div class="section-heading section-heading--compact" {
-                h3 id="available-models-title" { "Available Models" }
-                p { "Choose the local AI that should run on this console. Model details are secondary." }
-            }
-            div class="model-grid" {
-                @if status.local_ai.available_models.is_empty() {
-                    article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Add models before loading Local AI." } }
-                } @else {
-                    @for model in &status.local_ai.available_models {
-                        (model_card(&model.name, &model.filename, &model.size, "", model.estimated_vram_bytes.map(|v| v.to_string()).as_deref().unwrap_or("Unknown"), model.recommended_use.unwrap_or(""), "Available", status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str())))
+            section class="local-ai-section ai-manager-section" aria-label="Loaded Model" {
+                div class="network-section-head" { h3 { "Loaded Model" } }
+                div class=(if status.local_ai.load_state == "hot" { "active-model active-model--hot" } else { "active-model" }) {
+                    span { "Loaded Model" }
+                    strong { (title_case_state_like(&status.local_ai.load_state)) " · " (loaded_name) }
+                    @if status.local_ai.load_state == "unloaded" { p { "Select an installed model to load." } }
+                    div class="model-meta-row" {
+                        (model_meta("GPU", status.local_ai.gpu_memory.as_deref().unwrap_or("GPU telemetry unavailable")))
+                        (model_meta("Inference", if inference_on { "On · :7777" } else { "Off" }))
+                        (model_meta("State", title_case_state_like(&status.local_ai.load_state)))
+                    }
+                    div class="inline-actions" {
+                        @if status.local_ai.available_models.is_empty() { (nav_focus_button("Get Models", "local-ai", "get-models")) }
+                        @else if status.local_ai.load_state != "hot" && status.local_ai.load_state != "loading" { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load" } }
+                        @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
+                        @if status.local_ai.load_state == "hot" || inference_on { button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart" } }
+                        button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open Logs" }
                     }
                 }
             }
-        }
 
-        section class="local-ai-section" aria-labelledby="gpu-usage-title" {
-            @if status.storage.percent_used >= 90 { p class="warning" { "Storage is low. Remove unused games, artwork, or AI models before adding more models." } }
-            div class="section-heading section-heading--compact" {
-                h3 id="gpu-usage-title" { "GPU Usage" }
-                p { "Local AI uses the same GPU as games. Large models may reduce game performance while loaded." }
+            section class="local-ai-section ai-manager-section" aria-label="Installed Models" {
+                div class="network-section-head" { h3 { "Installed Models" } }
+                div class="model-grid" {
+                    @if status.local_ai.available_models.is_empty() {
+                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Install Inharmonia or download a compatible model from Hugging Face." } div class="inline-actions" { (nav_focus_button("Install Inharmonia", "local-ai", "get-models")) } }
+                    } @else {
+                        @for model in &status.local_ai.available_models {
+                            (installed_model_card(model, status))
+                        }
+                    }
+                }
             }
-            div class="status-card-grid status-card-grid--compact" {
-                (status_card("GPU memory used", "0 GB", "No local AI model is loaded."))
-                (status_card("GPU memory available", "Not reported", "Available GPU memory appears here when telemetry is connected."))
-                (status_card("AI process", "Stopped", "Local AI is not running right now."))
+
+            section id="get-models" class="local-ai-section ai-manager-section" aria-label="Get Models" tabindex="-1" {
+                div class="network-section-head" { h3 { "Get Models" } }
+                div class="model-grid" {
+                    article class="model-card model-card--recommended" {
+                        strong class="model-name" { "Inharmonia" }
+                        span class="model-filename" { "Recommended · Balanced local assistant for Arcadia." }
+                        div class="model-meta-row" { (model_meta("Use", "Balanced")) (model_meta("Source", "Product catalog")) }
+                        @if status.local_ai.available_models.iter().any(|model| model.is_inharmonia) { b class="model-status" { "Installed" } }
+                        @else { button class="btn btn--primary" type="button" data-ai-action="install-recommended" data-model-id="inharmonia" { "Install Inharmonia" } }
+                    }
+                }
+                article class="form-card" data-hf-installer="true" {
+                    h3 { "Hugging Face model" }
+                    label { span { "Repository" } input class="field" name="repoId" placeholder="TheBloke/example-GGUF" autocomplete="off"; }
+                    label { span { "File" } input class="field" name="filename" placeholder="example.Q4_K_M.gguf" autocomplete="off"; }
+                    label { span { "Revision" } input class="field" name="revision" placeholder="main" autocomplete="off"; }
+                    div class="inline-actions" { button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch Files" } button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" } }
+                    div id="hf-file-results" class="diagnostics-results" {}
+                }
             }
-        }
-    })
+
+            section id="local-ai-inference" class="local-ai-section ai-manager-section" aria-label="Inference" tabindex="-1" {
+                div class="network-section-head" { h3 { "Inference" } }
+                div class="system-field-grid" {
+                    (system_field("Local API", if inference_on { "On" } else { "Off" }))
+                    (system_field("LAN Access", if inference_on { "On" } else { "Off" }))
+                    (system_field("Port", "7777"))
+                    (system_field("Endpoint", if inference_on { &endpoint } else { "No model loaded" }))
+                }
+                p class="warning" { "LAN access is for trusted home networks only. Do not expose port 7777 to the public internet." }
+                div class="inline-actions inline-actions--compact" {
+                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" { "Enable Inference" }
+                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "Disable Inference" }
+                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Open API Test" }
+                    @if inference_on { (copy_button("Copy Endpoint", &endpoint)) } @else { button class="btn btn--secondary" type="button" disabled { "Copy Endpoint" } }
+                }
+            }
+
+            section class="local-ai-section ai-manager-section" aria-label="GPU & Storage" {
+                div class="network-section-head" { h3 { "GPU & Storage" } }
+                @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
+                    (meter_block("GPU", &human_bytes(used), &human_bytes(total), used, total))
+                } @else { div class="empty-state" { strong { "GPU telemetry unavailable" } } }
+                (meter_block("AI Model Storage", &status.storage.ai_models.size, &status.storage.free, status.storage.ai_models.bytes, status.storage.total_bytes.max(1)))
+                p class="warning" { "Games and Local AI share GPU resources." }
+                div class="inline-actions" { (nav_button("Open Storage", "storage")) @if status.storage.ai_models.bytes > 0 { (nav_focus_button("Remove Unused Models", "local-ai", "installed-models")) } }
+            }
+
+            section class="local-ai-section ai-manager-section" aria-label="Activity" {
+                div class="network-section-head" { h3 { "Activity" } }
+                div id="ai-activity" class="system-field-grid" { (system_field("Current operation", if inference_on { "serving inference" } else { "idle" })) (system_field("Last error", "None")) }
+                details class="collapsible-log" { summary { "Runtime update log" } pre { code { "No runtime update log reported." } } }
+                details class="collapsible-log" { summary { "Model download log" } pre { code { "No model download log reported." } } }
+                details class="collapsible-log" { summary { "Model load log" } pre { code { "No model load log reported." } } }
+                details class="collapsible-log" { summary { "Inference server log" } pre { code { "No inference server log reported." } } }
+            }
+            div id="ai-message" class="message" hidden {}
+        },
+    )
 }
 
-fn lan_inference_view() -> Markup {
-    view_shell("lan-inference", "Port 7777", "LAN Inference", "Devices on your home network can send prompts to the loaded local model through port 7777.", html! {
-        (path_card("Local endpoint", "http://console.home.arpa:7777"))
-        div class="status-card-grid" {
-            (status_card("Port 7777", "Closed", "Enable LAN inference only on a trusted home network."))
-            (status_card("Current model", "No model", "Load a local model before expecting useful replies."))
-            (status_card("Local AI server", "Stopped", "The server opens the LAN endpoint when enabled."))
+fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatus) -> Markup {
+    let selected = status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str());
+    let hot = status.local_ai.loaded_model_id.as_deref() == Some(model.id.as_str());
+    html! { article id="installed-models" class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
+        strong class="model-name" { (model.name) @if model.is_inharmonia { " · Recommended" } }
+        span class="model-filename" { (model.filename) }
+        div class="model-meta-row" {
+            (model_meta("Size", &model.size))
+            (model_meta("Quantization", model.quantization.as_deref().unwrap_or("Unknown")))
+            (model_meta("Estimated VRAM", &model.estimated_vram_bytes.map(human_bytes).unwrap_or_else(|| "Unknown".to_string())))
+            (model_meta("Use", model.recommended_use.unwrap_or("Balanced")))
+            (model_meta("State", if hot { "Hot" } else if selected { "Cold" } else { "Installed" }))
         }
-        div class="primary-actions" {
-            (modal_button(ButtonVariant::Primary, "Enable LAN Inference", "Enable LAN inference", "Only enable this on a trusted LAN. This is not intended for public internet exposure."))
-            (modal_button(ButtonVariant::Secondary, "Disable LAN Inference", "Disable LAN inference", "This closes the local inference endpoint when the service supports it."))
+        div class="inline-actions inline-actions--compact" {
+            @if !selected { button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" } }
+            @if !hot { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(model.id) { "Load" } }
+            @if hot { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } span class="model-status" { "Unload before removing this model." } }
+            @else { button class="btn btn--danger" type="button" data-ai-action="model-remove" data-model-id=(model.id) data-filename=(model.filename) { "Remove" } }
         }
-        p class="warning" { "Do not expose port 7777 to the public internet." }
-        details class="collapsible-log" {
-            summary { "Curl example" }
-            pre { code { "curl http://console.home.arpa:7777/v1/chat/completions -H 'Content-Type: application/json' -d '{\"messages\":[{\"role\":\"user\",\"content\":\"Hello\"}]}'" } }
-        }
-    })
+    } }
+}
+
+fn meter_block(label: &str, used: &str, total: &str, used_bytes: u64, total_bytes: u64) -> Markup {
+    html! { div class="storage-summary ai-meter" { div class="card-head" { h3 { (label) } strong { (used) " / " (total) } } div class="storage-bar" { span class="storage-segment storage-segment--ai" style=(format!("width: {}%", ((used_bytes.saturating_mul(100) / total_bytes.max(1)).min(100)))) {} } } }
+}
+
+fn human_bytes(bytes: u64) -> String {
+    let gib = bytes as f64 / 1024.0 / 1024.0 / 1024.0;
+    if gib >= 1.0 {
+        format!("{:.1} GB", gib)
+    } else {
+        format!("{} MB", bytes / 1024 / 1024)
+    }
 }
 
 fn network_view(status: &ConsoleStatus) -> Markup {
@@ -1012,11 +1095,10 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                         (network_service_row("Web Console", "Available", console_url, html! { (copy_button("Copy URL", console_url)) }))
                         @if let Some(share) = folders { (network_service_row("Game Folders", "Available", share.windows_unc.as_deref().or(share.smb_url.as_deref()).unwrap_or("Folder address unavailable"), html! { (folder_copy_menu_button("Copy address", share)) })) }
                         @else { (network_service_row("Game Folders", "Disabled", "Folder address unavailable", html! { (nav_button("Open System", "system")) })) }
-                        (network_service_row("LAN AI", if status.network.lan_ai_reachable { "Available" } else { "Disabled" }, if status.network.lan_ai_reachable { ":7777" } else { "" }, html! { (nav_button("Open LAN Inference", "lan-inference")) }))
+                        (network_service_row("LAN AI", if status.network.lan_ai_reachable { "Available" } else { "Disabled" }, if status.network.lan_ai_reachable { ":7777" } else { "" }, html! { (nav_focus_button("Open Local AI", "local-ai", "local-ai-inference")) }))
                         (network_service_row("SSH", "Disabled", "", html! { (nav_button("Open System", "system")) }))
                     }
                 }
-            }
 
             details class="network-section diagnostics-panel" {
                 summary { "Diagnostics" }
@@ -1029,6 +1111,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                 }
                 div id="diagnostics-results" class="diagnostics-results" {}
             }
+        }
         },
     )
 }
@@ -1158,7 +1241,7 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         (system_service_row("Samba", "Running", "Not reported", None))
                         (system_service_row("Game Sync", "Stopped", "Runs on demand", None))
                         (system_service_row("Local AI", "Stopped", "Not reported", None))
-                        (system_service_row("LAN Inference", "Stopped", "Not reported", None))
+                        (system_service_row("Local AI Inference", "Stopped", "Not reported", None))
                         (system_service_row("Web GUI", "Running", "Current", None))
                     }
                 }
@@ -1166,7 +1249,7 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                 article class="system-card system-card--logs" {
                     (system_log_group("Sync"))
                     (system_log_group("Local AI"))
-                    (system_log_group("LAN Inference"))
+                    (system_log_group("Local AI Inference"))
                     (system_log_group("System"))
                     (system_log_group("Web GUI"))
                 }
@@ -1183,12 +1266,12 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                     div class="system-endpoints" {
                         (command_box("Web GUI", "http://console.home.arpa"))
                         (command_box("Games Folder", "\\\\HOMECONSOLE"))
-                        (command_box("LAN Inference", "http://console.home.arpa:7777"))
+                        (command_box("Local AI Inference", "http://console.home.arpa:7777"))
                     }
                     div class="system-port-list" {
                         (system_field("80/443", "Web GUI"))
                         (system_field("445", "Samba"))
-                        (system_field("7777", "LAN Inference"))
+                        (system_field("7777", "Local AI Inference"))
                         (system_field("22", "SSH"))
                     }
                 }
@@ -1245,35 +1328,6 @@ fn storage_stat(label: &str, value: &str) -> Markup {
 
 fn storage_legend(label: &str, value: &str, class: &str) -> Markup {
     html! { span class=(format!("storage-legend-item storage-legend-item--{}", class)) { em {} strong { (label) } small { (value) } } }
-}
-
-fn model_card(
-    name: &str,
-    filename: &str,
-    size: &str,
-    quant: &str,
-    gpu_memory: &str,
-    recommended_use: &str,
-    status: &str,
-    selected: bool,
-) -> Markup {
-    html! {
-        article class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
-            label class="model-choice" {
-                input type="radio" name="model" value=(name) checked[selected];
-                span class="model-name" { (name) }
-            }
-            code class="model-filename" { (filename) }
-            div class="model-meta-row" {
-                (model_meta("Size", size))
-                (model_meta("Quantization", quant))
-                (model_meta("GPU memory", gpu_memory))
-                (model_meta("Recommended use", recommended_use))
-            }
-            strong class="model-status" { (status) }
-            (modal_button(ButtonVariant::Primary, "Load This Model", "Load local AI", "Load this local AI model onto the console GPU. Games may run slower while a model is loaded."))
-        }
-    }
 }
 
 fn model_meta(label: &str, value: &str) -> Markup {

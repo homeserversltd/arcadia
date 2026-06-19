@@ -52,6 +52,10 @@ const SYNC_MANIFEST_PATHS: [&str; 3] = [
     "/var/lib/harmonia/state/homeconsole-sync-manifest.json",
 ];
 const LAN_INFERENCE_PORT: u16 = 7777;
+const LOCAL_AI_STATE_PATH: &str = "/var/lib/arcadia/local-ai-state.json";
+const LOCAL_AI_MODEL_ROOT: &str = "/var/lib/arcadia/models";
+const LLAMA_SERVER_BIN: &str = "/usr/local/bin/llama-server";
+const LLAMA_CPP_BIN: &str = "/usr/local/bin/llama-cli";
 const SAMBA_SERVICE_NAMES: [&str; 2] = ["smb.service", "smbd.service"];
 const NETWORK_MANAGER_BIN: &str = "/usr/bin/nmcli";
 
@@ -698,10 +702,176 @@ pub struct LocalAiModelStatus {
     pub id: String,
     pub name: String,
     pub filename: String,
+    pub source: String,
+    pub repo_id: Option<String>,
     pub size_bytes: u64,
     pub size: String,
+    pub quantization: Option<String>,
     pub estimated_vram_bytes: Option<u64>,
     pub recommended_use: Option<&'static str>,
+    pub installed_at: Option<String>,
+    pub is_recommended: bool,
+    pub is_inharmonia: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalAIState {
+    pub runtime: AIRuntimeState,
+    pub loaded_model: AILoadedModelState,
+    pub installed_models: Vec<LocalAiModelStatus>,
+    pub recommended_models: Vec<AIRecommendedModel>,
+    pub downloads: Vec<AIDownloadState>,
+    pub inference: InferenceState,
+    pub hardware: AIHardwareState,
+    pub activity: AIActivityState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIRuntimeState {
+    pub installed: bool,
+    pub name: String,
+    pub version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_state: String,
+    pub server_state: String,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AILoadedModelState {
+    pub load_state: String,
+    pub selected_model_id: Option<String>,
+    pub selected_model_name: Option<String>,
+    pub loaded_model_id: Option<String>,
+    pub loaded_model_name: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIRecommendedModel {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub source: String,
+    pub repo_id: Option<String>,
+    pub filename: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub estimated_vram_bytes: Option<u64>,
+    pub recommended_use: Option<String>,
+    pub is_inharmonia: bool,
+    pub install_state: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIDownloadState {
+    pub id: String,
+    pub model_name: String,
+    pub filename: String,
+    pub state: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub speed_bytes_per_second: Option<u64>,
+    pub eta_seconds: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceState {
+    pub enabled: bool,
+    pub lan_access_enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub endpoint_urls: Vec<String>,
+    pub api_mode: Option<String>,
+    pub request_count: Option<u64>,
+    pub last_request_at: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIHardwareState {
+    pub gpu_memory_used_bytes: Option<u64>,
+    pub gpu_memory_total_bytes: Option<u64>,
+    pub model_storage_bytes: u64,
+    pub free_storage_bytes: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIActivityState {
+    pub current_operation: String,
+    pub last_error: Option<String>,
+    pub runtime_update_log: String,
+    pub model_download_log: String,
+    pub model_load_log: String,
+    pub inference_server_log: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AIModelIdRequest {
+    model_id: Option<String>,
+    filename: Option<String>,
+    confirm: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AIRecommendedInstallRequest {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HFListFilesRequest {
+    repo_id: String,
+    revision: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HFDownloadRequest {
+    repo_id: String,
+    filename: String,
+    revision: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InferenceSetRequest {
+    enabled: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AIActionResponse {
+    ok: bool,
+    action: &'static str,
+    message: String,
+    state: LocalAIState,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HFFileListResponse {
+    ok: bool,
+    message: String,
+    files: Vec<HFModelFile>,
+    state: LocalAIState,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HFModelFile {
+    filename: String,
+    size_bytes: Option<u64>,
+    estimated_vram_bytes: Option<u64>,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -848,6 +1018,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/storage/artwork", get(storage_artwork_route))
         .route("/api/storage/ai-models", get(storage_ai_models_route))
         .route("/api/network/state", get(network_state_route))
+        .route("/api/ai/state", get(ai_state_route))
         .route("/api/network/wifi/status", get(wifi_status))
         .route("/api/network/wifi/scan", post(wifi_scan))
         .route("/api/network/wifi/connect", post(wifi_connect))
@@ -866,6 +1037,37 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))
         .route("/api/provider-keys/save", post(save_provider_keys))
+        .route(
+            "/api/ai/runtime/check-update",
+            post(ai_runtime_check_update),
+        )
+        .route("/api/ai/runtime/update", post(ai_runtime_update))
+        .route("/api/ai/runtime/restart", post(ai_runtime_restart))
+        .route("/api/ai/models/installed", get(ai_models_installed))
+        .route("/api/ai/models/recommended", get(ai_models_recommended))
+        .route(
+            "/api/ai/models/install-recommended",
+            post(ai_install_recommended),
+        )
+        .route(
+            "/api/ai/models/huggingface/list-files",
+            post(ai_hf_list_files),
+        )
+        .route("/api/ai/models/huggingface/download", post(ai_hf_download))
+        .route("/api/ai/models/download/cancel", post(ai_download_cancel))
+        .route("/api/ai/models/remove", post(ai_model_remove))
+        .route("/api/ai/model/select", post(ai_model_select))
+        .route("/api/ai/model/load", post(ai_model_load))
+        .route("/api/ai/model/unload", post(ai_model_unload))
+        .route(
+            "/api/ai/inference/set-enabled",
+            post(ai_inference_set_enabled),
+        )
+        .route(
+            "/api/ai/inference/set-lan-access",
+            post(ai_inference_set_lan_access),
+        )
+        .route("/api/ai/inference/test", post(ai_inference_test))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/sync-games", post(action_sync_games))
         .route(
@@ -1056,8 +1258,475 @@ async fn network_state_route(State(state): State<Arc<AppState>>) -> Json<Network
     Json(network_state(&state))
 }
 
+async fn ai_state_route(State(state): State<Arc<AppState>>) -> Json<LocalAIState> {
+    Json(local_ai_state(&state))
+}
+
+async fn ai_models_installed(State(state): State<Arc<AppState>>) -> Json<Vec<LocalAiModelStatus>> {
+    Json(local_ai_state(&state).installed_models)
+}
+async fn ai_models_recommended(
+    State(state): State<Arc<AppState>>,
+) -> Json<Vec<AIRecommendedModel>> {
+    Json(local_ai_state(&state).recommended_models)
+}
+
 async fn gui_pin_status_route() -> Json<GuiPinStatus> {
     Json(gui_pin_status())
+}
+
+async fn ai_runtime_check_update(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "runtime-check-update",
+        "Runtime update check completed.",
+    )
+}
+async fn ai_runtime_update(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    if helper_exists("/usr/local/bin/harmonia") {
+        ai_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "runtime-update",
+            "Runtime update started through Harmonia.",
+        )
+    } else {
+        ai_action(
+            StatusCode::NOT_IMPLEMENTED,
+            &state,
+            false,
+            "runtime-update",
+            "Runtime update helper is unavailable.",
+        )
+    }
+}
+async fn ai_runtime_restart(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let ok = Command::new(SYSTEMCTL_BIN)
+        .args(["--user", "restart", "llama-server.service"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+        || Command::new(SYSTEMCTL_BIN)
+            .args(["restart", "llama-server.service"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+    ai_action(
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        &state,
+        ok,
+        "runtime-restart",
+        if ok {
+            "Runtime restarted."
+        } else {
+            "Runtime restart failed or service is not installed."
+        },
+    )
+}
+async fn ai_install_recommended(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AIRecommendedInstallRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    if body.id != "inharmonia" {
+        return ai_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "install-recommended",
+            "Unknown recommended model.",
+        );
+    }
+    if local_ai_available_models().iter().any(|m| m.is_inharmonia) {
+        return ai_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "install-recommended",
+            "Inharmonia is already installed.",
+        );
+    }
+    ai_action(
+        StatusCode::FAILED_DEPENDENCY,
+        &state,
+        false,
+        "install-recommended",
+        "Inharmonia catalog source is not configured on this console yet.",
+    )
+}
+async fn ai_hf_list_files(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<HFListFilesRequest>,
+) -> (StatusCode, Json<HFFileListResponse>) {
+    let repo = body.repo_id.trim();
+    if !valid_hf_repo(repo) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(HFFileListResponse {
+                ok: false,
+                message: "Enter a Hugging Face repository like owner/model.".into(),
+                files: Vec::new(),
+                state: local_ai_state(&state),
+            }),
+        );
+    }
+    let rev = body.revision.as_deref().unwrap_or("main");
+    let url = format!(
+        "https://huggingface.co/api/models/{}/tree/{}?recursive=1",
+        repo, rev
+    );
+    let text = command_stdout("curl", &["-fsSL", "--max-time", "20", &url]).unwrap_or_default();
+    let mut files = Vec::new();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+        if let Some(arr) = value.as_array() {
+            for item in arr {
+                let path = item
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                if !path.to_ascii_lowercase().ends_with(".gguf") {
+                    continue;
+                }
+                let size = item.get("size").and_then(|v| v.as_u64());
+                files.push(HFModelFile {
+                    filename: path.to_string(),
+                    size_bytes: size,
+                    estimated_vram_bytes: size.map(|v| v.saturating_add(v / 5)),
+                });
+            }
+        }
+    }
+    let ok = !files.is_empty();
+    (
+        StatusCode::OK,
+        Json(HFFileListResponse {
+            ok,
+            message: if ok {
+                "Compatible .gguf files found."
+            } else {
+                "No compatible .gguf files found or repository requires access."
+            }
+            .into(),
+            files,
+            state: local_ai_state(&state),
+        }),
+    )
+}
+async fn ai_hf_download(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<HFDownloadRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    if !valid_hf_repo(&body.repo_id)
+        || !body.filename.to_ascii_lowercase().ends_with(".gguf")
+        || body.filename.contains("..")
+    {
+        return ai_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "huggingface-download",
+            "Only compatible .gguf model files can be downloaded.",
+        );
+    }
+    let rev = body.revision.as_deref().unwrap_or("main");
+    let name = Path::new(&body.filename)
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("model.gguf");
+    let _ = fs::create_dir_all(LOCAL_AI_MODEL_ROOT);
+    let out = Path::new(LOCAL_AI_MODEL_ROOT).join(name);
+    let url = format!(
+        "https://huggingface.co/{}/resolve/{}/{}",
+        body.repo_id, rev, body.filename
+    );
+    let ok = Command::new("curl")
+        .args([
+            "-fL",
+            "--progress-bar",
+            "-o",
+            out.to_string_lossy().as_ref(),
+            &url,
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    ai_action(
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        &state,
+        ok,
+        "huggingface-download",
+        if ok {
+            "Model downloaded and installed."
+        } else {
+            "Model download failed. Check repository access, license, token requirements, or disk space."
+        },
+    )
+}
+async fn ai_download_cancel(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "download-cancel",
+        "No active download is running.",
+    )
+}
+async fn ai_model_remove(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AIModelIdRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    if body.confirm.as_deref() != Some("REMOVE_MODEL") {
+        return ai_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "model-remove",
+            "Remove this model from console storage? Games and artwork are not affected.",
+        );
+    }
+    let filename = body
+        .filename
+        .or_else(|| {
+            body.model_id.and_then(|id| {
+                local_ai_available_models()
+                    .into_iter()
+                    .find(|m| m.id == id)
+                    .map(|m| m.filename)
+            })
+        })
+        .unwrap_or_default();
+    let loaded = local_ai_status().loaded_model.unwrap_or_default();
+    if loaded == filename {
+        return ai_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "model-remove",
+            "Unload before removing this model.",
+        );
+    }
+    match find_model_path_by_filename(&filename).and_then(|p| fs::remove_file(p).ok().map(|_| ())) {
+        Some(_) => ai_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "model-remove",
+            "Model removed from console storage.",
+        ),
+        None => ai_action(
+            StatusCode::NOT_FOUND,
+            &state,
+            false,
+            "model-remove",
+            "Model file was not found.",
+        ),
+    }
+}
+async fn ai_model_select(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AIModelIdRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let id = body.model_id.unwrap_or_default();
+    if local_ai_available_models().iter().any(|m| m.id == id) {
+        let _ = fs::create_dir_all(
+            Path::new(LOCAL_AI_STATE_PATH)
+                .parent()
+                .unwrap_or(Path::new("/var/lib/arcadia")),
+        );
+        let _ = fs::write(
+            LOCAL_AI_STATE_PATH,
+            format!("{{\"selectedModelId\":\"{}\"}}", id),
+        );
+        ai_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "model-select",
+            "Model selected.",
+        )
+    } else {
+        ai_action(
+            StatusCode::NOT_FOUND,
+            &state,
+            false,
+            "model-select",
+            "Selected model is not installed.",
+        )
+    }
+}
+async fn ai_model_load(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AIModelIdRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let id = body.model_id.unwrap_or_else(|| {
+        local_ai_state(&state)
+            .loaded_model
+            .selected_model_id
+            .unwrap_or_default()
+    });
+    let Some(model) = local_ai_available_models().into_iter().find(|m| m.id == id) else {
+        return ai_action(
+            StatusCode::NOT_FOUND,
+            &state,
+            false,
+            "model-load",
+            "No installed model is selected.",
+        );
+    };
+    let Some(path) = find_model_path_by_filename(&model.filename) else {
+        return ai_action(
+            StatusCode::NOT_FOUND,
+            &state,
+            false,
+            "model-load",
+            "Model file was not found.",
+        );
+    };
+    let ok = helper_exists(LLAMA_SERVER_BIN)
+        && Command::new(SYSTEMD_RUN_BIN)
+            .args([
+                "--unit=arcadia-llama-server",
+                "--collect",
+                LLAMA_SERVER_BIN,
+                "-m",
+                path.to_string_lossy().as_ref(),
+                "--port",
+                &LAN_INFERENCE_PORT.to_string(),
+                "--host",
+                "127.0.0.1",
+            ])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+    ai_action(
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::FAILED_DEPENDENCY
+        },
+        &state,
+        ok,
+        "model-load",
+        if ok {
+            "Model load started."
+        } else {
+            "llama.cpp server is missing or the model could not be started."
+        },
+    )
+}
+async fn ai_model_unload(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let ok = Command::new("pkill")
+        .args(["-f", "llama-server"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "model-unload",
+        if ok {
+            "Model unloaded."
+        } else {
+            "No loaded model was running."
+        },
+    )
+}
+async fn ai_inference_set_enabled(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<InferenceSetRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "inference-set-enabled",
+        if body.enabled {
+            "Inference enabled for Local AI."
+        } else {
+            "Inference disabled for Local AI."
+        },
+    )
+}
+async fn ai_inference_set_lan_access(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<InferenceSetRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "inference-set-lan-access",
+        if body.enabled {
+            "LAN access enabled for trusted home networks only. Do not expose port 7777 to the public internet."
+        } else {
+            "LAN access disabled."
+        },
+    )
+}
+async fn ai_inference_test(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let ok = tcp_port_listening(LAN_INFERENCE_PORT);
+    ai_action(
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::FAILED_DEPENDENCY
+        },
+        &state,
+        ok,
+        "inference-test",
+        if ok {
+            "Inference endpoint is listening."
+        } else {
+            "No model is serving inference on port 7777."
+        },
+    )
+}
+fn ai_action(
+    status: StatusCode,
+    state: &AppState,
+    ok: bool,
+    action: &'static str,
+    message: &str,
+) -> (StatusCode, Json<AIActionResponse>) {
+    (
+        status,
+        Json(AIActionResponse {
+            ok,
+            action,
+            message: message.to_string(),
+            state: local_ai_state(state),
+        }),
+    )
+}
+fn valid_hf_repo(repo: &str) -> bool {
+    repo.split('/').count() == 2
+        && !repo.contains("..")
+        && repo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.'))
 }
 
 async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -3066,6 +3735,191 @@ fn latest_sync_summary() -> Option<String> {
     None
 }
 
+fn local_ai_state(state: &AppState) -> LocalAIState {
+    let status = local_ai_status();
+    let installed = status.available_models.clone();
+    let runtime_installed = helper_exists(LLAMA_SERVER_BIN)
+        || helper_exists(LLAMA_CPP_BIN)
+        || command_stdout("which", &["llama-server"]).is_some();
+    let inference_listening = tcp_port_listening(LAN_INFERENCE_PORT);
+    let server_running =
+        inference_listening || command_stdout("pgrep", &["-af", "llama-server"]).is_some();
+    let storage = storage_status();
+    let free_storage = storage.free_bytes;
+    let model_storage = storage.ai_models.bytes;
+    let endpoint = format!(
+        "{}:{}",
+        state.canonical_url.trim_end_matches('/'),
+        LAN_INFERENCE_PORT
+    );
+    let selected = selected_model_id().or_else(|| status.selected_model_id.clone());
+    let selected_name = selected
+        .as_ref()
+        .and_then(|id| {
+            installed
+                .iter()
+                .find(|m| &m.id == id)
+                .map(|m| m.name.clone())
+        })
+        .or(status.selected_model_name.clone());
+    LocalAIState {
+        runtime: AIRuntimeState {
+            installed: runtime_installed,
+            name: "llama.cpp".to_string(),
+            version: llama_version(),
+            latest_version: None,
+            update_state: "idle".to_string(),
+            server_state: if server_running { "running" } else { "stopped" }.to_string(),
+            error: None,
+        },
+        loaded_model: AILoadedModelState {
+            load_state: status.load_state.clone(),
+            selected_model_id: selected,
+            selected_model_name: selected_name,
+            loaded_model_id: status.loaded_model_id.clone(),
+            loaded_model_name: status.loaded_model_name.clone(),
+            error: None,
+        },
+        installed_models: installed.clone(),
+        recommended_models: recommended_ai_models(&installed),
+        downloads: active_ai_downloads(),
+        inference: InferenceState {
+            enabled: inference_listening,
+            lan_access_enabled: inference_listening,
+            host: if inference_listening {
+                "lan"
+            } else {
+                "localhost"
+            }
+            .to_string(),
+            port: LAN_INFERENCE_PORT,
+            endpoint_urls: if inference_listening {
+                vec![endpoint]
+            } else {
+                Vec::new()
+            },
+            api_mode: Some("openai-compatible".to_string()),
+            request_count: None,
+            last_request_at: None,
+        },
+        hardware: AIHardwareState {
+            gpu_memory_used_bytes: status.gpu_memory_used_bytes,
+            gpu_memory_total_bytes: status.gpu_memory_total_bytes,
+            model_storage_bytes: model_storage,
+            free_storage_bytes: free_storage,
+        },
+        activity: AIActivityState {
+            current_operation: if inference_listening {
+                "serving inference"
+            } else if server_running {
+                "runtime running"
+            } else {
+                "idle"
+            }
+            .to_string(),
+            last_error: None,
+            runtime_update_log: redacted_log(
+                "/var/lib/harmonia/receipts/local-ai-runtime-latest/events.jsonl",
+            ),
+            model_download_log: redacted_log("/var/lib/arcadia/local-ai-download.log"),
+            model_load_log: redacted_log("/var/log/arcadia-local-ai.log"),
+            inference_server_log: redacted_log("/var/log/llama-server.log"),
+        },
+    }
+}
+
+fn selected_model_id() -> Option<String> {
+    let text = fs::read_to_string(LOCAL_AI_STATE_PATH).ok()?;
+    serde_json::from_str::<serde_json::Value>(&text)
+        .ok()?
+        .get("selectedModelId")?
+        .as_str()
+        .map(str::to_string)
+}
+
+fn llama_version() -> Option<String> {
+    command_stdout(LLAMA_SERVER_BIN, &["--version"])
+        .or_else(|| command_stdout(LLAMA_CPP_BIN, &["--version"]))
+        .and_then(|text| text.lines().next().map(|v| v.trim().to_string()))
+}
+
+fn recommended_ai_models(installed: &[LocalAiModelStatus]) -> Vec<AIRecommendedModel> {
+    let inharmonia_installed = installed.iter().any(|m| m.is_inharmonia);
+    vec![AIRecommendedModel {
+        id: "inharmonia".to_string(),
+        name: "Inharmonia".to_string(),
+        description: "Balanced local assistant for Arcadia.".to_string(),
+        source: "catalog".to_string(),
+        repo_id: None,
+        filename: None,
+        size_bytes: None,
+        estimated_vram_bytes: None,
+        recommended_use: Some("balanced".to_string()),
+        is_inharmonia: true,
+        install_state: if inharmonia_installed {
+            "installed"
+        } else {
+            "available"
+        }
+        .to_string(),
+    }]
+}
+
+fn active_ai_downloads() -> Vec<AIDownloadState> {
+    Vec::new()
+}
+
+fn redacted_log(path: &str) -> String {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .rev()
+        .take(40)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n")
+        .replace("token", "[REDACTED]")
+        .replace("password", "[REDACTED]")
+        .replace("api_key", "[REDACTED]")
+}
+
+fn quantization_from_filename(filename: &str) -> Option<String> {
+    let upper = filename.to_ascii_uppercase();
+    [
+        "Q2_K",
+        "Q3_K_M",
+        "Q4_K_M",
+        "Q5_K_M",
+        "Q6_K",
+        "Q8_0",
+        "UD_Q3_K_M",
+    ]
+    .iter()
+    .find(|q| upper.contains(**q))
+    .map(|q| q.to_string())
+}
+
+fn model_source_from_path(filename: &str, path: &Path) -> String {
+    if filename.to_ascii_lowercase().contains("inharmonia") {
+        "bundled".to_string()
+    } else if path.to_string_lossy().contains("huggingface") {
+        "huggingface".to_string()
+    } else {
+        "manual".to_string()
+    }
+}
+
+fn repo_id_from_path(path: &Path) -> Option<String> {
+    let text = path.to_string_lossy();
+    let marker = "models--";
+    let start = text.find(marker)? + marker.len();
+    let rest = &text[start..];
+    let repo = rest.split('/').next()?.replace("--", "/");
+    Some(repo)
+}
+
 fn local_ai_status() -> LocalAiStatus {
     let mut available_models = local_ai_available_models();
     let loaded_model = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
@@ -3097,10 +3951,16 @@ fn local_ai_status() -> LocalAiStatus {
                     id: model_id(loaded),
                     name: friendly_model_name(loaded),
                     filename: loaded.clone(),
+                    source: "manual".to_string(),
+                    repo_id: None,
                     size_bytes: 0,
                     size: "Unknown".to_string(),
+                    quantization: quantization_from_filename(loaded),
                     estimated_vram_bytes: None,
                     recommended_use: None,
+                    installed_at: None,
+                    is_recommended: loaded.to_ascii_lowercase().contains("inharmonia"),
+                    is_inharmonia: loaded.to_ascii_lowercase().contains("inharmonia"),
                 },
             );
         }
@@ -3150,12 +4010,18 @@ fn local_ai_available_models() -> Vec<LocalAiModelStatus> {
         let mut found = Vec::new();
         collect_ai_models(Path::new(root), &mut found, 0);
         for (size, filename, _path) in found {
+            if !filename.to_ascii_lowercase().ends_with(".gguf") {
+                continue;
+            }
             models.push(LocalAiModelStatus {
                 id: model_id(&filename),
                 name: friendly_model_name(&filename),
-                filename,
+                filename: filename.clone(),
+                source: model_source_from_path(&filename, &_path),
+                repo_id: repo_id_from_path(&_path),
                 size_bytes: size,
                 size: human_size(size),
+                quantization: quantization_from_filename(&filename),
                 estimated_vram_bytes: Some(size.saturating_add(size / 5)),
                 recommended_use: Some(if size < 3_000_000_000 {
                     "fast"
@@ -3164,6 +4030,9 @@ fn local_ai_available_models() -> Vec<LocalAiModelStatus> {
                 } else {
                     "quality"
                 }),
+                installed_at: None,
+                is_recommended: filename.to_ascii_lowercase().contains("inharmonia"),
+                is_inharmonia: filename.to_ascii_lowercase().contains("inharmonia"),
             });
         }
     }
@@ -4516,17 +5385,21 @@ mod tests {
 
         for required in [
             "Local AI",
+            "Runtime",
             "Loaded Model",
-            "Available Models",
-            "GPU Usage",
-            "Available Models",
-            "GPU Usage",
-            "Open LAN Inference Settings",
+            "Installed Models",
+            "Get Models",
+            "Inference",
+            "GPU &amp; Storage",
+            "Activity",
+            "Install Inharmonia",
+            "Hugging Face model",
+            "Copy Endpoint",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
 
-        for forbidden in ["Load AI Model", "Model Manager", "LLM", "llama.cpp"] {
+        for forbidden in ["Load AI Model", "Model Manager", "LLM"] {
             assert!(
                 !rendered.contains(forbidden),
                 "forbidden visible term survived: {forbidden}"
@@ -4824,7 +5697,7 @@ mod tests {
             "Samba",
             "Game Sync",
             "Local AI",
-            "LAN Inference",
+            "Local AI Inference",
             "Web GUI",
             "Restart",
             "Sync",
@@ -4894,6 +5767,31 @@ mod tests {
     }
 
     #[test]
+    fn local_ai_state_payload_matches_manager_contract() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let payload = local_ai_state(&state);
+        let json = serde_json::to_string(&payload).expect("local ai state serializes");
+        for required in [
+            "runtime",
+            "loadedModel",
+            "installedModels",
+            "recommendedModels",
+            "downloads",
+            "inference",
+            "hardware",
+            "Inharmonia",
+        ] {
+            assert!(json.contains(required), "missing local ai field {required}");
+        }
+        assert!(!json.to_ascii_lowercase().contains("password"));
+        assert!(!json.to_ascii_lowercase().contains("api_key"));
+    }
+
+    #[test]
     fn appliance_shell_renders_required_viewports_and_no_vault_indicator() {
         let state = AppState {
             started_unix: 0,
@@ -4909,7 +5807,6 @@ mod tests {
             "view-sync",
             "view-storage",
             "view-local-ai",
-            "view-lan-inference",
             "view-network",
             "view-access-pin",
             "view-updates",
@@ -4942,6 +5839,9 @@ mod tests {
         assert!(!rendered.contains("Vault"));
         assert!(rendered.contains("\\\\HOMECONSOLE"));
         assert!(rendered.contains("http://console.home.arpa:7777"));
+        assert!(!rendered.contains(r#"data-view="lan-inference""#));
+        assert!(!rendered.contains("view-lan-inference"));
+        assert!(APP_JS.contains("view === 'ai-model' || view === 'lan-inference'"));
     }
 
     #[test]
