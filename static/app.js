@@ -149,7 +149,8 @@ function bindGuiPinAccess() {
         setMessage('gui-pin-access-message', 'GUI PIN access request failed.', 'error');
       } finally {
         button.disabled = false;
-        button.textContent = original;
+        button.textContent = action === 'sync-games' ? (document.getElementById('sync-state')?.textContent === 'Sync Complete' ? 'Sync Complete' : (document.getElementById('sync-state')?.textContent === 'Sync Failed' ? 'Sync Failed' : original)) : original;
+        if (syncProgress) clearInterval(syncProgress);
       }
     });
   });
@@ -195,26 +196,29 @@ function bindConsoleActions() {
       event.preventDefault();
       const action = button.dataset.action;
       const endpoint = button.dataset.endpoint;
+      if (action === 'sync-games' && !prepareSyncStart()) return;
       const body = confirmationFor(action);
       if (body === null) return;
       clearMessage('console-action-message');
       const original = button.textContent;
       button.disabled = true;
-      button.textContent = action === 'sync-games' ? 'Sync running...' : 'Running...';
-      if (action === 'sync-games') setSyncState('Running');
+      button.textContent = action === 'sync-games' ? 'Sync Running' : 'Running...';
+      let syncProgress = null;
+      if (action === 'sync-games') syncProgress = startSyncProgress();
       try {
         const data = await postJson(endpoint, body);
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
-        if (action === 'sync-games') setSyncState(data.ok ? 'Complete' : 'Error');
+        if (action === 'sync-games') finishSyncProgress(Boolean(data.ok), data);
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
-        if (action === 'sync-games') setSyncState('Error');
+        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.' });
       } finally {
         button.disabled = false;
-        button.textContent = original;
+        button.textContent = action === 'sync-games' ? (document.getElementById('sync-state')?.textContent === 'Sync Complete' ? 'Sync Complete' : (document.getElementById('sync-state')?.textContent === 'Sync Failed' ? 'Sync Failed' : original)) : original;
+        if (syncProgress) clearInterval(syncProgress);
       }
     });
   });
@@ -226,14 +230,100 @@ function bindConsoleActions() {
   });
 }
 
+function prepareSyncStart() {
+  const root = document.querySelector('[data-sync-root]');
+  if (root?.dataset.storageBlocked === 'true' || root?.dataset.storageHealth === 'Full') {
+    const message = 'Storage is full. Free space before syncing games.';
+    setMessage('console-action-message', message, 'error');
+    PopupManager.showToast(message, 'error');
+    document.querySelector('[data-nav-target="storage"]')?.focus();
+    return false;
+  }
+  if (root?.dataset.storageLow === 'true') {
+    PopupManager.showToast('Storage is low. Sync may fail if there is not enough space for artwork or library entries.', 'error');
+  }
+  return true;
+}
+
 function setSyncState(state) {
   const node = document.getElementById('sync-state');
-  if (node) node.textContent = state;
+  if (node) {
+    node.textContent = state;
+    node.dataset.syncState = state.toLowerCase().replace(/\s+/g, '-');
+  }
   document.querySelectorAll('.status-badge').forEach((badge) => {
     const label = badge.querySelector('span')?.textContent?.trim().toLowerCase();
     if (label !== 'sync') return;
-    badge.querySelector('strong').textContent = state;
+    badge.querySelector('strong').textContent = state.replace('Sync ', '');
   });
+}
+
+const syncSteps = [
+  { n: '1', running: 'Checking copied game folders…', complete: 'Complete' },
+  { n: '2', running: 'Scanning game folders…', complete: 'Complete' },
+  { n: '3', running: 'Fetching artwork…', complete: 'Complete' },
+  { n: '4', running: 'Creating GameScope entries…', complete: 'Complete' },
+  { n: '5', running: 'Finishing GameScope library…', complete: 'Complete' },
+];
+
+function setWorkflowStep(activeIndex, failed = false) {
+  document.querySelectorAll('.sync-step').forEach((step, index) => {
+    let state = 'waiting';
+    if (index < activeIndex) state = 'complete';
+    if (index === activeIndex) state = failed ? 'error' : 'running';
+    step.dataset.stepState = state;
+    const badge = step.querySelector('.sync-step-badge');
+    if (badge) badge.textContent = state === 'running' ? 'Running' : state === 'complete' ? 'Complete' : state === 'error' ? 'Error' : 'Waiting';
+  });
+}
+
+function startSyncProgress() {
+  setSyncState('Sync Running');
+  const button = document.querySelector('[data-action="sync-games"]');
+  if (button) button.textContent = 'Sync Running';
+  const progress = document.getElementById('sync-progress-text');
+  const log = document.getElementById('sync-log-output');
+  let index = 0;
+  const tick = () => {
+    const step = syncSteps[Math.min(index, syncSteps.length - 1)];
+    setWorkflowStep(Math.min(index, syncSteps.length - 1));
+    if (progress) progress.textContent = step.running;
+    if (log) log.textContent = step.running;
+    index = Math.min(index + 1, syncSteps.length - 1);
+  };
+  tick();
+  return setInterval(tick, 1100);
+}
+
+function finishSyncProgress(ok, data = {}) {
+  const button = document.querySelector('[data-action="sync-games"]');
+  const progress = document.getElementById('sync-progress-text');
+  const log = document.getElementById('sync-log-output');
+  const result = document.querySelector('[data-sync-result]');
+  const resultCopy = document.getElementById('sync-result-copy');
+  if (ok) {
+    document.querySelectorAll('.sync-step').forEach((step) => {
+      step.dataset.stepState = 'complete';
+      const badge = step.querySelector('.sync-step-badge');
+      if (badge) badge.textContent = 'Complete';
+    });
+    setSyncState('Sync Complete');
+    if (button) button.textContent = 'Sync Complete';
+    const message = data.message || 'Sync complete. Your games are ready in GameScope.';
+    if (progress) progress.textContent = message;
+    if (result) result.dataset.syncResult = 'success';
+    if (resultCopy) resultCopy.textContent = 'Sync complete. Your games are ready in GameScope.';
+    if (log) log.textContent = formatActionResult(data);
+  } else {
+    setWorkflowStep(Math.max(0, Array.from(document.querySelectorAll('.sync-step')).findIndex((step) => step.dataset.stepState === 'running')), true);
+    setSyncState('Sync Failed');
+    if (button) button.textContent = 'Sync Failed';
+    const message = data.message || 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.';
+    if (progress) progress.textContent = message;
+    if (result) result.dataset.syncResult = 'error';
+    if (resultCopy) resultCopy.textContent = 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.';
+    if (log) log.textContent = formatActionResult(data);
+  }
 }
 
 async function postJson(url, body) {
