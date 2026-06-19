@@ -12,7 +12,7 @@ const VIEWS: [(&str, &str, &str); 11] = [
     ("games", "▣", "Games"),
     ("sync", "↻", "Sync"),
     ("storage", "▰", "Storage"),
-    ("ai-model", "◉", "Local AI"),
+    ("local-ai", "◉", "Local AI"),
     ("lan-inference", "⇄", "LAN Inference"),
     ("network", "◌", "Network"),
     ("access-pin", "●", "Access / PIN"),
@@ -61,49 +61,140 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
 }
 
 fn header(status: &ConsoleStatus) -> Markup {
+    let network_icon = if status.network.internet_reachable == Some(true) {
+        "◉"
+    } else if status.network.online {
+        "⌁"
+    } else {
+        "⊘"
+    };
+    let network_tip = network_tooltip(status);
+    let gamescope_class = if status.arcadia.service == "running" {
+        "good"
+    } else if status.arcadia.service == "stopped" {
+        "idle"
+    } else {
+        "warn"
+    };
+    let sync_delta = status.library.unsynced_added
+        + status.library.unsynced_changed
+        + status.library.unsynced_removed;
+    let sync_class = if status.library.last_sync_state == "error" {
+        "bad"
+    } else if sync_delta > 0 {
+        "warn"
+    } else {
+        "idle"
+    };
+    let sync_tip = if status.library.sync_state == "unknown" {
+        "Sync state unknown".to_string()
+    } else if sync_delta > 0 {
+        format!("{} changes waiting for sync", sync_delta)
+    } else {
+        "Synced · no changes".to_string()
+    };
+    let updates_class = match status.updates.state.as_str() {
+        "available" => "warn",
+        "checking" | "installing" => "warn",
+        "error" => "bad",
+        "unknown" => "idle",
+        _ => "idle",
+    };
+    let updates_tip = match status.updates.state.as_str() {
+        "available" => format!(
+            "Update available · {}",
+            status
+                .updates
+                .available_version
+                .as_deref()
+                .unwrap_or("unknown")
+        ),
+        "current" => format!("Software current · {}", status.updates.current_version),
+        "checking" => "Checking for updates".to_string(),
+        "installing" => "Installing update".to_string(),
+        "error" => "Update failed".to_string(),
+        _ => "Update status unknown".to_string(),
+    };
+    let ai_class = match status.local_ai.load_state.as_str() {
+        "hot" => "good",
+        "cold" | "loading" => "warn",
+        "error" => "bad",
+        _ => "idle",
+    };
+    let ai_tip = match status.local_ai.load_state.as_str() {
+        "hot" => format!(
+            "{} hot-loaded",
+            status
+                .local_ai
+                .loaded_model_name
+                .as_deref()
+                .unwrap_or("Local AI")
+        ),
+        "cold" => "Model selected but cold".to_string(),
+        "loading" => "Local AI loading".to_string(),
+        "error" => "Local AI error".to_string(),
+        "unknown" => "Local AI state unknown".to_string(),
+        _ => "No Local AI loaded".to_string(),
+    };
     html! {
         header class="top-header" {
             div class="product-lockup" {
                 div class="product-mark" { "A" }
-                div {
-                    h1 { "Arcadia Console" }
-                    p { (status.canonical_url.trim_end_matches('/')) }
-                }
+                div { h1 { "Arcadia Console" } p { (status.canonical_url.trim_end_matches('/')) } }
             }
             div class="header-indicators" aria-label="Console state" {
-                (nav_status_badge("network", if status.network.online { "◌" } else { "!" }, if status.network.online { &status.network.connection_type } else { "Offline" }, if status.network.online { "good" } else { "bad" }, "Open Network", "network"))
-                (nav_status_badge("gamescope", "▶", title_case_state(status.arcadia.service), if status.arcadia.service == "running" { "good" } else { "idle" }, "Open System", "system"))
-                (nav_status_badge("storage", "▰", &status.storage.free, status.storage.header_class, &status.storage.header_tooltip, "storage"))
-                (status_badge("sync", "↻", if status.library.sync_needed { "Needed" } else { "Idle" }, if status.library.sync_needed { "warn" } else { "idle" }, "Game sync state."))
-                (status_badge("ai", "◉", if status.local_ai.loaded_model.is_some() { "Loaded" } else { "No AI" }, if status.local_ai.loaded_model.is_some() { "good" } else { "idle" }, "Local AI state."))
-                (status_badge("pin", "●", if status.gui_pin.pin_required { "PIN" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, "GUI PIN state."))
+                (nav_status_icon("connectivity", network_icon, if status.network.online { "good" } else { "bad" }, &network_tip, "network"))
+                (nav_status_icon("gamescope", if status.arcadia.service == "running" { "▶" } else { "▮" }, gamescope_class, &format!("GameScope {}", status.arcadia.service), "system"))
+                (nav_storage_icon(status))
+                (nav_status_icon("sync", if sync_delta > 0 { "↻" } else { "✓" }, sync_class, &sync_tip, "sync"))
+                (nav_status_icon("updates", if status.updates.state == "available" { "⬇" } else { "✓" }, updates_class, &updates_tip, "updates"))
+                (nav_status_icon("local-ai", "◉", ai_class, &ai_tip, "local-ai"))
+                (nav_status_icon("pin", if status.gui_pin.pin_required { "🔒" } else { "🔓" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI access" } else { "GUI open without PIN" }, "access-pin"))
             }
         }
     }
 }
 
-fn status_badge(kind: &str, icon: &str, state: &str, class: &str, help: &str) -> Markup {
+fn nav_status_icon(kind: &str, icon: &str, class: &str, help: &str, target: &str) -> Markup {
     html! {
-        div class=(format!("status-badge status-badge--{}", class)) title=(help) data-chip-kind=(kind) aria-label=(format!("{}: {}", kind, state)) {
+        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) title=(help) aria-label=(help) {
             span class="chip-icon" aria-hidden="true" { (icon) }
-            strong { (state) }
         }
     }
 }
 
-fn nav_status_badge(
-    kind: &str,
-    icon: &str,
-    state: &str,
-    class: &str,
-    help: &str,
-    target: &str,
-) -> Markup {
+fn nav_storage_icon(status: &ConsoleStatus) -> Markup {
     html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) title=(help) aria-label=(format!("{}: {}", kind, state)) {
-            span class="chip-icon" aria-hidden="true" { (icon) }
-            strong { (state) }
+        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--storage", status.storage.header_class)) type="button" data-nav-target="storage" data-chip-kind="storage" title=(status.storage.header_tooltip) aria-label=(status.storage.header_tooltip) {
+            span class="chip-icon" aria-hidden="true" { "▰" }
+            span class="header-microbar" aria-hidden="true" { span style=(format!("width: {}%", status.storage.percent_used)) {} }
+            small { (status.storage.free) }
         }
+    }
+}
+
+fn network_tooltip(status: &ConsoleStatus) -> String {
+    if !status.network.online {
+        return "Offline".to_string();
+    }
+    let internet = if status.network.internet_reachable == Some(true) {
+        "Internet reachable"
+    } else {
+        "Internet unavailable"
+    };
+    if status.network.active_type == "wifi" {
+        format!(
+            "Wi-Fi {} · {} · {}",
+            status.network.ssid.as_deref().unwrap_or("Unknown"),
+            status
+                .network
+                .signal_percent
+                .map(|v| format!("{}%", v))
+                .unwrap_or_else(|| "unknown signal".to_string()),
+            internet
+        )
+    } else {
+        format!("Ethernet · {} · {}", status.network.ip_address, internet)
     }
 }
 
@@ -190,23 +281,38 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
             Some("storage"),
             None,
         )
-    } else if status.library.sync_needed {
-        (
-            format!(
-                "{} games waiting for first sync",
-                status.library.detected_files
-            ),
-            format!("{} GameScope entries", status.library.gamescope_entries),
-            Some("View Sync"),
-            Some("sync"),
-            None,
-        )
     } else if status.library.last_sync_state == "error" {
         (
             "Sync failed".to_string(),
             "Open Sync for the latest receipt.".to_string(),
             Some("View Sync"),
             Some("sync"),
+            None,
+        )
+    } else if status.library.sync_needed {
+        let changes = status.library.unsynced_added
+            + status.library.unsynced_changed
+            + status.library.unsynced_removed;
+        (
+            format!("{} changes waiting for sync", changes),
+            format!(
+                "{} detected · {} synced",
+                status.library.total_detected_games, status.library.total_synced_entries
+            ),
+            Some("Start Sync"),
+            None,
+            Some("/api/actions/sync-games"),
+        )
+    } else if status.updates.state == "available" {
+        (
+            "Update available".to_string(),
+            status
+                .updates
+                .available_version
+                .clone()
+                .unwrap_or_else(|| "Review update".to_string()),
+            Some("Review Update"),
+            Some("updates"),
             None,
         )
     } else if status.local_ai.load_state == "error" {
@@ -224,10 +330,7 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
     } else {
         (
             "Ready".to_string(),
-            format!(
-                "GameScope {}",
-                title_case_state(status.arcadia.service).to_lowercase()
-            ),
+            "No action needed.".to_string(),
             None,
             None,
             None,
@@ -261,10 +364,15 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
             }
             p class="card-line" { (status.storage.percent) " used · low-space threshold 90%" }
             div class="storage-mini-rows" {
-                (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total))
-                (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total))
-                (storage_mini_row("AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total))
-                (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total))
+                (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total, status.storage.games.bytes))
+                (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total, status.storage.artwork.bytes))
+                (storage_mini_row("AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total, status.storage.ai_models.bytes))
+                (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total, status.storage.other.bytes))
+            }
+            div class="inline-actions inline-actions--compact" {
+                (nav_button("Open Storage", "storage"))
+                @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clean Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
+                @if status.storage.ai_models.bytes > 0 { (nav_button("Manage Models", "local-ai")) }
             }
         }
     }
@@ -279,17 +387,24 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                     p class="card-line" { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "Unknown signal".to_string())) }
                     p class="card-line" { (status.network.ip_address) }
                 } @else {
-                    p class="card-line" { (status.network.ip_address) " · " (status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown speed".to_string())) }
+                    p class="card-line" { "Ethernet · " (status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown speed".to_string())) }
+                    p class="card-line" { (status.network.ip_address) }
                 }
                 div class="reachability-row reachability-row--topology" {
                     (reachability("Console", status.network.console_reachable))
                     (reachability("Folders", status.network.samba_reachable))
-                    (reachability("LAN AI", status.network.lan_ai_reachable))
                     @if let Some(internet) = status.network.internet_reachable { (reachability("Internet", internet)) }
+                    (reachability("LAN AI", status.network.lan_ai_reachable))
+                }
+                div class="inline-actions inline-actions--compact" {
+                    (nav_focus_button("Manage Wi-Fi", "network", "wifi-management"))
+                    @if let Some(path) = status.surfaces.windows_unc.as_deref().or(status.surfaces.smb_url.as_deref()) { (copy_button("Copy folders", path)) } @else { button class="btn btn--secondary" type="button" disabled { "Game folders unavailable" } }
+                    (copy_button("Copy console URL", status.identity.web_origin.as_str()))
                 }
             } @else {
                 h3 { "Network offline" }
                 p class="card-line" { "Console and game folders are unreachable." }
+                (nav_button("Connect Wi-Fi", "network"))
             }
         }
     }
@@ -298,25 +413,33 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
 fn home_library_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class="operational-card library-home-card" {
-            div class="card-head" { h3 { "Game Library" } strong { (status.library.detected_files) " files" } }
+            div class="card-head" { h3 { "Game Library" } strong { (status.library.total_detected_games) " game" (if status.library.total_detected_games == 1 { "" } else { "s" }) " · " (if status.library.sync_needed { "changes" } else if status.library.sync_state == "unknown" { "unknown" } else { "synced" }) } }
             div class="state-rows state-rows--compact" {
-                (state_row("Detected files", &status.library.detected_files.to_string()))
-                (state_row("GameScope entries", &status.library.gamescope_entries.to_string()))
+                (state_row("Detected", &status.library.total_detected_games.to_string()))
+                (state_row("Synced", &status.library.total_synced_entries.to_string()))
                 (state_row("Last sync", &status.library.last_sync))
                 (state_row("Artwork", &status.library.artwork_status))
+            }
+            div class="inline-actions inline-actions--compact" {
+                (nav_button("View Details", "sync"))
             }
         }
     }
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
-    let load_state = title_case_state_like(&status.local_ai.load_state);
-    let selected = status
+    let state = title_case_state_like(&status.local_ai.load_state);
+    let model_line = status
         .local_ai
-        .selected_model_name
+        .loaded_model_name
         .as_deref()
-        .unwrap_or("No model selected");
-    let gpu = status.local_ai.gpu_memory.as_deref().unwrap_or("Unknown");
+        .or(status.local_ai.selected_model_name.as_deref())
+        .unwrap_or(if status.local_ai.available_models.is_empty() {
+            "No models installed"
+        } else {
+            "No model loaded"
+        });
+    let gpu = status.local_ai.gpu_memory.as_deref().unwrap_or("—");
     let lan = if let Some(port) = status.local_ai.lan_inference_port {
         format!("On · :{}", port)
     } else {
@@ -324,23 +447,25 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
     };
     html! {
         article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) {
-            div class="card-head" { h3 { "Local AI" } strong { (load_state) } }
-            label class="compact-select-label" { span { "Model" } select class="compact-select" name="home-local-ai-model" {
-                @if status.local_ai.available_models.is_empty() {
-                    option value="" { "No local models found" }
-                } @else {
-                    @for model in &status.local_ai.available_models {
-                        option value=(model.id) selected[status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str())] { (model.name) }
-                    }
-                }
-            } }
+            div class="card-head" { h3 { "Local AI" } strong { (state) } }
+            p class="card-line" { (model_line) }
+            @if !status.local_ai.available_models.is_empty() {
+                label class="compact-select-label" { span { "Model" } select class="compact-select" name="home-local-ai-model" {
+                    @for model in &status.local_ai.available_models { option value=(model.id) selected[status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str())] { (model.name) } }
+                } }
+            }
             div class="state-rows state-rows--compact" {
-                (state_row("Selected", selected))
                 (state_row("GPU", gpu))
                 (state_row("LAN", &lan))
             }
             @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
                 div class="gpu-bar" aria-label="GPU memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
+            }
+            div class="inline-actions inline-actions--compact" {
+                @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
+                @else if !status.local_ai.available_models.is_empty() { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
+                (nav_button("Open Local AI", "local-ai"))
+                (nav_button("LAN Settings", "lan-inference"))
             }
         }
     }
@@ -351,6 +476,9 @@ fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
         article class="operational-card gamescope-home-card attention" {
             div class="card-head" { h3 { "GameScope" } strong { (title_case_state(status.arcadia.service)) } }
             p class="card-line" { "No active game reported." }
+            div class="inline-actions inline-actions--compact" {
+                (action_button(ButtonVariant::Secondary, "Restart Session", "restart-gamescope", "/api/actions/restart-gamescope"))
+            }
         }
     }
 }
@@ -366,8 +494,16 @@ fn title_case_state_like(state: &str) -> &'static str {
     }
 }
 
-fn storage_mini_row(label: &str, value: &str, percent: u8) -> Markup {
-    html! { div class="storage-mini-row" { span { (label) } strong { (value) } em { (percent) "%" } } }
+fn storage_mini_row(label: &str, value: &str, percent: u8, bytes: u64) -> Markup {
+    html! { div class="storage-mini-row" { span { (label) } strong { (value) } em { (percent_label(percent, bytes)) } } }
+}
+
+fn percent_label(percent: u8, bytes: u64) -> String {
+    if bytes > 0 && percent == 0 {
+        "<1%".to_string()
+    } else {
+        format!("{}%", percent)
+    }
 }
 
 fn state_row(label: &str, value: &str) -> Markup {
@@ -378,7 +514,7 @@ fn reachability(label: &str, ok: bool) -> Markup {
     html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) { (label) " " (if ok { "✓" } else { "—" }) } }
 }
 
-fn games_view(_status: &ConsoleStatus) -> Markup {
+fn games_view(status: &ConsoleStatus) -> Markup {
     view_shell(
         "games",
         "Network copy",
@@ -387,7 +523,7 @@ fn games_view(_status: &ConsoleStatus) -> Markup {
         html! {
             div class="path-grid" {
                 (path_card("Windows", "\\\\HOMECONSOLE"))
-                (path_card("Linux / macOS", "smb://HOMECONSOLE"))
+                (path_card("Linux / macOS", status.surfaces.smb_url.as_deref().unwrap_or("Folder address unavailable")))
             }
             div class="folder-card" {
                 h3 { "Game folders" }
@@ -404,6 +540,10 @@ fn games_view(_status: &ConsoleStatus) -> Markup {
                     li { "Games appear in the GameScope library after sync." }
                 }
                 p class="note" { "Do not rename system folders. Large copies may take time before sync sees the files." }
+            }
+            div class="primary-actions" {
+                (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
+                (nav_button("Go to Sync", "sync"))
             }
         },
     )
@@ -431,10 +571,12 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         @if storage_blocked {
             div class="warning sync-storage-warning" {
                 strong { "Storage is full. Free space before syncing games." }
+                (nav_button("Open Storage", "storage"))
             }
         } @else if storage_low {
             div class="warning sync-storage-warning" {
                 strong { "Storage is low. Sync may fail if there is not enough space for artwork or library entries." }
+                (nav_button("Open Storage", "storage"))
             }
         }
 
@@ -447,6 +589,8 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         }
         section class="sync-workflow" aria-label="Sync workflow" {
             (sync_step("1", "▣", "Copy Games", "Copy game files into the matching console folders over the network.", "Waiting", html! {
+                (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
+                (nav_button("View Add Games Instructions", "games"))
             }))
             (sync_step("2", "⌕", "Scan Library", "The console scans game folders and detects new, changed, or removed files.", "Waiting", html! {
                 (sync_detail("Games found", "Not run yet"))
@@ -495,6 +639,12 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
             }
         }
 
+        div class="sync-secondary-actions" {
+            (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
+            a class="btn btn--secondary" href="#sync-provider-settings" { "Configure Metadata Providers" }
+            a class="btn btn--secondary" href="#sync-output-panel" { "Output" }
+            (nav_button("Open Storage", "storage"))
+        }
 
         details id="sync-provider-settings" class="settings-panel sync-provider-panel" {
             summary { "Configure Metadata Providers" }
@@ -558,9 +708,12 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
 
         section class="storage-category-grid" aria-label="Storage categories" {
             (storage_category("Games", &status.storage.games.size, &status.storage.games.meta, &status.storage.games.detail, html! {
+                (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
+                (modal_button(ButtonVariant::Secondary, "Rescan Game Storage", "Rescan game storage", "Refresh this page to rescan game storage from the console."))
             }))
             (storage_category("Artwork", &status.storage.artwork.size, &status.storage.artwork.meta, "Last artwork sync: Not reported. Clearing artwork does not delete games. Artwork can be downloaded again during Sync.", html! {
                 (action_button(ButtonVariant::Danger, "Clear Artwork Cache", "clear-artwork-cache", "/api/actions/clear-artwork-cache"))
+                (modal_button(ButtonVariant::Secondary, "Rebuild Artwork on Next Sync", "Rebuild artwork", "The next Sync will rebuild artwork and metadata for copied games."))
             }))
             (storage_category("AI Models", &status.storage.ai_models.size, &status.storage.ai_models.meta, &status.storage.ai_models.detail, html! {
                 @if status.storage.ai_models.models.is_empty() {
@@ -570,6 +723,7 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                         (ai_model_storage_row(&model.friendly_name, &model.filename, &model.size, model.status))
                     }
                 }
+                (nav_button("Open Local AI", "local-ai"))
             }))
             (storage_category("Other Storage", &status.storage.other.size, &status.storage.other.meta, &status.storage.other.detail, html! {
                 (action_button(ButtonVariant::Secondary, "Clean Temporary Files", "clean-temporary-files", "/api/actions/clean-temporary-files"))
@@ -579,7 +733,7 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
 }
 
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
-    view_shell("ai-model", "On-device assistant", "Local AI", "This console can run a local AI assistant without sending prompts to the cloud. Choose which model is loaded and whether it is available to devices on your home network.", html! {
+    view_shell("local-ai", "On-device assistant", "Local AI", "This console can run a local AI assistant without sending prompts to the cloud. Choose which model is loaded and whether it is available to devices on your home network.", html! {
         section class="local-ai-section" aria-labelledby="loaded-model-title" {
             div class="section-heading section-heading--compact" {
                 h3 id="loaded-model-title" { "Loaded Model" }
@@ -594,6 +748,11 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (model_meta("Memory estimate", "0 GB GPU memory"))
                     (model_meta("LAN inference", "Off"))
                 }
+                div class="inline-actions" {
+                    (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "This removes the active local AI model from memory when unloading is supported."))
+                    (modal_button(ButtonVariant::Secondary, "Reload", "Reload local AI", "Reload the selected local AI model if it is already configured."))
+                    (nav_button("Open LAN Inference Settings", "lan-inference"))
+                }
             }
         }
 
@@ -602,7 +761,15 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 h3 id="available-models-title" { "Available Models" }
                 p { "Choose the local AI that should run on this console. Model details are secondary." }
             }
-            p { "No local AI models are installed." }
+            div class="model-grid" {
+                @if status.local_ai.available_models.is_empty() {
+                    article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Add models before loading Local AI." } }
+                } @else {
+                    @for model in &status.local_ai.available_models {
+                        (model_card(&model.name, &model.filename, &model.size, "", model.estimated_vram_bytes.map(|v| v.to_string()).as_deref().unwrap_or("Unknown"), model.recommended_use.unwrap_or(""), "Available", status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str())))
+                    }
+                }
+            }
         }
 
         section class="local-ai-section" aria-labelledby="gpu-usage-title" {
@@ -628,6 +795,10 @@ fn lan_inference_view() -> Markup {
             (status_card("Current model", "No model", "Load a local model before expecting useful replies."))
             (status_card("Local AI server", "Stopped", "The server opens the LAN endpoint when enabled."))
         }
+        div class="primary-actions" {
+            (modal_button(ButtonVariant::Primary, "Enable LAN Inference", "Enable LAN inference", "Only enable this on a trusted LAN. This is not intended for public internet exposure."))
+            (modal_button(ButtonVariant::Secondary, "Disable LAN Inference", "Disable LAN inference", "This closes the local inference endpoint when the service supports it."))
+        }
         p class="warning" { "Do not expose port 7777 to the public internet." }
         details class="collapsible-log" {
             summary { "Curl example" }
@@ -641,37 +812,38 @@ fn network_view(status: &ConsoleStatus) -> Markup {
         "network",
         "Connection",
         "Network",
-        "Wi-Fi and device addresses.",
+        "",
         html! {
             article class="system-card system-card--networking" {
-                h3 { "Connection" }
                 div class="system-field-grid" {
-                    (system_field("Type", &status.network.connection_type))
+                    (system_field("Transport", &status.network.connection_type))
                     (system_field("Address", &status.network.ip_address))
-                    (system_field("Signal", status.network.signal.as_deref().unwrap_or("—")))
+                    (system_field("Internet", if status.network.internet_reachable == Some(true) { "Reachable" } else if status.network.internet_reachable == Some(false) { "Unavailable" } else { "Unknown" }))
+                    (system_field("Console", if status.network.console_reachable { "Reachable" } else { "Unavailable" }))
+                    (system_field("Folders", if status.network.samba_reachable { "Reachable" } else { "Unavailable" }))
+                    (system_field("LAN AI", if status.network.lan_ai_reachable { "Listening" } else { "Disabled" }))
                 }
-            }
-            article class="form-card wifi-connect-panel" {
-                h3 { "Wi-Fi" }
-                form id="wifi-connect-form" class="settings-form" autocomplete="off" {
-                    label { span { "Network name" } input class="field" type="text" name="ssid" autocomplete="off" required; }
-                    label { span { "Wi-Fi password" } input class="field" type="password" name="password" autocomplete="current-password"; }
-                    label class="wifi-show-password" { input type="checkbox" data-toggle-password="password"; span { "Show password" } }
-                    div class="inline-actions" {
-                        button class="btn btn--secondary" type="button" data-network-action="scan-wifi" data-network-endpoint="/api/network/scan-wifi" { "Scan Wi-Fi" }
-                        button class="btn btn--primary" type="submit" data-network-endpoint="/api/network/connect-wifi" { "Connect Wi-Fi" }
-                        button class="btn btn--secondary" type="button" data-network-action="disconnect-wifi" data-network-endpoint="/api/network/disconnect-wifi" { "Disconnect Wi-Fi" }
-                    }
-                    div id="wifi-message" class="message" hidden {}
-                }
-            }
-            article class="system-card system-card--networking" {
-                h3 { "Addresses" }
                 div class="system-endpoints" {
-                    (command_box("Console", status.canonical_url.trim_end_matches('/')))
-                    (command_box("Game folders", &format!("smb://{}", status.surfaces.smb)))
-                    (command_box("mDNS", status.surfaces.mdns))
+                    (command_box("Console", status.identity.web_origin.as_str()))
+                    (command_box("Game folders", status.surfaces.smb_url.as_deref().or(status.surfaces.windows_unc.as_deref()).unwrap_or("Folder address unavailable")))
+                    (command_box("IP fallback", status.surfaces.windows_unc_by_ip.as_deref().unwrap_or("Unavailable")))
                 }
+            }
+            article id="wifi-management" class="network-card network-card--wide" tabindex="-1" {
+                h3 { "Wi-Fi" }
+                @if status.network.active_type == "wifi" { p class="card-line" { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "Unknown signal".to_string())) } }
+                @else { p class="card-line" { "Wi-Fi unavailable until an adapter is detected." } }
+                div class="inline-actions" {
+                    button class="btn btn--secondary" type="button" data-network-action="scan-wifi" { "Scan Wi-Fi" }
+                    button class="btn btn--secondary" type="button" data-network-action="disconnect-wifi" { "Disconnect Wi-Fi" }
+                }
+                form class="wifi-connect-panel" data-network-connect-form="true" autocomplete="off" {
+                    label { span { "Network name" } input class="field" name="ssid" autocomplete="off"; }
+                    label { span { "Password" } input class="field" type="password" name="password" autocomplete="new-password"; }
+                    label class="wifi-show-password" { input type="checkbox" data-toggle-password="password"; "Show while typing" }
+                    button class="btn btn--primary" type="submit" { "Connect Wi-Fi" }
+                }
+                div id="wifi-message" class="message" hidden {}
             }
         },
     )
@@ -715,7 +887,8 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                 (status_card("Last checked", "Not reported", "The updater receipt reports the last check time."))
             }
             div class="primary-actions" {
-                (action_button(ButtonVariant::Primary, "Update GUI", "update-gui", "/api/actions/update-gui"))
+                (action_button(ButtonVariant::Primary, "Check for Updates", "update-gui", "/api/actions/update-gui"))
+                (action_button(ButtonVariant::Secondary, "Install Update", "update-gui", "/api/actions/update-gui"))
             }
             (collapsible_log("Update log", "Update receipts appear under /var/lib/harmonia/receipts/arcadia-gui-latest on the console."))
         },
@@ -748,12 +921,16 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         (system_field("Username", "console"))
                     }
                     (command_box("Example command", "ssh console@console.home.arpa"))
-                    p class="warning" { "Only enable SSH on a trusted home network. Use a strong password or key-based access." }
+                    div class="inline-actions" {
+                        (modal_button(ButtonVariant::Secondary, "Enable SSH", "Enable SSH", "Confirm enabling SSH."))
+                        (modal_button(ButtonVariant::Secondary, "Disable SSH", "Disable SSH", "Confirm disabling SSH."))
+                        (copy_button("Copy SSH Command", "ssh console@console.home.arpa"))
+                    }
                 }
 
                 article class="system-card system-card--services" {
                     div class="system-service-list" {
-                        (system_service_row("GameScope", "Running", "Not reported", None))
+                        (system_service_row("GameScope", "Running", "Not reported", Some(("restart-gamescope", "/api/actions/restart-gamescope"))))
                         (system_service_row("Samba", "Running", "Not reported", None))
                         (system_service_row("Game Sync", "Stopped", "Runs on demand", None))
                         (system_service_row("Local AI", "Stopped", "Not reported", None))
@@ -864,7 +1041,36 @@ fn ai_model_storage_row(name: &str, filename: &str, size: &str, status: &str) ->
             span { strong { (name) } code { (filename) } }
             em { (size) }
             b { (status) }
-            (action_button(ButtonVariant::Danger, &format!("Remove {}", filename), "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", filename)))
+            (action_button(ButtonVariant::Danger, "Remove Model", "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", filename)))
+        }
+    }
+}
+
+fn model_card(
+    name: &str,
+    filename: &str,
+    size: &str,
+    quant: &str,
+    gpu_memory: &str,
+    recommended_use: &str,
+    status: &str,
+    selected: bool,
+) -> Markup {
+    html! {
+        article class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
+            label class="model-choice" {
+                input type="radio" name="model" value=(name) checked[selected];
+                span class="model-name" { (name) }
+            }
+            code class="model-filename" { (filename) }
+            div class="model-meta-row" {
+                (model_meta("Size", size))
+                (model_meta("Quantization", quant))
+                (model_meta("GPU memory", gpu_memory))
+                (model_meta("Recommended use", recommended_use))
+            }
+            strong class="model-status" { (status) }
+            (modal_button(ButtonVariant::Primary, "Load This Model", "Load local AI", "Load this local AI model onto the console GPU. Games may run slower while a model is loaded."))
         }
     }
 }
@@ -882,7 +1088,7 @@ fn command_box(label: &str, value: &str) -> Markup {
         div class="command-box" {
             span { (label) }
             code { (value) }
-            (copy_button(&format!("Copy {}", label), value))
+            (copy_button("Copy", value))
         }
     }
 }
@@ -915,6 +1121,11 @@ fn system_log_group(name: &str) -> Markup {
     html! {
         details class="collapsible-log system-log-group" {
             summary { (name) }
+            div class="inline-actions" {
+                (modal_button(ButtonVariant::Secondary, "View", name, ""))
+                (copy_button("Copy", ""))
+                (modal_button(ButtonVariant::Secondary, "Download", name, ""))
+            }
             pre { code {} }
         }
     }
@@ -934,12 +1145,24 @@ fn collapsible_log(title: &str, text: &str) -> Markup {
     html! { details class="collapsible-log" { summary { (title) } pre { code { (text) } } } }
 }
 
+fn nav_focus_button(label: &str, target: &str, focus: &str) -> Markup {
+    html! { button class="btn btn--secondary" type="button" data-nav-target=(target) data-focus-target=(focus) { (label) } }
+}
+
 fn action_button(variant: ButtonVariant, label: &str, action: &str, endpoint: &str) -> Markup {
     html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-endpoint=(endpoint) { (label) } }
 }
 
+fn link_button(variant: ButtonVariant, label: &str, action: &str, url: &str) -> Markup {
+    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-url=(url) { (label) } }
+}
+
 fn nav_button(label: &str, view: &str) -> Markup {
     html! { button class="btn btn--secondary" type="button" data-nav-target=(view) { (label) } }
+}
+
+fn modal_button(variant: ButtonVariant, label: &str, title: &str, body: &str) -> Markup {
+    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-modal-title=(title) data-modal-body=(body) { (label) } }
 }
 
 fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
