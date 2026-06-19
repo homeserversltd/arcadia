@@ -1925,8 +1925,22 @@ fn surface_and_samba_status(
 
 fn updates_status() -> UpdatesStatus {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let check = fs::read_to_string("/var/lib/harmonia/receipts/arcadia-check-latest/run.json").ok();
-    let state = if let Some(text) = check.as_deref() {
+    let deployed_sha_meta = fs::metadata("/var/lib/harmonia/state/arcadia.sha").ok();
+    let deploy_meta = fs::metadata("/var/lib/harmonia/receipts/arcadia-latest/run.json").ok();
+    let check_meta = fs::metadata("/var/lib/harmonia/receipts/arcadia-check-latest/run.json").ok();
+    let deploy_is_fresher = match (&deploy_meta, &check_meta) {
+        (Some(deploy), Some(check)) => deploy.modified().ok() >= check.modified().ok(),
+        (Some(_), None) => true,
+        _ => false,
+    };
+    let deployed_ok = fs::read_to_string("/var/lib/harmonia/receipts/arcadia-latest/run.json")
+        .map(|text| text.contains("\"ok\":true") || text.contains("\"ok\": true"))
+        .unwrap_or(false);
+    let state = if deployed_sha_meta.is_some() && deployed_ok && deploy_is_fresher {
+        "current"
+    } else if let Ok(text) =
+        fs::read_to_string("/var/lib/harmonia/receipts/arcadia-check-latest/run.json")
+    {
         if text.contains("\"update_available\":true") || text.contains("\"update_available\": true")
         {
             "available"
