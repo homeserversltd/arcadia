@@ -935,6 +935,29 @@ mod tests {
         assert!(rendered.contains("\\\\HOMECONSOLE"));
         assert!(rendered.contains("http://console.home.arpa:7777"));
     }
+
+    #[test]
+    fn appliance_css_uses_desktop_density_not_jumbo_display_type() {
+        for forbidden in [
+            "font-size: clamp(34px",
+            "font-size: clamp(24px",
+            "font-size: 64px",
+            "font-size: 38px",
+            "font-size: 36px",
+            "font-size: 34px",
+            "font-size: 32px",
+            "font-size: 28px",
+            "font-size: 26px",
+        ] {
+            assert!(
+                !APP_CSS.contains(forbidden),
+                "oversized CSS survived: {forbidden}"
+            );
+        }
+        assert!(APP_CSS.contains(".view-heading h2 { margin: 0; font-size: 22px;"));
+        assert!(APP_CSS.contains(".path-card code { display: block; margin-top: 7px; color: var(--orange-strong); font-size: 20px;"));
+        assert!(APP_CSS.contains(".status-card strong, .active-model strong { display: block; margin: 5px 0 7px; font-size: 18px;"));
+    }
 }
 
 mod anyhow_free {
