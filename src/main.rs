@@ -1331,7 +1331,7 @@ fn latest_sync_summary() -> Option<String> {
 }
 
 fn local_ai_status() -> LocalAiStatus {
-    let available_models = local_ai_available_models();
+    let mut available_models = local_ai_available_models();
     let loaded_model = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
         .and_then(|text| text.lines().next().map(str::to_string))
         .map(|line| {
@@ -1350,6 +1350,25 @@ fn local_ai_status() -> LocalAiStatus {
                 })
                 .unwrap_or_else(|| "Local AI runtime".to_string())
         });
+    if let Some(loaded) = &loaded_model {
+        if !available_models
+            .iter()
+            .any(|model| model.filename == *loaded)
+        {
+            available_models.insert(
+                0,
+                LocalAiModelStatus {
+                    id: model_id(loaded),
+                    name: friendly_model_name(loaded),
+                    filename: loaded.clone(),
+                    size_bytes: 0,
+                    size: "Unknown".to_string(),
+                    estimated_vram_bytes: None,
+                    recommended_use: None,
+                },
+            );
+        }
+    }
     let selected = loaded_model
         .as_ref()
         .and_then(|loaded| {
