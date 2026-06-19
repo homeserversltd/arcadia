@@ -529,7 +529,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         div class="sync-secondary-actions" {
             (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
             a class="btn btn--secondary" href="#sync-provider-settings" { "Configure Metadata Providers" }
-            a class="btn btn--secondary" href="#sync-log-panel" { "View Sync Log" }
+            a class="btn btn--secondary" href="#sync-output-panel" { "Output" }
             (nav_button("Open Storage", "storage"))
         }
 
@@ -549,9 +549,9 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 button class="btn btn--primary" type="submit" { "Save Optional Keys" }
             }
         }
-        details id="sync-log-panel" class="collapsible-log" {
-            summary { "View Sync Log" }
-            pre { code id="sync-log-output" { "Logs are secondary. Start Sync to see the latest result message here." } }
+        details id="sync-output-panel" class="collapsible-log" {
+            summary { "Output" }
+            pre { code id="sync-output" {} }
         }
         div id="console-action-message" class="message" hidden {}
     })
@@ -777,12 +777,8 @@ fn system_view(status: &ConsoleStatus) -> Markup {
         "System",
         "",
         html! {
-            section class="system-grid" aria-label="System support panel" {
-                article class="system-card system-card--ssh" aria-labelledby="system-ssh-title" {
-                    div class="section-heading section-heading--compact" {
-                        h3 id="system-ssh-title" { "SSH" }
-                        p { "SSH is for direct technical access to the console. Normal game management does not require SSH." }
-                    }
+            section class="system-grid" aria-label="System" {
+                article class="system-card system-card--ssh" {
                     div class="system-field-grid" {
                         (system_field("SSH status", "Disabled"))
                         (system_field("Hostname", "console.home.arpa"))
@@ -790,49 +786,39 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         (system_field("Username", "console"))
                     }
                     (command_box("Example command", "ssh console@console.home.arpa"))
-                    p class="warning" { "Only enable SSH on a trusted home network. Use a strong password or key-based access." }
                     div class="inline-actions" {
-                        (modal_button(ButtonVariant::Secondary, "Enable SSH", "Enable SSH", "Enable SSH only on a trusted home network. Use a strong password or key-based access."))
-                        (modal_button(ButtonVariant::Secondary, "Disable SSH", "Disable SSH", "Disable direct shell access when it is not needed."))
+                        (modal_button(ButtonVariant::Secondary, "Enable SSH", "Enable SSH", "Confirm enabling SSH."))
+                        (modal_button(ButtonVariant::Secondary, "Disable SSH", "Disable SSH", "Confirm disabling SSH."))
                         (copy_button("Copy SSH Command", "ssh console@console.home.arpa"))
                     }
                 }
 
-                article class="system-card system-card--services" aria-labelledby="system-services-title" {
-                    div class="section-heading section-heading--compact" {
-                        h3 id="system-services-title" { "Services" }
-                        p { "Health for the console services behind the normal pages." }
-                    }
+                article class="system-card system-card--services" {
                     div class="system-service-list" {
-                        (system_service_row("GameScope", "Runs the console gaming session.", "Running", "Not reported", Some(("restart-gamescope", "/api/actions/restart-gamescope"))))
-                        (system_service_row("Samba", "Shares game folders over the home network.", "Running", "Not reported", None))
-                        (system_service_row("Game Sync", "Adds copied games to the GameScope library.", "Stopped", "Runs on demand", None))
-                        (system_service_row("Local AI", "Loads the selected local AI model.", "Stopped", "Not reported", None))
-                        (system_service_row("LAN Inference", "Lets other home-network devices use Local AI.", "Stopped", "Not reported", None))
-                        (system_service_row("Web GUI", "Runs this management interface.", "Running", "Current", None))
+                        (system_service_row("GameScope", "Running", "Not reported", Some(("restart-gamescope", "/api/actions/restart-gamescope"))))
+                        (system_service_row("Samba", "Running", "Not reported", None))
+                        (system_service_row("Game Sync", "Stopped", "Runs on demand", None))
+                        (system_service_row("Local AI", "Stopped", "Not reported", None))
+                        (system_service_row("LAN Inference", "Stopped", "Not reported", None))
+                        (system_service_row("Web GUI", "Running", "Current", None))
                     }
                 }
 
-                article class="system-card system-card--logs" aria-labelledby="system-logs-title" {
-                    span id="system-logs-title" class="sr-only" { "Logs" }
-                    (system_log_group("Sync Log", "Sync log output is redacted before display. Provider API keys and saved PINs are never shown."))
-                    (system_log_group("Local AI Log", "Local AI service messages appear here when connected to the log reader."))
-                    (system_log_group("LAN Inference Log", "LAN inference service messages appear here when connected to the log reader."))
-                    (system_log_group("System Log", "System service events appear here when connected to the log reader."))
-                    (system_log_group("Web GUI Log", "Arcadia web GUI messages appear here when connected to the log reader."))
+                article class="system-card system-card--logs" {
+                    (system_log_group("Sync"))
+                    (system_log_group("Local AI"))
+                    (system_log_group("LAN Inference"))
+                    (system_log_group("System"))
+                    (system_log_group("Web GUI"))
                 }
 
-                article class="system-card system-card--networking" aria-labelledby="system-networking-title" {
-                    div class="section-heading section-heading--compact" {
-                        h3 id="system-networking-title" { "Networking" }
-                        p { "How the console is reached on the home network." }
-                    }
+                article class="system-card system-card--networking" {
                     div class="system-field-grid" {
                         (system_field("Hostname", "console.home.arpa"))
                         (system_field("Local domain/path", status.canonical_url.trim_end_matches('/')))
                         (system_field("LAN IP address", "DHCP assigned"))
                         (system_field("MAC address", "Not reported"))
-                        (system_field("Network status", "Online"))
+                        (system_field("Status", "Online"))
                         (system_field("Active interface", "LAN"))
                     }
                     div class="system-endpoints" {
@@ -840,14 +826,12 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         (command_box("Games Folder", "\\\\HOMECONSOLE"))
                         (command_box("LAN Inference", "http://console.home.arpa:7777"))
                     }
-                    h4 { "Open local ports" }
                     div class="system-port-list" {
                         (system_field("80/443", "Web GUI"))
                         (system_field("445", "Samba"))
-                        (system_field("7777", "LAN Inference, only when enabled"))
-                        (system_field("22", "SSH, only when enabled"))
+                        (system_field("7777", "LAN Inference"))
+                        (system_field("22", "SSH"))
                     }
-                    p class="warning" { "LAN Inference is intended only for trusted home networks. Do not expose port 7777 to the public internet." }
                 }
             }
         },
@@ -980,14 +964,13 @@ fn copy_button(label: &str, value: &str) -> Markup {
 
 fn system_service_row(
     name: &str,
-    description: &str,
     status: &str,
     last_changed: &str,
     restart: Option<(&str, &str)>,
 ) -> Markup {
     html! {
         div class="system-service-row" {
-            span class="system-service-main" { strong { (name) } em { (description) } }
+            span class="system-service-main" { strong { (name) } }
             b class=(format!("system-status system-status--{}", status.to_lowercase())) { (status) }
             small { "Last changed: " (last_changed) }
             span class="system-row-actions" {
@@ -999,16 +982,16 @@ fn system_service_row(
     }
 }
 
-fn system_log_group(name: &str, text: &str) -> Markup {
+fn system_log_group(name: &str) -> Markup {
     html! {
         details class="collapsible-log system-log-group" {
             summary { (name) }
             div class="inline-actions" {
-                (modal_button(ButtonVariant::Secondary, "View", name, text))
-                (copy_button("Copy", text))
-                (modal_button(ButtonVariant::Secondary, "Download", name, "Downloadable redacted logs will be available when the log bundle endpoint is connected."))
+                (modal_button(ButtonVariant::Secondary, "View", name, ""))
+                (copy_button("Copy", ""))
+                (modal_button(ButtonVariant::Secondary, "Download", name, ""))
             }
-            pre { code { (text) } }
+            pre { code {} }
         }
     }
 }

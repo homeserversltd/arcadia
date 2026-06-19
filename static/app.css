@@ -369,7 +369,7 @@ h3 { margin: 0 0 8px; font-size: 18px; }
 .sync-result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
 .sync-secondary-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
 .sync-provider-panel { scroll-margin-top: 20px; }
-#sync-log-panel { scroll-margin-top: 20px; }
+#sync-output-panel { scroll-margin-top: 20px; }
 
 .settings-panel summary, .collapsible-log summary { cursor: pointer; font-weight: 900; font-size: 16px; color: var(--cream); }
 .settings-form { display: grid; gap: 14px; margin-top: 16px; max-width: 720px; }
