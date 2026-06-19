@@ -147,8 +147,7 @@ struct PasswordResetRequest {
 struct ProviderKeysRequest {
     steamgriddb_api_key: Option<String>,
     thegamesdb_api_key: Option<String>,
-    screenscraper_user: Option<String>,
-    screenscraper_password: Option<String>,
+    screenscraper_api_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -445,14 +444,8 @@ async fn save_provider_keys(
     push_env_value(
         &mut lines,
         &mut written,
-        "SCREENSCRAPER_USER",
-        body.screenscraper_user,
-    );
-    push_env_value(
-        &mut lines,
-        &mut written,
-        "SCREENSCRAPER_PASSWORD",
-        body.screenscraper_password,
+        "SCREENSCRAPER_API_KEY",
+        body.screenscraper_api_key,
     );
 
     if lines.is_empty() {
@@ -804,6 +797,54 @@ fn is_mountpoint(path: &str) -> bool {
                 .any(|line| line.split_whitespace().nth(1) == Some(path))
         })
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_env_uses_screenscraper_api_key_only() {
+        let mut lines = Vec::new();
+        let mut written = Vec::new();
+
+        push_env_value(
+            &mut lines,
+            &mut written,
+            "SCREENSCRAPER_API_KEY",
+            Some("  scrape-secret  ".to_string()),
+        );
+
+        assert_eq!(written, vec!["SCREENSCRAPER_API_KEY"]);
+        assert_eq!(lines, vec!["SCREENSCRAPER_API_KEY=\"scrape-secret\""]);
+        let joined = lines.join("\n");
+        assert!(!joined.contains("SCREENSCRAPER_USER"));
+        assert!(!joined.contains("SCREENSCRAPER_PASSWORD"));
+    }
+
+    #[test]
+    fn provider_keys_ui_exposes_api_key_not_username_password() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+
+        assert!(rendered.contains("ScreenScraper API key"));
+        assert!(rendered.contains("screenscraper_api_key"));
+        assert!(!rendered.contains("screenscraper_user"));
+        assert!(!rendered.contains("screenscraper_password"));
+        assert!(!rendered.contains("ScreenScraper user"));
+    }
+
+    #[test]
+    fn provider_keys_script_posts_screenscraper_api_key_only() {
+        assert!(APP_JS.contains("screenscraper_api_key"));
+        assert!(!APP_JS.contains("screenscraper_user"));
+        assert!(!APP_JS.contains("screenscraper_password"));
+    }
 }
 
 mod anyhow_free {

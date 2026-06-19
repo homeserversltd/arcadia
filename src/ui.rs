@@ -45,8 +45,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                                 form id="provider-keys-form" class="stack" autocomplete="off" {
                                     label { span { "SteamGridDB API key" } input class="field" type="password" name="steamgriddb_api_key" autocomplete="off"; }
                                     label { span { "TheGamesDB API key" } input class="field" type="password" name="thegamesdb_api_key" autocomplete="off"; }
-                                    label { span { "ScreenScraper user" } input class="field" type="text" name="screenscraper_user" autocomplete="off"; }
-                                    label { span { "ScreenScraper password" } input class="field" type="password" name="screenscraper_password" autocomplete="off"; }
+                                    label { span { "ScreenScraper API key" } input class="field" type="password" name="screenscraper_api_key" autocomplete="off"; }
                                     div id="provider-keys-message" class="message" hidden {}
                                     button class="btn btn--primary" type="submit" { "Save API keys" }
                                 }
