@@ -266,11 +266,6 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 (storage_mini_row("AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total))
                 (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total))
             }
-            div class="inline-actions inline-actions--compact" {
-                (nav_button("Open Storage", "storage"))
-                @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clean Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
-                @if status.storage.ai_models.bytes > 0 { (nav_button("Manage Models", "ai-model")) }
-            }
         }
     }
 }
@@ -292,15 +287,9 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                     (reachability("LAN AI", status.network.lan_ai_reachable))
                     @if let Some(internet) = status.network.internet_reachable { (reachability("Internet", internet)) }
                 }
-                div class="inline-actions inline-actions--compact" {
-                    (nav_button("Manage Wi-Fi", "network"))
-                    (copy_button("Copy folders", &format!("smb://{}", status.surfaces.smb)))
-                    (copy_button("Copy console URL", status.canonical_url.trim_end_matches('/')))
-                }
             } @else {
                 h3 { "Network offline" }
                 p class="card-line" { "Console and game folders are unreachable." }
-                (nav_button("Connect Wi-Fi", "network"))
             }
         }
     }
@@ -315,10 +304,6 @@ fn home_library_card(status: &ConsoleStatus) -> Markup {
                 (state_row("GameScope entries", &status.library.gamescope_entries.to_string()))
                 (state_row("Last sync", &status.library.last_sync))
                 (state_row("Artwork", &status.library.artwork_status))
-            }
-            div class="inline-actions inline-actions--compact" {
-                @if status.library.sync_needed || status.library.last_sync_state == "error" { (action_button(ButtonVariant::Primary, "Start Sync", "sync-games", "/api/actions/sync-games")) }
-                @else { (nav_button("View Sync", "sync")) }
             }
         }
     }
@@ -357,11 +342,6 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
             @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
                 div class="gpu-bar" aria-label="GPU memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
             }
-            div class="inline-actions inline-actions--compact" {
-                @if status.local_ai.load_state == "hot" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
-                @else { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
-                (nav_button("LAN Settings", "lan-inference"))
-            }
         }
     }
 }
@@ -371,9 +351,6 @@ fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
         article class="operational-card gamescope-home-card attention" {
             div class="card-head" { h3 { "GameScope" } strong { (title_case_state(status.arcadia.service)) } }
             p class="card-line" { "No active game reported." }
-            div class="inline-actions inline-actions--compact" {
-                (action_button(ButtonVariant::Secondary, "Restart Session", "restart-gamescope", "/api/actions/restart-gamescope"))
-            }
         }
     }
 }
@@ -401,7 +378,7 @@ fn reachability(label: &str, ok: bool) -> Markup {
     html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) { (label) " " (if ok { "✓" } else { "—" }) } }
 }
 
-fn games_view(status: &ConsoleStatus) -> Markup {
+fn games_view(_status: &ConsoleStatus) -> Markup {
     view_shell(
         "games",
         "Network copy",
@@ -427,10 +404,6 @@ fn games_view(status: &ConsoleStatus) -> Markup {
                     li { "Games appear in the GameScope library after sync." }
                 }
                 p class="note" { "Do not rename system folders. Large copies may take time before sync sees the files." }
-            }
-            div class="primary-actions" {
-                (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
-                (nav_button("Go to Sync", "sync"))
             }
         },
     )
@@ -458,12 +431,10 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         @if storage_blocked {
             div class="warning sync-storage-warning" {
                 strong { "Storage is full. Free space before syncing games." }
-                (nav_button("Open Storage", "storage"))
             }
         } @else if storage_low {
             div class="warning sync-storage-warning" {
                 strong { "Storage is low. Sync may fail if there is not enough space for artwork or library entries." }
-                (nav_button("Open Storage", "storage"))
             }
         }
 
@@ -476,8 +447,6 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         }
         section class="sync-workflow" aria-label="Sync workflow" {
             (sync_step("1", "▣", "Copy Games", "Copy game files into the matching console folders over the network.", "Waiting", html! {
-                (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
-                (nav_button("View Add Games Instructions", "games"))
             }))
             (sync_step("2", "⌕", "Scan Library", "The console scans game folders and detects new, changed, or removed files.", "Waiting", html! {
                 (sync_detail("Games found", "Not run yet"))
@@ -526,12 +495,6 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
             }
         }
 
-        div class="sync-secondary-actions" {
-            (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
-            a class="btn btn--secondary" href="#sync-provider-settings" { "Configure Metadata Providers" }
-            a class="btn btn--secondary" href="#sync-output-panel" { "Output" }
-            (nav_button("Open Storage", "storage"))
-        }
 
         details id="sync-provider-settings" class="settings-panel sync-provider-panel" {
             summary { "Configure Metadata Providers" }
@@ -595,12 +558,9 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
 
         section class="storage-category-grid" aria-label="Storage categories" {
             (storage_category("Games", &status.storage.games.size, &status.storage.games.meta, &status.storage.games.detail, html! {
-                (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
-                (modal_button(ButtonVariant::Secondary, "Rescan Game Storage", "Rescan game storage", "Refresh this page to rescan game storage from the console."))
             }))
             (storage_category("Artwork", &status.storage.artwork.size, &status.storage.artwork.meta, "Last artwork sync: Not reported. Clearing artwork does not delete games. Artwork can be downloaded again during Sync.", html! {
                 (action_button(ButtonVariant::Danger, "Clear Artwork Cache", "clear-artwork-cache", "/api/actions/clear-artwork-cache"))
-                (modal_button(ButtonVariant::Secondary, "Rebuild Artwork on Next Sync", "Rebuild artwork", "The next Sync will rebuild artwork and metadata for copied games."))
             }))
             (storage_category("AI Models", &status.storage.ai_models.size, &status.storage.ai_models.meta, &status.storage.ai_models.detail, html! {
                 @if status.storage.ai_models.models.is_empty() {
@@ -610,7 +570,6 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                         (ai_model_storage_row(&model.friendly_name, &model.filename, &model.size, model.status))
                     }
                 }
-                (nav_button("Open Local AI", "ai-model"))
             }))
             (storage_category("Other Storage", &status.storage.other.size, &status.storage.other.meta, &status.storage.other.detail, html! {
                 (action_button(ButtonVariant::Secondary, "Clean Temporary Files", "clean-temporary-files", "/api/actions/clean-temporary-files"))
@@ -635,11 +594,6 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (model_meta("Memory estimate", "0 GB GPU memory"))
                     (model_meta("LAN inference", "Off"))
                 }
-                div class="inline-actions" {
-                    (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "This removes the active local AI model from memory when unloading is supported."))
-                    (modal_button(ButtonVariant::Secondary, "Reload", "Reload local AI", "Reload the selected local AI model if it is already configured."))
-                    (nav_button("Open LAN Inference Settings", "lan-inference"))
-                }
             }
         }
 
@@ -648,11 +602,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 h3 id="available-models-title" { "Available Models" }
                 p { "Choose the local AI that should run on this console. Model details are secondary." }
             }
-            div class="model-grid" {
-                (model_card("Mistral 7B Instruct", "mistral-7b-instruct.Q4_K_M.gguf", "4.1 GB", "Q4_K_M", "6 GB", "Balanced", "Available", true))
-                (model_card("Qwen2.5 Coder 7B", "qwen2.5-coder-7b.Q4_K_M.gguf", "4.7 GB", "Q4_K_M", "7 GB", "Higher Quality", "Available", false))
-                (model_card("Llama 3.2 3B", "llama-3.2-3b.Q4_K_M.gguf", "2.0 GB", "Q4_K_M", "4 GB", "Fast", "Available", false))
-            }
+            p { "No local AI models are installed." }
         }
 
         section class="local-ai-section" aria-labelledby="gpu-usage-title" {
@@ -678,10 +628,6 @@ fn lan_inference_view() -> Markup {
             (status_card("Current model", "No model", "Load a local model before expecting useful replies."))
             (status_card("Local AI server", "Stopped", "The server opens the LAN endpoint when enabled."))
         }
-        div class="primary-actions" {
-            (modal_button(ButtonVariant::Primary, "Enable LAN Inference", "Enable LAN inference", "Only enable this on a trusted LAN. This is not intended for public internet exposure."))
-            (modal_button(ButtonVariant::Secondary, "Disable LAN Inference", "Disable LAN inference", "This closes the local inference endpoint when the service supports it."))
-        }
         p class="warning" { "Do not expose port 7777 to the public internet." }
         details class="collapsible-log" {
             summary { "Curl example" }
@@ -695,7 +641,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
         "network",
         "Connection",
         "Network",
-        "Manage Wi-Fi and copy addresses.",
+        "Wi-Fi and device addresses.",
         html! {
             article class="system-card system-card--networking" {
                 h3 { "Connection" }
@@ -704,6 +650,23 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     (system_field("Address", &status.network.ip_address))
                     (system_field("Signal", status.network.signal.as_deref().unwrap_or("—")))
                 }
+            }
+            article class="form-card wifi-connect-panel" {
+                h3 { "Wi-Fi" }
+                form id="wifi-connect-form" class="settings-form" autocomplete="off" {
+                    label { span { "Network name" } input class="field" type="text" name="ssid" autocomplete="off" required; }
+                    label { span { "Wi-Fi password" } input class="field" type="password" name="password" autocomplete="current-password"; }
+                    label class="wifi-show-password" { input type="checkbox" data-toggle-password="password"; span { "Show password" } }
+                    div class="inline-actions" {
+                        button class="btn btn--secondary" type="button" data-network-action="scan-wifi" data-network-endpoint="/api/network/scan-wifi" { "Scan Wi-Fi" }
+                        button class="btn btn--primary" type="submit" { "Connect Wi-Fi" }
+                        button class="btn btn--secondary" type="button" data-network-action="disconnect-wifi" data-network-endpoint="/api/network/disconnect-wifi" { "Disconnect Wi-Fi" }
+                    }
+                    div id="wifi-message" class="message" hidden {}
+                }
+            }
+            article class="system-card system-card--networking" {
+                h3 { "Addresses" }
                 div class="system-endpoints" {
                     (command_box("Console", status.canonical_url.trim_end_matches('/')))
                     (command_box("Game folders", &format!("smb://{}", status.surfaces.smb)))
@@ -752,8 +715,7 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                 (status_card("Last checked", "Not reported", "The updater receipt reports the last check time."))
             }
             div class="primary-actions" {
-                (action_button(ButtonVariant::Primary, "Check for Updates", "update-gui", "/api/actions/update-gui"))
-                (action_button(ButtonVariant::Secondary, "Install Update", "update-gui", "/api/actions/update-gui"))
+                (action_button(ButtonVariant::Primary, "Update GUI", "update-gui", "/api/actions/update-gui"))
             }
             (collapsible_log("Update log", "Update receipts appear under /var/lib/harmonia/receipts/arcadia-gui-latest on the console."))
         },
@@ -786,16 +748,12 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         (system_field("Username", "console"))
                     }
                     (command_box("Example command", "ssh console@console.home.arpa"))
-                    div class="inline-actions" {
-                        (modal_button(ButtonVariant::Secondary, "Enable SSH", "Enable SSH", "Confirm enabling SSH."))
-                        (modal_button(ButtonVariant::Secondary, "Disable SSH", "Disable SSH", "Confirm disabling SSH."))
-                        (copy_button("Copy SSH Command", "ssh console@console.home.arpa"))
-                    }
+                    p class="warning" { "Only enable SSH on a trusted home network. Use a strong password or key-based access." }
                 }
 
                 article class="system-card system-card--services" {
                     div class="system-service-list" {
-                        (system_service_row("GameScope", "Running", "Not reported", Some(("restart-gamescope", "/api/actions/restart-gamescope"))))
+                        (system_service_row("GameScope", "Running", "Not reported", None))
                         (system_service_row("Samba", "Running", "Not reported", None))
                         (system_service_row("Game Sync", "Stopped", "Runs on demand", None))
                         (system_service_row("Local AI", "Stopped", "Not reported", None))
@@ -906,36 +864,7 @@ fn ai_model_storage_row(name: &str, filename: &str, size: &str, status: &str) ->
             span { strong { (name) } code { (filename) } }
             em { (size) }
             b { (status) }
-            (action_button(ButtonVariant::Danger, "Remove Model", "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", filename)))
-        }
-    }
-}
-
-fn model_card(
-    name: &str,
-    filename: &str,
-    size: &str,
-    quant: &str,
-    gpu_memory: &str,
-    recommended_use: &str,
-    status: &str,
-    selected: bool,
-) -> Markup {
-    html! {
-        article class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
-            label class="model-choice" {
-                input type="radio" name="model" value=(name) checked[selected];
-                span class="model-name" { (name) }
-            }
-            code class="model-filename" { (filename) }
-            div class="model-meta-row" {
-                (model_meta("Size", size))
-                (model_meta("Quantization", quant))
-                (model_meta("GPU memory", gpu_memory))
-                (model_meta("Recommended use", recommended_use))
-            }
-            strong class="model-status" { (status) }
-            (modal_button(ButtonVariant::Primary, "Load This Model", "Load local AI", "Load this local AI model onto the console GPU. Games may run slower while a model is loaded."))
+            (action_button(ButtonVariant::Danger, &format!("Remove {}", filename), "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", filename)))
         }
     }
 }
@@ -953,7 +882,7 @@ fn command_box(label: &str, value: &str) -> Markup {
         div class="command-box" {
             span { (label) }
             code { (value) }
-            (copy_button("Copy", value))
+            (copy_button(&format!("Copy {}", label), value))
         }
     }
 }
@@ -986,11 +915,6 @@ fn system_log_group(name: &str) -> Markup {
     html! {
         details class="collapsible-log system-log-group" {
             summary { (name) }
-            div class="inline-actions" {
-                (modal_button(ButtonVariant::Secondary, "View", name, ""))
-                (copy_button("Copy", ""))
-                (modal_button(ButtonVariant::Secondary, "Download", name, ""))
-            }
             pre { code {} }
         }
     }
@@ -1014,16 +938,8 @@ fn action_button(variant: ButtonVariant, label: &str, action: &str, endpoint: &s
     html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-endpoint=(endpoint) { (label) } }
 }
 
-fn link_button(variant: ButtonVariant, label: &str, action: &str, url: &str) -> Markup {
-    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-url=(url) { (label) } }
-}
-
 fn nav_button(label: &str, view: &str) -> Markup {
     html! { button class="btn btn--secondary" type="button" data-nav-target=(view) { (label) } }
-}
-
-fn modal_button(variant: ButtonVariant, label: &str, title: &str, body: &str) -> Markup {
-    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-modal-title=(title) data-modal-body=(body) { (label) } }
 }
 
 fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
