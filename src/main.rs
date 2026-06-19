@@ -1005,16 +1005,64 @@ mod tests {
             assert!(rendered.contains(required), "missing {required}");
         }
 
-        for forbidden in [
-            "AI Model",
-            "Load AI Model",
-            "Model Manager",
-            "LLM",
-            "llama.cpp",
-        ] {
+        for forbidden in ["Load AI Model", "Model Manager", "LLM", "llama.cpp"] {
             assert!(
                 !rendered.contains(forbidden),
                 "forbidden visible term survived: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn storage_view_answers_where_disk_space_went_safely() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+
+        for required in [
+            "data-view=\"storage\"",
+            "view-storage",
+            "Storage",
+            "See what is using space on the console.",
+            "Free Space",
+            "Total storage",
+            "Used storage",
+            "Free storage",
+            "Percent used",
+            "Storage OK",
+            "Games",
+            "Artwork",
+            "AI Models",
+            "Other Storage",
+            "Open Games Folder",
+            "Clear Artwork Cache",
+            "Clearing artwork does not delete games. Artwork can be downloaded again during Sync.",
+            "Rebuild Artwork on Next Sync",
+            "Remove Model",
+            "This removes the model file from console storage. It does not affect games.",
+            "Clean Temporary Files",
+            "Storage is low. Sync may fail if artwork or shortcuts cannot be written.",
+            "Storage is low. Remove unused games, artwork, or AI models before adding more models.",
+            "data-nav-target=\"storage\"",
+        ] {
+            assert!(rendered.contains(required), "missing {required}");
+        }
+
+        let storage_start = rendered
+            .find("id=\"view-storage\"")
+            .expect("storage view starts");
+        let storage_end = rendered
+            .find("id=\"view-ai-model\"")
+            .expect("local ai follows storage");
+        let storage_html = &rendered[storage_start..storage_end];
+        for forbidden in ["/home", "/var", "/mnt", "/opt", "delete-all-games"] {
+            assert!(
+                !storage_html.contains(forbidden),
+                "raw/dangerous storage term leaked: {forbidden}"
             );
         }
     }
@@ -1033,6 +1081,7 @@ mod tests {
             "view-home",
             "view-games",
             "view-sync",
+            "view-storage",
             "view-ai-model",
             "view-lan-inference",
             "view-access-pin",
