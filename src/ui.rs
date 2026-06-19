@@ -40,9 +40,9 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                         main class="viewport" aria-live="polite" {
                             (home_view(status))
                             (games_view(status))
-                            (sync_view())
+                            (sync_view(status))
                             (storage_view(status))
-                            (ai_model_view())
+                            (ai_model_view(status))
                             (lan_inference_view())
                             (access_pin_view(status))
                             (updates_view(status))
@@ -71,7 +71,7 @@ fn header(status: &ConsoleStatus) -> Markup {
             div class="header-indicators" aria-label="Console state" {
                 (status_badge("Network", "Online", "good", "The console is reachable on your home network."))
                 (status_badge("GameScope", "Running", "good", "The TV game session is expected to be running."))
-                (storage_status_badge("OK", "good", "Storage is 64% used. Open Storage to see what is using space."))
+                (storage_status_badge(&status.storage.header_state, status.storage.header_class, &status.storage.header_tooltip))
                 (status_badge("Sync", "Idle", "idle", "No game sync is running right now."))
                 (status_badge("AI", "Not Loaded", "idle", "No local AI model is currently marked as loaded."))
                 (status_badge("Update", "Current", "good", "No update is currently reported."))
@@ -147,7 +147,7 @@ fn home_view(status: &ConsoleStatus) -> Markup {
             div class="status-card-grid status-card-grid--compact" {
                 (status_card("Network", "Online", "Console GUI reachable on the home network."))
                 (status_card("GameScope", "Running", "Games appear on the TV after sync creates shortcuts."))
-                (status_card("Storage", "OK — 412 GB free", "64% used. Open Storage for the full breakdown."))
+                (status_card("Storage", &format!("{} — {} free", status.storage.health, status.storage.free), &format!("{} used. Open Storage for the full breakdown.", status.storage.percent)))
                 (status_card("Last Sync", "Not reported", "Run Sync Games after copying new files."))
                 (status_card("Loaded Local AI", "Not Loaded", "Load local AI only when you need LAN inference."))
                 (status_card("Software Version", status.arcadia.version, "Arcadia web console version."))
@@ -203,7 +203,7 @@ fn games_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn sync_view() -> Markup {
+fn sync_view(status: &ConsoleStatus) -> Markup {
     view_shell("sync", "Library import", "Sync Games", "Sync scans the game folders, improves names and cover art when optional keys are present, then creates Steam shortcuts for GameScope.", html! {
         div class="task-hero" {
             div { strong { "Current state" } span id="sync-state" { "Idle" } }
@@ -215,7 +215,7 @@ fn sync_view() -> Markup {
             (status_card("Steam shortcuts", "Not reported", "Entries created for GameScope / Steam mode."))
             (status_card("Artwork", "Ready", "Artwork improves when provider keys are configured."))
         }
-        p class="warning" { "Storage is OK. Storage is low. Sync may fail if artwork or shortcuts cannot be written." }
+        @if status.storage.percent_used >= 90 { p class="warning" { "Storage is low. Sync may fail if artwork or shortcuts cannot be written." } }
         details class="settings-panel" {
             summary { "Configure Metadata Providers" }
             p { "Optional metadata keys improve cover art and game titles during Sync. Games still work without them." }
@@ -241,59 +241,64 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
         section class="storage-summary" aria-labelledby="free-space-title" {
             div class="section-heading" {
                 h3 id="free-space-title" { "Free Space" }
-                p { "Storage OK. The console has enough free space for games, artwork, updates, and local AI models." }
+                p { (status.storage.warning_copy) }
             }
             div class="storage-hero" {
                 div class="storage-hero-main" {
-                    span { "Storage OK" }
-                    strong { "412 GB free" }
-                    p { "64% used" }
+                    span { "Storage " (status.storage.health) }
+                    strong { (status.storage.free) " free" }
+                    p { (status.storage.percent) " used" }
                 }
                 div class="storage-hero-stats" {
-                    (storage_stat("Total storage", "1.2 TB"))
-                    (storage_stat("Used storage", "768 GB"))
-                    (storage_stat("Free storage", "412 GB"))
-                    (storage_stat("Percent used", "64%"))
+                    (storage_stat("Total storage", &status.storage.total))
+                    (storage_stat("Used storage", &status.storage.used))
+                    (storage_stat("Free storage", &status.storage.free))
+                    (storage_stat("Percent used", &status.storage.percent))
                 }
             }
             div class="storage-bar" aria-label="Segmented storage usage" {
-                span class="storage-segment storage-segment--games" style="width: 44%" title="Games 532 GB" {}
-                span class="storage-segment storage-segment--artwork" style="width: 4%" title="Artwork 38.4 GB" {}
-                span class="storage-segment storage-segment--ai" style="width: 7%" title="AI Models 86 GB" {}
-                span class="storage-segment storage-segment--other" style="width: 9%" title="Other 111 GB" {}
-                span class="storage-segment storage-segment--free" style="width: 36%" title="Free 412 GB" {}
+                span class="storage-segment storage-segment--games" style=(format!("width: {}%", status.storage.games.percent_of_total)) title=(format!("Games {}", status.storage.games.size)) {}
+                span class="storage-segment storage-segment--artwork" style=(format!("width: {}%", status.storage.artwork.percent_of_total)) title=(format!("Artwork {}", status.storage.artwork.size)) {}
+                span class="storage-segment storage-segment--ai" style=(format!("width: {}%", status.storage.ai_models.percent_of_total)) title=(format!("AI Models {}", status.storage.ai_models.size)) {}
+                span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total)) title=(format!("Other {}", status.storage.other.size)) {}
+                span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
             }
             div class="storage-legend" {
-                (storage_legend("Games", "532 GB", "games"))
-                (storage_legend("Artwork", "38.4 GB", "artwork"))
-                (storage_legend("AI Models", "86 GB", "ai"))
-                (storage_legend("Other", "111 GB", "other"))
-                (storage_legend("Free Space", "412 GB", "free"))
+                (storage_legend("Games", &status.storage.games.size, "games"))
+                (storage_legend("Artwork", &status.storage.artwork.size, "artwork"))
+                (storage_legend("AI Models", &status.storage.ai_models.size, "ai"))
+                (storage_legend("Other", &status.storage.other.size, "other"))
+                (storage_legend("Free Space", &status.storage.free, "free"))
             }
         }
 
         section class="storage-category-grid" aria-label="Storage categories" {
-            (storage_category("Games", "532 GB", "1,248 files", "Largest folders: ps2, gamecube, wii, ps1, psp, snes, gba.", html! {
+            (storage_category("Games", &status.storage.games.size, &status.storage.games.meta, &status.storage.games.detail, html! {
                 (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
-                (modal_button(ButtonVariant::Secondary, "Rescan Game Storage", "Rescan game storage", "Arcadia will refresh the game storage estimate when the storage scanner is connected."))
+                (modal_button(ButtonVariant::Secondary, "Rescan Game Storage", "Rescan game storage", "Refresh this page to rescan game storage from the console."))
             }))
-            (storage_category("Artwork", "38.4 GB", "18,420 artwork files", "Last artwork sync: Not reported. Clearing artwork does not delete games. Artwork can be downloaded again during Sync.", html! {
-                (modal_button(ButtonVariant::Danger, "Clear Artwork Cache", "Clear artwork cache", "Clearing artwork does not delete games. Artwork can be downloaded again during Sync. Confirm before clearing cached artwork."))
+            (storage_category("Artwork", &status.storage.artwork.size, &status.storage.artwork.meta, "Last artwork sync: Not reported. Clearing artwork does not delete games. Artwork can be downloaded again during Sync.", html! {
+                (action_button(ButtonVariant::Danger, "Clear Artwork Cache", "clear-artwork-cache", "/api/actions/clear-artwork-cache"))
                 (modal_button(ButtonVariant::Secondary, "Rebuild Artwork on Next Sync", "Rebuild artwork", "The next Sync will rebuild artwork and metadata for copied games."))
             }))
-            (storage_category("AI Models", "86 GB", "3 installed models", "Model files are stored locally for Local AI. Remove unused models to free space without affecting games.", html! {
-                (ai_model_storage_row("Mistral 7B Instruct", "mistral-7b-instruct.Q4_K_M.gguf", "4.1 GB", "Available"))
-                (ai_model_storage_row("Qwen2.5 Coder 7B", "qwen2.5-coder-7b.Q4_K_M.gguf", "4.7 GB", "Available"))
+            (storage_category("AI Models", &status.storage.ai_models.size, &status.storage.ai_models.meta, &status.storage.ai_models.detail, html! {
+                @if status.storage.ai_models.models.is_empty() {
+                    p { "No local AI model files are installed." }
+                } @else {
+                    @for model in &status.storage.ai_models.models {
+                        (ai_model_storage_row(&model.friendly_name, &model.filename, &model.size, model.status))
+                    }
+                }
                 (nav_button("Open Local AI", "ai-model"))
             }))
-            (storage_category("Other Storage", "111 GB", "System, updates, logs, temporary files", "Other Storage includes the operating system, update files, logs, and anything not classified as games, artwork, or AI models.", html! {
-                (modal_button(ButtonVariant::Secondary, "Clean Temporary Files", "Clean temporary files", "This cleans safe temporary files only. It does not remove games, intentionally kept artwork, or installed AI models."))
+            (storage_category("Other Storage", &status.storage.other.size, &status.storage.other.meta, &status.storage.other.detail, html! {
+                (action_button(ButtonVariant::Secondary, "Clean Temporary Files", "clean-temporary-files", "/api/actions/clean-temporary-files"))
             }))
         }
     })
 }
 
-fn ai_model_view() -> Markup {
+fn ai_model_view(status: &ConsoleStatus) -> Markup {
     view_shell("ai-model", "On-device assistant", "Local AI", "This console can run a local AI assistant without sending prompts to the cloud. Choose which model is loaded and whether it is available to devices on your home network.", html! {
         section class="local-ai-section" aria-labelledby="loaded-model-title" {
             div class="section-heading section-heading--compact" {
@@ -330,7 +335,7 @@ fn ai_model_view() -> Markup {
         }
 
         section class="local-ai-section" aria-labelledby="gpu-usage-title" {
-            p class="warning" { "Storage is OK. Storage is low. Remove unused games, artwork, or AI models before adding more models." }
+            @if status.storage.percent_used >= 90 { p class="warning" { "Storage is low. Remove unused games, artwork, or AI models before adding more models." } }
             div class="section-heading section-heading--compact" {
                 h3 id="gpu-usage-title" { "GPU Usage" }
                 p { "Local AI uses the same GPU as games. Large models may reduce game performance while loaded." }
@@ -495,7 +500,7 @@ fn ai_model_storage_row(name: &str, filename: &str, size: &str, status: &str) ->
             span { strong { (name) } code { (filename) } }
             em { (size) }
             b { (status) }
-            (modal_button(ButtonVariant::Danger, "Remove Model", "Remove AI model", "This removes the model file from console storage. It does not affect games. Unload the model first if it is currently loaded."))
+            (action_button(ButtonVariant::Danger, "Remove Model", "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", filename)))
         }
     }
 }

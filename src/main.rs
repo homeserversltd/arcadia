@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
+    collections::HashMap,
     env, fs,
     fs::OpenOptions,
     io::Write,
     net::SocketAddr,
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -36,6 +37,15 @@ const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
 const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
 const SYSTEMD_RUN_BIN: &str = "/usr/bin/systemd-run";
+const GAMES_ROOT: &str = "/home/owner/Games";
+const ARTWORK_ROOT: &str = "/home/owner/Games/artwork";
+const TEMP_CLEAN_ROOTS: [&str; 2] = ["/tmp", "/var/tmp"];
+const MODEL_SCAN_ROOTS: [&str; 3] = ["/home/owner", "/opt", "/var/lib"];
+const MODEL_EXTENSIONS: [&str; 3] = ["gguf", "safetensors", "onnx"];
+const GAME_SYSTEMS: [&str; 12] = [
+    "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
+    "dos",
+];
 
 #[derive(Clone)]
 struct AppState {
@@ -62,6 +72,7 @@ pub struct ConsoleStatus {
     pub runtime: RuntimeStatus,
     pub gui_pin: GuiPinStatus,
     pub surfaces: SurfaceStatus,
+    pub storage: StorageStatus,
     pub ui_contract: UiContract,
 }
 
@@ -98,6 +109,57 @@ pub struct GuiPinStatus {
     pub pin_reset_helper_present: bool,
     pub pin_storage: &'static str,
     pub default_reset_available: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub struct StorageStatus {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+    pub percent_used: u8,
+    pub health: &'static str,
+    pub header_state: String,
+    pub header_class: &'static str,
+    pub header_tooltip: String,
+    pub ok_copy: &'static str,
+    pub warning_copy: &'static str,
+    pub total: String,
+    pub used: String,
+    pub free: String,
+    pub percent: String,
+    pub games: StorageCategoryStatus,
+    pub artwork: StorageCategoryStatus,
+    pub ai_models: AiModelStorageStatus,
+    pub other: StorageCategoryStatus,
+}
+
+#[derive(Clone, Serialize)]
+pub struct StorageCategoryStatus {
+    pub bytes: u64,
+    pub size: String,
+    pub files: u64,
+    pub meta: String,
+    pub detail: String,
+    pub percent_of_total: u8,
+}
+
+#[derive(Clone, Serialize)]
+pub struct AiModelStorageStatus {
+    pub bytes: u64,
+    pub size: String,
+    pub count: usize,
+    pub meta: String,
+    pub detail: String,
+    pub percent_of_total: u8,
+    pub models: Vec<AiModelDiskStatus>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct AiModelDiskStatus {
+    pub friendly_name: String,
+    pub filename: String,
+    pub size: String,
+    pub status: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -212,6 +274,15 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/provider-keys/save", post(save_provider_keys))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/sync-games", post(action_sync_games))
+        .route(
+            "/api/actions/clear-artwork-cache",
+            post(action_clear_artwork_cache),
+        )
+        .route(
+            "/api/actions/clean-temporary-files",
+            post(action_clean_temporary_files),
+        )
+        .route("/api/actions/remove-ai-model", post(action_remove_ai_model))
         .route("/api/actions/reboot-console", post(action_reboot_console))
         .route(
             "/api/actions/shutdown-console",
@@ -304,6 +375,145 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
         "Sync games completed.",
         "Sync games failed. Read /var/lib/harmonia/receipts/game-sync-latest.",
     )
+}
+
+async fn action_clear_artwork_cache(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("CLEAR_ARTWORK") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "clear-artwork-cache",
+            "arcadia-storage",
+            "Confirm before clearing artwork cache. This does not delete games.",
+        );
+    }
+    storage_remove_children(
+        "clear-artwork-cache",
+        ARTWORK_ROOT,
+        "Artwork cache cleared. Games were not deleted.",
+        "Artwork cache could not be cleared.",
+    )
+}
+
+async fn action_clean_temporary_files(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("CLEAN_TEMPORARY") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "clean-temporary-files",
+            "arcadia-storage",
+            "Confirm before cleaning safe temporary files.",
+        );
+    }
+    let mut removed = 0u64;
+    let mut errors = Vec::new();
+    for root in TEMP_CLEAN_ROOTS {
+        match remove_children(Path::new(root)) {
+            Ok(count) => removed += count,
+            Err(err) => errors.push(format!("{}: {}", root, err)),
+        }
+    }
+    let ok = errors.is_empty();
+    let message = if ok {
+        format!("Cleaned safe temporary files. Removed {} entries. Games, artwork, and AI models were not touched.", removed)
+    } else {
+        format!(
+            "Temporary cleanup partially failed after removing {} entries: {}",
+            removed,
+            errors.join("; ")
+        )
+    };
+    (
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        Json(ConsoleActionResponse {
+            ok,
+            action: "clean-temporary-files",
+            command: "arcadia-storage",
+            exit_code: if ok { Some(0) } else { Some(1) },
+            message,
+            stdout: String::new(),
+            stderr: errors.join("\n"),
+        }),
+    )
+}
+
+async fn action_remove_ai_model(
+    Query(params): Query<HashMap<String, String>>,
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("REMOVE_MODEL") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "remove-ai-model",
+            "arcadia-storage",
+            "Confirm before removing a local AI model file. This does not affect games.",
+        );
+    }
+    let Some(filename) = params.get("name") else {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "remove-ai-model",
+            "arcadia-storage",
+            "Missing model filename.",
+        );
+    };
+    let current = storage_status();
+    let Some(path) = find_model_path_by_filename(filename) else {
+        return console_action_error(
+            StatusCode::NOT_FOUND,
+            "remove-ai-model",
+            "arcadia-storage",
+            "Model file was not found in local AI storage.",
+        );
+    };
+    let model_known = current
+        .ai_models
+        .models
+        .iter()
+        .any(|model| model.filename == *filename);
+    if !model_known {
+        return console_action_error(
+            StatusCode::NOT_FOUND,
+            "remove-ai-model",
+            "arcadia-storage",
+            "Model file was not found in the current storage inventory.",
+        );
+    }
+    match fs::remove_file(&path) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "remove-ai-model",
+                command: "arcadia-storage",
+                exit_code: Some(0),
+                message: format!(
+                    "Removed {} from console storage. Games were not affected.",
+                    filename
+                ),
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ConsoleActionResponse {
+                ok: false,
+                action: "remove-ai-model",
+                command: "arcadia-storage",
+                exit_code: Some(1),
+                message: format!("Could not remove {}.", filename),
+                stdout: String::new(),
+                stderr: err.to_string(),
+            }),
+        ),
+    }
 }
 
 async fn action_reboot_console(
@@ -779,6 +989,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             mdns: "homeconsole.local",
             smb: "HOMECONSOLE",
         },
+        storage: storage_status(),
         ui_contract: UiContract {
             schema: "arcadia.ui.contract.v5",
             button_variants: ["primary", "secondary", "danger"],
@@ -848,6 +1059,366 @@ fn gui_pin_required() -> bool {
 
 fn helper_exists(path: &str) -> bool {
     Path::new(path).exists()
+}
+
+fn storage_status() -> StorageStatus {
+    let disk = root_disk_usage().unwrap_or((0, 0, 0));
+    let (total_bytes, used_bytes, free_bytes) = disk;
+    let percent_used = percent(used_bytes, total_bytes);
+    let (health, header_state, header_class) = storage_health(percent_used);
+    let games = game_storage(total_bytes);
+    let artwork = category_from_path(
+        Path::new(ARTWORK_ROOT),
+        total_bytes,
+        "artwork files",
+        "Last artwork sync: Not reported.",
+    );
+    let ai_models = ai_model_storage(total_bytes);
+    let classified = games
+        .bytes
+        .saturating_add(artwork.bytes)
+        .saturating_add(ai_models.bytes);
+    let other_bytes = used_bytes.saturating_sub(classified);
+    let other = StorageCategoryStatus {
+        bytes: other_bytes,
+        size: human_size(other_bytes),
+        files: 0,
+        meta: "System, updates, logs, temporary files".to_string(),
+        detail: "Other Storage includes the operating system, update files, logs, and anything not classified as games, artwork, or AI models.".to_string(),
+        percent_of_total: percent(other_bytes, total_bytes),
+    };
+    let warning_copy = if percent_used >= 90 {
+        "Storage is almost full. Sync, updates, and AI model loading may fail until space is freed."
+    } else {
+        "The console has enough free space for games, artwork, updates, and local AI models."
+    };
+    StorageStatus {
+        total_bytes,
+        used_bytes,
+        free_bytes,
+        percent_used,
+        health,
+        header_state,
+        header_class,
+        header_tooltip: if percent_used >= 90 {
+            format!(
+                "Storage is low. Open Storage to free space. {} used.",
+                percent_used
+            )
+        } else {
+            format!("Storage is {}% used.", percent_used)
+        },
+        ok_copy:
+            "The console has enough free space for games, artwork, updates, and local AI models.",
+        warning_copy,
+        total: human_size(total_bytes),
+        used: human_size(used_bytes),
+        free: human_size(free_bytes),
+        percent: format!("{}%", percent_used),
+        games,
+        artwork,
+        ai_models,
+        other,
+    }
+}
+
+fn root_disk_usage() -> Option<(u64, u64, u64)> {
+    let output = Command::new("df").args(["-B1", "/"]).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout.lines().nth(1)?;
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 5 {
+        return None;
+    }
+    let total = parts.get(1)?.parse().ok()?;
+    let used = parts.get(2)?.parse().ok()?;
+    let free = parts.get(3)?.parse().ok()?;
+    Some((total, used, free))
+}
+
+fn storage_health(percent_used: u8) -> (&'static str, String, &'static str) {
+    match percent_used {
+        0..=74 => ("OK", "OK".to_string(), "good"),
+        75..=89 => ("Getting Full", format!("{}%", percent_used), "warn"),
+        90..=97 => ("Low Space", "Low".to_string(), "warn"),
+        _ => ("Full", "Full".to_string(), "bad"),
+    }
+}
+
+fn game_storage(total_bytes: u64) -> StorageCategoryStatus {
+    let mut seen = Vec::<PathBuf>::new();
+    let mut folders = Vec::<(String, u64)>::new();
+    let mut bytes = 0u64;
+    let mut files = 0u64;
+    for path in game_candidate_paths() {
+        if !path.exists() || seen.iter().any(|prior| path.starts_with(prior)) {
+            continue;
+        }
+        let usage = path_usage(&path);
+        if usage.bytes > 0 || usage.files > 0 {
+            let name = path
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("games")
+                .to_string();
+            folders.push((name, usage.bytes));
+            bytes = bytes.saturating_add(usage.bytes);
+            files = files.saturating_add(usage.files);
+            seen.push(path);
+        }
+    }
+    folders.sort_by(|a, b| b.1.cmp(&a.1));
+    let largest = folders
+        .iter()
+        .take(7)
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    StorageCategoryStatus {
+        bytes,
+        size: human_size(bytes),
+        files,
+        meta: format!("{} files", files),
+        detail: if largest.is_empty() {
+            "No copied game files were found in the game folders.".to_string()
+        } else {
+            format!("Largest folders: {}.", largest)
+        },
+        percent_of_total: percent(bytes, total_bytes),
+    }
+}
+
+fn game_candidate_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for system in GAME_SYSTEMS {
+        paths.push(Path::new(GAMES_ROOT).join(system));
+        paths.push(Path::new(GAMES_ROOT).join("roms").join(system));
+        paths.push(Path::new(GAMES_ROOT).join("isos").join(system));
+    }
+    paths.push(Path::new(GAMES_ROOT).join("pc").join("dos"));
+    paths
+}
+
+fn category_from_path(
+    path: &Path,
+    total_bytes: u64,
+    meta_suffix: &str,
+    fallback_detail: &str,
+) -> StorageCategoryStatus {
+    let usage = path_usage(path);
+    StorageCategoryStatus {
+        bytes: usage.bytes,
+        size: human_size(usage.bytes),
+        files: usage.files,
+        meta: format!("{} {}", usage.files, meta_suffix),
+        detail: fallback_detail.to_string(),
+        percent_of_total: percent(usage.bytes, total_bytes),
+    }
+}
+
+fn ai_model_storage(total_bytes: u64) -> AiModelStorageStatus {
+    let mut models = Vec::new();
+    for root in MODEL_SCAN_ROOTS {
+        collect_ai_models(Path::new(root), &mut models, 0);
+    }
+    models.sort_by(|a, b| b.0.cmp(&a.0));
+    let total = models.iter().map(|(size, _, _)| *size).sum::<u64>();
+    let rows = models
+        .into_iter()
+        .map(|(size, filename, _path)| AiModelDiskStatus {
+            friendly_name: friendly_model_name(&filename),
+            filename,
+            size: human_size(size),
+            status: "Available",
+        })
+        .collect::<Vec<_>>();
+    let count = rows.len();
+    AiModelStorageStatus {
+        bytes: total,
+        size: human_size(total),
+        count,
+        meta: format!("{} installed models", count),
+        detail: if count == 0 {
+            "No local AI model files were found on console storage.".to_string()
+        } else {
+            "Model files are stored locally for Local AI. Remove unused models to free space without affecting games.".to_string()
+        },
+        percent_of_total: percent(total, total_bytes),
+        models: rows,
+    }
+}
+
+fn collect_ai_models(path: &Path, out: &mut Vec<(u64, String, PathBuf)>, depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_ai_models(&path, out, depth + 1);
+        } else if metadata.is_file() && is_ai_model_file(&path) {
+            let filename = path
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("model")
+                .to_string();
+            out.push((metadata.len(), filename, path));
+        }
+    }
+}
+
+fn is_ai_model_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|v| v.to_str())
+        .map(|ext| {
+            MODEL_EXTENSIONS
+                .iter()
+                .any(|candidate| ext.eq_ignore_ascii_case(candidate))
+        })
+        .unwrap_or(false)
+}
+
+fn find_model_path_by_filename(filename: &str) -> Option<PathBuf> {
+    let mut models = Vec::new();
+    for root in MODEL_SCAN_ROOTS {
+        collect_ai_models(Path::new(root), &mut models, 0);
+    }
+    models
+        .into_iter()
+        .find(|(_, name, _)| name == filename)
+        .map(|(_, _, path)| path)
+}
+
+#[derive(Default)]
+struct Usage {
+    bytes: u64,
+    files: u64,
+}
+
+fn path_usage(path: &Path) -> Usage {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return Usage::default();
+    };
+    if metadata.file_type().is_symlink() {
+        return Usage::default();
+    }
+    if metadata.is_file() {
+        return Usage {
+            bytes: metadata.len(),
+            files: 1,
+        };
+    }
+    if !metadata.is_dir() {
+        return Usage::default();
+    }
+    let mut usage = Usage::default();
+    let Ok(entries) = fs::read_dir(path) else {
+        return usage;
+    };
+    for entry in entries.flatten() {
+        let child = path_usage(&entry.path());
+        usage.bytes = usage.bytes.saturating_add(child.bytes);
+        usage.files = usage.files.saturating_add(child.files);
+    }
+    usage
+}
+
+fn remove_children(path: &Path) -> std::io::Result<u64> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let mut removed = 0u64;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let child = entry.path();
+        let metadata = fs::symlink_metadata(&child)?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            fs::remove_dir_all(&child)?;
+        } else {
+            fs::remove_file(&child)?;
+        }
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+fn storage_remove_children(
+    action: &'static str,
+    path: &str,
+    success: &str,
+    failure: &str,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    match remove_children(Path::new(path)) {
+        Ok(count) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action,
+                command: "arcadia-storage",
+                exit_code: Some(0),
+                message: format!("{} Removed {} entries.", success, count),
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ConsoleActionResponse {
+                ok: false,
+                action,
+                command: "arcadia-storage",
+                exit_code: Some(1),
+                message: failure.to_string(),
+                stdout: String::new(),
+                stderr: err.to_string(),
+            }),
+        ),
+    }
+}
+
+fn friendly_model_name(filename: &str) -> String {
+    let mut name = filename.to_string();
+    for suffix in [".gguf", ".safetensors", ".onnx"] {
+        if name.to_lowercase().ends_with(suffix) {
+            let new_len = name.len().saturating_sub(suffix.len());
+            name.truncate(new_len);
+            break;
+        }
+    }
+    name.replace(['_', '-'], " ")
+}
+
+fn percent(part: u64, total: u64) -> u8 {
+    if total == 0 {
+        return 0;
+    }
+    ((part.saturating_mul(100) / total).min(100)) as u8
+}
+
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0usize;
+    while value >= 1000.0 && unit < UNITS.len() - 1 {
+        value /= 1000.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} B", bytes)
+    } else if value >= 100.0 {
+        format!("{:.0} {}", value, UNITS[unit])
+    } else {
+        format!("{:.1} {}", value, UNITS[unit])
+    }
 }
 
 #[cfg(test)]
@@ -1042,14 +1613,22 @@ mod tests {
             "Clear Artwork Cache",
             "Clearing artwork does not delete games. Artwork can be downloaded again during Sync.",
             "Rebuild Artwork on Next Sync",
-            "Remove Model",
-            "This removes the model file from console storage. It does not affect games.",
             "Clean Temporary Files",
-            "Storage is low. Sync may fail if artwork or shortcuts cannot be written.",
-            "Storage is low. Remove unused games, artwork, or AI models before adding more models.",
             "data-nav-target=\"storage\"",
         ] {
             assert!(rendered.contains(required), "missing {required}");
+        }
+        assert!(
+            rendered.contains("Remove Model") || rendered.contains("No local AI model files"),
+            "storage page must either show removable models or the true empty model state"
+        );
+        if status.storage.percent_used >= 90 {
+            assert!(rendered.contains(
+                "Storage is low. Sync may fail if artwork or shortcuts cannot be written."
+            ));
+            assert!(rendered.contains(
+                "Storage is low. Remove unused games, artwork, or AI models before adding more models."
+            ));
         }
 
         let storage_start = rendered
