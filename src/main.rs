@@ -136,11 +136,26 @@ pub struct GuiPinStatus {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageStatus {
+    pub scanned_at: String,
+    pub scanning: bool,
+    pub scan_error: Option<String>,
     pub total_bytes: u64,
     pub used_bytes: u64,
     pub free_bytes: u64,
     pub percent_used: u8,
+    pub thresholds: StorageThresholds,
+    pub volumes: Vec<StorageVolume>,
+    pub registry: StorageRegistry,
+    pub categories: StorageCategories,
+    pub game_folders: Vec<GameFolderStorage>,
+    pub artwork_stores: Vec<FolderStorage>,
+    pub ai_model_files: Vec<AIModelStorage>,
+    pub cleanup: CleanupState,
+    pub diagnostics: StorageDiagnostics,
+
+    // Legacy/home-summary fields consumed by the existing Arcadia shell.
     pub health: &'static str,
     pub header_state: String,
     pub header_class: &'static str,
@@ -158,16 +173,193 @@ pub struct StorageStatus {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageThresholds {
+    pub getting_full_percent: u8,
+    pub low_percent: u8,
+    pub full_percent: u8,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageVolume {
+    pub id: String,
+    pub label: String,
+    pub mount_point: String,
+    pub filesystem: Option<String>,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub free_bytes: u64,
+    pub health: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageRegistry {
+    pub volumes: Vec<StorageVolume>,
+    pub categories: StorageRegistryCategories,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageRegistryCategories {
+    pub games: GameRootsRegistry,
+    pub artwork: FolderRootsRegistry,
+    pub ai_models: FolderRootsRegistry,
+    pub updates: FolderRootsRegistry,
+    pub logs: FolderRootsRegistry,
+    pub temporary: FolderRootsRegistry,
+    pub system: FolderRootsRegistry,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRootsRegistry {
+    pub label: String,
+    pub roots: Vec<GameRoot>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRoot {
+    pub id: String,
+    pub platform: String,
+    pub display_name: String,
+    pub path: String,
+    pub samba_share_name: String,
+    #[serde(rename = "windowsUNC")]
+    pub windows_unc: Option<String>,
+    #[serde(rename = "windowsUNCByIp")]
+    pub windows_unc_by_ip: Option<String>,
+    pub smb_url: Option<String>,
+    pub smb_url_by_ip: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderRootsRegistry {
+    pub label: String,
+    pub roots: Vec<FolderRoot>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderRoot {
+    pub id: String,
+    pub display_name: String,
+    pub path: String,
+    pub purpose: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageCategories {
+    pub games: StorageCategoryStatus,
+    pub artwork: StorageCategoryStatus,
+    pub ai_models: StorageCategoryStatus,
+    pub updates: StorageCategoryStatus,
+    pub logs: StorageCategoryStatus,
+    pub temporary: StorageCategoryStatus,
+    pub system: StorageCategoryStatus,
+    pub other: StorageCategoryStatus,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageCategoryStatus {
     pub bytes: u64,
     pub size: String,
     pub files: u64,
+    pub file_count: Option<u64>,
+    pub root_count: usize,
+    pub state: String,
     pub meta: String,
     pub detail: String,
+    pub percent_of_used: u8,
     pub percent_of_total: u8,
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameFolderStorage {
+    pub platform: String,
+    pub display_name: String,
+    pub path: String,
+    pub samba_share_name: String,
+    pub bytes: u64,
+    pub size: String,
+    pub file_count: u64,
+    pub synced_entries: Option<u64>,
+    pub unsynced_files: Option<u64>,
+    pub largest_files: Vec<LargestFile>,
+    #[serde(rename = "windowsUNC")]
+    pub windows_unc: Option<String>,
+    #[serde(rename = "windowsUNCByIp")]
+    pub windows_unc_by_ip: Option<String>,
+    pub smb_url: Option<String>,
+    pub smb_url_by_ip: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LargestFile {
+    pub name: String,
+    pub path: String,
+    pub bytes: u64,
+    pub size: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderStorage {
+    pub id: String,
+    pub display_name: String,
+    pub path: String,
+    pub bytes: u64,
+    pub size: String,
+    pub file_count: u64,
+    pub last_modified_at: Option<String>,
+    pub state: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIModelStorage {
+    pub id: String,
+    pub name: String,
+    pub filename: String,
+    pub path: String,
+    pub bytes: u64,
+    pub size: String,
+    pub source: String,
+    pub loaded: bool,
+    pub selected: bool,
+    pub removable: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanupState {
+    pub artwork_bytes_clearable: u64,
+    pub temporary_bytes_clearable: u64,
+    pub partial_downloads_bytes_clearable: u64,
+    pub old_update_bytes_clearable: u64,
+    pub logs_bytes_clearable: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageDiagnostics {
+    pub mount_point: String,
+    pub filesystem: Option<String>,
+    pub scan_duration_ms: u64,
+    pub scanner_version: String,
+    pub missing_dirs: Vec<String>,
+    pub permission_errors: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiModelStorageStatus {
     pub bytes: u64,
     pub size: String,
@@ -179,6 +371,7 @@ pub struct AiModelStorageStatus {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AiModelDiskStatus {
     pub friendly_name: String,
     pub filename: String,
@@ -186,12 +379,26 @@ pub struct AiModelDiskStatus {
     pub status: &'static str,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RescanFolderRequest {
+    path: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateManagedFolderRequest {
+    path: String,
+}
+
 #[derive(Clone, Serialize)]
 pub struct SurfaceStatus {
     pub http: String,
     pub mdns: String,
     pub smb: String,
+    #[serde(rename = "windowsUNC")]
     pub windows_unc: Option<String>,
+    #[serde(rename = "windowsUNCByIp")]
     pub windows_unc_by_ip: Option<String>,
     pub smb_url: Option<String>,
     pub smb_url_by_ip: Option<String>,
@@ -207,7 +414,9 @@ pub struct SambaStatus {
 pub struct SambaShareStatus {
     pub name: String,
     pub purpose: String,
+    #[serde(rename = "windowsUNC")]
     pub windows_unc: Option<String>,
+    #[serde(rename = "windowsUNCByIp")]
     pub windows_unc_by_ip: Option<String>,
     pub smb_url: Option<String>,
     pub smb_url_by_ip: Option<String>,
@@ -604,6 +813,40 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/", get(index))
         .route("/health", get(health))
         .route("/api/status", get(status))
+        .route("/api/storage/state", get(storage_state_route))
+        .route("/api/storage/registry", get(storage_registry_route))
+        .route("/api/storage/rescan", post(storage_rescan_route))
+        .route(
+            "/api/storage/rescan-folder",
+            post(storage_rescan_folder_route),
+        )
+        .route(
+            "/api/storage/cleanup/artwork",
+            post(storage_cleanup_artwork_route),
+        )
+        .route(
+            "/api/storage/cleanup/temporary",
+            post(storage_cleanup_temporary_route),
+        )
+        .route(
+            "/api/storage/cleanup/partial-ai-downloads",
+            post(storage_cleanup_partial_ai_downloads_route),
+        )
+        .route(
+            "/api/storage/cleanup/old-updates",
+            post(storage_cleanup_old_updates_route),
+        )
+        .route(
+            "/api/storage/cleanup/logs",
+            post(storage_cleanup_logs_route),
+        )
+        .route(
+            "/api/storage/create-managed-folder",
+            post(storage_create_managed_folder_route),
+        )
+        .route("/api/storage/game-folders", get(storage_game_folders_route))
+        .route("/api/storage/artwork", get(storage_artwork_route))
+        .route("/api/storage/ai-models", get(storage_ai_models_route))
         .route("/api/network/state", get(network_state_route))
         .route("/api/network/wifi/status", get(wifi_status))
         .route("/api/network/wifi/scan", post(wifi_scan))
@@ -673,6 +916,140 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
 
 async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
     Json(console_status(&state))
+}
+
+async fn storage_state_route() -> Json<StorageStatus> {
+    Json(storage_status())
+}
+
+async fn storage_registry_route() -> Json<StorageRegistry> {
+    Json(storage_registry(&network_status()))
+}
+
+async fn storage_rescan_route() -> Json<StorageStatus> {
+    Json(storage_status())
+}
+
+async fn storage_rescan_folder_route(
+    Json(body): Json<RescanFolderRequest>,
+) -> (StatusCode, Json<FolderStorage>) {
+    if !is_managed_storage_path(&body.path) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(folder_storage("unmanaged", "Unmanaged", &body.path)),
+        );
+    }
+    (
+        StatusCode::OK,
+        Json(folder_storage("managed", "Managed folder", &body.path)),
+    )
+}
+
+async fn storage_game_folders_route() -> Json<Vec<GameFolderStorage>> {
+    Json(storage_scan().game_folders)
+}
+
+async fn storage_artwork_route() -> Json<Vec<FolderStorage>> {
+    Json(storage_scan().artwork_stores)
+}
+
+async fn storage_ai_models_route() -> Json<Vec<AIModelStorage>> {
+    Json(storage_scan().ai_model_files)
+}
+
+async fn storage_cleanup_artwork_route(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_clear_artwork_cache(Json(body)).await
+}
+
+async fn storage_cleanup_temporary_route(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_clean_temporary_files(Json(body)).await
+}
+
+async fn storage_cleanup_partial_ai_downloads_route(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("CLEAR_PARTIAL_DOWNLOADS") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "clear-partial-ai-downloads",
+            "arcadia-storage",
+            "Confirm before clearing partial AI downloads.",
+        );
+    }
+    cleanup_known_roots(
+        "clear-partial-ai-downloads",
+        partial_ai_download_roots(),
+        "Partial AI downloads cleared. Installed models were not removed.",
+    )
+}
+
+async fn storage_cleanup_old_updates_route(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("CLEAR_OLD_UPDATES") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "clear-old-updates",
+            "arcadia-storage",
+            "Confirm before clearing old update packages.",
+        );
+    }
+    cleanup_known_roots(
+        "clear-old-updates",
+        update_roots(),
+        "Old update packages cleared.",
+    )
+}
+
+async fn storage_cleanup_logs_route(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("PRUNE_LOGS") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "prune-logs",
+            "arcadia-storage",
+            "Confirm before pruning managed logs.",
+        );
+    }
+    cleanup_known_roots("prune-logs", log_roots(), "Managed logs pruned.")
+}
+
+async fn storage_create_managed_folder_route(
+    Json(body): Json<CreateManagedFolderRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if !is_managed_storage_path(&body.path) {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "create-managed-folder",
+            "arcadia-storage",
+            "Only configured managed storage roots can be created.",
+        );
+    }
+    match fs::create_dir_all(&body.path) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "create-managed-folder",
+                command: "arcadia-storage",
+                exit_code: Some(0),
+                message: format!("Managed folder created: {}", body.path),
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "create-managed-folder",
+            "arcadia-storage",
+            &format!("Managed folder could not be created: {err}"),
+        ),
+    }
 }
 
 async fn network_state_route(State(state): State<Arc<AppState>>) -> Json<NetworkState> {
@@ -3007,54 +3384,263 @@ fn helper_exists(path: &str) -> bool {
 }
 
 fn storage_status() -> StorageStatus {
-    let disk = root_disk_usage().unwrap_or((0, 0, 0));
-    let (total_bytes, used_bytes, free_bytes) = disk;
+    storage_scan()
+}
+
+fn storage_scan() -> StorageStatus {
+    let scan_started = SystemTime::now();
+    let network = network_status();
+    let registry = storage_registry(&network);
+    let volume = root_volume();
+    let total_bytes = volume.total_bytes;
+    let used_bytes = volume.used_bytes;
+    let free_bytes = volume.free_bytes;
     let percent_used = percent(used_bytes, total_bytes);
     let (health, header_state, header_class) = storage_health(percent_used);
-    let games = game_storage(total_bytes);
-    let artwork = category_from_path(
-        Path::new(ARTWORK_ROOT),
+
+    let game_folders = registry
+        .categories
+        .games
+        .roots
+        .iter()
+        .map(game_folder_storage)
+        .collect::<Vec<_>>();
+    let games_bytes = game_folders.iter().map(|f| f.bytes).sum::<u64>();
+    let games_files = game_folders.iter().map(|f| f.file_count).sum::<u64>();
+
+    let artwork_stores = registry
+        .categories
+        .artwork
+        .roots
+        .iter()
+        .map(|r| folder_storage(&r.id, &r.display_name, &r.path))
+        .collect::<Vec<_>>();
+    let artwork_bytes = artwork_stores.iter().map(|f| f.bytes).sum::<u64>();
+    let artwork_files = artwork_stores.iter().map(|f| f.file_count).sum::<u64>();
+
+    let ai_model_files = ai_model_files();
+    let ai_model_bytes = ai_model_files.iter().map(|m| m.bytes).sum::<u64>();
+
+    let update_stores = registry
+        .categories
+        .updates
+        .roots
+        .iter()
+        .map(|r| folder_storage(&r.id, &r.display_name, &r.path))
+        .collect::<Vec<_>>();
+    let updates_bytes = update_stores.iter().map(|f| f.bytes).sum::<u64>();
+    let updates_files = update_stores.iter().map(|f| f.file_count).sum::<u64>();
+
+    let log_stores = registry
+        .categories
+        .logs
+        .roots
+        .iter()
+        .map(|r| folder_storage(&r.id, &r.display_name, &r.path))
+        .collect::<Vec<_>>();
+    let logs_bytes = log_stores.iter().map(|f| f.bytes).sum::<u64>();
+    let logs_files = log_stores.iter().map(|f| f.file_count).sum::<u64>();
+
+    let temp_stores = registry
+        .categories
+        .temporary
+        .roots
+        .iter()
+        .map(|r| folder_storage(&r.id, &r.display_name, &r.path))
+        .collect::<Vec<_>>();
+    let temporary_bytes = temp_stores.iter().map(|f| f.bytes).sum::<u64>();
+    let temporary_files = temp_stores.iter().map(|f| f.file_count).sum::<u64>();
+
+    let system_stores = registry
+        .categories
+        .system
+        .roots
+        .iter()
+        .map(|r| folder_storage(&r.id, &r.display_name, &r.path))
+        .collect::<Vec<_>>();
+    let system_bytes = system_stores.iter().map(|f| f.bytes).sum::<u64>();
+    let system_files = system_stores.iter().map(|f| f.file_count).sum::<u64>();
+
+    let classified = games_bytes
+        .saturating_add(artwork_bytes)
+        .saturating_add(ai_model_bytes)
+        .saturating_add(updates_bytes)
+        .saturating_add(logs_bytes)
+        .saturating_add(temporary_bytes)
+        .saturating_add(system_bytes);
+    let other_bytes = used_bytes.saturating_sub(classified);
+
+    let games = category_status(
+        games_bytes,
+        games_files,
+        registry.categories.games.roots.len(),
+        used_bytes,
+        total_bytes,
+        "game files",
+        if game_folders.iter().any(|f| f.path_missing()) {
+            "warning"
+        } else {
+            "ok"
+        },
+        "Per-platform Samba game folders.",
+    );
+    let artwork = category_status(
+        artwork_bytes,
+        artwork_files,
+        registry.categories.artwork.roots.len(),
+        used_bytes,
         total_bytes,
         "artwork files",
-        "Last artwork sync: Not reported.",
+        state_for_roots(&artwork_stores),
+        "Covers, metadata, generated artwork, and scraper cache.",
     );
-    let ai_models = ai_model_storage(total_bytes);
-    let classified = games
-        .bytes
-        .saturating_add(artwork.bytes)
-        .saturating_add(ai_models.bytes);
-    let other_bytes = used_bytes.saturating_sub(classified);
-    let other = StorageCategoryStatus {
-        bytes: other_bytes,
-        size: human_size(other_bytes),
-        files: 0,
-        meta: "System, updates, logs, temporary files".to_string(),
-        detail: "Other Storage includes the operating system, update files, logs, and anything not classified as games, artwork, or AI models.".to_string(),
-        percent_of_total: percent(other_bytes, total_bytes),
+    let ai_models_cat = category_status(
+        ai_model_bytes,
+        ai_model_files.len() as u64,
+        registry.categories.ai_models.roots.len(),
+        used_bytes,
+        total_bytes,
+        "model files",
+        "ok",
+        "Installed Local AI model files and download state.",
+    );
+    let updates = category_status(
+        updates_bytes,
+        updates_files,
+        registry.categories.updates.roots.len(),
+        used_bytes,
+        total_bytes,
+        "update files",
+        state_for_roots(&update_stores),
+        "Managed update package/cache roots.",
+    );
+    let logs = category_status(
+        logs_bytes,
+        logs_files,
+        registry.categories.logs.roots.len(),
+        used_bytes,
+        total_bytes,
+        "log files",
+        state_for_roots(&log_stores),
+        "Managed log roots only.",
+    );
+    let temporary = category_status(
+        temporary_bytes,
+        temporary_files,
+        registry.categories.temporary.roots.len(),
+        used_bytes,
+        total_bytes,
+        "temporary files",
+        state_for_roots(&temp_stores),
+        "Safe temporary roots only.",
+    );
+    let system = category_status(
+        system_bytes,
+        system_files,
+        registry.categories.system.roots.len(),
+        used_bytes,
+        total_bytes,
+        "system files",
+        state_for_roots(&system_stores),
+        "Configured system/runtime roots.",
+    );
+    let other = category_status(
+        other_bytes,
+        0,
+        0,
+        used_bytes,
+        total_bytes,
+        "unclassified",
+        "unknown",
+        "Used space not classified by the managed storage registry.",
+    );
+
+    let ai_rows = ai_model_files
+        .iter()
+        .map(|m| AiModelDiskStatus {
+            friendly_name: m.name.clone(),
+            filename: m.filename.clone(),
+            size: m.size.clone(),
+            status: if m.loaded { "Hot" } else { "Installed" },
+        })
+        .collect::<Vec<_>>();
+    let ai_models = AiModelStorageStatus {
+        bytes: ai_model_bytes,
+        size: human_size(ai_model_bytes),
+        count: ai_model_files.len(),
+        meta: format!("{} installed models", ai_model_files.len()),
+        detail: if ai_model_files.is_empty() {
+            "No local AI model files were found in the Local AI registry roots.".to_string()
+        } else {
+            "Installed model files are not cache. Remove only unused cold models.".to_string()
+        },
+        percent_of_total: percent(ai_model_bytes, total_bytes),
+        models: ai_rows,
     };
-    let warning_copy = if percent_used >= 90 {
-        "Storage is almost full. Sync, updates, and AI model loading may fail until space is freed."
-    } else {
-        "The console has enough free space for games, artwork, updates, and local AI models."
+
+    let diagnostics = storage_diagnostics(
+        &registry,
+        scan_started
+            .elapsed()
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+        &volume,
+    );
+    let warning_copy = match percent_used {
+        98..=100 => "Storage full. Free space before syncing or downloading models.",
+        90..=97 => "Storage low. Sync, updates, and model downloads may fail.",
+        75..=89 => "Storage is getting full. Review cleanup opportunities before large downloads.",
+        _ => "Storage has enough free space for appliance work.",
     };
     StorageStatus {
+        scanned_at: now_rfc3339_like(),
+        scanning: false,
+        scan_error: None,
         total_bytes,
         used_bytes,
         free_bytes,
         percent_used,
+        thresholds: StorageThresholds {
+            getting_full_percent: 75,
+            low_percent: 90,
+            full_percent: 98,
+        },
+        volumes: vec![volume.clone()],
+        registry,
+        categories: StorageCategories {
+            games: games.clone(),
+            artwork: artwork.clone(),
+            ai_models: ai_models_cat.clone(),
+            updates: updates.clone(),
+            logs: logs.clone(),
+            temporary: temporary.clone(),
+            system: system.clone(),
+            other: other.clone(),
+        },
+        game_folders,
+        artwork_stores,
+        ai_model_files,
+        cleanup: CleanupState {
+            artwork_bytes_clearable: artwork_bytes,
+            temporary_bytes_clearable: temporary_bytes,
+            partial_downloads_bytes_clearable: partial_ai_download_roots()
+                .iter()
+                .map(|p| path_usage(Path::new(p)).bytes)
+                .sum(),
+            old_update_bytes_clearable: updates_bytes,
+            logs_bytes_clearable: logs_bytes,
+        },
+        diagnostics,
         health,
         header_state,
         header_class,
-        header_tooltip: if percent_used >= 90 {
-            format!(
-                "Storage is low. Open Storage to free space. {} used.",
-                percent_used
-            )
-        } else {
-            format!("Storage is {}% used.", percent_used)
-        },
-        ok_copy:
-            "The console has enough free space for games, artwork, updates, and local AI models.",
+        header_tooltip: format!(
+            "Storage {}: {} free · {}% used",
+            health,
+            human_size(free_bytes),
+            percent_used
+        ),
+        ok_copy: "Storage has enough free space for appliance work.",
         warning_copy,
         total: human_size(total_bytes),
         used: human_size(used_bytes),
@@ -3067,21 +3653,519 @@ fn storage_status() -> StorageStatus {
     }
 }
 
-fn root_disk_usage() -> Option<(u64, u64, u64)> {
-    let output = Command::new("df").args(["-B1", "/"]).output().ok()?;
+impl GameFolderStorage {
+    fn path_missing(&self) -> bool {
+        !Path::new(&self.path).exists()
+    }
+}
+
+fn storage_registry(network: &NetworkStatus) -> StorageRegistry {
+    let volume = root_volume();
+    let host = hostname();
+    let netbios = "HOMECONSOLE";
+    let ip = (network.ip_address != "—").then_some(network.ip_address.as_str());
+    let game_roots = GAME_SYSTEMS
+        .iter()
+        .map(|platform| {
+            let share = format!("games\\{}", platform);
+            let smb_share = format!("games/{}", platform);
+            let path = Path::new(GAMES_ROOT)
+                .join(platform)
+                .to_string_lossy()
+                .to_string();
+            GameRoot {
+                id: (*platform).to_string(),
+                platform: (*platform).to_uppercase(),
+                display_name: platform_display_name(platform),
+                path,
+                samba_share_name: format!("games/{}", platform),
+                windows_unc: Some(format!(r"\\{}\{}", netbios, share)),
+                windows_unc_by_ip: ip.map(|addr| format!(r"\\{}\{}", addr, share)),
+                smb_url: Some(format!("smb://{}/{}", host, smb_share)),
+                smb_url_by_ip: ip.map(|addr| format!("smb://{}/{}", addr, smb_share)),
+            }
+        })
+        .collect::<Vec<_>>();
+    StorageRegistry {
+        volumes: vec![volume],
+        categories: StorageRegistryCategories {
+            games: GameRootsRegistry {
+                label: "Games".to_string(),
+                roots: game_roots,
+            },
+            artwork: FolderRootsRegistry {
+                label: "Artwork".to_string(),
+                roots: vec![
+                    folder_root(
+                        "artwork-covers",
+                        "Covers",
+                        &format!("{}/covers", ARTWORK_ROOT),
+                        "covers",
+                    ),
+                    folder_root(
+                        "artwork-metadata",
+                        "Metadata",
+                        &format!("{}/metadata", ARTWORK_ROOT),
+                        "metadata",
+                    ),
+                    folder_root(
+                        "artwork-generated",
+                        "Generated",
+                        &format!("{}/generated", ARTWORK_ROOT),
+                        "generated",
+                    ),
+                    folder_root("artwork-cache", "Scraper Cache", ARTWORK_ROOT, "cache"),
+                ],
+            },
+            ai_models: FolderRootsRegistry {
+                label: "AI Models".to_string(),
+                roots: model_roots(),
+            },
+            updates: FolderRootsRegistry {
+                label: "Updates".to_string(),
+                roots: update_roots()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        folder_root(&format!("updates-{}", i), "Update Cache", p, "cache")
+                    })
+                    .collect(),
+            },
+            logs: FolderRootsRegistry {
+                label: "Logs".to_string(),
+                roots: log_roots()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| folder_root(&format!("logs-{}", i), "Logs", p, "logs"))
+                    .collect(),
+            },
+            temporary: FolderRootsRegistry {
+                label: "Temporary Files".to_string(),
+                roots: TEMP_CLEAN_ROOTS
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        folder_root(&format!("temporary-{}", i), "Temporary", p, "temporary")
+                    })
+                    .collect(),
+            },
+            system: FolderRootsRegistry {
+                label: "System".to_string(),
+                roots: vec![
+                    folder_root("system-root", "System", "/usr", "system"),
+                    folder_root("system-var-lib", "Runtime State", "/var/lib", "system"),
+                ],
+            },
+        },
+    }
+}
+
+fn folder_root(id: &str, display_name: &str, path: &str, purpose: &str) -> FolderRoot {
+    FolderRoot {
+        id: id.to_string(),
+        display_name: display_name.to_string(),
+        path: path.to_string(),
+        purpose: Some(purpose.to_string()),
+    }
+}
+fn model_roots() -> Vec<FolderRoot> {
+    let mut roots = MODEL_SCAN_ROOTS
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            folder_root(
+                &format!("ai-installed-models-{}", index),
+                "Installed Models",
+                path,
+                "installed-models",
+            )
+        })
+        .collect::<Vec<_>>();
+    roots.extend([
+        folder_root(
+            "ai-downloads",
+            "Downloads",
+            "/var/lib/arcadia/model-downloads",
+            "downloads",
+        ),
+        folder_root(
+            "ai-partial-downloads",
+            "Partial Downloads",
+            "/var/lib/arcadia/model-downloads/partial",
+            "partial-downloads",
+        ),
+        folder_root(
+            "ai-catalog-cache",
+            "Catalog Cache",
+            "/var/lib/arcadia/model-catalog",
+            "catalog-cache",
+        ),
+    ]);
+    roots
+}
+
+fn update_roots() -> Vec<&'static str> {
+    vec![
+        "/var/cache/pacman/pkg",
+        "/var/lib/harmonia/cache",
+        "/var/lib/harmonia/artifacts",
+    ]
+}
+fn log_roots() -> Vec<&'static str> {
+    vec![
+        "/var/log/arcadia",
+        "/var/log/homeconsole-sync",
+        "/var/lib/harmonia/receipts",
+    ]
+}
+fn partial_ai_download_roots() -> Vec<&'static str> {
+    vec![
+        "/var/lib/arcadia/model-downloads/partial",
+        "/var/cache/arcadia/model-downloads",
+    ]
+}
+
+fn root_volume() -> StorageVolume {
+    let (fs_name, total, used, free, mount) =
+        df_row("/").unwrap_or_else(|| (None, 0, 0, 0, "/".to_string()));
+    let health = Some(
+        match percent(used, total) {
+            0..=74 => "ok",
+            75..=89 => "warning",
+            90..=97 => "warning",
+            _ => "error",
+        }
+        .to_string(),
+    );
+    StorageVolume {
+        id: "root".to_string(),
+        label: "Console Storage".to_string(),
+        mount_point: mount,
+        filesystem: fs_name,
+        total_bytes: total,
+        used_bytes: used,
+        free_bytes: free,
+        health,
+    }
+}
+
+fn df_row(path: &str) -> Option<(Option<String>, u64, u64, u64, String)> {
+    let output = Command::new("df").args(["-B1", "-T", path]).output().ok()?;
     if !output.status.success() {
         return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let line = stdout.lines().nth(1)?;
     let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 5 {
+    if parts.len() < 7 {
         return None;
     }
-    let total = parts.get(1)?.parse().ok()?;
-    let used = parts.get(2)?.parse().ok()?;
-    let free = parts.get(3)?.parse().ok()?;
-    Some((total, used, free))
+    Some((
+        Some(parts[1].to_string()),
+        parts[2].parse().ok()?,
+        parts[3].parse().ok()?,
+        parts[4].parse().ok()?,
+        parts[6].to_string(),
+    ))
+}
+
+fn game_folder_storage(root: &GameRoot) -> GameFolderStorage {
+    let usage = path_usage(Path::new(&root.path));
+    let largest_files = largest_files(Path::new(&root.path), 3);
+    let synced = load_sync_manifest().map(|entries| {
+        entries
+            .iter()
+            .filter(|e| {
+                e.normalized_rom_path
+                    .as_ref()
+                    .or(e.rom_path.as_ref())
+                    .map(|p| p.to_ascii_lowercase().contains(&format!("/{}/", root.id)))
+                    .unwrap_or(false)
+            })
+            .count() as u64
+    });
+    let unsynced = synced.map(|s| usage.files.saturating_sub(s));
+    GameFolderStorage {
+        platform: root.platform.clone(),
+        display_name: root.display_name.clone(),
+        path: root.path.clone(),
+        samba_share_name: root.samba_share_name.clone(),
+        bytes: usage.bytes,
+        size: human_size(usage.bytes),
+        file_count: usage.files,
+        synced_entries: synced,
+        unsynced_files: unsynced,
+        largest_files,
+        windows_unc: root.windows_unc.clone(),
+        windows_unc_by_ip: root.windows_unc_by_ip.clone(),
+        smb_url: root.smb_url.clone(),
+        smb_url_by_ip: root.smb_url_by_ip.clone(),
+    }
+}
+
+fn folder_storage(id: &str, display_name: &str, path: &str) -> FolderStorage {
+    let usage = path_usage(Path::new(path));
+    let state = if !Path::new(path).exists() {
+        "unknown"
+    } else {
+        "ok"
+    };
+    FolderStorage {
+        id: id.to_string(),
+        display_name: display_name.to_string(),
+        path: path.to_string(),
+        bytes: usage.bytes,
+        size: human_size(usage.bytes),
+        file_count: usage.files,
+        last_modified_at: fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(system_time_string),
+        state: state.to_string(),
+    }
+}
+
+fn ai_model_files() -> Vec<AIModelStorage> {
+    let local_ai = local_ai_status();
+    let loaded_name = local_ai.loaded_model.clone();
+    let selected_id = local_ai.selected_model_id.clone();
+    let mut out = Vec::new();
+    for root in model_roots()
+        .into_iter()
+        .filter(|r| r.purpose.as_deref() == Some("installed-models"))
+    {
+        let mut found = Vec::new();
+        collect_ai_models(Path::new(&root.path), &mut found, 0);
+        for (bytes, filename, path) in found {
+            let id = model_id(&filename);
+            let loaded = loaded_name
+                .as_ref()
+                .map(|n| n == &filename)
+                .unwrap_or(false);
+            out.push(AIModelStorage {
+                id: id.clone(),
+                name: friendly_model_name(&filename),
+                filename: filename.clone(),
+                path: path.to_string_lossy().to_string(),
+                bytes,
+                size: human_size(bytes),
+                source: "unknown".to_string(),
+                loaded,
+                selected: selected_id.as_ref().map(|s| s == &id).unwrap_or(false),
+                removable: !loaded,
+            });
+        }
+    }
+    if let Some(loaded) = loaded_name.as_ref() {
+        if !out.iter().any(|model| model.filename == *loaded) {
+            let id = model_id(loaded);
+            out.push(AIModelStorage {
+                id: id.clone(),
+                name: friendly_model_name(loaded),
+                filename: loaded.clone(),
+                path: "Unknown".to_string(),
+                bytes: 0,
+                size: "Unknown".to_string(),
+                source: "unknown".to_string(),
+                loaded: true,
+                selected: selected_id.as_ref().map(|s| s == &id).unwrap_or(false),
+                removable: false,
+            });
+        }
+    }
+    out.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    out
+}
+
+fn category_status(
+    bytes: u64,
+    files: u64,
+    root_count: usize,
+    used: u64,
+    total: u64,
+    suffix: &str,
+    state: &str,
+    detail: &str,
+) -> StorageCategoryStatus {
+    StorageCategoryStatus {
+        bytes,
+        size: human_size(bytes),
+        files,
+        file_count: Some(files),
+        root_count,
+        state: state.to_string(),
+        meta: format!("{} {} · {} roots", files, suffix, root_count),
+        detail: detail.to_string(),
+        percent_of_used: percent(bytes, used),
+        percent_of_total: percent(bytes, total),
+    }
+}
+fn state_for_roots(roots: &[FolderStorage]) -> &str {
+    if roots.iter().any(|r| r.state == "unknown") {
+        "unknown"
+    } else {
+        "ok"
+    }
+}
+
+fn largest_files(path: &Path, limit: usize) -> Vec<LargestFile> {
+    let mut files = Vec::new();
+    collect_largest_files(path, &mut files, 0);
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    files
+        .into_iter()
+        .take(limit)
+        .map(|(bytes, path)| LargestFile {
+            name: path
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("file")
+                .to_string(),
+            path: path.to_string_lossy().to_string(),
+            bytes,
+            size: human_size(bytes),
+        })
+        .collect()
+}
+fn collect_largest_files(path: &Path, out: &mut Vec<(u64, PathBuf)>, depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        let Ok(m) = e.metadata() else {
+            continue;
+        };
+        if m.is_dir() {
+            collect_largest_files(&p, out, depth + 1);
+        } else if m.is_file() {
+            out.push((m.len(), p));
+        }
+    }
+}
+
+fn storage_diagnostics(
+    registry: &StorageRegistry,
+    duration: u64,
+    volume: &StorageVolume,
+) -> StorageDiagnostics {
+    let managed = managed_storage_paths_from_registry(registry);
+    let missing_dirs = managed
+        .iter()
+        .filter(|p| !Path::new(p.as_str()).exists())
+        .cloned()
+        .collect::<Vec<_>>();
+    let permission_errors = managed
+        .iter()
+        .filter(|p| Path::new(p.as_str()).exists() && fs::read_dir(p).is_err())
+        .cloned()
+        .collect::<Vec<_>>();
+    StorageDiagnostics {
+        mount_point: volume.mount_point.clone(),
+        filesystem: volume.filesystem.clone(),
+        scan_duration_ms: duration,
+        scanner_version: "arcadia.storage.scan.v1".to_string(),
+        missing_dirs,
+        permission_errors,
+    }
+}
+fn managed_storage_paths_from_registry(registry: &StorageRegistry) -> Vec<String> {
+    let mut paths = Vec::new();
+    paths.extend(
+        registry
+            .categories
+            .games
+            .roots
+            .iter()
+            .map(|r| r.path.clone()),
+    );
+    for cat in [
+        &registry.categories.artwork,
+        &registry.categories.ai_models,
+        &registry.categories.updates,
+        &registry.categories.logs,
+        &registry.categories.temporary,
+        &registry.categories.system,
+    ] {
+        paths.extend(cat.roots.iter().map(|r| r.path.clone()));
+    }
+    paths
+}
+fn is_managed_storage_path(path: &str) -> bool {
+    managed_storage_paths_from_registry(&storage_registry(&network_status()))
+        .iter()
+        .any(|p| p == path)
+}
+
+fn cleanup_known_roots(
+    action: &'static str,
+    roots: Vec<&'static str>,
+    success: &str,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let mut removed = 0u64;
+    let mut errors = Vec::new();
+    for root in roots {
+        match remove_children(Path::new(root)) {
+            Ok(count) => removed += count,
+            Err(err) => errors.push(format!("{}: {}", root, err)),
+        }
+    }
+    if errors.is_empty() {
+        (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action,
+                command: "arcadia-storage",
+                exit_code: Some(0),
+                message: format!("{} Removed {} entries.", success, removed),
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ConsoleActionResponse {
+                ok: false,
+                action,
+                command: "arcadia-storage",
+                exit_code: Some(1),
+                message: "Cleanup partially failed.".to_string(),
+                stdout: String::new(),
+                stderr: errors.join("\n"),
+            }),
+        )
+    }
+}
+
+fn platform_display_name(platform: &str) -> String {
+    match platform {
+        "gba" => "GBA",
+        "snes" => "SNES",
+        "nes" => "NES",
+        "n64" => "N64",
+        "ps1" => "PS1",
+        "ps2" => "PS2",
+        "psp" => "PSP",
+        "wii" => "Wii",
+        "sega-cd" => "Sega CD",
+        "gamecube" => "GameCube",
+        "genesis" => "Genesis",
+        "dos" => "DOS",
+        other => other,
+    }
+    .to_string()
+}
+fn now_rfc3339_like() -> String {
+    command_stdout("date", &["-Iseconds"]).unwrap_or_else(|| "Unknown".to_string())
+}
+fn system_time_string(t: SystemTime) -> Option<String> {
+    let secs = t.duration_since(UNIX_EPOCH).ok()?.as_secs();
+    Some(format!("{}", secs))
 }
 
 fn storage_health(percent_used: u8) -> (&'static str, String, &'static str) {
@@ -3091,156 +4175,6 @@ fn storage_health(percent_used: u8) -> (&'static str, String, &'static str) {
         90..=97 => ("Low Space", "Low".to_string(), "warn"),
         _ => ("Full", "Full".to_string(), "bad"),
     }
-}
-
-fn game_storage(total_bytes: u64) -> StorageCategoryStatus {
-    let mut seen = Vec::<PathBuf>::new();
-    let mut folders = Vec::<(String, u64)>::new();
-    let mut bytes = 0u64;
-    let mut files = 0u64;
-    for path in game_candidate_paths() {
-        if !path.exists() || seen.iter().any(|prior| path.starts_with(prior)) {
-            continue;
-        }
-        let usage = path_usage(&path);
-        if usage.bytes > 0 || usage.files > 0 {
-            let name = path
-                .file_name()
-                .and_then(|v| v.to_str())
-                .unwrap_or("games")
-                .to_string();
-            folders.push((name, usage.bytes));
-            bytes = bytes.saturating_add(usage.bytes);
-            files = files.saturating_add(usage.files);
-            seen.push(path);
-        }
-    }
-    folders.sort_by(|a, b| b.1.cmp(&a.1));
-    let largest = folders
-        .iter()
-        .take(7)
-        .map(|(name, _)| name.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
-    StorageCategoryStatus {
-        bytes,
-        size: human_size(bytes),
-        files,
-        meta: format!("{} files", files),
-        detail: if largest.is_empty() {
-            "No copied game files were found in the game folders.".to_string()
-        } else {
-            format!("Largest folders: {}.", largest)
-        },
-        percent_of_total: percent(bytes, total_bytes),
-    }
-}
-
-fn game_candidate_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-    for system in GAME_SYSTEMS {
-        paths.push(Path::new(GAMES_ROOT).join(system));
-        paths.push(Path::new(GAMES_ROOT).join("roms").join(system));
-        paths.push(Path::new(GAMES_ROOT).join("isos").join(system));
-    }
-    paths.push(Path::new(GAMES_ROOT).join("pc").join("dos"));
-    paths
-}
-
-fn category_from_path(
-    path: &Path,
-    total_bytes: u64,
-    meta_suffix: &str,
-    fallback_detail: &str,
-) -> StorageCategoryStatus {
-    let usage = path_usage(path);
-    StorageCategoryStatus {
-        bytes: usage.bytes,
-        size: human_size(usage.bytes),
-        files: usage.files,
-        meta: format!("{} {}", usage.files, meta_suffix),
-        detail: fallback_detail.to_string(),
-        percent_of_total: percent(usage.bytes, total_bytes),
-    }
-}
-
-fn ai_model_storage(total_bytes: u64) -> AiModelStorageStatus {
-    let mut models = Vec::new();
-    for root in MODEL_SCAN_ROOTS {
-        collect_ai_models(Path::new(root), &mut models, 0);
-    }
-    models.sort_by(|a, b| b.0.cmp(&a.0));
-    let total = models.iter().map(|(size, _, _)| *size).sum::<u64>();
-    let rows = models
-        .into_iter()
-        .map(|(size, filename, _path)| AiModelDiskStatus {
-            friendly_name: friendly_model_name(&filename),
-            filename,
-            size: human_size(size),
-            status: "Available",
-        })
-        .collect::<Vec<_>>();
-    let count = rows.len();
-    AiModelStorageStatus {
-        bytes: total,
-        size: human_size(total),
-        count,
-        meta: format!("{} installed models", count),
-        detail: if count == 0 {
-            "No local AI model files were found on console storage.".to_string()
-        } else {
-            "Model files are stored locally for Local AI. Remove unused models to free space without affecting games.".to_string()
-        },
-        percent_of_total: percent(total, total_bytes),
-        models: rows,
-    }
-}
-
-fn collect_ai_models(path: &Path, out: &mut Vec<(u64, String, PathBuf)>, depth: usize) {
-    if depth > 8 {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(path) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-        if metadata.is_dir() {
-            collect_ai_models(&path, out, depth + 1);
-        } else if metadata.is_file() && is_ai_model_file(&path) {
-            let filename = path
-                .file_name()
-                .and_then(|v| v.to_str())
-                .unwrap_or("model")
-                .to_string();
-            out.push((metadata.len(), filename, path));
-        }
-    }
-}
-
-fn is_ai_model_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|v| v.to_str())
-        .map(|ext| {
-            MODEL_EXTENSIONS
-                .iter()
-                .any(|candidate| ext.eq_ignore_ascii_case(candidate))
-        })
-        .unwrap_or(false)
-}
-
-fn find_model_path_by_filename(filename: &str) -> Option<PathBuf> {
-    let mut models = Vec::new();
-    for root in MODEL_SCAN_ROOTS {
-        collect_ai_models(Path::new(root), &mut models, 0);
-    }
-    models
-        .into_iter()
-        .find(|(_, name, _)| name == filename)
-        .map(|(_, _, path)| path)
 }
 
 #[derive(Default)]
@@ -3330,6 +4264,53 @@ fn storage_remove_children(
     }
 }
 
+fn collect_ai_models(path: &Path, out: &mut Vec<(u64, String, PathBuf)>, depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_ai_models(&path, out, depth + 1);
+        } else if metadata.is_file() && is_ai_model_file(&path) {
+            let filename = path
+                .file_name()
+                .and_then(|v| v.to_str())
+                .unwrap_or("model")
+                .to_string();
+            out.push((metadata.len(), filename, path));
+        }
+    }
+}
+
+fn is_ai_model_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|v| v.to_str())
+        .map(|ext| {
+            MODEL_EXTENSIONS
+                .iter()
+                .any(|candidate| ext.eq_ignore_ascii_case(candidate))
+        })
+        .unwrap_or(false)
+}
+
+fn find_model_path_by_filename(filename: &str) -> Option<PathBuf> {
+    let mut models = Vec::new();
+    for root in model_roots() {
+        collect_ai_models(Path::new(&root.path), &mut models, 0);
+    }
+    models
+        .into_iter()
+        .find(|(_, name, _)| name == filename)
+        .map(|(_, _, path)| path)
+}
+
 fn friendly_model_name(filename: &str) -> String {
     let mut name = filename.to_string();
     for suffix in [".gguf", ".safetensors", ".onnx"] {
@@ -3349,7 +4330,7 @@ fn percent(part: u64, total: u64) -> u8 {
     ((part.saturating_mul(100) / total).min(100)) as u8
 }
 
-fn human_size(bytes: u64) -> String {
+pub(crate) fn human_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut value = bytes as f64;
     let mut unit = 0usize;
@@ -3664,52 +4645,34 @@ mod tests {
             "data-view=\"storage\"",
             "view-storage",
             "Storage",
-            "Free Space",
-            "Total storage",
-            "Used storage",
-            "Free storage",
-            "Percent used",
             "Storage OK",
+            "free",
+            "used",
             "Games",
-            "Artwork",
+            "Artwork &amp; Metadata",
             "AI Models",
-            "Other Storage",
-            "Open Games Folder",
+            "Updates",
+            "Logs",
+            "Temp",
+            "System",
+            "Games by Folder",
+            "Copy path",
             "Clear Artwork Cache",
-            "Clearing artwork does not delete games. Artwork can be downloaded again during Sync.",
-            "Rebuild Artwork on Next Sync",
-            "Clean Temporary Files",
+            "Clear Partial Downloads",
+            "Locations",
+            "Details / Diagnostics",
             "data-nav-target=\"storage\"",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
         assert!(
-            rendered.contains("Remove Model") || rendered.contains("No local AI model files"),
+            rendered.contains("Remove Model") || rendered.contains("No models installed"),
             "storage page must either show removable models or the true empty model state"
         );
-        if status.storage.percent_used >= 90 {
-            assert!(rendered.contains(
-                "Storage is low. Sync may fail if artwork or shortcuts cannot be written."
-            ));
-            assert!(rendered.contains(
-                "Storage is low. Remove unused games, artwork, or AI models before adding more models."
-            ));
-        }
-
-        let storage_start = rendered
-            .find("<section id=\"view-storage\"")
-            .expect("storage view starts");
-        let storage_end = storage_start
-            + rendered[storage_start..]
-                .find("<section id=\"view-local-ai\"")
-                .expect("local ai follows storage");
-        let storage_html = &rendered[storage_start..storage_end];
-        for forbidden in ["/home", "/var", "/mnt", "/opt", "delete-all-games"] {
-            assert!(
-                !storage_html.contains(forbidden),
-                "raw/dangerous storage term leaked: {forbidden}"
-            );
-        }
+        assert!(rendered.contains("/api/storage/cleanup/artwork"));
+        assert!(rendered.contains("/api/storage/cleanup/temporary"));
+        assert!(rendered.contains("/api/storage/rescan"));
+        assert!(!rendered.contains("delete-all-games"));
     }
 
     #[test]
