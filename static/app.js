@@ -313,105 +313,219 @@ function bindConsoleActions() {
 }
 
 
-function bindStorageModals() {
-  document.querySelectorAll('[data-storage-modal]').forEach((button) => {
-    button.addEventListener('click', (event) => {
-      event.preventDefault();
-      const key = button.dataset.storageModal;
-      const template = document.querySelector(`[data-storage-modal-template="${CSS.escape(key)}"]`);
-      if (!template) return PopupManager.showToast('Storage details unavailable', 'error');
-      const body = document.createElement('div');
-      body.className = 'storage-modal-body';
-      body.innerHTML = template.innerHTML;
-      bindStorageModalContent(body);
-      PopupManager.showModal({ title: button.dataset.storageModalTitle || 'Storage', body, hideDefaultAction: false });
-    });
-  });
+async function getJson(url) {
+  const res = await fetch(url, { headers: { accept: 'application/json' } });
+  let data = {};
+  try { data = await res.json(); } catch (_) { data = {}; }
+  if (!res.ok) data.ok = false;
+  return data;
 }
 
-function bindStorageModalContent(root) {
-  root.querySelectorAll('.btn[data-copy-value]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const value = button.dataset.copyValue || '';
-      if (!validCopyValue(value)) return PopupManager.showToast('Address unavailable', 'error');
-      const ok = await copyToClipboard(value);
-      PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
-    });
+function storageModalShell(title, crumbs = ['Storage']) {
+  const body = document.createElement('div');
+  body.className = 'storage-detail-modal';
+  const bar = document.createElement('div');
+  bar.className = 'storage-breadcrumb';
+  crumbs.forEach((crumb, index) => {
+    const item = document.createElement('span');
+    item.textContent = crumb;
+    bar.appendChild(item);
+    if (index < crumbs.length - 1) {
+      const sep = document.createElement('em');
+      sep.textContent = '/';
+      bar.appendChild(sep);
+    }
   });
-  root.querySelectorAll('.btn[data-folder-copy]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const choices = [
-        ['Copy Windows path', button.dataset.windows],
-        ['Copy Windows IP fallback', button.dataset.windowsIp],
-        ['Copy Linux/macOS path', button.dataset.smb],
-        ['Copy Linux/macOS IP fallback', button.dataset.smbIp],
-      ].filter(([, value]) => validCopyValue(value));
-      if (choices.length === 0) return PopupManager.showToast('Folder address unavailable', 'error');
-      if (choices.length === 1) {
-        const ok = await copyToClipboard(choices[0][1]);
-        return PopupManager.showToast(ok ? `Copied ${choices[0][1]}` : `Copy unavailable: ${choices[0][1]}`, ok ? 'success' : 'error');
-      }
-      const choiceBody = document.createElement('div');
-      choiceBody.className = 'copy-choice-list';
-      choices.forEach(([label, value]) => {
-        const choice = document.createElement('button');
-        choice.type = 'button';
-        choice.className = 'btn btn--secondary';
-        choice.textContent = label;
-        choice.addEventListener('click', async () => {
-          const ok = await copyToClipboard(value);
-          PopupManager.closeModal();
-          PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
-        });
-        choiceBody.appendChild(choice);
-      });
-      PopupManager.showModal({ title: 'Copy path', body: choiceBody, hideDefaultAction: true });
+  const content = document.createElement('div');
+  content.className = 'storage-detail-content';
+  body.append(bar, content);
+  PopupManager.showModal({ title, body, hideDefaultAction: true });
+  return content;
+}
+
+function storageLoading(content, label) {
+  content.innerHTML = `<div class="empty-state"><strong>${escapeHtml(label)}</strong></div>`;
+}
+
+function storageSummaryLine(label, value) {
+  const row = document.createElement('div');
+  row.className = 'network-detail-row';
+  row.innerHTML = `<span><em>${escapeHtml(label)}</em><strong>${escapeHtml(value ?? '—')}</strong></span>`;
+  return row;
+}
+
+function storageTable(headers, rows) {
+  const table = document.createElement('div');
+  table.className = 'storage-detail-table';
+  const head = document.createElement('div');
+  head.className = 'storage-detail-table-row storage-detail-table-head';
+  headers.forEach((h) => { const c = document.createElement('strong'); c.textContent = h; head.appendChild(c); });
+  table.appendChild(head);
+  rows.forEach((cells) => {
+    const row = document.createElement('div');
+    row.className = 'storage-detail-table-row';
+    cells.forEach((cell) => {
+      const c = document.createElement('span');
+      if (cell instanceof Node) c.appendChild(cell); else c.textContent = cell ?? '—';
+      row.appendChild(c);
     });
+    table.appendChild(row);
   });
-  root.querySelectorAll('.btn[data-action][data-endpoint]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const action = button.dataset.action;
-      const endpoint = button.dataset.endpoint;
-      const body = confirmationFor(action);
-      if (body === null) return;
-      const original = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Running...';
-      try {
-        const data = await postJson(endpoint, body);
-        PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), data.ok ? 'success' : 'error');
-        if (data.ok && endpoint.startsWith('/api/storage/')) window.location.reload();
-      } catch (_) {
-        PopupManager.showToast('Action request failed', 'error');
-      } finally {
-        button.disabled = false;
-        button.textContent = original;
-      }
-    });
+  return table;
+}
+
+function buttonNode(label, className = 'btn btn--secondary') {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = className;
+  b.textContent = label;
+  return b;
+}
+
+function copyButtonNode(label, value) {
+  const b = buttonNode(label);
+  b.addEventListener('click', async () => {
+    if (!validCopyValue(value)) return PopupManager.showToast('Address unavailable', 'error');
+    const ok = await copyToClipboard(value);
+    PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
   });
-  root.querySelectorAll('[data-create-managed-folder]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const path = button.dataset.createManagedFolder || '';
-      if (!path || !window.confirm(`Create managed folder?\n${path}`)) return;
-      const data = await postJson('/api/storage/create-managed-folder', { path });
-      PopupManager.showToast(data.message || (data.ok ? 'Managed folder created' : 'Folder not created'), data.ok ? 'success' : 'error');
-      if (data.ok) window.location.reload();
-    });
+  return b;
+}
+
+async function openStorageModal(view) {
+  const titles = {
+    games: 'Games', 'artwork-detail': 'Artwork', 'ai-models-detail': 'AI Models', 'updates-detail': 'Updates', 'logs-detail': 'Logs', 'temporary-detail': 'Temporary Files', 'system-detail': 'System', 'category-other': 'Other', 'category-free': 'Free', locations: 'Managed Locations', 'cleanup-review': 'Cleanup', diagnostics: 'Diagnostics'
+  };
+  const title = titles[view] || 'Storage';
+  const content = storageModalShell(title, ['Storage', title]);
+  storageLoading(content, view === 'games' ? 'Scanning game folders…' : `Loading ${title}…`);
+  try {
+    if (view === 'games') return renderGamesModal(content, await getJson('/api/storage/games'));
+    if (view === 'locations') return renderLocationsModal(content, await getJson('/api/storage/locations'));
+    if (view === 'cleanup-review') return renderCleanupModal(content, await getJson('/api/storage/cleanup'));
+    if (view === 'diagnostics') return renderDiagnosticsModal(content, await getJson('/api/storage/diagnostics'));
+    if (view === 'artwork-detail') return renderFolderList(content, 'Artwork', await getJson('/api/storage/artwork'));
+    if (view === 'ai-models-detail') return renderAiModelsModal(content, await getJson('/api/storage/category/ai-models'));
+    const category = view.replace('-detail', '').replace('category-', '');
+    return renderCategoryModal(content, title, await getJson(`/api/storage/category/${category}`));
+  } catch (_) {
+    content.innerHTML = '<div class="empty-state"><strong>Could not load storage details.</strong></div>';
+  }
+}
+
+function renderGamesModal(content, data) {
+  content.textContent = '';
+  const folders = data.folders || [];
+  content.appendChild(storageSummaryLine('Summary', `${folders.length} managed folders · ${(data.summary && data.summary.size) || '0 B'} used`));
+  if (data.syncStatusAvailable === false) {
+    const note = document.createElement('div');
+    note.className = 'warning';
+    note.textContent = data.syncUnavailableMessage || 'Sync status unavailable for game folders.';
+    content.appendChild(note);
+  }
+  const rows = folders.map((f) => {
+    const actions = document.createElement('div');
+    actions.className = 'storage-row-actions';
+    const open = buttonNode('Open');
+    open.addEventListener('click', () => openGameFolderDetail(f.platform || f.id));
+    actions.append(open, copyButtonNode('Copy path', f.path));
+    return [f.platform || f.displayName, f.size, String(f.fileCount ?? 0), data.syncStatusAvailable === false ? '—' : String(f.syncedEntries ?? 'Unknown'), actions];
   });
-  root.querySelectorAll('[data-nav-target]').forEach((button) => {
-    button.addEventListener('click', () => {
-      PopupManager.closeModal();
-      window.activateArcadiaView?.(button.dataset.navTarget);
-    });
+  content.appendChild(storageTable(['Platform', 'Size', 'Files', 'Sync State', 'Actions'], rows));
+}
+
+async function openGameFolderDetail(platform) {
+  const key = String(platform || '').toLowerCase();
+  const content = storageModalShell(platform, ['Storage', 'Games', platform]);
+  storageLoading(content, `Scanning ${platform} folder…`);
+  const data = await getJson(`/api/storage/games/${encodeURIComponent(key)}`);
+  const f = data.folder || {};
+  content.textContent = '';
+  const back = buttonNode('Back');
+  back.addEventListener('click', () => openStorageModal('games'));
+  content.appendChild(back);
+  [['Actual path', f.path], ['Samba share', f.sambaShareName], ['Files', String(f.fileCount ?? 0)], ['Total size', f.size], ['Last modified', 'Read from folder scan']].forEach(([k, v]) => content.appendChild(storageSummaryLine(k, v)));
+  const actions = document.createElement('div');
+  actions.className = 'inline-actions inline-actions--compact';
+  [['Copy Windows path', f.windowsUNC], ['Copy Windows IP fallback', f.windowsUNCByIp], ['Copy Linux/macOS path', f.smbUrl], ['Copy Linux/macOS IP fallback', f.smbUrlByIp], ['Copy local path', f.path]].filter(([,v]) => validCopyValue(v)).forEach(([label, value]) => actions.appendChild(copyButtonNode(label, value)));
+  content.appendChild(actions);
+  const largest = (f.largestFiles || []).map((x) => [x.name, x.size, x.path]);
+  if (largest.length) content.appendChild(storageTable(['Largest files', 'Size', 'Path'], largest));
+}
+
+function renderFolderList(content, label, rows) {
+  content.textContent = '';
+  const list = Array.isArray(rows) ? rows : [];
+  content.appendChild(storageSummaryLine('Summary', `${list.length} roots`));
+  content.appendChild(storageTable(['Name', 'Size', 'Files', 'State', 'Path'], list.map((r) => [r.displayName, r.size, String(r.fileCount ?? 0), r.state || '—', r.path])));
+}
+
+function renderAiModelsModal(content, data) {
+  content.textContent = '';
+  const models = data.items || [];
+  if (!models.length) content.appendChild(storageSummaryLine('Installed models', 'No models installed.'));
+  else content.appendChild(storageTable(['Model', 'Size', 'State', 'Path'], models.map((m) => [m.name, m.size, m.loaded ? 'Hot-loaded' : (m.selected ? 'Selected' : 'Installed'), m.path])));
+  const roots = data.roots || [];
+  if (roots.length) content.appendChild(storageTable(['Search Roots', 'Purpose', 'Path'], roots.map((r) => [r.displayName, r.purpose || '—', r.path])));
+}
+
+function renderCategoryModal(content, title, data) {
+  content.textContent = '';
+  const s = data.summary || {};
+  content.append(storageSummaryLine('Size', s.size || data.size || '—'), storageSummaryLine('Detail', s.detail || title));
+  if (data.roots) content.appendChild(storageTable(['Location', 'Purpose', 'Path'], data.roots.map((r) => [r.displayName, r.purpose || '—', r.path])));
+}
+
+function renderCleanupModal(content, cleanup) {
+  content.textContent = '';
+  const rows = [
+    ['Artwork cache', cleanup.artworkBytesClearable, 'clear-artwork-cache', '/api/storage/cleanup/artwork', 'Clear'],
+    ['Temporary files', cleanup.temporaryBytesClearable, 'clean-temporary-files', '/api/storage/cleanup/temporary', 'Clear'],
+    ['Old updates', cleanup.oldUpdateBytesClearable, 'clear-old-updates', '/api/storage/cleanup/old-updates', 'Clear'],
+    ['Logs', cleanup.logsBytesClearable, 'prune-logs', '/api/storage/cleanup/logs', 'Prune'],
+    ['Partial downloads', cleanup.partialDownloadsBytesClearable, 'clear-partial-ai-downloads', '/api/storage/cleanup/partial-ai-downloads', 'Clear'],
+  ].map(([label, bytes, action, endpoint, text]) => {
+    const b = Number(bytes || 0) > 0 ? buttonNode(text) : document.createTextNode('—');
+    if (b instanceof HTMLButtonElement) b.addEventListener('click', () => runStorageCleanup(action, endpoint));
+    return [label, formatBytes(Number(bytes || 0)), b];
   });
+  content.appendChild(storageTable(['Item', 'Clearable', 'Action'], rows));
+}
+
+function renderLocationsModal(content, registry) {
+  content.textContent = '';
+  const cats = registry.categories || {};
+  const rows = [];
+  Object.entries(cats).forEach(([name, cat]) => (cat.roots || []).forEach((r) => rows.push([name, r.displayName || r.platform, r.path, copyButtonNode('Copy', r.path)])));
+  content.appendChild(storageTable(['Category', 'Name', 'Path', 'Action'], rows));
+}
+
+function renderDiagnosticsModal(content, d) {
+  content.textContent = '';
+  [['Mount point', d.mountPoint], ['Filesystem', d.filesystem || 'Unknown'], ['Scan duration', `${d.scanDurationMs || 0} ms`], ['Scanner', d.scannerVersion], ['Last scan', d.lastScanTimestamp || 'Unknown']].forEach(([k, v]) => content.appendChild(storageSummaryLine(k, v)));
+  const messages = [...(d.warnings || []), ...(d.overlapWarnings || []), ...(d.categoryScanErrors || []), ...(d.missingDirs || []).map((p) => `Missing folder: ${p}`), ...(d.permissionErrors || []).map((p) => `Permission denied: ${p}`)];
+  if (!messages.length) content.appendChild(storageSummaryLine('Warnings', 'None'));
+  else content.appendChild(storageTable(['Diagnostics'], messages.map((m) => [m])));
+}
+
+async function runStorageCleanup(action, endpoint) {
+  const body = confirmationFor(action);
+  if (body === null) return;
+  const data = await postJson(endpoint, body);
+  PopupManager.showToast(data.message || (data.ok ? 'Cleanup complete' : 'Cleanup failed'), data.ok ? 'success' : 'error');
+  if (data.ok) openStorageModal('cleanup-review');
+}
+
+function bindStorageModals() {
+  document.querySelectorAll('[data-storage-modal]').forEach((button) => button.addEventListener('click', () => openStorageModal(button.dataset.storageModal)));
+  document.querySelectorAll('[data-storage-cleanup]').forEach((button) => button.addEventListener('click', () => {
+    const endpoints = { 'clear-artwork-cache': '/api/storage/cleanup/artwork', 'clean-temporary-files': '/api/storage/cleanup/temporary', 'clear-old-updates': '/api/storage/cleanup/old-updates', 'prune-logs': '/api/storage/cleanup/logs', 'clear-partial-ai-downloads': '/api/storage/cleanup/partial-ai-downloads' };
+    runStorageCleanup(button.dataset.storageCleanup, endpoints[button.dataset.storageCleanup]);
+  }));
 }
 
 function validCopyValue(value) {
-  return Boolean(value) && !/smb::|smb:\/|\\undefined|smb:\/\/undefined|undefined/i.test(value);
+  return Boolean(value) && !/smb::|smb:\/[^/]|\\undefined|smb:\/\/undefined|undefined/i.test(value);
 }
 
 async function copyToClipboard(value) {
@@ -985,6 +1099,9 @@ async function downloadHFModel() {
   await postAI('/api/ai/models/huggingface/download', req, 'Model download finished');
 }
 function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   const gb = bytes / 1024 / 1024 / 1024;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 / 1024)} MB`;
 }
