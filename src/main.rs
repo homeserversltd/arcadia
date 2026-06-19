@@ -2580,6 +2580,7 @@ mod tests {
             "duplicate button labels: {duplicates:?}"
         );
         assert_eq!(counts.get("Start Sync"), Some(&1));
+        assert_eq!(rendered.matches(">Start Sync</button>").count(), 1);
         for fake in [
             "Load This Model",
             "Enable SSH",
