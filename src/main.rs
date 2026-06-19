@@ -962,8 +962,8 @@ mod tests {
             "Sync Games",
             "Scan the game folders, fetch artwork, and add games to the GameScope library.",
             "data-nav-target=\"sync\"",
-            "Load AI Model",
-            "Select which local llama.cpp model is loaded onto the GPU.",
+            "Local AI",
+            "Choose the local AI that runs on this console and can be used on your home network.",
             "data-nav-target=\"ai-model\"",
             "home-action-tile",
         ] {
@@ -975,6 +975,46 @@ mod tests {
             assert!(
                 !rendered[..home_end].contains(forbidden_on_home),
                 "advanced label leaked into Home: {forbidden_on_home}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_ai_language_replaces_ai_model_jargon() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+
+        for required in [
+            "Local AI",
+            "Choose the local AI that runs on this console and can be used on your home network.",
+            "Loaded Model",
+            "Available Models",
+            "GPU Usage",
+            "Load This Model",
+            "Not Loaded",
+            "Open LAN Inference Settings",
+            "Mistral 7B Instruct",
+            "mistral-7b-instruct.Q4_K_M.gguf",
+            "Recommended use",
+        ] {
+            assert!(rendered.contains(required), "missing {required}");
+        }
+
+        for forbidden in [
+            "AI Model",
+            "Load AI Model",
+            "Model Manager",
+            "LLM",
+            "llama.cpp",
+        ] {
+            assert!(
+                !rendered.contains(forbidden),
+                "forbidden visible term survived: {forbidden}"
             );
         }
     }

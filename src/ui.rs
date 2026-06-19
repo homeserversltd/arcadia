@@ -11,7 +11,7 @@ const VIEWS: [(&str, &str, &str); 9] = [
     ("home", "⌂", "Home"),
     ("games", "▣", "Games"),
     ("sync", "↻", "Sync"),
-    ("ai-model", "◉", "AI Model"),
+    ("ai-model", "◉", "Local AI"),
     ("lan-inference", "⇄", "LAN Inference"),
     ("access-pin", "●", "Access / PIN"),
     ("updates", "⬆", "Updates"),
@@ -71,7 +71,7 @@ fn header(status: &ConsoleStatus) -> Markup {
                 (status_badge("GameScope", "Running", "good", "The TV game session is expected to be running."))
                 (status_badge("Storage", "OK", "good", "Storage has room for games and artwork."))
                 (status_badge("Sync", "Idle", "idle", "No game sync is running right now."))
-                (status_badge("AI", "No Model", "idle", "No local model is currently marked as loaded."))
+                (status_badge("AI", "Not Loaded", "idle", "No local AI model is currently marked as loaded."))
                 (status_badge("Update", "Current", "good", "No update is currently reported."))
                 (status_badge("PIN", if status.gui_pin.pin_required { "Required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, "Whether the web console asks for the setup PIN before opening."))
             }
@@ -124,7 +124,7 @@ fn home_view(status: &ConsoleStatus) -> Markup {
             div class="home-action-grid" {
                 (action_tile("▣", "Add Games", "Open the console’s network folders and copy games into the right system folder.", "games", "Network copy"))
                 (action_tile("↻", "Sync Games", "Scan the game folders, fetch artwork, and add games to the GameScope library.", "sync", "Ready"))
-                (action_tile("◉", "Load AI Model", "Select which local llama.cpp model is loaded onto the GPU.", "ai-model", "No model loaded"))
+                (action_tile("◉", "Local AI", "Choose the local AI that runs on this console and can be used on your home network.", "ai-model", "Not Loaded"))
             }
         }
 
@@ -138,7 +138,7 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                 (status_card("GameScope", "Running", "Games appear on the TV after sync creates shortcuts."))
                 (status_card("Storage", "OK", "There is room for game files and artwork."))
                 (status_card("Last Sync", "Not reported", "Run Sync Games after copying new files."))
-                (status_card("Loaded AI Model", "No model loaded", "Load a model only when you need LAN inference."))
+                (status_card("Loaded Local AI", "Not Loaded", "Load local AI only when you need LAN inference."))
                 (status_card("Software Version", status.arcadia.version, "Arcadia web console version."))
             }
         }
@@ -146,12 +146,12 @@ fn home_view(status: &ConsoleStatus) -> Markup {
         section class="home-section home-recent" aria-labelledby="home-recent-title" {
             div class="section-heading section-heading--compact" {
                 h3 id="home-recent-title" { "Recent Activity" }
-                p { "Last sync is not reported yet. No local AI model is loaded." }
+                p { "Last sync is not reported yet. Local AI is not loaded." }
             }
             div class="inline-actions" {
                 (nav_button("Open Games", "games"))
                 (nav_button("Open Sync", "sync"))
-                (nav_button("Open AI Model", "ai-model"))
+                (nav_button("Open Local AI", "ai-model"))
             }
         }
     })
@@ -225,22 +225,52 @@ fn sync_view() -> Markup {
 }
 
 fn ai_model_view() -> Markup {
-    view_shell("ai-model", "Local inference", "Local AI Model", "The console can load one local model onto the GPU. Loading a model may take time and may reduce game performance while active.", html! {
-        div class="active-model" {
-            span { "Active model" }
-            strong { "No model loaded" }
-            p { "Only one model should be loaded at a time." }
+    view_shell("ai-model", "On-device assistant", "Local AI", "This console can run a local AI assistant without sending prompts to the cloud. Choose which model is loaded and whether it is available to devices on your home network.", html! {
+        section class="local-ai-section" aria-labelledby="loaded-model-title" {
+            div class="section-heading section-heading--compact" {
+                h3 id="loaded-model-title" { "Loaded Model" }
+                p { "No local AI model is currently loaded." }
+            }
+            div class="active-model" {
+                span { "Status" }
+                strong { "Not Loaded" }
+                p { "Only one model should be loaded at a time. Loading a model may take several seconds or minutes depending on size." }
+                div class="model-meta-row" {
+                    (model_meta("Current model", "None"))
+                    (model_meta("Memory estimate", "0 GB GPU memory"))
+                    (model_meta("LAN inference", "Off"))
+                }
+                div class="inline-actions" {
+                    (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "This removes the active local AI model from memory when unloading is supported."))
+                    (modal_button(ButtonVariant::Secondary, "Reload", "Reload local AI", "Reload the selected local AI model if it is already configured."))
+                    (nav_button("Open LAN Inference Settings", "lan-inference"))
+                }
+            }
         }
-        div class="model-grid" {
-            (model_card("Mistral 7B Instruct", "4.1 GB", "Q4_K_M", "6 GB VRAM", "Available", true))
-            (model_card("Qwen2.5 Coder 7B", "4.7 GB", "Q4_K_M", "7 GB VRAM", "Available", false))
-            (model_card("Llama 3.2 3B", "2.0 GB", "Q4_K_M", "4 GB VRAM", "Available", false))
+
+        section class="local-ai-section" aria-labelledby="available-models-title" {
+            div class="section-heading section-heading--compact" {
+                h3 id="available-models-title" { "Available Models" }
+                p { "Choose the local AI that should run on this console. Technical details are secondary." }
+            }
+            div class="model-grid" {
+                (model_card("Mistral 7B Instruct", "mistral-7b-instruct.Q4_K_M.gguf", "4.1 GB", "Q4_K_M", "6 GB", "Balanced", "Available", true))
+                (model_card("Qwen2.5 Coder 7B", "qwen2.5-coder-7b.Q4_K_M.gguf", "4.7 GB", "Q4_K_M", "7 GB", "Higher Quality", "Available", false))
+                (model_card("Llama 3.2 3B", "llama-3.2-3b.Q4_K_M.gguf", "2.0 GB", "Q4_K_M", "4 GB", "Fast", "Available", false))
+            }
         }
-        div class="primary-actions" {
-            (modal_button(ButtonVariant::Primary, "Load Selected Model", "Model loading", "This console will cold-load the selected local model onto the GPU. Games may run slower while a model is loaded."))
-            (modal_button(ButtonVariant::Secondary, "Unload Model", "Unload model", "This removes the active local model from memory when the model server supports unloading."))
+
+        section class="local-ai-section" aria-labelledby="gpu-usage-title" {
+            div class="section-heading section-heading--compact" {
+                h3 id="gpu-usage-title" { "GPU Usage" }
+                p { "Local AI uses the same GPU as games. Large models may reduce game performance while loaded." }
+            }
+            div class="status-card-grid status-card-grid--compact" {
+                (status_card("GPU memory used", "0 GB", "No local AI model is loaded."))
+                (status_card("GPU memory available", "Not reported", "Available GPU memory appears here when telemetry is connected."))
+                (status_card("AI process", "Stopped", "Local AI is not running right now."))
+            }
         }
-        p class="warning" { "AI inference may affect game performance. Unload the model before playing demanding games." }
     })
 }
 
@@ -250,7 +280,7 @@ fn lan_inference_view() -> Markup {
         div class="status-card-grid" {
             (status_card("Port 7777", "Closed", "Enable LAN inference only on a trusted home network."))
             (status_card("Current model", "No model", "Load a local model before expecting useful replies."))
-            (status_card("llama.cpp server", "Stopped", "The server opens the LAN endpoint when enabled."))
+            (status_card("Local AI server", "Stopped", "The server opens the LAN endpoint when enabled."))
         }
         div class="primary-actions" {
             (modal_button(ButtonVariant::Primary, "Enable LAN Inference", "Enable LAN inference", "Only enable this on a trusted LAN. This is not intended for public internet exposure."))
@@ -333,7 +363,7 @@ fn advanced_view(status: &ConsoleStatus) -> Markup {
             (service_status_row("gamescope", "Expected running"))
             (service_status_row("samba", "Shares game folders"))
             (service_status_row("sync service", "Runs on demand"))
-            (service_status_row("llama.cpp server", "Optional"))
+            (service_status_row("local AI server", "Optional"))
             (service_status_row("web GUI", "Arcadia"))
         }
         (collapsible_log("Advanced logs", "Logs are collapsed by default. Use system logs or Harmonia receipts for detailed diagnosis."))
@@ -371,22 +401,35 @@ fn provider_status(name: &str, state: &str) -> Markup {
 
 fn model_card(
     name: &str,
+    filename: &str,
     size: &str,
     quant: &str,
-    vram: &str,
+    gpu_memory: &str,
+    recommended_use: &str,
     status: &str,
     selected: bool,
 ) -> Markup {
     html! {
-        label class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
-            input type="radio" name="model" value=(name) checked[selected];
-            span class="model-name" { (name) }
-            span { "Size: " (size) }
-            span { "Quantization: " (quant) }
-            span { "VRAM estimate: " (vram) }
-            strong { (status) }
+        article class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
+            label class="model-choice" {
+                input type="radio" name="model" value=(name) checked[selected];
+                span class="model-name" { (name) }
+            }
+            code class="model-filename" { (filename) }
+            div class="model-meta-row" {
+                (model_meta("Size", size))
+                (model_meta("Quantization", quant))
+                (model_meta("GPU memory", gpu_memory))
+                (model_meta("Recommended use", recommended_use))
+            }
+            strong class="model-status" { (status) }
+            (modal_button(ButtonVariant::Primary, "Load This Model", "Load local AI", "Load this local AI model onto the console GPU. Games may run slower while a model is loaded."))
         }
     }
+}
+
+fn model_meta(label: &str, value: &str) -> Markup {
+    html! { span class="model-meta" { em { (label) } strong { (value) } } }
 }
 
 fn service_status_row(service: &str, state: &str) -> Markup {
