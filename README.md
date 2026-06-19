@@ -22,6 +22,15 @@ Theme doctrine:
 - Each theme is one flat JSON singleton containing the complete variable set documented in `static/themes/README.md`.
 - `build.rs` validates the singleton JSONs at compile time and fails the build if a theme omits a required variable.
 
+
+UX library doctrine:
+
+- Arcadia shared UX CSS lives at `/fulcrum/attachments/arcadia/static/ux/`.
+- `static/ux/arcadia-ux.css` owns reusable shell rhythm, component scale, spacing, utility primitives, and ordinary text bounds.
+- `static/ux/arcadia-viewports.css` owns all tablet/phone viewport dialing; `static/app.css` must not grow new `@media` bands.
+- The served `/static/app.css` response is composed by Rust in this order: generated theme CSS, UX library CSS, app defaults, viewport CSS.
+- Theme JSONs remain skin/color/radius inputs only; responsive layout belongs in the UX library.
+
 Run locally:
 
 ```bash

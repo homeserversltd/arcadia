@@ -1,0 +1,60 @@
+/* Arcadia UX library: one agent-facing substrate for shell rhythm, component scale, and responsive vocabulary.
+   App view selectors consume these variables; viewport overrides live in arcadia-viewports.css. */
+:root {
+  --ux-shell-padding: 14px;
+  --ux-shell-gap: 14px;
+  --ux-header-min-height: 76px;
+  --ux-header-gap: 18px;
+  --ux-header-padding-block: 12px;
+  --ux-header-padding-inline: 16px;
+  --ux-header-radius: 24px;
+
+  --ux-lockup-min-width: 240px;
+  --ux-mark-size: 40px;
+  --ux-mark-radius: 15px 15px 15px 5px;
+
+  --ux-workspace-sidebar-width: 96px;
+  --ux-sidebar-top: 14px;
+  --ux-sidebar-gap: 10px;
+  --ux-sidebar-padding-block: 12px;
+  --ux-sidebar-padding-inline: 10px;
+  --ux-sidebar-radius: 26px;
+  --ux-launcher-min-height: 64px;
+  --ux-launcher-padding-block: 7px;
+  --ux-launcher-padding-inline: 5px;
+  --ux-launcher-radius: 21px;
+  --ux-launcher-icon-size: 34px;
+  --ux-launcher-icon-radius: 12px;
+
+  --ux-viewport-radius: 30px;
+  --ux-view-min-height: calc(100vh - 120px);
+  --ux-view-padding-block: 16px;
+  --ux-view-padding-inline: 18px;
+
+  --ux-grid-gap: 12px;
+  --ux-control-gap: 10px;
+  --ux-card-padding: 14px;
+  --ux-compact-card-padding: 12px;
+  --ux-field-min-height: 50px;
+  --ux-button-min-height: 42px;
+  --ux-button-padding-block: 10px;
+  --ux-button-padding-inline: 16px;
+  --ux-button-radius: 16px;
+  --ux-compact-button-min-height: 34px;
+  --ux-compact-button-padding-block: 7px;
+  --ux-compact-button-padding-inline: 10px;
+  --ux-modal-max-width: 620px;
+
+  --ux-text-xs: 11px;
+  --ux-text-sm: 12px;
+  --ux-text-md: 14px;
+  --ux-text-lg: 18px;
+  --ux-text-xl: 20px;
+  --ux-text-max: 22px;
+}
+
+.ux-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ux-grid-gap); }
+.ux-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ux-grid-gap); }
+.ux-grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--ux-grid-gap); }
+.ux-row-actions { display: flex; flex-wrap: wrap; gap: var(--ux-control-gap); }
+.ux-readable { font-size: var(--ux-text-md); line-height: 1.4; color: var(--muted); }
