@@ -54,6 +54,45 @@ const PopupManager = (() => {
   return { showModal, closeModal, showToast };
 })();
 
+
+function arcadiaThemeNames() {
+  const declared = Array.isArray(window.ARCADIA_THEMES) ? window.ARCADIA_THEMES : [];
+  return declared.map((theme) => theme.name).filter(Boolean);
+}
+
+function normalizeThemeName(name) {
+  const themes = arcadiaThemeNames();
+  return themes.includes(name) ? name : (themes[0] || 'ember-aubergine');
+}
+
+function setArcadiaTheme(name, announce = false) {
+  const theme = normalizeThemeName(name);
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('arcadia-theme', theme); } catch (_) {}
+  document.querySelectorAll('[data-theme-cycle]').forEach((button) => {
+    button.dataset.themeCurrent = theme;
+    const label = button.querySelector('.theme-name');
+    if (label) label.textContent = theme.replace(/-/g, ' ');
+    button.setAttribute('aria-label', `Theme ${theme.replace(/-/g, ' ')}`);
+    button.title = `Theme ${theme.replace(/-/g, ' ')}`;
+  });
+  if (announce) PopupManager.showToast(`Theme ${theme.replace(/-/g, ' ')}`, 'success');
+}
+
+function initializeArcadiaTheme() {
+  let stored = '';
+  try { stored = localStorage.getItem('arcadia-theme') || ''; } catch (_) {}
+  setArcadiaTheme(stored || document.documentElement.dataset.theme || '', false);
+  document.querySelectorAll('[data-theme-cycle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const themes = arcadiaThemeNames();
+      const current = normalizeThemeName(document.documentElement.dataset.theme);
+      const next = themes[(themes.indexOf(current) + 1) % themes.length] || current;
+      setArcadiaTheme(next, true);
+    });
+  });
+}
+
 async function checkGuiPinStatus() {
   const res = await fetch('/api/gui-pin/status', { headers: { accept: 'application/json' } });
   if (!res.ok) throw new Error('GUI PIN status request failed');
@@ -1191,7 +1230,7 @@ function bindProviderKeys() {
   });
 }
 
-document.documentElement.dataset.theme = 'dark';
+initializeArcadiaTheme();
 bindNavigation();
 bindConsoleActions();
 bindStorageModals();

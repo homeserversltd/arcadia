@@ -14,6 +14,14 @@ Current scaffold:
   - `/static/app.css`
   - `/static/app.js`
 
+Theme doctrine:
+
+- Arcadia theme JSONs live at `/fulcrum/attachments/arcadia/static/themes/*.json`.
+- Inside a Cibation worktree they live at `/fulcrum/attachments/arcadia/.worktrees/<work-id-or-task>/static/themes/*.json`.
+- The filename stem is the theme name propagated through generated CSS, generated JavaScript, `<html data-theme>`, localStorage, and the header theme button.
+- Each theme is one flat JSON singleton containing the complete variable set documented in `static/themes/README.md`.
+- `build.rs` validates the singleton JSONs at compile time and fails the build if a theme omits a required variable.
+
 Run locally:
 
 ```bash

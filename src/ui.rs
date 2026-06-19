@@ -148,8 +148,18 @@ fn header(status: &ConsoleStatus) -> Markup {
                 (nav_status_icon("sync", if sync_delta > 0 { "↻" } else { "✓" }, sync_class, &sync_tip, "sync"))
                 (nav_status_icon("updates", if status.updates.state == "available" { "⬇" } else { "✓" }, updates_class, &updates_tip, "updates"))
                 (nav_status_icon("local-ai", "◉", ai_class, &ai_tip, "local-ai"))
+                (theme_button())
                 (nav_status_icon("pin", if status.gui_pin.pin_required { "🔒" } else { "🔓" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI access" } else { "GUI open without PIN" }, "access-pin"))
             }
+        }
+    }
+}
+
+fn theme_button() -> Markup {
+    html! {
+        button class="status-badge status-badge--idle status-badge--nav status-badge--theme" type="button" data-theme-cycle="true" data-theme-current="" title="Theme" aria-label="Theme" {
+            span class="chip-icon" aria-hidden="true" { "◐" }
+            span class="theme-name" { "Theme" }
         }
     }
 }
@@ -1453,7 +1463,9 @@ fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
 }
 
 fn theme_boot_script() -> PreEscaped<&'static str> {
-    PreEscaped(r#"(function(){document.documentElement.dataset.theme='dark';})();"#)
+    PreEscaped(
+        r#"(function(){try{document.documentElement.dataset.theme=localStorage.getItem('arcadia-theme')||'ember-aubergine';}catch(_){document.documentElement.dataset.theme='ember-aubergine';}})();"#,
+    )
 }
 
 fn modal_root() -> Markup {

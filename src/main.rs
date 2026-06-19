@@ -26,6 +26,8 @@ mod ui;
 
 const APP_CSS: &str = include_str!("../static/app.css");
 const APP_JS: &str = include_str!("../static/app.js");
+const THEME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.css"));
+const THEME_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.js"));
 const GUI_PIN_STATE_PATH: &str = "/var/lib/homeconsole/gui-pin-access.json";
 const GUI_PIN_VERIFY_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-verify";
 const GUI_PIN_ACCESS_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-access";
@@ -2990,16 +2992,22 @@ fn gui_pin_response(
 }
 
 async fn css() -> Response {
-    asset(APP_CSS, "text/css; charset=utf-8")
+    asset_owned(
+        format!("{}\n{}", THEME_CSS, APP_CSS),
+        "text/css; charset=utf-8",
+    )
 }
 async fn js() -> Response {
-    asset(APP_JS, "application/javascript; charset=utf-8")
+    asset_owned(
+        format!("{}\n{}", THEME_JS, APP_JS),
+        "application/javascript; charset=utf-8",
+    )
 }
 async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "not found")
 }
 
-fn asset(body: &'static str, content_type: &'static str) -> Response {
+fn asset_owned(body: String, content_type: &'static str) -> Response {
     let mut response = body.into_response();
     response
         .headers_mut()
