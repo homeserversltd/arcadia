@@ -3764,7 +3764,7 @@ mod tests {
                 .expect("access follows network");
         let network_html = &rendered[network_start..network_end];
         for required in [
-            "Current Connection",
+            "Online",
             "Active connection",
             "IP address",
             "Gateway",
@@ -3773,10 +3773,10 @@ mod tests {
             "Internet",
             "Wi-Fi",
             "Wired LAN",
-            "Addresses",
+            "Details",
+            "IP Settings",
             "Services",
             "Diagnostics",
-            "Advanced IP Settings",
             "http://arcadia.home.arpa",
         ] {
             assert!(
@@ -3790,7 +3790,12 @@ mod tests {
                 "network leaked raw/secret term: {forbidden}"
             );
         }
-        assert!(APP_JS.contains("input.type = toggle.checked ? 'text' : 'password'"));
+        assert!(!network_html.contains("wifi-network-list"));
+        assert!(!network_html.contains("data-network-connect-form"));
+        assert!(!network_html.contains("Advanced IP Settings"));
+        assert!(APP_JS.contains("function openWifiNetworkPicker"));
+        assert!(APP_JS.contains("function normalizeWifiNetworks"));
+        assert!(APP_JS.contains("input.type = event.target.checked ? 'text' : 'password'"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
     }
