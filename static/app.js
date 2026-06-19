@@ -378,22 +378,54 @@ function markOnboardingFirstSyncComplete(data = {}) {
 }
 
 function bindNetworkControls() {
-  document.querySelectorAll('[data-network-action]').forEach((button) => {
-    button.addEventListener('click', (event) => {
+  document.querySelectorAll('[data-network-action][data-network-endpoint]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
       event.preventDefault();
+      clearMessage('wifi-message');
       const action = button.dataset.networkAction;
-      const message = document.getElementById('wifi-message');
-      const responses = {
-        'scan-wifi': 'Scanning for nearby Wi-Fi networks…',
-        'connect-wifi': 'Connecting… Could not connect to this Wi-Fi network. Check the password and try again.',
-        'disconnect-wifi': 'Disconnect requested. Ethernet remains preferred when connected.',
-        'forget-wifi': 'Saved network removal requested. Saved Wi-Fi passwords are never displayed.',
-        'show-saved-wifi': 'Saved networks will appear here when the network manager adapter is connected.',
-      };
-      if (message) setMessage('wifi-message', responses[action] || 'Network action requested.', action === 'connect-wifi' ? 'error' : 'info');
-      PopupManager.showToast(responses[action] || 'Network action requested.', action === 'connect-wifi' ? 'error' : 'info');
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = action === 'scan-wifi' ? 'Scanning...' : 'Disconnecting...';
+      try {
+        const data = await postJson(button.dataset.networkEndpoint, {});
+        setMessage('wifi-message', formatActionResult(data), data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.message || (data.ok ? 'Wi-Fi command complete' : 'Wi-Fi command failed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        setMessage('wifi-message', 'Wi-Fi request failed.', 'error');
+        PopupManager.showToast('Wi-Fi request failed', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
     });
   });
+
+  const form = document.getElementById('wifi-connect-form');
+  if (form) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage('wifi-message');
+      const ssid = form.querySelector('input[name="ssid"]')?.value || '';
+      const password = form.querySelector('input[name="password"]')?.value || '';
+      const button = form.querySelector('button[type="submit"]');
+      if (!ssid.trim()) return setMessage('wifi-message', 'Wi-Fi network name is required.', 'error');
+      button.disabled = true;
+      button.textContent = 'Connecting...';
+      try {
+        const data = await postJson('/api/network/connect-wifi', { ssid, password });
+        form.querySelector('input[name="password"]').value = '';
+        setMessage('wifi-message', formatActionResult(data), data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.message || (data.ok ? 'Wi-Fi connected' : 'Wi-Fi connection failed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        form.querySelector('input[name="password"]').value = '';
+        setMessage('wifi-message', 'Wi-Fi connection request failed.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Connect Wi-Fi';
+      }
+    });
+  }
+
   document.querySelectorAll('[data-toggle-password]').forEach((toggle) => {
     toggle.addEventListener('change', () => {
       const input = document.querySelector(`input[name="${toggle.dataset.togglePassword}"]`);

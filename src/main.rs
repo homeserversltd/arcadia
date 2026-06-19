@@ -37,6 +37,7 @@ const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
 const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
 const SYSTEMD_RUN_BIN: &str = "/usr/bin/systemd-run";
+const NMCLI_BIN: &str = "/usr/bin/nmcli";
 const GAMES_ROOT: &str = "/home/owner/Games";
 const ARTWORK_ROOT: &str = "/home/owner/Games/artwork";
 const TEMP_CLEAN_ROOTS: [&str; 2] = ["/tmp", "/var/tmp"];
@@ -290,6 +291,12 @@ struct ConsoleActionRequest {
     confirm: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct WifiConnectRequest {
+    ssid: String,
+    password: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ConsoleActionResponse {
     ok: bool,
@@ -336,6 +343,9 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/provider-keys/save", post(save_provider_keys))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/sync-games", post(action_sync_games))
+        .route("/api/network/scan-wifi", post(action_scan_wifi))
+        .route("/api/network/connect-wifi", post(action_connect_wifi))
+        .route("/api/network/disconnect-wifi", post(action_disconnect_wifi))
         .route(
             "/api/actions/clear-artwork-cache",
             post(action_clear_artwork_cache),
@@ -436,6 +446,76 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
         ],
         "Sync games completed.",
         "Sync games failed. Read /var/lib/harmonia/receipts/game-sync-latest.",
+    )
+}
+
+async fn action_scan_wifi() -> (StatusCode, Json<ConsoleActionResponse>) {
+    run_network_command(
+        "scan-wifi",
+        vec![
+            "-t".to_string(),
+            "-f".to_string(),
+            "SSID,SIGNAL,SECURITY".to_string(),
+            "dev".to_string(),
+            "wifi".to_string(),
+            "list".to_string(),
+            "--rescan".to_string(),
+            "yes".to_string(),
+        ],
+        "Wi-Fi networks scanned.",
+        "Wi-Fi scan failed.",
+    )
+}
+
+async fn action_connect_wifi(
+    Json(body): Json<WifiConnectRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let ssid = body.ssid.trim();
+    if ssid.is_empty() {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "connect-wifi",
+            NMCLI_BIN,
+            "Wi-Fi network name is required.",
+        );
+    }
+    let mut args = vec![
+        "dev".to_string(),
+        "wifi".to_string(),
+        "connect".to_string(),
+        ssid.to_string(),
+    ];
+    if let Some(password) = body
+        .password
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        args.push("password".to_string());
+        args.push(password.to_string());
+    }
+    run_network_command(
+        "connect-wifi",
+        args,
+        "Wi-Fi connection requested.",
+        "Wi-Fi connection failed.",
+    )
+}
+
+async fn action_disconnect_wifi() -> (StatusCode, Json<ConsoleActionResponse>) {
+    let Some(device) = wifi_device_name() else {
+        return console_action_error(
+            StatusCode::NOT_FOUND,
+            "disconnect-wifi",
+            NMCLI_BIN,
+            "No Wi-Fi device was found on this console.",
+        );
+    };
+    run_network_command(
+        "disconnect-wifi",
+        vec!["device".to_string(), "disconnect".to_string(), device],
+        "Wi-Fi disconnected.",
+        "Wi-Fi disconnect failed.",
     )
 }
 
@@ -654,25 +734,7 @@ fn run_console_command(
         );
     }
     match Command::new(command).args(args).output() {
-        Ok(output) => {
-            let ok = output.status.success();
-            (
-                if ok {
-                    StatusCode::OK
-                } else {
-                    StatusCode::INTERNAL_SERVER_ERROR
-                },
-                Json(ConsoleActionResponse {
-                    ok,
-                    action,
-                    command,
-                    exit_code: output.status.code(),
-                    message: if ok { success_message } else { failure_message }.to_string(),
-                    stdout: redacted_output(&output.stdout),
-                    stderr: redacted_output(&output.stderr),
-                }),
-            )
-        }
+        Ok(output) => command_response(action, command, output, success_message, failure_message),
         Err(err) => console_action_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             action,
@@ -680,6 +742,75 @@ fn run_console_command(
             &format!("Command could not start: {err}"),
         ),
     }
+}
+
+fn run_network_command(
+    action: &'static str,
+    args: Vec<String>,
+    success_message: &str,
+    failure_message: &str,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if !helper_exists(NMCLI_BIN) {
+        return console_action_error(
+            StatusCode::NOT_IMPLEMENTED,
+            action,
+            NMCLI_BIN,
+            "NetworkManager command is not installed on this console.",
+        );
+    }
+    match Command::new(NMCLI_BIN).args(args).output() {
+        Ok(output) => command_response(action, NMCLI_BIN, output, success_message, failure_message),
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            action,
+            NMCLI_BIN,
+            &format!("Wi-Fi command could not start: {err}"),
+        ),
+    }
+}
+
+fn command_response(
+    action: &'static str,
+    command: &'static str,
+    output: std::process::Output,
+    success_message: &str,
+    failure_message: &str,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let ok = output.status.success();
+    (
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        Json(ConsoleActionResponse {
+            ok,
+            action,
+            command,
+            exit_code: output.status.code(),
+            message: if ok { success_message } else { failure_message }.to_string(),
+            stdout: redacted_output(&output.stdout),
+            stderr: redacted_output(&output.stderr),
+        }),
+    )
+}
+
+fn wifi_device_name() -> Option<String> {
+    command_stdout("iw", &["dev"])
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.trim().strip_prefix("Interface ").map(str::to_string))
+        })
+        .or_else(|| {
+            command_stdout(NMCLI_BIN, &["-t", "-f", "DEVICE,TYPE", "device", "status"]).and_then(
+                |text| {
+                    text.lines().find_map(|line| {
+                        let (device, kind) = line.split_once(':')?;
+                        (kind == "wifi" && !device.is_empty()).then(|| device.to_string())
+                    })
+                },
+            )
+        })
 }
 
 fn console_action_error(
@@ -2033,7 +2164,6 @@ mod tests {
             "Console Status",
             "Recent Activity",
             "home-action-tile",
-            "Open Local AI",
         ] {
             assert!(
                 !home_html.contains(forbidden),
@@ -2066,12 +2196,7 @@ mod tests {
             "Loaded Model",
             "Available Models",
             "GPU Usage",
-            "Load This Model",
             "Not Loaded",
-            "Open LAN Inference Settings",
-            "Mistral 7B Instruct",
-            "mistral-7b-instruct.Q4_K_M.gguf",
-            "Recommended use",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
@@ -2205,18 +2330,17 @@ mod tests {
             "Artwork",
             "AI Models",
             "Other Storage",
-            "Open Games Folder",
             "Clear Artwork Cache",
             "Clearing artwork does not delete games. Artwork can be downloaded again during Sync.",
-            "Rebuild Artwork on Next Sync",
             "Clean Temporary Files",
             "data-nav-target=\"storage\"",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
         assert!(
-            rendered.contains("Remove Model") || rendered.contains("No local AI model files"),
-            "storage page must either show removable models or the true empty model state"
+            rendered.contains("data-action=\"remove-ai-model\"")
+                || rendered.contains("No local AI model files"),
+            "storage page must either show removable model actions or the true empty model state"
         );
         if status.storage.percent_used >= 90 {
             assert!(rendered.contains(
@@ -2267,7 +2391,6 @@ mod tests {
             "Game Library",
             "Local AI",
             "storage-bar",
-            "Copy console URL",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
@@ -2300,6 +2423,12 @@ mod tests {
             "Type",
             "Address",
             "Signal",
+            "Wi-Fi",
+            "Network name",
+            "Wi-Fi password",
+            "Scan Wi-Fi",
+            "Connect Wi-Fi",
+            "Disconnect Wi-Fi",
             "Console",
             "Game folders",
             "mDNS",
@@ -2345,20 +2474,12 @@ mod tests {
             "LAN IP address",
             "Username",
             "ssh console@console.home.arpa",
-            "Enable SSH",
-            "Disable SSH",
-            "Copy SSH Command",
             "GameScope",
             "Samba",
             "Game Sync",
             "Local AI",
             "LAN Inference",
             "Web GUI",
-            "Restart",
-            "Sync",
-            "View",
-            "Copy",
-            "Download",
             "Local domain/path",
             "MAC address",
             "Status",
@@ -2404,7 +2525,6 @@ mod tests {
             "System Log".to_string(),
             "SSH is for direct technical access".to_string(),
             "Normal game management does not require SSH".to_string(),
-            "Only enable SSH on a trusted home network".to_string(),
             "LAN Inference is intended only for trusted home networks".to_string(),
             "Runs the console gaming session".to_string(),
             "Shares game folders".to_string(),
@@ -2417,6 +2537,70 @@ mod tests {
             assert!(
                 !system_html.contains(&forbidden),
                 "forbidden System label survived: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn rendered_buttons_have_unique_visible_intent_and_no_fake_action_modals() {
+        use std::collections::BTreeMap;
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        let mut rest = rendered.as_str();
+        while let Some(start) = rest.find("<button") {
+            rest = &rest[start..];
+            let Some(end_open) = rest.find('>') else {
+                break;
+            };
+            let Some(end) = rest.find("</button>") else {
+                break;
+            };
+            let text = rest[end_open + 1..end]
+                .split('<')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
+                .trim()
+                .to_string();
+            if !text.is_empty() && text != "×" {
+                *counts.entry(text).or_default() += 1;
+            }
+            rest = &rest[end + "</button>".len()..];
+        }
+        let duplicates: Vec<_> = counts.iter().filter(|(_, count)| **count > 1).collect();
+        assert!(
+            duplicates.is_empty(),
+            "duplicate button labels: {duplicates:?}"
+        );
+        assert_eq!(counts.get("Start Sync"), Some(&1));
+        for fake in [
+            "Load This Model",
+            "Enable SSH",
+            "Disable SSH",
+            "Enable LAN Inference",
+            "Disable LAN Inference",
+            "Download",
+            "Rescan Game Storage",
+            "Rebuild Artwork on Next Sync",
+        ] {
+            assert!(!rendered.contains(fake), "fake action survived: {fake}");
+        }
+        for required in [
+            "/api/network/scan-wifi",
+            "/api/network/connect-wifi",
+            "/api/network/disconnect-wifi",
+            "/api/actions/reboot-console",
+        ] {
+            assert!(
+                rendered.contains(required) || APP_JS.contains(required),
+                "missing backend seam {required}"
             );
         }
     }
