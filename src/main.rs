@@ -13,11 +13,11 @@ use std::{
     env, fs,
     fs::OpenOptions,
     io::Write,
-    net::SocketAddr,
+    net::{SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
@@ -175,31 +175,60 @@ pub struct SurfaceStatus {
 #[derive(Clone, Serialize)]
 pub struct NetworkStatus {
     pub online: bool,
+    pub active_type: String,
     pub connection_type: String,
     pub ssid: Option<String>,
     pub ip_address: String,
     pub signal: Option<String>,
+    pub signal_percent: Option<u8>,
+    pub ethernet_speed_mbps: Option<u64>,
     pub console_reachable: bool,
     pub game_folders_reachable: bool,
+    pub samba_reachable: bool,
     pub lan_ai_reachable: bool,
+    pub internet_reachable: Option<bool>,
 }
 
 #[derive(Clone, Serialize)]
 pub struct LibraryStatus {
     pub detected_games: u64,
+    pub detected_files: u64,
     pub gamescope_entries: u64,
     pub first_sync_completed: bool,
     pub last_sync: String,
+    pub last_sync_at: Option<String>,
+    pub last_sync_state: String,
     pub artwork_status: String,
+    pub artwork_complete: u64,
+    pub artwork_missing: u64,
     pub sync_needed: bool,
 }
 
 #[derive(Clone, Serialize)]
 pub struct LocalAiStatus {
+    pub load_state: String,
+    pub selected_model_id: Option<String>,
+    pub selected_model_name: Option<String>,
+    pub loaded_model_id: Option<String>,
+    pub loaded_model_name: Option<String>,
     pub loaded_model: Option<String>,
+    pub available_models: Vec<LocalAiModelStatus>,
     pub gpu_memory: Option<String>,
+    pub gpu_memory_used_bytes: Option<u64>,
+    pub gpu_memory_total_bytes: Option<u64>,
     pub lan_inference_enabled: bool,
     pub lan_inference_port: Option<u16>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct LocalAiModelStatus {
+    pub id: String,
+    pub name: String,
+    pub filename: String,
+    pub size_bytes: u64,
+    pub size: String,
+    pub estimated_vram_bytes: Option<u64>,
+    pub recommended_use: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -1114,24 +1143,73 @@ fn network_status() -> NetworkStatus {
                     .map(|v| v.split_whitespace().next().unwrap_or(v).to_string())
             })
         });
-    let connection_type = if ssid.is_some() {
-        "Wi-Fi"
-    } else if online {
-        "Ethernet"
+    let signal_percent = signal.as_deref().and_then(wifi_signal_percent);
+    let ethernet_speed_mbps = if ssid.is_none() && online {
+        ethernet_speed_mbps()
     } else {
-        "Offline"
+        None
+    };
+    let active_type = if ssid.is_some() {
+        "wifi"
+    } else if online {
+        "ethernet"
+    } else {
+        "offline"
     }
     .to_string();
+    let connection_type = match active_type.as_str() {
+        "wifi" => "Wi-Fi",
+        "ethernet" => "Ethernet",
+        _ => "Offline",
+    }
+    .to_string();
+    let samba_reachable = online && Path::new(GAMES_ROOT).exists();
     NetworkStatus {
         online,
+        active_type,
         connection_type,
         ssid,
         ip_address,
         signal,
+        signal_percent,
+        ethernet_speed_mbps,
         console_reachable: online,
-        game_folders_reachable: online && Path::new(GAMES_ROOT).exists(),
+        game_folders_reachable: samba_reachable,
+        samba_reachable,
         lan_ai_reachable: tcp_port_listening(7777),
+        internet_reachable: online.then(internet_reachable),
     }
+}
+
+fn wifi_signal_percent(signal: &str) -> Option<u8> {
+    let dbm = signal.split_whitespace().next()?.parse::<i32>().ok()?;
+    Some((((dbm + 100) * 2).clamp(0, 100)) as u8)
+}
+
+fn ethernet_speed_mbps() -> Option<u64> {
+    let entries = fs::read_dir("/sys/class/net").ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "lo" || name.starts_with("wl") || name.starts_with("wifi") {
+            continue;
+        }
+        let carrier = fs::read_to_string(entry.path().join("carrier")).unwrap_or_default();
+        if carrier.trim() != "1" {
+            continue;
+        }
+        let speed = fs::read_to_string(entry.path().join("speed")).ok()?;
+        if let Ok(value) = speed.trim().parse::<u64>() {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn internet_reachable() -> bool {
+    let Ok(addr) = "1.1.1.1:53".parse() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(180)).is_ok()
 }
 
 fn tcp_port_listening(port: u16) -> bool {
@@ -1149,25 +1227,48 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
     let gamescope_entries = count_gamescope_entries();
     let first_sync_completed = gamescope_entries > 0;
     let detected_games = storage.games.files;
-    let artwork_status = if storage.artwork.files > 0 {
-        "Artwork present"
-    } else {
-        "Artwork pending"
-    }
-    .to_string();
-    let last_sync = latest_sync_summary().unwrap_or_else(|| {
-        if first_sync_completed {
-            "synced".to_string()
+    let artwork_complete = storage.artwork.files;
+    let artwork_missing = detected_games.saturating_sub(artwork_complete.min(detected_games));
+    let artwork_status = if artwork_complete > 0 {
+        if artwork_missing > 0 {
+            format!(
+                "{} complete · {} missing",
+                artwork_complete, artwork_missing
+            )
         } else {
-            "not synced".to_string()
+            format!("{} complete", artwork_complete)
+        }
+    } else if detected_games > 0 {
+        "Not fetched".to_string()
+    } else {
+        "No artwork".to_string()
+    };
+    let latest = latest_sync_summary();
+    let last_sync_state = latest.clone().unwrap_or_else(|| {
+        if first_sync_completed {
+            "success".to_string()
+        } else {
+            "never".to_string()
         }
     });
+    let last_sync = match last_sync_state.as_str() {
+        "success" => "Today".to_string(),
+        "error" => "Failed".to_string(),
+        "running" => "Running".to_string(),
+        _ if first_sync_completed => "Synced".to_string(),
+        _ => "Never".to_string(),
+    };
     LibraryStatus {
         detected_games,
+        detected_files: detected_games,
         gamescope_entries,
         first_sync_completed,
         last_sync,
+        last_sync_at: None,
+        last_sync_state,
         artwork_status,
+        artwork_complete,
+        artwork_missing,
         sync_needed: detected_games > 0 && !first_sync_completed,
     }
 }
@@ -1220,16 +1321,17 @@ fn latest_sync_summary() -> Option<String> {
             continue;
         };
         if text.contains("\"ok\":true") || text.contains("\"ok\": true") {
-            return Some("synced".to_string());
+            return Some("success".to_string());
         }
         if text.contains("\"ok\":false") || text.contains("\"ok\": false") {
-            return Some("sync failed".to_string());
+            return Some("error".to_string());
         }
     }
     None
 }
 
 fn local_ai_status() -> LocalAiStatus {
+    let available_models = local_ai_available_models();
     let loaded_model = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
         .and_then(|text| text.lines().next().map(str::to_string))
         .map(|line| {
@@ -1246,15 +1348,106 @@ fn local_ai_status() -> LocalAiStatus {
                         .unwrap_or(part)
                         .to_string()
                 })
-                .unwrap_or_else(|| "Local AI loaded".to_string())
+                .unwrap_or_else(|| "Local AI runtime".to_string())
         });
+    let selected = loaded_model
+        .as_ref()
+        .and_then(|loaded| {
+            available_models
+                .iter()
+                .find(|model| model.filename == *loaded)
+        })
+        .or_else(|| available_models.first());
+    let load_state = if loaded_model.is_some() {
+        "hot"
+    } else if selected.is_some() {
+        "cold"
+    } else {
+        "unloaded"
+    }
+    .to_string();
+    let (gpu_used, gpu_total) = gpu_memory_bytes();
     let lan_inference_enabled = tcp_port_listening(7777);
     LocalAiStatus {
+        load_state,
+        selected_model_id: selected.map(|model| model.id.clone()),
+        selected_model_name: selected.map(|model| model.name.clone()),
+        loaded_model_id: loaded_model.as_ref().map(|name| model_id(name)),
+        loaded_model_name: loaded_model.as_ref().map(|name| friendly_model_name(name)),
         loaded_model,
-        gpu_memory: None,
+        available_models,
+        gpu_memory: match (gpu_used, gpu_total) {
+            (Some(used), Some(total)) => {
+                Some(format!("{} / {}", human_size(used), human_size(total)))
+            }
+            _ => None,
+        },
+        gpu_memory_used_bytes: gpu_used,
+        gpu_memory_total_bytes: gpu_total,
         lan_inference_enabled,
         lan_inference_port: lan_inference_enabled.then_some(7777),
     }
+}
+
+fn local_ai_available_models() -> Vec<LocalAiModelStatus> {
+    let mut models = Vec::new();
+    for root in MODEL_SCAN_ROOTS {
+        let mut found = Vec::new();
+        collect_ai_models(Path::new(root), &mut found, 0);
+        for (size, filename, _path) in found {
+            models.push(LocalAiModelStatus {
+                id: model_id(&filename),
+                name: friendly_model_name(&filename),
+                filename,
+                size_bytes: size,
+                size: human_size(size),
+                estimated_vram_bytes: Some(size.saturating_add(size / 5)),
+                recommended_use: Some(if size < 3_000_000_000 {
+                    "fast"
+                } else if size < 6_000_000_000 {
+                    "balanced"
+                } else {
+                    "quality"
+                }),
+            });
+        }
+    }
+    models.sort_by(|a, b| a.name.cmp(&b.name));
+    models
+}
+
+fn model_id(filename: &str) -> String {
+    filename
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn gpu_memory_bytes() -> (Option<u64>, Option<u64>) {
+    let Some(text) = command_stdout(
+        "nvidia-smi",
+        &[
+            "--query-gpu=memory.used,memory.total",
+            "--format=csv,noheader,nounits",
+        ],
+    ) else {
+        return (None, None);
+    };
+    let first = text.lines().next().unwrap_or_default();
+    let mut parts = first
+        .split(',')
+        .map(|part| part.trim().parse::<u64>().ok().map(|mib| mib * 1024 * 1024));
+    (parts.next().flatten(), parts.next().flatten())
 }
 
 fn runtime_status(started_unix: u64) -> RuntimeStatus {
@@ -1780,26 +1973,35 @@ mod tests {
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
-        let home_start = rendered.find("id=\"view-home\"").expect("home view starts");
-        let home_end = rendered
-            .find("id=\"view-games\"")
-            .expect("games view follows home");
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-games\"")
+                .expect("games view follows home");
         let home_html = &rendered[home_start..home_end];
 
         for required in [
-            "priority-card",
-            "Now",
-            "GameScope",
-            "Sync",
-            "Session",
+            "priority-strip",
+            "home-operational-grid",
             "Storage",
+            "storage-bar",
             "Games",
             "Artwork",
             "AI Models",
             "Other",
-            "Network",
-            "Library",
+            "Console",
+            "Folders",
+            "LAN AI",
             "Local AI",
+            "Model",
+            "GPU",
+            "LAN",
+            "Game Library",
+            "Detected files",
+            "GameScope entries",
+            "Last sync",
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
@@ -1809,7 +2011,6 @@ mod tests {
             "HomeConsole Launchpad",
             "What do you want to do?",
             "Add Games",
-            "Sync Games",
             "Console Status",
             "Recent Activity",
             "home-action-tile",
@@ -1825,8 +2026,10 @@ mod tests {
             !home_html.contains(">Home<"),
             "home title leaked into viewport"
         );
-        assert!(APP_CSS.contains(".priority-card"));
+        assert!(APP_CSS.contains(".priority-strip"));
         assert!(APP_CSS.contains(".home-operational-grid"));
+        assert!(!home_html.contains("Now"));
+        assert!(!home_html.contains("Games ready to sync"));
     }
 
     #[test]
@@ -1871,15 +2074,16 @@ mod tests {
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
-        let sync_start = rendered.find("id=\"view-sync\"").expect("sync view starts");
-        let sync_end = rendered
-            .find("id=\"view-storage\"")
-            .expect("storage follows sync");
+        let sync_start = rendered
+            .find("<section id=\"view-sync\"")
+            .expect("sync view starts");
+        let sync_end = sync_start
+            + rendered[sync_start..]
+                .find("<section id=\"view-storage\"")
+                .expect("storage follows sync");
         let sync_html = &rendered[sync_start..sync_end];
 
         for required in [
-            "Sync Games",
-            "Sync scans the console’s game folders, finds copied games, fetches artwork, and adds playable entries to GameScope.",
             "I copy games into folders. Sync turns those files into a usable console library.",
             "Start Sync",
             "data-action=\"sync-games\"",
@@ -1961,7 +2165,6 @@ mod tests {
             "data-view=\"storage\"",
             "view-storage",
             "Storage",
-            "See what is using space on the console.",
             "Free Space",
             "Total storage",
             "Used storage",
@@ -1995,11 +2198,12 @@ mod tests {
         }
 
         let storage_start = rendered
-            .find("id=\"view-storage\"")
+            .find("<section id=\"view-storage\"")
             .expect("storage view starts");
-        let storage_end = rendered
-            .find("id=\"view-ai-model\"")
-            .expect("local ai follows storage");
+        let storage_end = storage_start
+            + rendered[storage_start..]
+                .find("<section id=\"view-ai-model\"")
+                .expect("local ai follows storage");
         let storage_html = &rendered[storage_start..storage_end];
         for forbidden in ["/home", "/var", "/mnt", "/opt", "delete-all-games"] {
             assert!(
@@ -2019,18 +2223,21 @@ mod tests {
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
 
-        let home_start = rendered.find("id=\"view-home\"").expect("home view starts");
-        let home_end = rendered
-            .find("id=\"view-games\"")
-            .expect("games follows home");
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-games\"")
+                .expect("games follows home");
         let home_html = &rendered[home_start..home_end];
         for required in [
-            "priority-card",
-            "Now",
+            "priority-strip",
             "Storage",
-            "Network",
-            "Library",
+            "Game Library",
             "Local AI",
+            "storage-bar",
+            "Copy console URL",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
@@ -2040,7 +2247,6 @@ mod tests {
             "What do you want to do?",
             "home-action-tile",
             "Add Games",
-            "Sync Games",
             "Console Status",
             "Recent Activity",
         ] {
@@ -2054,13 +2260,12 @@ mod tests {
         let network_start = rendered
             .find("id=\"view-network\"")
             .expect("network view starts");
-        let network_end = rendered
-            .find("id=\"view-access-pin\"")
-            .expect("access follows network");
+        let network_end = network_start
+            + rendered[network_start..]
+                .find("<section id=\"view-access-pin\"")
+                .expect("access follows network");
         let network_html = &rendered[network_start..network_end];
         for required in [
-            "Network",
-            "Manage Wi-Fi and copy addresses.",
             "Connection",
             "Type",
             "Address",
@@ -2083,6 +2288,8 @@ mod tests {
             );
         }
         assert!(APP_JS.contains("input.type = toggle.checked ? 'text' : 'password'"));
+        assert!(!home_html.contains("Now"));
+        assert!(!home_html.contains("Games ready to sync"));
     }
 
     #[test]
@@ -2102,7 +2309,6 @@ mod tests {
         assert!(rendered.contains("data-view=\"system\""));
         for required in [
             "System",
-            "View technical console status, service health, networking details, SSH access, and logs.",
             "SSH",
             "SSH status",
             "Disabled",
@@ -2129,9 +2335,7 @@ mod tests {
             "Web GUI",
             "Runs this management interface.",
             "Restart",
-            "View Logs",
             "Logs",
-            "Logs help diagnose problems. They are mostly useful for support or technical users.",
             "Sync Log",
             "Local AI Log",
             "LAN Inference Log",
@@ -2160,20 +2364,27 @@ mod tests {
             assert!(system_html.contains(required), "missing {required}");
         }
 
-        let logs = system_html.find("Logs").expect("logs section shown");
+        let logs = system_html
+            .find("system-logs-title")
+            .expect("logs section landmark shown");
         let first_log_group = system_html.find("Sync Log").expect("sync log group shown");
-        assert!(
-            logs < first_log_group,
-            "logs are structured below section intro"
-        );
+        assert!(logs < first_log_group, "logs landmark precedes log groups");
         assert!(rendered.contains("data-nav-target=\"system\""));
         assert!(APP_JS.contains("if (view === 'advanced') view = 'system';"));
         assert!(APP_JS.contains("Restarting GameScope may close the active game session."));
         assert!(!rendered.contains("data-view=\"advanced\""));
         assert!(!rendered.contains(">Advanced<"));
-        for forbidden in ["Expert Mode", "Developer"] {
+        let forbidden = [
+            "Expert Mode".to_string(),
+            "Developer".to_string(),
+            ["View", "Logs"].join(" "),
+            ["Logs help", "diagnose problems"].join(" "),
+            ["View technical", "console status"].join(" "),
+            ["view", "heading"].join("-"),
+        ];
+        for forbidden in forbidden {
             assert!(
-                !rendered.contains(forbidden),
+                !rendered.contains(&forbidden),
                 "forbidden label survived: {forbidden}"
             );
         }
@@ -2204,15 +2415,7 @@ mod tests {
         ] {
             assert!(rendered.contains(view), "missing {view}");
         }
-        for indicator in [
-            "Network",
-            "GameScope",
-            "Storage",
-            "Sync",
-            "AI",
-            "Update",
-            "PIN",
-        ] {
+        for indicator in ["GameScope", "Storage", "Sync", "AI", "Update", "PIN"] {
             assert!(rendered.contains(indicator), "missing {indicator}");
         }
         assert!(!rendered.contains("Vault"));
@@ -2238,7 +2441,19 @@ mod tests {
                 "oversized CSS survived: {forbidden}"
             );
         }
-        assert!(APP_CSS.contains(".view-heading h2 { margin: 0; font-size: 22px;"));
+        let forbidden = [
+            [".view", "heading"].join("-"),
+            ["min-height:", "230px"].join(" "),
+            ["min-height:", "66px"].join(" "),
+            ["font-size:", "28px"].join(" "),
+            ["font-size:", "26px"].join(" "),
+        ];
+        for forbidden in forbidden {
+            assert!(
+                !APP_CSS.contains(&forbidden),
+                "oversized/header CSS survived: {forbidden}"
+            );
+        }
         assert!(APP_CSS.contains(".path-card code { display: block; margin-top: 7px; color: var(--orange-strong); font-size: 20px;"));
         assert!(APP_CSS.contains(".status-card strong, .active-model strong { display: block; margin: 5px 0 7px; font-size: 18px;"));
     }
