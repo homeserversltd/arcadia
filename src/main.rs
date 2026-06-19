@@ -73,6 +73,9 @@ pub struct ConsoleStatus {
     pub gui_pin: GuiPinStatus,
     pub surfaces: SurfaceStatus,
     pub storage: StorageStatus,
+    pub network: NetworkStatus,
+    pub library: LibraryStatus,
+    pub local_ai: LocalAiStatus,
     pub ui_contract: UiContract,
 }
 
@@ -167,6 +170,36 @@ pub struct SurfaceStatus {
     pub http: &'static str,
     pub mdns: &'static str,
     pub smb: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+pub struct NetworkStatus {
+    pub online: bool,
+    pub connection_type: String,
+    pub ssid: Option<String>,
+    pub ip_address: String,
+    pub signal: Option<String>,
+    pub console_reachable: bool,
+    pub game_folders_reachable: bool,
+    pub lan_ai_reachable: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub struct LibraryStatus {
+    pub detected_games: u64,
+    pub gamescope_entries: u64,
+    pub first_sync_completed: bool,
+    pub last_sync: String,
+    pub artwork_status: String,
+    pub sync_needed: bool,
+}
+
+#[derive(Clone, Serialize)]
+pub struct LocalAiStatus {
+    pub loaded_model: Option<String>,
+    pub gpu_memory: Option<String>,
+    pub lan_inference_enabled: bool,
+    pub lan_inference_port: Option<u16>,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -972,12 +1005,14 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
 }
 
 fn console_status(state: &AppState) -> ConsoleStatus {
+    let storage = storage_status();
+    let library = library_status(&storage);
     ConsoleStatus {
-        schema: "arcadia.status.v6",
+        schema: "arcadia.status.v7",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         arcadia: ArcadiaStatus {
-            service: "arcadia",
+            service: service_state("arcadia.service"),
             version: env!("CARGO_PKG_VERSION"),
             mode: "unity-appliance-shell",
             ui: "top-header-left-launcher-focused-viewports",
@@ -989,13 +1024,214 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             mdns: "homeconsole.local",
             smb: "HOMECONSOLE",
         },
-        storage: storage_status(),
+        network: network_status(),
+        local_ai: local_ai_status(),
+        library,
+        storage,
         ui_contract: UiContract {
-            schema: "arcadia.ui.contract.v5",
+            schema: "arcadia.ui.contract.v6",
             button_variants: ["primary", "secondary", "danger"],
-            composition: "top header status badges, Ubuntu-style left launcher, one focused viewport at a time",
+            composition: "top header, sidebar launcher, state-first operational viewport",
             modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers",
+        },
+    }
+}
+
+fn service_state(unit: &'static str) -> &'static str {
+    let Ok(output) = Command::new(SYSTEMCTL_BIN)
+        .args(["is-active", unit])
+        .output()
+    else {
+        return "unknown";
+    };
+    let state = String::from_utf8_lossy(&output.stdout);
+    match state.trim() {
+        "active" => "running",
+        "inactive" | "failed" => "stopped",
+        "activating" => "starting",
+        _ => "unknown",
+    }
+}
+
+fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn network_status() -> NetworkStatus {
+    let ip_address = command_stdout("hostname", &["-I"])
+        .and_then(|text| text.split_whitespace().next().map(str::to_string))
+        .unwrap_or_else(|| "—".to_string());
+    let online = ip_address != "—";
+    let wifi_device = command_stdout("iw", &["dev"]).and_then(|text| {
+        text.lines()
+            .find_map(|line| line.trim().strip_prefix("Interface ").map(str::to_string))
+    });
+    let ssid = wifi_device
+        .as_deref()
+        .and_then(|dev| command_stdout("iw", &["dev", dev, "link"]))
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.trim().strip_prefix("SSID: ").map(str::to_string))
+        });
+    let signal = wifi_device
+        .as_deref()
+        .and_then(|dev| command_stdout("iw", &["dev", dev, "link"]))
+        .and_then(|text| {
+            text.lines().find_map(|line| {
+                line.trim()
+                    .strip_prefix("signal: ")
+                    .map(|v| v.split_whitespace().next().unwrap_or(v).to_string())
+            })
+        });
+    let connection_type = if ssid.is_some() {
+        "Wi-Fi"
+    } else if online {
+        "Ethernet"
+    } else {
+        "Offline"
+    }
+    .to_string();
+    NetworkStatus {
+        online,
+        connection_type,
+        ssid,
+        ip_address,
+        signal,
+        console_reachable: online,
+        game_folders_reachable: online && Path::new(GAMES_ROOT).exists(),
+        lan_ai_reachable: tcp_port_listening(7777),
+    }
+}
+
+fn tcp_port_listening(port: u16) -> bool {
+    let needle = format!(":{:04X}", port);
+    fs::read_to_string("/proc/net/tcp")
+        .map(|text| {
+            text.lines()
+                .skip(1)
+                .any(|line| line.contains(&needle) && line.split_whitespace().nth(3) == Some("0A"))
+        })
+        .unwrap_or(false)
+}
+
+fn library_status(storage: &StorageStatus) -> LibraryStatus {
+    let gamescope_entries = count_gamescope_entries();
+    let first_sync_completed = gamescope_entries > 0;
+    let detected_games = storage.games.files;
+    let artwork_status = if storage.artwork.files > 0 {
+        "Artwork present"
+    } else {
+        "Artwork pending"
+    }
+    .to_string();
+    let last_sync = latest_sync_summary().unwrap_or_else(|| {
+        if first_sync_completed {
+            "synced".to_string()
+        } else {
+            "not synced".to_string()
         }
+    });
+    LibraryStatus {
+        detected_games,
+        gamescope_entries,
+        first_sync_completed,
+        last_sync,
+        artwork_status,
+        sync_needed: detected_games > 0 && !first_sync_completed,
+    }
+}
+
+fn count_gamescope_entries() -> u64 {
+    let roots = [
+        "/home/owner/.local/share/applications",
+        "/home/owner/.steam/steam/userdata",
+    ];
+    roots
+        .iter()
+        .map(|root| count_files_with_extension(Path::new(root), "desktop", 5))
+        .sum()
+}
+
+fn count_files_with_extension(path: &Path, ext: &str, depth: usize) -> u64 {
+    if depth == 0 {
+        return 0;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    let mut count = 0;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            count += count_files_with_extension(&p, ext, depth - 1);
+        } else if metadata.is_file()
+            && p.extension()
+                .and_then(|v| v.to_str())
+                .map(|v| v.eq_ignore_ascii_case(ext))
+                .unwrap_or(false)
+        {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn latest_sync_summary() -> Option<String> {
+    let paths = [
+        "/var/lib/harmonia/receipts/game-sync-latest/run.json",
+        "/var/lib/harmonia/receipts/homeconsole-sync-latest/run.json",
+    ];
+    for path in paths {
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        if text.contains("\"ok\":true") || text.contains("\"ok\": true") {
+            return Some("synced".to_string());
+        }
+        if text.contains("\"ok\":false") || text.contains("\"ok\": false") {
+            return Some("sync failed".to_string());
+        }
+    }
+    None
+}
+
+fn local_ai_status() -> LocalAiStatus {
+    let loaded_model = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
+        .and_then(|text| text.lines().next().map(str::to_string))
+        .map(|line| {
+            line.split_whitespace()
+                .find(|part| {
+                    part.ends_with(".gguf")
+                        || part.ends_with(".safetensors")
+                        || part.ends_with(".onnx")
+                })
+                .map(|part| {
+                    Path::new(part)
+                        .file_name()
+                        .and_then(|v| v.to_str())
+                        .unwrap_or(part)
+                        .to_string()
+                })
+                .unwrap_or_else(|| "Local AI loaded".to_string())
+        });
+    let lan_inference_enabled = tcp_port_listening(7777);
+    LocalAiStatus {
+        loaded_model,
+        gpu_memory: None,
+        lan_inference_enabled,
+        lan_inference_port: lan_inference_enabled.then_some(7777),
     }
 }
 
@@ -1504,7 +1740,7 @@ mod tests {
     }
 
     #[test]
-    fn home_view_is_action_launchpad_before_status() {
+    fn home_view_is_operational_surface_without_duplicate_navigation() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -1512,42 +1748,53 @@ mod tests {
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
-
-        let title = rendered.find("Console Home").expect("home title rendered");
-        let action = rendered
-            .find("What do you want to do?")
-            .expect("primary action section rendered");
-        let status_title = rendered
-            .find("Console Status")
-            .expect("status section still rendered");
-        assert!(title < action, "intro appears before action launchpad");
-        assert!(
-            action < status_title,
-            "action launchpad appears before status cards"
-        );
+        let home_start = rendered.find("id=\"view-home\"").expect("home view starts");
+        let home_end = rendered
+            .find("id=\"view-games\"")
+            .expect("games view follows home");
+        let home_html = &rendered[home_start..home_end];
 
         for required in [
-            "Add Games",
-            "Open the console’s network folders and copy games into the right system folder.",
-            "data-nav-target=\"games\"",
-            "Sync Games",
-            "Scan the game folders, fetch artwork, and add games to the GameScope library.",
-            "data-nav-target=\"sync\"",
+            "priority-card",
+            "Now",
+            "GameScope",
+            "Sync",
+            "Session",
+            "Storage",
+            "Games",
+            "Artwork",
+            "AI Models",
+            "Other",
+            "Network",
+            "Library",
             "Local AI",
-            "Choose the local AI that runs on this console and can be used on your home network.",
-            "data-nav-target=\"ai-model\"",
-            "home-action-tile",
         ] {
-            assert!(rendered.contains(required), "missing {required}");
+            assert!(home_html.contains(required), "missing {required}");
         }
 
-        for forbidden_on_home in ["SSH", "Open ports"] {
-            let home_end = rendered.find("id=\"view-games\"").unwrap_or(rendered.len());
+        for forbidden in [
+            "Console Home",
+            "HomeConsole Launchpad",
+            "What do you want to do?",
+            "Add Games",
+            "Sync Games",
+            "Console Status",
+            "Recent Activity",
+            "home-action-tile",
+            "Open Local AI",
+        ] {
             assert!(
-                !rendered[..home_end].contains(forbidden_on_home),
-                "advanced label leaked into Home: {forbidden_on_home}"
+                !home_html.contains(forbidden),
+                "duplicated nav/meta survived: {forbidden}"
             );
         }
+
+        assert!(
+            !home_html.contains(">Home<"),
+            "home title leaked into viewport"
+        );
+        assert!(APP_CSS.contains(".priority-card"));
+        assert!(APP_CSS.contains(".home-operational-grid"));
     }
 
     #[test]
@@ -1562,7 +1809,6 @@ mod tests {
 
         for required in [
             "Local AI",
-            "Choose the local AI that runs on this console and can be used on your home network.",
             "Loaded Model",
             "Available Models",
             "GPU Usage",
@@ -1732,7 +1978,7 @@ mod tests {
     }
 
     #[test]
-    fn home_onboarding_and_network_view_support_first_run_setup() {
+    fn network_view_and_home_contract_follow_sidebar_boundary() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://arcadia.home.arpa/".to_string(),
@@ -1740,42 +1986,36 @@ mod tests {
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
+
         let home_start = rendered.find("id=\"view-home\"").expect("home view starts");
         let home_end = rendered
             .find("id=\"view-games\"")
             .expect("games follows home");
         let home_html = &rendered[home_start..home_end];
-        let onboarding = home_html
-            .find("Welcome to Arcadia")
-            .expect("onboarding card shown");
-        let actions = home_html
-            .find("What do you want to do?")
-            .expect("home actions shown");
-        assert!(
-            onboarding < actions,
-            "onboarding appears above normal Home actions"
-        );
         for required in [
-            "Welcome to Arcadia",
-            "Finish these steps to set up your local game console.",
-            "Connect to Network",
-            "Add Games",
-            "Run First Sync",
-            "Start Playing",
-            "Not Started",
-            "Ready",
-            "Connect Arcadia to your home network so other devices can copy games to it and use Local AI.",
-            "Open Network Settings",
-            "data-nav-target=\"network\"",
-            "Connected by Ethernet",
-            "Connected to Wi-Fi",
-            "No network connection",
-            "Copy games into Arcadia’s network folders from another device on your home network.",
-            "Sync turns copied files into playable GameScope entries with artwork and titles when available.",
-            "Return to Console",
-            "Hide for now",
+            "priority-card",
+            "Now",
+            "Storage",
+            "Network",
+            "Library",
+            "Local AI",
         ] {
-            assert!(home_html.contains(required), "missing onboarding {required}");
+            assert!(home_html.contains(required), "missing home {required}");
+        }
+        for forbidden in [
+            "Console Home",
+            "HomeConsole Launchpad",
+            "What do you want to do?",
+            "home-action-tile",
+            "Add Games",
+            "Sync Games",
+            "Console Status",
+            "Recent Activity",
+        ] {
+            assert!(
+                !home_html.contains(forbidden),
+                "home duplicated navigation/meta: {forbidden}"
+            );
         }
 
         assert!(rendered.contains("data-view=\"network\""));
@@ -1788,51 +2028,21 @@ mod tests {
         let network_html = &rendered[network_start..network_end];
         for required in [
             "Network",
-            "Manage how Arcadia connects to your home network. Network access is required for copying games, using the web console, and LAN inference.",
-            "Connection Status",
-            "Connected by Ethernet",
-            "Status",
-            "Connected",
-            "Active connection",
-            "Ethernet",
-            "Network name",
-            "IP address",
-            "Signal strength",
-            "Internet reachability",
-            "Not Checked",
-            "Wi-Fi",
-            "Wi-Fi adapter status",
-            "Enabled",
-            "Current SSID",
-            "Security type",
-            "Saved networks",
-            "Scan for Networks",
-            "Connect",
-            "Disconnect",
-            "Forget Network",
-            "Show Saved Networks",
-            "Hidden network name",
-            "Wi-Fi password",
-            "Show while typing",
-            "Could not connect to this Wi-Fi network. Check the password and try again.",
-            "Wi-Fi signal is weak. Move Arcadia closer to the router or use Ethernet.",
-            "Ethernet",
-            "Ethernet status",
-            "Link speed",
-            "MAC address",
-            "Ethernet is recommended for large game transfers and stable LAN inference.",
-            "Device Addresses",
+            "Manage Wi-Fi and copy addresses.",
+            "Connection",
+            "Type",
+            "Address",
+            "Signal",
+            "Console",
+            "Game folders",
+            "mDNS",
             "http://arcadia.home.arpa",
-            "\\\\ARCADIA",
-            "smb://ARCADIA",
-            "http://arcadia.home.arpa:7777",
-            "Network Services",
-            "Web Console",
-            "Games Folder",
-            "LAN Inference",
-            "SSH",
+            "smb://HOMECONSOLE",
         ] {
-            assert!(network_html.contains(required), "missing network {required}");
+            assert!(
+                network_html.contains(required),
+                "missing network {required}"
+            );
         }
         for forbidden in ["nmcli", "iwctl", "ip addr", "saved password"] {
             assert!(
@@ -1840,12 +2050,6 @@ mod tests {
                 "network leaked raw/secret term: {forbidden}"
             );
         }
-        assert!(rendered.contains("data-nav-target=\"network\""));
-        assert!(APP_JS.contains("localStorage.setItem('onboarding.firstSyncComplete', 'true')"));
-        assert!(APP_JS.contains("sessionStorage.setItem('onboarding.hideForNow', 'true')"));
-        assert!(APP_JS.contains(
-            "Could not connect to this Wi-Fi network. Check the password and try again."
-        ));
         assert!(APP_JS.contains("input.type = toggle.checked ? 'text' : 'password'"));
     }
 
