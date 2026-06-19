@@ -1732,6 +1732,124 @@ mod tests {
     }
 
     #[test]
+    fn home_onboarding_and_network_view_support_first_run_setup() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://arcadia.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let home_start = rendered.find("id=\"view-home\"").expect("home view starts");
+        let home_end = rendered
+            .find("id=\"view-games\"")
+            .expect("games follows home");
+        let home_html = &rendered[home_start..home_end];
+        let onboarding = home_html
+            .find("Welcome to Arcadia")
+            .expect("onboarding card shown");
+        let actions = home_html
+            .find("What do you want to do?")
+            .expect("home actions shown");
+        assert!(
+            onboarding < actions,
+            "onboarding appears above normal Home actions"
+        );
+        for required in [
+            "Welcome to Arcadia",
+            "Finish these steps to set up your local game console.",
+            "Connect to Network",
+            "Add Games",
+            "Run First Sync",
+            "Start Playing",
+            "Not Started",
+            "Ready",
+            "Connect Arcadia to your home network so other devices can copy games to it and use Local AI.",
+            "Open Network Settings",
+            "data-nav-target=\"network\"",
+            "Connected by Ethernet",
+            "Connected to Wi-Fi",
+            "No network connection",
+            "Copy games into Arcadia’s network folders from another device on your home network.",
+            "Sync turns copied files into playable GameScope entries with artwork and titles when available.",
+            "Return to Console",
+            "Hide for now",
+        ] {
+            assert!(home_html.contains(required), "missing onboarding {required}");
+        }
+
+        assert!(rendered.contains("data-view=\"network\""));
+        let network_start = rendered
+            .find("id=\"view-network\"")
+            .expect("network view starts");
+        let network_end = rendered
+            .find("id=\"view-access-pin\"")
+            .expect("access follows network");
+        let network_html = &rendered[network_start..network_end];
+        for required in [
+            "Network",
+            "Manage how Arcadia connects to your home network. Network access is required for copying games, using the web console, and LAN inference.",
+            "Connection Status",
+            "Connected by Ethernet",
+            "Status",
+            "Connected",
+            "Active connection",
+            "Ethernet",
+            "Network name",
+            "IP address",
+            "Signal strength",
+            "Internet reachability",
+            "Not Checked",
+            "Wi-Fi",
+            "Wi-Fi adapter status",
+            "Enabled",
+            "Current SSID",
+            "Security type",
+            "Saved networks",
+            "Scan for Networks",
+            "Connect",
+            "Disconnect",
+            "Forget Network",
+            "Show Saved Networks",
+            "Hidden network name",
+            "Wi-Fi password",
+            "Show while typing",
+            "Could not connect to this Wi-Fi network. Check the password and try again.",
+            "Wi-Fi signal is weak. Move Arcadia closer to the router or use Ethernet.",
+            "Ethernet",
+            "Ethernet status",
+            "Link speed",
+            "MAC address",
+            "Ethernet is recommended for large game transfers and stable LAN inference.",
+            "Device Addresses",
+            "http://arcadia.home.arpa",
+            "\\\\ARCADIA",
+            "smb://ARCADIA",
+            "http://arcadia.home.arpa:7777",
+            "Network Services",
+            "Web Console",
+            "Games Folder",
+            "LAN Inference",
+            "SSH",
+        ] {
+            assert!(network_html.contains(required), "missing network {required}");
+        }
+        for forbidden in ["nmcli", "iwctl", "ip addr", "saved password"] {
+            assert!(
+                !network_html.contains(forbidden),
+                "network leaked raw/secret term: {forbidden}"
+            );
+        }
+        assert!(rendered.contains("data-nav-target=\"network\""));
+        assert!(APP_JS.contains("localStorage.setItem('onboarding.firstSyncComplete', 'true')"));
+        assert!(APP_JS.contains("sessionStorage.setItem('onboarding.hideForNow', 'true')"));
+        assert!(APP_JS.contains(
+            "Could not connect to this Wi-Fi network. Check the password and try again."
+        ));
+        assert!(APP_JS.contains("input.type = toggle.checked ? 'text' : 'password'"));
+    }
+
+    #[test]
     fn system_view_replaces_advanced_with_structured_support_panel() {
         let state = AppState {
             started_unix: 0,
@@ -1842,6 +1960,7 @@ mod tests {
             "view-storage",
             "view-ai-model",
             "view-lan-inference",
+            "view-network",
             "view-access-pin",
             "view-updates",
             "view-power",
