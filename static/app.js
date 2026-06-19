@@ -235,12 +235,45 @@ function bindConsoleActions() {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
       const value = button.dataset.copyValue || '';
-      if (!value || /smb::|smb:\/|undefined/i.test(value)) {
+      if (!validCopyValue(value)) {
         PopupManager.showToast('Address unavailable', 'error');
         return;
       }
       const ok = await copyToClipboard(value);
       PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
+    });
+  });
+  document.querySelectorAll('.btn[data-folder-copy]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const choices = [
+        ['Copy Windows path', button.dataset.windows],
+        ['Copy Windows IP fallback', button.dataset.windowsIp],
+        ['Copy Linux/macOS path', button.dataset.smb],
+        ['Copy Linux/macOS IP fallback', button.dataset.smbIp],
+      ].filter(([, value]) => validCopyValue(value));
+      if (choices.length === 0) return PopupManager.showToast('Folder address unavailable', 'error');
+      if (choices.length === 1) {
+        const ok = await copyToClipboard(choices[0][1]);
+        return PopupManager.showToast(ok ? `Copied ${choices[0][1]}` : `Copy unavailable: ${choices[0][1]}`, ok ? 'success' : 'error');
+      }
+      const body = document.createElement('div');
+      body.className = 'copy-choice-list';
+      choices.forEach(([label, value]) => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'btn btn--secondary';
+        choice.textContent = label;
+        choice.addEventListener('click', async () => {
+          const ok = await copyToClipboard(value);
+          PopupManager.closeModal();
+          PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
+        });
+        body.appendChild(choice);
+      });
+      PopupManager.showModal({ title: 'Copy Game Folders', body: '' });
+      const contentNode = document.getElementById('modal-content');
+      if (contentNode) { contentNode.textContent = ''; contentNode.appendChild(body); }
     });
   });
   document.querySelectorAll('.btn[data-url]').forEach((button) => {
@@ -249,6 +282,10 @@ function bindConsoleActions() {
       window.location.href = button.dataset.url;
     });
   });
+}
+
+function validCopyValue(value) {
+  return Boolean(value) && !/smb::|smb:\/|\\undefined|smb:\/\/undefined|undefined/i.test(value);
 }
 
 async function copyToClipboard(value) {
@@ -406,15 +443,99 @@ function markOnboardingFirstSyncComplete(data = {}) {
   if (card) card.hidden = true;
 }
 
+async function requestNetworkState() {
+  const res = await fetch('/api/network/state', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error('network state failed');
+  return await res.json();
+}
+
 async function requestWifiScan(quiet = false) {
+  setMessage('wifi-message', 'Scanning…', 'info');
   try {
     const data = await postJson('/api/network/wifi/scan', {});
-    setMessage('wifi-message', data.message || 'Wi-Fi scan requested.', data.ok ? 'success' : 'error');
-    if (!quiet) PopupManager.showToast(data.message || 'Wi-Fi scan requested.', data.ok ? 'success' : 'error');
+    renderWifiNetworks(data.state?.wifi?.scanResults || []);
+    setMessage('wifi-message', data.message || 'Wi-Fi scan complete.', data.ok ? 'success' : 'error');
+    if (!quiet) PopupManager.showToast(data.message || 'Wi-Fi scan complete.', data.ok ? 'success' : 'error');
   } catch (_) {
-    setMessage('wifi-message', 'Wi-Fi scan request failed.', 'error');
-    if (!quiet) PopupManager.showToast('Wi-Fi scan request failed', 'error');
+    setMessage('wifi-message', 'Wi-Fi scan failed.', 'error');
+    if (!quiet) PopupManager.showToast('Wi-Fi scan failed', 'error');
   }
+}
+
+function renderWifiNetworks(networks) {
+  const root = document.getElementById('wifi-network-list');
+  if (!root) return;
+  const hidden = root.querySelector('[data-open-hidden-wifi]')?.closest('.network-row');
+  root.textContent = '';
+  if (networks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'network-row';
+    empty.innerHTML = '<span><strong>No networks found</strong><em>Scan again or join a hidden network</em></span>';
+    root.appendChild(empty);
+  }
+  networks.forEach((network) => {
+    const row = document.createElement('div');
+    row.className = `network-row ${network.connected ? 'network-row--active' : ''}`;
+    const state = [network.signalPercent != null ? `${network.signalPercent}%` : 'Signal unknown', securityLabel(network.security), network.saved ? 'Saved' : '', network.connected ? 'Connected' : ''].filter(Boolean).join(' · ');
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'btn btn--secondary';
+    action.textContent = network.connected ? 'Disconnect' : 'Connect';
+    action.addEventListener('click', () => {
+      if (network.connected) return postNetworkAction('/api/network/wifi/disconnect', {}, 'wifi-disconnect');
+      openWifiConnect(network.ssid, network.security !== 'open');
+    });
+    const details = document.createElement('button');
+    details.type = 'button';
+    details.className = 'btn btn--secondary';
+    details.textContent = 'Details';
+    details.addEventListener('click', () => PopupManager.showModal({ title: network.ssid || 'Wi-Fi network', body: state }));
+    row.innerHTML = `<span><strong></strong><em></em></span>`;
+    row.querySelector('strong').textContent = network.ssid || 'Hidden network';
+    row.querySelector('em').textContent = state;
+    row.appendChild(action);
+    if (network.saved || network.connected) {
+      const forget = document.createElement('button');
+      forget.type = 'button';
+      forget.className = 'btn btn--secondary';
+      forget.textContent = network.connected ? 'Forget' : 'Forget';
+      forget.addEventListener('click', () => postNetworkAction('/api/network/wifi/forget', { ssid: network.ssid }, 'wifi-forget'));
+      row.appendChild(forget);
+    }
+    row.appendChild(details);
+    root.appendChild(row);
+  });
+  if (hidden) root.appendChild(hidden);
+}
+
+function securityLabel(value) {
+  if (value === 'open') return 'Open';
+  if (value === 'wpa2') return 'WPA2';
+  if (value === 'wpa3') return 'WPA3';
+  if (value === 'wpa-wpa2') return 'WPA/WPA2';
+  return 'Unknown';
+}
+
+function openWifiConnect(ssid = '', secured = true) {
+  const form = document.querySelector('[data-network-connect-form]');
+  if (!form) return;
+  form.hidden = false;
+  const ssidInput = form.querySelector('input[name="ssid"]');
+  const passwordInput = form.querySelector('input[name="password"]');
+  if (ssidInput) ssidInput.value = ssid;
+  if (passwordInput) {
+    passwordInput.value = '';
+    passwordInput.closest('label').hidden = !secured;
+  }
+  (secured ? passwordInput : ssidInput)?.focus();
+}
+
+async function postNetworkAction(url, body, actionName) {
+  const data = await postJson(url, body);
+  if (data.state?.wifi?.scanResults) renderWifiNetworks(data.state.wifi.scanResults);
+  setMessage('wifi-message', data.message || 'Network action complete.', data.ok ? 'success' : 'error');
+  PopupManager.showToast(data.message || 'Network action complete.', data.ok ? 'success' : 'error');
+  return data;
 }
 
 function bindNetworkControls() {
@@ -422,40 +543,61 @@ function bindNetworkControls() {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
       const action = button.dataset.networkAction;
-      let url = '/api/network/wifi/status';
-      let body = {};
       if (action === 'scan-wifi') return requestWifiScan(false);
-      if (action === 'disconnect-wifi') url = '/api/network/wifi/disconnect';
-      if (action === 'forget-wifi') { url = '/api/network/wifi/forget'; body = { ssid: button.dataset.ssid || '' }; }
-      try {
-        const data = await postJson(url, body);
-        setMessage('wifi-message', data.message || 'Network action returned no message.', data.ok ? 'success' : 'error');
-        PopupManager.showToast(data.message || 'Network action complete.', data.ok ? 'success' : 'error');
-      } catch (_) {
-        setMessage('wifi-message', 'Network action request failed.', 'error');
-        PopupManager.showToast('Network action request failed', 'error');
-      }
+      if (action === 'wifi-toggle') return postNetworkAction('/api/network/wifi/set-enabled', { enabled: button.dataset.enabled === 'true' }, action);
+      if (action === 'disconnect-wifi') return postNetworkAction('/api/network/wifi/disconnect', {}, action);
+      if (action === 'forget-wifi') return postNetworkAction('/api/network/wifi/forget', { ssid: button.dataset.ssid || '' }, action);
+      if (action === 'renew-dhcp') return postNetworkAction('/api/network/ethernet/renew-dhcp', {}, action);
+      if (action === 'rollback-ip') return postNetworkAction('/api/network/ip/rollback', {}, action);
     });
   });
+  document.querySelectorAll('[data-open-hidden-wifi]').forEach((button) => button.addEventListener('click', () => openWifiConnect('', true)));
+  document.querySelectorAll('[data-cancel-wifi-connect]').forEach((button) => button.addEventListener('click', () => { const form = button.closest('form'); if (form) { form.reset(); form.hidden = true; } }));
+  document.querySelectorAll('[data-open-ip-settings]').forEach((button) => button.addEventListener('click', () => document.getElementById('advanced-ip-settings')?.setAttribute('open', '')));
+  document.querySelectorAll('[data-diagnostic]').forEach((button) => button.addEventListener('click', async () => {
+    const data = await postJson('/api/network/diagnostics/run', { tests: [button.dataset.diagnostic] });
+    const root = document.getElementById('diagnostics-results');
+    if (root) root.innerHTML = (data.results || []).map((r) => `<div class="network-row"><span><strong>${escapeHtml(r.name)}</strong><em>${escapeHtml(r.message)}</em></span><b class="system-status system-status--${r.ok ? 'available' : 'error'}">${r.ok ? 'OK' : 'Check'}</b></div>`).join('');
+    PopupManager.showToast((data.results && data.results[0]?.message) || 'Diagnostic complete', data.ok ? 'success' : 'error');
+  }));
   document.querySelectorAll('[data-network-connect-form]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const ssid = form.querySelector('input[name="ssid"]')?.value || '';
-      const password = form.querySelector('input[name="password"]')?.value || '';
+      const passwordInput = form.querySelector('input[name="password"]');
+      const password = passwordInput?.value || '';
       if (!ssid.trim()) return setMessage('wifi-message', 'Wi-Fi network name is required.', 'error');
       const button = form.querySelector('button[type="submit"]');
       const old = button?.textContent;
-      if (button) { button.disabled = true; button.textContent = 'Connecting...'; }
+      if (button) { button.disabled = true; button.textContent = 'Joining…'; }
+      setMessage('wifi-message', 'Joining network…\nAuthenticating…\nRequesting IP address…\nTesting LAN…\nTesting Internet…', 'info');
       try {
         const data = await postJson('/api/network/wifi/connect', { ssid, password });
-        form.querySelector('input[name="password"]').value = '';
-        setMessage('wifi-message', data.message || 'Wi-Fi connect returned no message.', data.ok ? 'success' : 'error');
+        if (passwordInput) passwordInput.value = '';
+        setMessage('wifi-message', data.message || 'Wi-Fi connect complete.', data.ok ? 'success' : 'error');
         PopupManager.showToast(data.message || 'Wi-Fi connect complete.', data.ok ? 'success' : 'error');
+        if (data.ok) form.hidden = true;
       } catch (_) {
+        if (passwordInput) passwordInput.value = '';
         setMessage('wifi-message', 'Wi-Fi connect request failed.', 'error');
       } finally {
         if (button) { button.disabled = false; button.textContent = old; }
       }
+    });
+  });
+  document.querySelectorAll('[data-ip-settings-form]').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const dns = (form.querySelector('input[name="dnsServers"]')?.value || '').split(/[ ,]+/).filter(Boolean);
+      const body = {
+        mode: form.querySelector('[name="mode"]')?.value || 'dhcp',
+        ip: form.querySelector('input[name="ip"]')?.value || null,
+        prefixLength: Number(form.querySelector('input[name="prefixLength"]')?.value || 0) || null,
+        gateway: form.querySelector('input[name="gateway"]')?.value || null,
+        dnsServers: dns,
+      };
+      const data = await postJson('/api/network/ip/apply', body);
+      PopupManager.showModal({ title: data.ok ? 'Network settings changed' : 'Network settings not applied', body: data.message || '' });
     });
   });
   document.querySelectorAll('[data-toggle-password]').forEach((toggle) => {
@@ -464,6 +606,11 @@ function bindNetworkControls() {
       if (input) input.type = toggle.checked ? 'text' : 'password';
     });
   });
+  requestNetworkState().then((state) => renderWifiNetworks(state.wifi?.scanResults || [])).catch(() => setMessage('wifi-message', 'Network state unavailable.', 'error'));
+}
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 async function postJson(url, body) {

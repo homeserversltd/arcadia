@@ -257,6 +257,24 @@ button { -webkit-tap-highlight-color: transparent; }
 .network-service-row span { display: grid; gap: 3px; }
 .network-service-row em { color: var(--muted); font-style: normal; }
 .network-service-spacer { min-width: 52px; }
+
+.network-section { padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.055)); box-shadow: 0 15px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.07); }
+.network-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.network-summary-title { display: block; font-size: 20px; line-height: 1.15; }
+.network-summary-lines { display: grid; gap: 5px; margin-top: 8px; color: var(--muted); font-size: 14px; }
+.wifi-network-list, .diagnostics-results { display: grid; gap: 8px; margin-top: 10px; }
+.network-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+.network-row--active { border-color: rgba(95,210,143,.42); }
+.network-row span { display: grid; gap: 3px; }
+.network-row em { color: var(--muted); font-style: normal; font-size: 12px; }
+.empty-state { padding: 12px; border-radius: 14px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+.empty-state p { margin: 5px 0 0; color: var(--muted); }
+.command-box--folder { align-content: start; }
+.copy-choice-list { display: grid; gap: 8px; }
+.system-status--available { color: var(--good); }
+.system-status--disabled { color: var(--idle); }
+.system-status--error { color: var(--bad); }
+.system-status--unknown { color: var(--idle); }
 h3 { margin: 0 0 8px; font-size: 18px; }
 .path-card { padding: 16px; }
 .path-card code { display: block; margin-top: 7px; color: var(--orange-strong); font-size: 20px; font-weight: 900; overflow-wrap: anywhere; }
@@ -451,6 +469,7 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .section-heading { align-items: start; flex-direction: column; }
 }
 @media (max-width: 720px) {
+  .network-row { grid-template-columns: 1fr; align-items: start; }
   .workspace { grid-template-columns: 1fr; }
   .sidebar-launcher { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .launcher-button { min-height: 62px; }
