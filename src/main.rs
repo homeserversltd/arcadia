@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path as AxumPath, Query, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -360,6 +360,10 @@ pub struct StorageDiagnostics {
     pub scanner_version: String,
     pub missing_dirs: Vec<String>,
     pub permission_errors: Vec<String>,
+    pub warnings: Vec<String>,
+    pub overlap_warnings: Vec<String>,
+    pub category_scan_errors: Vec<String>,
+    pub last_scan_timestamp: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -984,8 +988,18 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/health", get(health))
         .route("/api/status", get(status))
         .route("/api/storage/state", get(storage_state_route))
+        .route("/api/storage/summary", get(storage_summary_route))
+        .route("/api/storage/rescan-summary", post(storage_summary_route))
         .route("/api/storage/registry", get(storage_registry_route))
         .route("/api/storage/rescan", post(storage_rescan_route))
+        .route(
+            "/api/storage/category/:category",
+            get(storage_category_route),
+        )
+        .route(
+            "/api/storage/category/:category/rescan",
+            post(storage_category_route),
+        )
         .route(
             "/api/storage/rescan-folder",
             post(storage_rescan_folder_route),
@@ -1015,8 +1029,20 @@ async fn main() -> anyhow_free::Result<()> {
             post(storage_create_managed_folder_route),
         )
         .route("/api/storage/game-folders", get(storage_game_folders_route))
+        .route("/api/storage/games", get(storage_games_route))
+        .route(
+            "/api/storage/games/:platform",
+            get(storage_game_platform_route),
+        )
+        .route(
+            "/api/storage/games/:platform/rescan",
+            post(storage_game_platform_route),
+        )
         .route("/api/storage/artwork", get(storage_artwork_route))
         .route("/api/storage/ai-models", get(storage_ai_models_route))
+        .route("/api/storage/cleanup", get(storage_cleanup_route))
+        .route("/api/storage/locations", get(storage_locations_route))
+        .route("/api/storage/diagnostics", get(storage_diagnostics_route))
         .route("/api/network/state", get(network_state_route))
         .route("/api/ai/state", get(ai_state_route))
         .route("/api/network/wifi/status", get(wifi_status))
@@ -1124,12 +1150,49 @@ async fn storage_state_route() -> Json<StorageStatus> {
     Json(storage_status())
 }
 
+async fn storage_summary_route() -> Json<StorageStatus> {
+    Json(storage_status())
+}
+
 async fn storage_registry_route() -> Json<StorageRegistry> {
     Json(storage_registry(&network_status()))
 }
 
 async fn storage_rescan_route() -> Json<StorageStatus> {
     Json(storage_status())
+}
+
+async fn storage_category_route(AxumPath(category): AxumPath<String>) -> Json<serde_json::Value> {
+    let storage = storage_status();
+    let value = match category.as_str() {
+        "games" => {
+            serde_json::json!({"category":"games","summary":storage.categories.games,"items":storage.game_folders})
+        }
+        "artwork" => {
+            serde_json::json!({"category":"artwork","summary":storage.categories.artwork,"items":storage.artwork_stores})
+        }
+        "ai-models" | "ai" => {
+            serde_json::json!({"category":"ai-models","summary":storage.categories.ai_models,"items":storage.ai_model_files,"roots":storage.registry.categories.ai_models.roots})
+        }
+        "updates" => {
+            serde_json::json!({"category":"updates","summary":storage.categories.updates,"roots":storage.registry.categories.updates.roots})
+        }
+        "logs" => {
+            serde_json::json!({"category":"logs","summary":storage.categories.logs,"roots":storage.registry.categories.logs.roots})
+        }
+        "temporary" | "temp" => {
+            serde_json::json!({"category":"temporary","summary":storage.categories.temporary,"roots":storage.registry.categories.temporary.roots})
+        }
+        "system" => {
+            serde_json::json!({"category":"system","summary":storage.categories.system,"roots":storage.registry.categories.system.roots})
+        }
+        "other" => serde_json::json!({"category":"other","summary":storage.categories.other}),
+        "free" => {
+            serde_json::json!({"category":"free","bytes":storage.free_bytes,"size":storage.free,"percentOfTotal":100u8.saturating_sub(storage.percent_used)})
+        }
+        _ => serde_json::json!({"category":category,"error":"Unknown storage category"}),
+    };
+    Json(value)
 }
 
 async fn storage_rescan_folder_route(
@@ -1151,12 +1214,58 @@ async fn storage_game_folders_route() -> Json<Vec<GameFolderStorage>> {
     Json(storage_scan().game_folders)
 }
 
+async fn storage_games_route() -> Json<serde_json::Value> {
+    let storage = storage_scan();
+    Json(serde_json::json!({
+        "summary": storage.categories.games,
+        "folders": storage.game_folders,
+        "syncStatusAvailable": load_sync_manifest().is_some(),
+        "syncUnavailableMessage": "Sync status unavailable for game folders."
+    }))
+}
+
+async fn storage_game_platform_route(
+    AxumPath(platform): AxumPath<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let registry = storage_registry(&network_status());
+    let wanted = platform.to_ascii_lowercase();
+    let Some(root) = registry
+        .categories
+        .games
+        .roots
+        .iter()
+        .find(|r| r.id == wanted)
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"ok":false,"message":"Unknown game platform"})),
+        );
+    };
+    let folder = game_folder_storage(root);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"ok":true,"folder":folder})),
+    )
+}
+
 async fn storage_artwork_route() -> Json<Vec<FolderStorage>> {
     Json(storage_scan().artwork_stores)
 }
 
 async fn storage_ai_models_route() -> Json<Vec<AIModelStorage>> {
     Json(storage_scan().ai_model_files)
+}
+
+async fn storage_cleanup_route() -> Json<CleanupState> {
+    Json(storage_scan().cleanup)
+}
+
+async fn storage_locations_route() -> Json<StorageRegistry> {
+    Json(storage_registry(&network_status()))
+}
+
+async fn storage_diagnostics_route() -> Json<StorageDiagnostics> {
+    Json(storage_scan().diagnostics)
 }
 
 async fn storage_cleanup_artwork_route(
@@ -4449,6 +4558,8 @@ fn storage_scan() -> StorageStatus {
 
     let diagnostics = storage_diagnostics(
         &registry,
+        &game_folders,
+        games_bytes,
         scan_started
             .elapsed()
             .map(|d| d.as_millis() as u64)
@@ -4918,6 +5029,8 @@ fn collect_largest_files(path: &Path, out: &mut Vec<(u64, PathBuf)>, depth: usiz
 
 fn storage_diagnostics(
     registry: &StorageRegistry,
+    game_folders: &[GameFolderStorage],
+    games_bytes: u64,
     duration: u64,
     volume: &StorageVolume,
 ) -> StorageDiagnostics {
@@ -4932,14 +5045,53 @@ fn storage_diagnostics(
         .filter(|p| Path::new(p.as_str()).exists() && fs::read_dir(p).is_err())
         .cloned()
         .collect::<Vec<_>>();
+    let mut warnings = Vec::new();
+    let manifest_entries = load_sync_manifest()
+        .map(|entries| entries.len())
+        .unwrap_or(0);
+    if manifest_entries > 0 && games_bytes == 0 {
+        warnings.push(
+            "Game library has entries, but managed game folders scanned as empty.".to_string(),
+        );
+    }
+    let samba_roots = registry.categories.games.roots.len();
+    if samba_roots != game_folders.len() {
+        warnings.push("Samba game folders and Storage game folders do not match.".to_string());
+    }
+    if !permission_errors.is_empty() && games_bytes == 0 {
+        warnings.push("Game folders scanned as empty while read errors exist.".to_string());
+    }
+    let overlap_warnings = storage_overlap_warnings(&managed);
+    let category_scan_errors = permission_errors
+        .iter()
+        .map(|p| format!("Could not scan this folder. Permission denied: {}", p))
+        .collect::<Vec<_>>();
     StorageDiagnostics {
         mount_point: volume.mount_point.clone(),
         filesystem: volume.filesystem.clone(),
         scan_duration_ms: duration,
-        scanner_version: "arcadia.storage.scan.v1".to_string(),
+        scanner_version: "arcadia.storage.scan.v2".to_string(),
         missing_dirs,
         permission_errors,
+        warnings,
+        overlap_warnings,
+        category_scan_errors,
+        last_scan_timestamp: now_rfc3339_like(),
     }
+}
+
+fn storage_overlap_warnings(paths: &[String]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    for (i, a) in paths.iter().enumerate() {
+        for b in paths.iter().skip(i + 1) {
+            let a = a.trim_end_matches('/');
+            let b = b.trim_end_matches('/');
+            if a != b && (b.starts_with(&format!("{}/", a)) || a.starts_with(&format!("{}/", b))) {
+                warnings.push(format!("Managed storage roots overlap: {} and {}", a, b));
+            }
+        }
+    }
+    warnings
 }
 fn managed_storage_paths_from_registry(registry: &StorageRegistry) -> Vec<String> {
     let mut paths = Vec::new();
@@ -5531,34 +5683,42 @@ mod tests {
             "Storage OK",
             "free",
             "used",
+            "storage-appliance",
+            "storage-category-list",
             "Games",
-            "Artwork &amp; Metadata",
             "AI Models",
-            "Updates",
-            "Logs",
-            "Temp",
+            "Temporary Files",
             "System",
-            "Games by Folder",
-            "Copy path",
-            "Clear Artwork Cache",
-            "Clear Partial Downloads",
-            "Locations",
-            "Diagnostics",
+            "Review Cleanup",
+            "Managed Locations",
+            "data-storage-modal=\"games\"",
+            "data-storage-modal=\"cleanup-review\"",
+            "data-storage-modal=\"locations\"",
+            "data-storage-modal=\"diagnostics\"",
             "data-nav-target=\"storage\"",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
-        assert!(
-            rendered.contains("Remove Model") || rendered.contains("No models installed"),
-            "storage page must either show removable models or the true empty model state"
-        );
-        assert!(rendered.contains("/api/storage/cleanup/artwork"));
-        assert!(rendered.contains("/api/storage/cleanup/temporary"));
-        assert!(rendered.contains("/api/storage/rescan"));
-        assert!(rendered.contains("data-storage-modal=\"games\""));
-        assert!(rendered.contains("data-storage-modal-template=\"games\""));
-        assert!(!rendered.contains("<details class=\"storage-section"));
+        for forbidden in [
+            "Artwork &amp; Metadata",
+            "Games by Folder",
+            "Copy path",
+            "Clear Artwork Cache",
+            "Clear Partial Downloads",
+            "Details / Diagnostics",
+            "/home/owner/Games",
+            "storage-table--games",
+            "cleanup-grid",
+        ] {
+            assert!(
+                !rendered.contains(forbidden),
+                "main storage pane leaked {forbidden}"
+            );
+        }
+        assert!(rendered.contains("/api/storage/rescan-summary"));
         assert!(!rendered.contains("delete-all-games"));
+        assert!(!rendered.contains("data-storage-modal-template=\"games\""));
+        assert!(!rendered.contains("<details class=\"storage-section"));
     }
 
     #[test]
