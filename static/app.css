@@ -476,6 +476,23 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
 .toast.success { border-left-color: var(--good); }
 
 
+
+.storage-focus-pane { max-width: 980px; margin: 0 auto; }
+.storage-drill-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 13px; }
+.storage-drill-card { display: grid; gap: 5px; min-height: 96px; padding: 12px; text-align: left; border: 1px solid var(--line); border-radius: 16px; color: var(--cream); background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(0,0,0,.16)); cursor: pointer; transition: transform .16s ease, border-color .16s ease, background .16s ease; }
+.storage-drill-card:hover, .storage-drill-card:focus-visible { transform: translateY(-1px); outline: none; border-color: rgba(242,140,40,.55); background: linear-gradient(145deg, rgba(242,140,40,.16), rgba(255,255,255,.07)); }
+.storage-drill-card span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .09em; font-weight: 900; }
+.storage-drill-card strong { font-size: 18px; line-height: 1.12; }
+.storage-drill-card em { color: var(--muted); font-size: 12px; font-style: normal; line-height: 1.25; }
+.storage-modal-body { display: grid; gap: 10px; max-height: min(70vh, 720px); overflow: auto; padding-right: 2px; }
+.storage-modal-body .storage-table { min-width: 720px; }
+.storage-modal-body .storage-table-row { display: grid; grid-template-columns: .65fr minmax(120px, 1fr) .7fr .55fr .65fr .75fr minmax(170px, auto); gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.18); }
+.storage-modal-body .storage-table-head { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 900; }
+.modal-summary-strip { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; padding: 11px; border: 1px solid var(--line); border-radius: 15px; background: rgba(0,0,0,.18); }
+.modal-summary-strip strong { font-size: 18px; }
+.modal-summary-strip span { color: var(--muted); }
+#modal-overlay .modal-card { max-width: min(94vw, 920px); }
+
 .storage-section { padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, rgba(255,255,255,.10), rgba(255,255,255,.045)); box-shadow: 0 15px 36px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.06); }
 .storage-two-column, .locations-grid, .cleanup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .cleanup-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -523,7 +540,7 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
   .view { padding: 20px; }
-  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid { grid-template-columns: 1fr; }
+  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }

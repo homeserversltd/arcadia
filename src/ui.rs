@@ -678,7 +678,7 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            section class="storage-summary storage-summary--appliance" aria-label="Overview" {
+            section class="storage-summary storage-summary--appliance storage-focus-pane" aria-label="Storage manager" {
                 div class="storage-hero" {
                     div class="storage-hero-main" {
                         span { "Storage " (status.storage.health) }
@@ -694,7 +694,7 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
                 (storage_usage_bar(status))
-                div class="storage-legend" {
+                div class="storage-legend storage-legend--compact" {
                     (storage_legend("Games", &status.storage.games.size, "games"))
                     (storage_legend("Artwork", &status.storage.artwork.size, "artwork"))
                     (storage_legend("AI Models", &status.storage.ai_models.size, "ai"))
@@ -704,22 +704,28 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                     (storage_legend("System", &status.storage.categories.system.size, "system"))
                     (storage_legend("Free", &status.storage.free, "free"))
                 }
+                div class="storage-drill-grid" aria-label="Storage detail actions" {
+                    (storage_drill_button("Games by Folder", &status.storage.games.size, "Per-platform Samba folders", "games"))
+                    (storage_drill_button("Artwork & Metadata", &status.storage.artwork.size, "Covers, metadata, generated assets", "artwork"))
+                    (storage_drill_button("AI Models", &status.storage.ai_models.size, "Installed files and partial downloads", "ai-models"))
+                    (storage_drill_button("Cleanup", &storage_cleanup_total(status), "Only safe cleanup actions", "cleanup"))
+                    (storage_drill_button("Locations", &format!("{} roots", storage_root_count(status)), "Managed paths and shares", "locations"))
+                    (storage_drill_button("Diagnostics", &format!("{} missing", status.storage.diagnostics.missing_dirs.len()), "Mount, scan, and permission state", "diagnostics"))
+                }
                 div class="inline-actions inline-actions--compact" {
                     (action_button(ButtonVariant::Secondary, "Rescan", "storage-rescan", "/api/storage/rescan"))
                 }
             }
 
-            section class="storage-section" aria-label="Games by Folder" {
-                div class="storage-table storage-table--games" {
-                    div class="storage-table-row storage-table-head" { span { "Platform" } span { "Folder" } span { "Size" } span { "Files" } span { "Synced" } span { "Unsynced" } span { "Actions" } }
-                    @for folder in &status.storage.game_folders { (game_folder_row(folder)) }
+            div class="storage-modal-templates" hidden {
+                div id="storage-modal-games" data-storage-modal-template="games" {
+                    div class="storage-table storage-table--games" {
+                        div class="storage-table-row storage-table-head" { span { "Platform" } span { "Folder" } span { "Size" } span { "Files" } span { "Synced" } span { "Unsynced" } span { "Actions" } }
+                        @for folder in &status.storage.game_folders { (game_folder_row(folder)) }
+                    }
                 }
-            }
-
-            section class="storage-section storage-two-column" aria-label="Artwork and AI Models" {
-                article class="storage-panel" {
-                    div class="card-head" { h3 { "Artwork & Metadata" } strong { (status.storage.artwork.size) } }
-                    p class="card-line" { (status.storage.artwork.files) " files · Last artwork sync unknown" }
+                div id="storage-modal-artwork" data-storage-modal-template="artwork" {
+                    div class="modal-summary-strip" { strong { (status.storage.artwork.size) } span { (status.storage.artwork.files) " files · Last artwork sync unknown" } }
                     @for store in &status.storage.artwork_stores { (folder_store_row(store)) }
                     div class="inline-actions inline-actions--compact" {
                         (action_button(ButtonVariant::Danger, "Clear Artwork Cache", "clear-artwork-cache", "/api/storage/cleanup/artwork"))
@@ -727,9 +733,8 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                     }
                     p class="card-line" { "Clearing artwork does not delete games. Artwork can be downloaded again during Sync." }
                 }
-                article class="storage-panel" {
-                    div class="card-head" { h3 { "AI Models" } strong { (status.storage.ai_models.size) } }
-                    p class="card-line" { (status.storage.ai_model_files.len()) " installed · " (human_or_zero(status.storage.cleanup.partial_downloads_bytes_clearable)) " partial downloads" }
+                div id="storage-modal-ai-models" data-storage-modal-template="ai-models" {
+                    div class="modal-summary-strip" { strong { (status.storage.ai_models.size) } span { (status.storage.ai_model_files.len()) " installed · " (human_or_zero(status.storage.cleanup.partial_downloads_bytes_clearable)) " partial downloads" } }
                     @if status.storage.ai_model_files.is_empty() { div class="empty-state" { strong { "No models installed" } p { "Local AI model registry roots contain no model files." } } }
                     @else { @for model in &status.storage.ai_model_files { (ai_model_file_row(model)) } }
                     div class="inline-actions inline-actions--compact" {
@@ -737,49 +742,77 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                         (action_button(ButtonVariant::Secondary, "Clear Partial Downloads", "clear-partial-ai-downloads", "/api/storage/cleanup/partial-ai-downloads"))
                     }
                 }
-            }
-
-            section class="storage-section" aria-label="Cleanup" {
-                div class="cleanup-grid" {
-                    (cleanup_card("Artwork cache", status.storage.cleanup.artwork_bytes_clearable, "Clear", "clear-artwork-cache", "/api/storage/cleanup/artwork"))
-                    (cleanup_card("Temporary files", status.storage.cleanup.temporary_bytes_clearable, "Clear", "clean-temporary-files", "/api/storage/cleanup/temporary"))
-                    (cleanup_card("Partial downloads", status.storage.cleanup.partial_downloads_bytes_clearable, "Clear", "clear-partial-ai-downloads", "/api/storage/cleanup/partial-ai-downloads"))
-                    (cleanup_card("Old updates", status.storage.cleanup.old_update_bytes_clearable, "Clear", "clear-old-updates", "/api/storage/cleanup/old-updates"))
-                    (cleanup_card("Logs", status.storage.cleanup.logs_bytes_clearable, "Prune", "prune-logs", "/api/storage/cleanup/logs"))
+                div id="storage-modal-cleanup" data-storage-modal-template="cleanup" {
+                    div class="cleanup-grid" {
+                        (cleanup_card("Artwork cache", status.storage.cleanup.artwork_bytes_clearable, "Clear", "clear-artwork-cache", "/api/storage/cleanup/artwork"))
+                        (cleanup_card("Temporary files", status.storage.cleanup.temporary_bytes_clearable, "Clear", "clean-temporary-files", "/api/storage/cleanup/temporary"))
+                        (cleanup_card("Partial downloads", status.storage.cleanup.partial_downloads_bytes_clearable, "Clear", "clear-partial-ai-downloads", "/api/storage/cleanup/partial-ai-downloads"))
+                        (cleanup_card("Old updates", status.storage.cleanup.old_update_bytes_clearable, "Clear", "clear-old-updates", "/api/storage/cleanup/old-updates"))
+                        (cleanup_card("Logs", status.storage.cleanup.logs_bytes_clearable, "Prune", "prune-logs", "/api/storage/cleanup/logs"))
+                    }
                 }
-            }
-
-            section class="storage-section" aria-label="Locations" {
-                div class="locations-grid" {
-                    article class="storage-panel" { h3 { "Games" } @for root in &status.storage.registry.categories.games.roots { (game_location_row(root)) } }
-                    article class="storage-panel" { h3 { "Artwork" } @for root in &status.storage.registry.categories.artwork.roots { (folder_location_row(root)) } }
-                    article class="storage-panel" { h3 { "AI Models" } @for root in &status.storage.registry.categories.ai_models.roots { (folder_location_row(root)) } }
-                    article class="storage-panel" { h3 { "Updates" } @for root in &status.storage.registry.categories.updates.roots { (folder_location_row(root)) } }
-                    article class="storage-panel" { h3 { "Logs" } @for root in &status.storage.registry.categories.logs.roots { (folder_location_row(root)) } }
-                    article class="storage-panel" { h3 { "Temporary" } @for root in &status.storage.registry.categories.temporary.roots { (folder_location_row(root)) } }
+                div id="storage-modal-locations" data-storage-modal-template="locations" {
+                    div class="locations-grid" {
+                        article class="storage-panel" { h3 { "Games" } @for root in &status.storage.registry.categories.games.roots { (game_location_row(root)) } }
+                        article class="storage-panel" { h3 { "Artwork" } @for root in &status.storage.registry.categories.artwork.roots { (folder_location_row(root)) } }
+                        article class="storage-panel" { h3 { "AI Models" } @for root in &status.storage.registry.categories.ai_models.roots { (folder_location_row(root)) } }
+                        article class="storage-panel" { h3 { "Updates" } @for root in &status.storage.registry.categories.updates.roots { (folder_location_row(root)) } }
+                        article class="storage-panel" { h3 { "Logs" } @for root in &status.storage.registry.categories.logs.roots { (folder_location_row(root)) } }
+                        article class="storage-panel" { h3 { "Temporary" } @for root in &status.storage.registry.categories.temporary.roots { (folder_location_row(root)) } }
+                    }
                 }
-            }
-
-            details class="storage-section diagnostics-panel" {
-                summary { "Details / Diagnostics" }
-                div class="system-field-grid" {
-                    (system_field("Mount point", &status.storage.diagnostics.mount_point))
-                    (system_field("Filesystem", status.storage.diagnostics.filesystem.as_deref().unwrap_or("Unknown")))
-                    (system_field("Total", &status.storage.total))
-                    (system_field("Used", &status.storage.used))
-                    (system_field("Free", &status.storage.free))
-                    (system_field("Scan time", &format!("{} ms", status.storage.diagnostics.scan_duration_ms)))
-                    (system_field("Scanner", &status.storage.diagnostics.scanner_version))
-                    (system_field("Missing dirs", &status.storage.diagnostics.missing_dirs.len().to_string()))
-                    (system_field("Permission errors", &status.storage.diagnostics.permission_errors.len().to_string()))
+                div id="storage-modal-diagnostics" data-storage-modal-template="diagnostics" {
+                    div class="system-field-grid" {
+                        (system_field("Mount point", &status.storage.diagnostics.mount_point))
+                        (system_field("Filesystem", status.storage.diagnostics.filesystem.as_deref().unwrap_or("Unknown")))
+                        (system_field("Total", &status.storage.total))
+                        (system_field("Used", &status.storage.used))
+                        (system_field("Free", &status.storage.free))
+                        (system_field("Scan time", &format!("{} ms", status.storage.diagnostics.scan_duration_ms)))
+                        (system_field("Scanner", &status.storage.diagnostics.scanner_version))
+                        (system_field("Missing dirs", &status.storage.diagnostics.missing_dirs.len().to_string()))
+                        (system_field("Permission errors", &status.storage.diagnostics.permission_errors.len().to_string()))
+                    }
+                    @for missing in &status.storage.diagnostics.missing_dirs {
+                        div class="network-row" { span { strong { "Configured folder missing" } em { (missing) } } button class="btn btn--secondary" type="button" data-create-managed-folder=(missing) { "Create Missing Folder" } }
+                    }
+                    @for err in &status.storage.diagnostics.permission_errors { div class="network-row" { span { strong { "Permission error" } em { (err) } } } }
                 }
-                @for missing in &status.storage.diagnostics.missing_dirs {
-                    div class="network-row" { span { strong { "Configured folder missing" } em { (missing) } } button class="btn btn--secondary" type="button" data-create-managed-folder=(missing) { "Create Missing Folder" } }
-                }
-                @for err in &status.storage.diagnostics.permission_errors { div class="network-row" { span { strong { "Permission error" } em { (err) } } } }
             }
         },
     )
+}
+
+fn storage_drill_button(title: &str, value: &str, detail: &str, modal: &str) -> Markup {
+    html! {
+        button class="storage-drill-card" type="button" data-storage-modal=(modal) data-storage-modal-title=(title) {
+            span { (title) }
+            strong { (value) }
+            em { (detail) }
+        }
+    }
+}
+
+fn storage_cleanup_total(status: &ConsoleStatus) -> String {
+    human_or_zero(
+        status
+            .storage
+            .cleanup
+            .artwork_bytes_clearable
+            .saturating_add(status.storage.cleanup.temporary_bytes_clearable)
+            .saturating_add(status.storage.cleanup.partial_downloads_bytes_clearable)
+            .saturating_add(status.storage.cleanup.old_update_bytes_clearable)
+            .saturating_add(status.storage.cleanup.logs_bytes_clearable),
+    )
+}
+
+fn storage_root_count(status: &ConsoleStatus) -> usize {
+    status.storage.registry.categories.games.roots.len()
+        + status.storage.registry.categories.artwork.roots.len()
+        + status.storage.registry.categories.ai_models.roots.len()
+        + status.storage.registry.categories.updates.roots.len()
+        + status.storage.registry.categories.logs.roots.len()
+        + status.storage.registry.categories.temporary.roots.len()
 }
 
 fn storage_usage_bar(status: &ConsoleStatus) -> Markup {
@@ -801,14 +834,14 @@ fn storage_segment(class: &str, percent: u8, bytes: u64, size: &str) -> Markup {
 }
 
 fn game_folder_row(folder: &GameFolderStorage) -> Markup {
-    html! { details class="storage-table-row storage-folder-row" {
-        summary { span { (folder.platform) } span { (folder.display_name) } span { (folder.size) } span { (folder.file_count) } span { (folder.synced_entries.map(|v| v.to_string()).unwrap_or_else(|| "Unknown".to_string())) } span { (folder.unsynced_files.map(|v| v.to_string()).unwrap_or_else(|| "Unknown".to_string())) } span class="system-row-actions" { (folder_copy_button("Copy path", folder)) (nav_button("View in Sync", "sync")) } }
-        div class="folder-detail-grid" {
-            (system_field("Filesystem path", &folder.path))
-            (system_field("Share", &folder.samba_share_name))
-            @if folder.largest_files.is_empty() { (system_field("Largest files", "None")) }
-            @else { @for file in &folder.largest_files { (system_field(&file.name, &file.size)) } }
-        }
+    html! { div class="storage-table-row storage-folder-row" {
+        span { (folder.platform) }
+        span { (folder.display_name) }
+        span { (folder.size) }
+        span { (folder.file_count) }
+        span { (folder.synced_entries.map(|v| v.to_string()).unwrap_or_else(|| "Unknown".to_string())) }
+        span { (folder.unsynced_files.map(|v| v.to_string()).unwrap_or_else(|| "Unknown".to_string())) }
+        span class="system-row-actions" { (folder_copy_button("Copy path", folder)) (nav_button("View in Sync", "sync")) }
     } }
 }
 
@@ -816,7 +849,12 @@ fn folder_store_row(store: &FolderStorage) -> Markup {
     html! { div class="network-row" { span { strong { (store.display_name) } em { (store.path) } } b class=(format!("system-status system-status--{}", store.state)) { (store.state) } span { (store.size) } span { (store.file_count) " files" } } }
 }
 fn ai_model_file_row(model: &AIModelStorage) -> Markup {
-    html! { details class="storage-model-row" { summary { span { strong { (model.name) } code { (model.filename) } } em { (model.size) } b { (if model.loaded { "Hot" } else if model.selected { "Selected" } else { "Installed" }) } @if model.removable { (action_button(ButtonVariant::Danger, "Remove Model", "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", model.filename))) } @else { button class="btn btn--secondary" type="button" disabled { "Unload first" } } } code { (model.path) } } }
+    html! { div class="storage-model-row" {
+        span { strong { (model.name) } code { (model.filename) } code { (model.path) } }
+        em { (model.size) }
+        b { (if model.loaded { "Hot" } else if model.selected { "Selected" } else { "Installed" }) }
+        @if model.removable { (action_button(ButtonVariant::Danger, "Remove Model", "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", model.filename))) } @else { button class="btn btn--secondary" type="button" disabled { "Unload first" } }
+    } }
 }
 fn cleanup_card(
     label: &str,
