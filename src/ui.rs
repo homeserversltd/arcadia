@@ -60,124 +60,123 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
 }
 
 fn header(status: &ConsoleStatus) -> Markup {
-    let network_icon = if status.network.internet_reachable == Some(true) {
-        "◉"
-    } else if status.network.online {
-        "⌁"
-    } else {
-        "⊘"
-    };
-    let network_tip = network_tooltip(status);
-    let gamescope_class = if status.arcadia.service == "running" {
-        "good"
-    } else if status.arcadia.service == "stopped" {
-        "idle"
-    } else {
-        "warn"
-    };
     let sync_delta = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let sync_class = if status.library.last_sync_state == "error" {
-        "bad"
-    } else if sync_delta > 0 {
-        "warn"
+    let (games_label, games_class, games_tip) = if status.library.last_sync_state == "error" {
+        (
+            "Sync failed".to_string(),
+            "bad",
+            "Last game sync failed".to_string(),
+        )
+    } else if status.library.sync_needed || sync_delta > 0 {
+        (
+            "Needs sync".to_string(),
+            "warn",
+            format!("{} game changes waiting for sync", sync_delta),
+        )
+    } else if status.library.sync_state == "unknown" {
+        (
+            "Unknown".to_string(),
+            "idle",
+            "Game sync state unknown".to_string(),
+        )
     } else {
-        "idle"
+        (
+            "Synced".to_string(),
+            "good",
+            "No game changes waiting for sync".to_string(),
+        )
     };
-    let sync_tip = if status.library.sync_state == "unknown" {
-        "Sync state unknown".to_string()
-    } else if sync_delta > 0 {
-        format!("{} changes waiting for sync", sync_delta)
+    let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
+        "available" => (
+            "Available".to_string(),
+            "warn",
+            format!(
+                "Update available · {}",
+                status
+                    .updates
+                    .available_version
+                    .as_deref()
+                    .unwrap_or("version unknown")
+            ),
+        ),
+        "current" => (
+            "Current".to_string(),
+            "good",
+            format!("Software current · {}", status.updates.current_version),
+        ),
+        "checking" => (
+            "Checking".to_string(),
+            "warn",
+            "Checking for updates".to_string(),
+        ),
+        "installing" => (
+            "Installing".to_string(),
+            "warn",
+            "Installing update".to_string(),
+        ),
+        "error" => (
+            "Error".to_string(),
+            "bad",
+            "Update check failed".to_string(),
+        ),
+        _ => (
+            "Unknown".to_string(),
+            "idle",
+            "Update state unknown".to_string(),
+        ),
+    };
+    let ai_ready = status.network.lan_ai_reachable || status.local_ai.lan_inference_enabled;
+    let ai_label = if ai_ready {
+        "Ready on :7777"
     } else {
-        "Synced · no changes".to_string()
+        "Unavailable"
     };
-    let updates_class = match status.updates.state.as_str() {
-        "available" => "warn",
-        "checking" | "installing" => "warn",
-        "error" => "bad",
-        "unknown" => "idle",
-        _ => "idle",
-    };
-    let updates_tip = match status.updates.state.as_str() {
-        "available" => format!(
-            "Update available · {}",
-            status
-                .updates
-                .available_version
-                .as_deref()
-                .unwrap_or("unknown")
-        ),
-        "current" => format!("Software current · {}", status.updates.current_version),
-        "checking" => "Checking for updates".to_string(),
-        "installing" => "Installing update".to_string(),
-        "error" => "Update failed".to_string(),
-        _ => "Update status unknown".to_string(),
-    };
-    let ai_class = match status.local_ai.load_state.as_str() {
-        "hot" => "good",
-        "cold" | "loading" => "warn",
-        "error" => "bad",
-        _ => "idle",
-    };
-    let ai_tip = match status.local_ai.load_state.as_str() {
-        "hot" => format!(
-            "{} hot-loaded",
-            status
-                .local_ai
-                .loaded_model_name
-                .as_deref()
-                .unwrap_or("Local AI")
-        ),
-        "cold" => "Model selected but cold".to_string(),
-        "loading" => "Local AI loading".to_string(),
-        "error" => "Local AI error".to_string(),
-        "unknown" => "Local AI state unknown".to_string(),
-        _ => "No Local AI loaded".to_string(),
+    let ai_tip = if ai_ready {
+        "Local AI listener is ready when called on port 7777"
+    } else {
+        "Local AI listener is not available"
     };
     html! {
         header class="top-header" {
             div class="product-lockup" {
-                div class="product-mark" { "A" }
-                div { h1 { "Arcadia Console" } p { (status.canonical_url.trim_end_matches('/')) } }
+                div class="product-mark" { "H" }
+                div { h1 { "HomeConsole" } }
             }
-            div class="header-indicators" aria-label="Console state" {
-                (nav_status_icon("connectivity", network_icon, if status.network.online { "good" } else { "bad" }, &network_tip, "network"))
-                (nav_status_icon("gamescope", if status.arcadia.service == "running" { "▶" } else { "▮" }, gamescope_class, &format!("GameScope {}", status.arcadia.service), "system"))
-                (nav_storage_icon(status))
-                (nav_status_icon("sync", if sync_delta > 0 { "↻" } else { "✓" }, sync_class, &sync_tip, "sync"))
-                (nav_status_icon("updates", if status.updates.state == "available" { "⬇" } else { "✓" }, updates_class, &updates_tip, "updates"))
-                (nav_status_icon("local-ai", "◉", ai_class, &ai_tip, "local-ai"))
-                (theme_button())
-                (nav_status_icon("pin", if status.gui_pin.pin_required { "🔒" } else { "🔓" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI access" } else { "GUI open without PIN" }, "access-pin"))
+            div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
+                (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
+                (currentness_status_chip("games", "Games", &games_label, games_class, &games_tip, "sync"))
+                (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
+                (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
+                (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
+                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin"))
             }
         }
     }
 }
 
-fn theme_button() -> Markup {
-    html! {
-        button class="status-badge status-badge--idle status-badge--nav status-badge--theme" type="button" data-theme-cycle="true" data-theme-current="" title="Theme" aria-label="Theme" {
-            span class="chip-icon" aria-hidden="true" { "◐" }
-            span class="theme-name" { "Theme" }
-        }
+fn network_class(active_type: &str) -> &'static str {
+    match active_type {
+        "ethernet" | "wifi" => "good",
+        "limited" => "warn",
+        "offline" => "bad",
+        _ => "idle",
     }
 }
 
-fn nav_status_icon(kind: &str, icon: &str, class: &str, help: &str, target: &str) -> Markup {
+fn currentness_status_chip(
+    kind: &str,
+    label: &str,
+    value: &str,
+    class: &str,
+    help: &str,
+    target: &str,
+) -> Markup {
     html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) title=(help) aria-label=(help) {
-            span class="chip-icon" aria-hidden="true" { (icon) }
-        }
-    }
-}
-
-fn nav_storage_icon(status: &ConsoleStatus) -> Markup {
-    html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--storage", status.storage.header_class)) type="button" data-nav-target="storage" data-chip-kind="storage" title=(status.storage.header_tooltip) aria-label=(status.storage.header_tooltip) {
-            span class="chip-icon" aria-hidden="true" { "▰" }
-            span class="header-microbar" aria-hidden="true" { span style=(format!("width: {}%", status.storage.percent_used)) {} }
-            small { (status.storage.free) }
+        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) title=(help) aria-label=(format!("{}: {}", label, value)) {
+            span { (label) }
+            strong { (value) }
         }
     }
 }
@@ -1448,8 +1447,8 @@ fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
     html! {
         section id="gui-pin-gate" class="pin-auth-container" data-required=(status.gui_pin.pin_required) {
             article class="pin-auth-card" {
-                div class="product-mark" { "A" }
-                h1 { "Arcadia Console" }
+                div class="product-mark" { "H" }
+                h1 { "HomeConsole" }
                 h2 { "GUI PIN" }
                 p { "Enter the setup PIN printed on the device card to manage this console." }
                 form id="gui-pin-unlock-form" class="settings-form" autocomplete="off" {
