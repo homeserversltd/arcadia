@@ -7,10 +7,11 @@ const FOLDERS: [&str; 12] = [
     "dos",
 ];
 
-const VIEWS: [(&str, &str, &str); 9] = [
+const VIEWS: [(&str, &str, &str); 10] = [
     ("home", "⌂", "Home"),
     ("games", "▣", "Games"),
     ("sync", "↻", "Sync"),
+    ("storage", "▰", "Storage"),
     ("ai-model", "◉", "Local AI"),
     ("lan-inference", "⇄", "LAN Inference"),
     ("access-pin", "●", "Access / PIN"),
@@ -40,6 +41,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (home_view(status))
                             (games_view(status))
                             (sync_view())
+                            (storage_view(status))
                             (ai_model_view())
                             (lan_inference_view())
                             (access_pin_view(status))
@@ -69,7 +71,7 @@ fn header(status: &ConsoleStatus) -> Markup {
             div class="header-indicators" aria-label="Console state" {
                 (status_badge("Network", "Online", "good", "The console is reachable on your home network."))
                 (status_badge("GameScope", "Running", "good", "The TV game session is expected to be running."))
-                (status_badge("Storage", "OK", "good", "Storage has room for games and artwork."))
+                (storage_status_badge("OK", "good", "Storage is 64% used. Open Storage to see what is using space."))
                 (status_badge("Sync", "Idle", "idle", "No game sync is running right now."))
                 (status_badge("AI", "Not Loaded", "idle", "No local AI model is currently marked as loaded."))
                 (status_badge("Update", "Current", "good", "No update is currently reported."))
@@ -83,6 +85,15 @@ fn status_badge(label: &str, state: &str, class: &str, help: &str) -> Markup {
     html! {
         div class=(format!("status-badge status-badge--{}", class)) title=(help) {
             span { (label) }
+            strong { (state) }
+        }
+    }
+}
+
+fn storage_status_badge(state: &str, class: &str, help: &str) -> Markup {
+    html! {
+        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target="storage" title=(help) aria-label="Open Storage" {
+            span { "Storage" }
             strong { (state) }
         }
     }
@@ -136,7 +147,7 @@ fn home_view(status: &ConsoleStatus) -> Markup {
             div class="status-card-grid status-card-grid--compact" {
                 (status_card("Network", "Online", "Console GUI reachable on the home network."))
                 (status_card("GameScope", "Running", "Games appear on the TV after sync creates shortcuts."))
-                (status_card("Storage", "OK", "There is room for game files and artwork."))
+                (status_card("Storage", "OK — 412 GB free", "64% used. Open Storage for the full breakdown."))
                 (status_card("Last Sync", "Not reported", "Run Sync Games after copying new files."))
                 (status_card("Loaded Local AI", "Not Loaded", "Load local AI only when you need LAN inference."))
                 (status_card("Software Version", status.arcadia.version, "Arcadia web console version."))
@@ -204,6 +215,7 @@ fn sync_view() -> Markup {
             (status_card("Steam shortcuts", "Not reported", "Entries created for GameScope / Steam mode."))
             (status_card("Artwork", "Ready", "Artwork improves when provider keys are configured."))
         }
+        p class="warning" { "Storage is OK. Storage is low. Sync may fail if artwork or shortcuts cannot be written." }
         details class="settings-panel" {
             summary { "Configure Metadata Providers" }
             p { "Optional metadata keys improve cover art and game titles during Sync. Games still work without them." }
@@ -221,6 +233,63 @@ fn sync_view() -> Markup {
             }
         }
         (collapsible_log("Sync log preview", "No sync log has been loaded in this page. Start Sync and read the result message above."))
+    })
+}
+
+fn storage_view(status: &ConsoleStatus) -> Markup {
+    view_shell("storage", "Local disk", "Storage", "See what is using space on the console. Games, artwork, and local AI models are stored on the device and can grow over time.", html! {
+        section class="storage-summary" aria-labelledby="free-space-title" {
+            div class="section-heading" {
+                h3 id="free-space-title" { "Free Space" }
+                p { "Storage OK. The console has enough free space for games, artwork, updates, and local AI models." }
+            }
+            div class="storage-hero" {
+                div class="storage-hero-main" {
+                    span { "Storage OK" }
+                    strong { "412 GB free" }
+                    p { "64% used" }
+                }
+                div class="storage-hero-stats" {
+                    (storage_stat("Total storage", "1.2 TB"))
+                    (storage_stat("Used storage", "768 GB"))
+                    (storage_stat("Free storage", "412 GB"))
+                    (storage_stat("Percent used", "64%"))
+                }
+            }
+            div class="storage-bar" aria-label="Segmented storage usage" {
+                span class="storage-segment storage-segment--games" style="width: 44%" title="Games 532 GB" {}
+                span class="storage-segment storage-segment--artwork" style="width: 4%" title="Artwork 38.4 GB" {}
+                span class="storage-segment storage-segment--ai" style="width: 7%" title="AI Models 86 GB" {}
+                span class="storage-segment storage-segment--other" style="width: 9%" title="Other 111 GB" {}
+                span class="storage-segment storage-segment--free" style="width: 36%" title="Free 412 GB" {}
+            }
+            div class="storage-legend" {
+                (storage_legend("Games", "532 GB", "games"))
+                (storage_legend("Artwork", "38.4 GB", "artwork"))
+                (storage_legend("AI Models", "86 GB", "ai"))
+                (storage_legend("Other", "111 GB", "other"))
+                (storage_legend("Free Space", "412 GB", "free"))
+            }
+        }
+
+        section class="storage-category-grid" aria-label="Storage categories" {
+            (storage_category("Games", "532 GB", "1,248 files", "Largest folders: ps2, gamecube, wii, ps1, psp, snes, gba.", html! {
+                (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", &format!("smb://{}", status.surfaces.smb)))
+                (modal_button(ButtonVariant::Secondary, "Rescan Game Storage", "Rescan game storage", "Arcadia will refresh the game storage estimate when the storage scanner is connected."))
+            }))
+            (storage_category("Artwork", "38.4 GB", "18,420 artwork files", "Last artwork sync: Not reported. Clearing artwork does not delete games. Artwork can be downloaded again during Sync.", html! {
+                (modal_button(ButtonVariant::Danger, "Clear Artwork Cache", "Clear artwork cache", "Clearing artwork does not delete games. Artwork can be downloaded again during Sync. Confirm before clearing cached artwork."))
+                (modal_button(ButtonVariant::Secondary, "Rebuild Artwork on Next Sync", "Rebuild artwork", "The next Sync will rebuild artwork and metadata for copied games."))
+            }))
+            (storage_category("AI Models", "86 GB", "3 installed models", "Model files are stored locally for Local AI. Remove unused models to free space without affecting games.", html! {
+                (ai_model_storage_row("Mistral 7B Instruct", "mistral-7b-instruct.Q4_K_M.gguf", "4.1 GB", "Available"))
+                (ai_model_storage_row("Qwen2.5 Coder 7B", "qwen2.5-coder-7b.Q4_K_M.gguf", "4.7 GB", "Available"))
+                (nav_button("Open Local AI", "ai-model"))
+            }))
+            (storage_category("Other Storage", "111 GB", "System, updates, logs, temporary files", "Other Storage includes the operating system, update files, logs, and anything not classified as games, artwork, or AI models.", html! {
+                (modal_button(ButtonVariant::Secondary, "Clean Temporary Files", "Clean temporary files", "This cleans safe temporary files only. It does not remove games, intentionally kept artwork, or installed AI models."))
+            }))
+        }
     })
 }
 
@@ -261,6 +330,7 @@ fn ai_model_view() -> Markup {
         }
 
         section class="local-ai-section" aria-labelledby="gpu-usage-title" {
+            p class="warning" { "Storage is OK. Storage is low. Remove unused games, artwork, or AI models before adding more models." }
             div class="section-heading section-heading--compact" {
                 h3 id="gpu-usage-title" { "GPU Usage" }
                 p { "Local AI uses the same GPU as games. Large models may reduce game performance while loaded." }
@@ -397,6 +467,37 @@ fn path_card(title: &str, path: &str) -> Markup {
 
 fn provider_status(name: &str, state: &str) -> Markup {
     html! { div class="provider-status" { span { (name) } strong { (state) } } }
+}
+
+fn storage_stat(label: &str, value: &str) -> Markup {
+    html! { div class="storage-stat" { span { (label) } strong { (value) } } }
+}
+
+fn storage_legend(label: &str, value: &str, class: &str) -> Markup {
+    html! { span class=(format!("storage-legend-item storage-legend-item--{}", class)) { em {} strong { (label) } small { (value) } } }
+}
+
+fn storage_category(title: &str, value: &str, meta: &str, text: &str, actions: Markup) -> Markup {
+    html! {
+        article class="storage-category-card" {
+            h3 { (title) }
+            strong class="storage-category-value" { (value) }
+            span class="storage-category-meta" { (meta) }
+            p { (text) }
+            div class="inline-actions" { (actions) }
+        }
+    }
+}
+
+fn ai_model_storage_row(name: &str, filename: &str, size: &str, status: &str) -> Markup {
+    html! {
+        div class="storage-model-row" {
+            span { strong { (name) } code { (filename) } }
+            em { (size) }
+            b { (status) }
+            (modal_button(ButtonVariant::Danger, "Remove Model", "Remove AI model", "This removes the model file from console storage. It does not affect games. Unload the model first if it is currently loaded."))
+        }
+    }
 }
 
 fn model_card(
