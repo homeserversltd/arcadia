@@ -60,6 +60,13 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; bac
 button, input { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 
+.pin-auth-container { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; padding: 1rem; background: var(--background); z-index: 9999; transition: opacity .2s ease, visibility .2s ease; }
+.pin-auth-container[data-required="false"], body.pin-open .pin-auth-container, body[data-gui-pin-required="false"] .pin-auth-container { opacity: 0; visibility: hidden; pointer-events: none; }
+.pin-auth-card { width: min(100%, 360px); padding: 1.25rem; display: grid; gap: .75rem; }
+.pin-auth-card h1, .pin-auth-card h2 { margin: 0; }
+body[data-gui-pin-required="true"] .console-shell { opacity: 0; visibility: hidden; pointer-events: none; }
+body.pin-open .console-shell, body[data-gui-pin-required="false"] .console-shell { opacity: 1; visibility: visible; pointer-events: auto; }
+
 .console-shell { position: relative; z-index: 1; min-height: 100vh; padding: 8px; }
 .app-header {
   min-height: 44px;
@@ -148,7 +155,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .header-status { display: flex; margin-left: auto; }
   .console-pane { width: min(1040px, 100%); padding: 10px; margin-top: 10px; }
   .control-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .panel[data-module="vault-password"], .panel[data-module="smb-folders"], .panel[data-module="provider-keys"] { grid-column: span 2; }
+  .panel[data-module="gui-pin"], .panel[data-module="smb-folders"], .panel[data-module="provider-keys"] { grid-column: span 2; }
   .module-grid--forms { grid-template-columns: 1fr; }
   .button-row { grid-template-columns: repeat(3, minmax(0,1fr)); }
   .button-row--five { grid-template-columns: repeat(5, minmax(0,1fr)); }
@@ -159,7 +166,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .app-header h1 { font-size: 24px; }
   .console-pane { padding: 12px; }
   .control-grid { grid-template-columns: repeat(3, minmax(0,1fr)); }
-  .panel[data-module="vault-password"] { grid-column: span 1; }
+  .panel[data-module="gui-pin"] { grid-column: span 1; }
   .panel[data-module="smb-folders"] { grid-column: span 1; }
   .panel[data-module="provider-keys"] { grid-column: span 2; }
 }

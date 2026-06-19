@@ -13,15 +13,16 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 script { (theme_boot_script()) }
                 link rel="stylesheet" href="/static/app.css";
             }
-            body data-ui-schema=(status.ui_contract.schema) {
-                div id="app" class="console-shell" {
+            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required=(status.gui_pin.pin_required) {
+                (gui_pin_gate(status))
+                div id="app" class="console-shell" aria-hidden=(status.gui_pin.pin_required) {
                     main class="console-pane" aria-label="HomeConsole" {
                         section class="control-grid" {
                             article class="panel" data-module="status" {
                                 div class="status-strip" {
                                     (status_card("Network", "Online"))
                                     (status_card("Runtime", &status.runtime.machine_uptime))
-                                    (status_card("Vault", yes_no(status.vault.mounted)))
+                                    (status_card("GUI PIN", if status.gui_pin.pin_required { "required" } else { "off" }))
                                 }
                             }
 
@@ -51,16 +52,24 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                                 }
                             }
 
-                            article class="panel" data-module="vault-password" {
+                            article class="panel" data-module="gui-pin" {
                                 div class="module-grid module-grid--forms" {
                                     article class="submodule control-card" {
-                                        p { "Change the vault password when the current password is known." }
-                                        form id="vault-password-change-form" class="stack" autocomplete="off" {
-                                            label { span { "Current password" } input class="field" type="password" name="current_password" autocomplete="current-password" required; }
-                                            label { span { "New password" } input class="field" type="password" name="new_password" autocomplete="new-password" required minlength="4"; }
-                                            label { span { "Confirm new password" } input class="field" type="password" name="confirm_password" autocomplete="new-password" required minlength="4"; }
-                                            div id="vault-password-change-message" class="message" hidden {}
-                                            button class="btn btn--primary" type="submit" { "Change Vault password" }
+                                        p { "GUI PIN controls whether Arcadia asks for a PIN before opening. The PIN is stored by Keyman; Arcadia never shows it back." }
+                                        div class="button-row" data-module="gui-pin-access" {
+                                            button class="btn btn--secondary" type="button" data-action="gui-pin-enable" data-endpoint="/api/gui-pin/access" data-pin-required="true" { "Require GUI PIN" }
+                                            button class="btn btn--secondary" type="button" data-action="gui-pin-disable" data-endpoint="/api/gui-pin/access" data-pin-required="false" { "Open without PIN" }
+                                        }
+                                        div id="gui-pin-access-message" class="message" hidden {}
+                                    }
+                                    article class="submodule control-card" {
+                                        p { "Change the GUI PIN when the current PIN is known." }
+                                        form id="gui-pin-change-form" class="stack" autocomplete="off" {
+                                            label { span { "Current PIN" } input class="field" type="password" name="current_pin" autocomplete="current-password" required; }
+                                            label { span { "New PIN" } input class="field" type="password" name="new_pin" autocomplete="new-password" required minlength="4"; }
+                                            label { span { "Confirm new PIN" } input class="field" type="password" name="confirm_pin" autocomplete="new-password" required minlength="4"; }
+                                            div id="gui-pin-change-message" class="message" hidden {}
+                                            button class="btn btn--primary" type="submit" { "Change GUI PIN" }
                                         }
                                     }
                                 }
@@ -71,6 +80,24 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 }
                 (modal_root())
                 script src="/static/app.js" {}
+            }
+        }
+    }
+}
+
+fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
+    html! {
+        section id="gui-pin-gate" class="pin-auth-container" data-required=(status.gui_pin.pin_required) {
+            article class="panel pin-auth-card" {
+                h1 { "HomeConsole" }
+                h2 { "GUI PIN" }
+                p class="tile-note" { "Enter the GUI PIN to open Arcadia." }
+                form id="gui-pin-unlock-form" class="stack" autocomplete="off" {
+                    input class="field field--pin" type="password" name="pin" placeholder="Enter GUI PIN" autocomplete="current-password" autofocus;
+                    div id="gui-pin-auth-error" class="message message--error" hidden {}
+                    button class="btn btn--primary" type="submit" { "Open Arcadia" }
+                }
+                small class="mono" { "PIN storage: " (status.gui_pin.pin_storage) }
             }
         }
     }
@@ -104,14 +131,6 @@ fn smb_explainer(status: &ConsoleStatus) -> Markup {
                 "SMB writes to console storage on the local network."
             }
         }
-    }
-}
-
-fn yes_no(value: bool) -> &'static str {
-    if value {
-        "yes"
-    } else {
-        "no"
     }
 }
 
