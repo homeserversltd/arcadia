@@ -899,7 +899,7 @@ mod tests {
 
     #[test]
     fn human_text_font_sizes_stay_inside_ordinary_bounds() {
-        let allowed_large_icon_selectors = [".product-mark", ".launcher-icon"];
+        let allowed_large_icon_selectors = [".product-mark", ".launcher-icon", ".home-action-icon"];
 
         for (index, line) in APP_CSS.lines().enumerate() {
             if !line.contains("font-size:") {
@@ -929,6 +929,53 @@ mod tests {
                     line
                 );
             }
+        }
+    }
+
+    #[test]
+    fn home_view_is_action_launchpad_before_status() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+
+        let title = rendered.find("Console Home").expect("home title rendered");
+        let action = rendered
+            .find("What do you want to do?")
+            .expect("primary action section rendered");
+        let status_title = rendered
+            .find("Console Status")
+            .expect("status section still rendered");
+        assert!(title < action, "intro appears before action launchpad");
+        assert!(
+            action < status_title,
+            "action launchpad appears before status cards"
+        );
+
+        for required in [
+            "Add Games",
+            "Open the console’s network folders and copy games into the right system folder.",
+            "data-nav-target=\"games\"",
+            "Sync Games",
+            "Scan the game folders, fetch artwork, and add games to the GameScope library.",
+            "data-nav-target=\"sync\"",
+            "Load AI Model",
+            "Select which local llama.cpp model is loaded onto the GPU.",
+            "data-nav-target=\"ai-model\"",
+            "home-action-tile",
+        ] {
+            assert!(rendered.contains(required), "missing {required}");
+        }
+
+        for forbidden_on_home in ["SSH", "Open ports"] {
+            let home_end = rendered.find("id=\"view-games\"").unwrap_or(rendered.len());
+            assert!(
+                !rendered[..home_end].contains(forbidden_on_home),
+                "advanced label leaked into Home: {forbidden_on_home}"
+            );
         }
     }
 
