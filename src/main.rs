@@ -1066,9 +1066,31 @@ fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
     }
 }
 
+fn global_ipv4_address() -> Option<String> {
+    command_stdout("ip", &["-4", "-o", "addr", "show", "scope", "global"])
+        .and_then(|text| parse_global_ipv4_address(&text))
+}
+
+fn parse_global_ipv4_address(text: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        while let Some(part) = parts.next() {
+            if part == "inet" {
+                return parts
+                    .next()
+                    .and_then(|cidr| cidr.split('/').next())
+                    .filter(|addr| !addr.is_empty())
+                    .map(str::to_string);
+            }
+        }
+        None
+    })
+}
+
 fn network_status() -> NetworkStatus {
     let ip_address = command_stdout("hostname", &["-I"])
         .and_then(|text| text.split_whitespace().next().map(str::to_string))
+        .or_else(global_ipv4_address)
         .unwrap_or_else(|| "—".to_string());
     let online = ip_address != "—";
     let wifi_device = command_stdout("iw", &["dev"]).and_then(|text| {
@@ -1678,6 +1700,16 @@ mod tests {
         let joined = lines.join("\n");
         assert!(!joined.contains("SCREENSCRAPER_USER"));
         assert!(!joined.contains("SCREENSCRAPER_PASSWORD"));
+    }
+
+    #[test]
+    fn network_status_parses_ip_addr_global_fallback() {
+        let text =
+            "2: enp1s0    inet 192.168.123.54/24 brd 192.168.123.255 scope global dynamic enp1s0\n";
+        assert_eq!(
+            parse_global_ipv4_address(text),
+            Some("192.168.123.54".to_string())
+        );
     }
 
     #[test]
