@@ -197,9 +197,9 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
                 status.library.detected_files
             ),
             format!("{} GameScope entries", status.library.gamescope_entries),
-            Some("Start Sync"),
+            Some("View Sync"),
+            Some("sync"),
             None,
-            Some("/api/actions/sync-games"),
         )
     } else if status.library.last_sync_state == "error" {
         (
@@ -659,7 +659,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     label class="wifi-show-password" { input type="checkbox" data-toggle-password="password"; span { "Show password" } }
                     div class="inline-actions" {
                         button class="btn btn--secondary" type="button" data-network-action="scan-wifi" data-network-endpoint="/api/network/scan-wifi" { "Scan Wi-Fi" }
-                        button class="btn btn--primary" type="submit" { "Connect Wi-Fi" }
+                        button class="btn btn--primary" type="submit" data-network-endpoint="/api/network/connect-wifi" { "Connect Wi-Fi" }
                         button class="btn btn--secondary" type="button" data-network-action="disconnect-wifi" data-network-endpoint="/api/network/disconnect-wifi" { "Disconnect Wi-Fi" }
                     }
                     div id="wifi-message" class="message" hidden {}
