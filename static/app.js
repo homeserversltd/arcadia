@@ -214,7 +214,7 @@ function bindConsoleActions() {
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
-        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.' });
+        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Fix the issue shown below and try again.' });
       } finally {
         button.disabled = false;
         button.textContent = original;
@@ -292,7 +292,7 @@ function startSyncProgress() {
   const button = document.querySelector('[data-action="sync-games"]');
   if (button) button.textContent = 'Sync Running';
   const progress = document.getElementById('sync-progress-text');
-  const log = document.getElementById('sync-log-output');
+  const log = document.getElementById('sync-output');
   let index = 0;
   const tick = () => {
     const step = syncSteps[Math.min(index, syncSteps.length - 1)];
@@ -308,7 +308,7 @@ function startSyncProgress() {
 function finishSyncProgress(ok, data = {}) {
   const button = document.querySelector('[data-action="sync-games"]');
   const progress = document.getElementById('sync-progress-text');
-  const log = document.getElementById('sync-log-output');
+  const log = document.getElementById('sync-output');
   const result = document.querySelector('[data-sync-result]');
   const resultCopy = document.getElementById('sync-result-copy');
   if (ok) {
@@ -329,10 +329,10 @@ function finishSyncProgress(ok, data = {}) {
     setWorkflowStep(Math.max(0, Array.from(document.querySelectorAll('.sync-step')).findIndex((step) => step.dataset.stepState === 'running')), true);
     setSyncState('Sync Failed');
     if (button) button.textContent = 'Sync Failed';
-    const message = data.message || 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.';
+    const message = data.message || 'Sync could not complete. Fix the issue shown below and try again.';
     if (progress) progress.textContent = message;
     if (result) result.dataset.syncResult = 'error';
-    if (resultCopy) resultCopy.textContent = 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.';
+    if (resultCopy) resultCopy.textContent = 'Sync could not complete. Fix the issue shown below and try again.';
     if (log) log.textContent = formatActionResult(data);
   }
 }

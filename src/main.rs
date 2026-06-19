@@ -2142,7 +2142,7 @@ mod tests {
             "Artwork downloaded",
             "Duration",
             "Completed time",
-            "View Sync Log",
+            "Output",
             "Metadata keys are optional. They improve artwork and titles, but games can still sync without them.",
             "SteamGridDB",
             "TheGamesDB",
@@ -2152,8 +2152,19 @@ mod tests {
         }
 
         let workflow = sync_html.find("sync-workflow").expect("workflow shown");
-        let log = sync_html.find("sync-log-panel").expect("log available");
-        assert!(workflow < log, "workflow appears before the collapsed log");
+        let output = sync_html
+            .find("sync-output-panel")
+            .expect("output available");
+        assert!(
+            workflow < output,
+            "workflow appears before the collapsed output"
+        );
+        for forbidden in ["View Sync Log", "Logs are secondary"] {
+            assert!(
+                !sync_html.contains(forbidden),
+                "rejected sync copy survived: {forbidden}"
+            );
+        }
         assert!(sync_html.contains("data-storage-health=\"OK\""));
         assert!(sync_html.contains("data-sync-step=\"1\""));
         assert!(sync_html.contains("data-sync-step=\"5\""));
@@ -2328,47 +2339,30 @@ mod tests {
         assert!(rendered.contains("data-view=\"system\""));
         for required in [
             "System",
-            "SSH",
             "SSH status",
             "Disabled",
             "Hostname",
             "LAN IP address",
             "Username",
             "ssh console@console.home.arpa",
-            "SSH is for direct technical access to the console. Normal game management does not require SSH.",
-            "Only enable SSH on a trusted home network. Use a strong password or key-based access.",
             "Enable SSH",
             "Disable SSH",
             "Copy SSH Command",
-            "Services",
             "GameScope",
-            "Runs the console gaming session.",
             "Samba",
-            "Shares game folders over the home network.",
             "Game Sync",
-            "Adds copied games to the GameScope library.",
             "Local AI",
-            "Loads the selected local AI model.",
             "LAN Inference",
-            "Lets other home-network devices use Local AI.",
             "Web GUI",
-            "Runs this management interface.",
             "Restart",
-            "Logs",
-            "Sync Log",
-            "Local AI Log",
-            "LAN Inference Log",
-            "System Log",
-            "Web GUI Log",
+            "Sync",
             "View",
             "Copy",
             "Download",
-            "Networking",
             "Local domain/path",
             "MAC address",
-            "Network status",
+            "Status",
             "Active interface",
-            "Open local ports",
             "Web GUI",
             "http://console.home.arpa",
             "Games Folder",
@@ -2378,16 +2372,16 @@ mod tests {
             "445",
             "7777",
             "22",
-            "LAN Inference is intended only for trusted home networks. Do not expose port 7777 to the public internet.",
         ] {
             assert!(system_html.contains(required), "missing {required}");
         }
 
-        let logs = system_html
-            .find("system-logs-title")
-            .expect("logs section landmark shown");
-        let first_log_group = system_html.find("Sync Log").expect("sync log group shown");
-        assert!(logs < first_log_group, "logs landmark precedes log groups");
+        let first_log_group = system_html.find(">Sync<").expect("sync group shown");
+        let service_row = system_html.find("GameScope").expect("service row shown");
+        assert!(
+            service_row < first_log_group,
+            "service rows precede event groups"
+        );
         assert!(rendered.contains("data-nav-target=\"system\""));
         assert!(APP_JS.contains("if (view === 'advanced') view = 'system';"));
         assert!(APP_JS.contains("Restarting GameScope may close the active game session."));
@@ -2400,11 +2394,29 @@ mod tests {
             ["Logs help", "diagnose problems"].join(" "),
             ["View technical", "console status"].join(" "),
             ["view", "heading"].join("-"),
+            "Networking".to_string(),
+            "Health for the console services".to_string(),
+            "How the console is reached".to_string(),
+            "Open local ports".to_string(),
+            "Network status".to_string(),
+            "Sync Log".to_string(),
+            "Local AI Log".to_string(),
+            "System Log".to_string(),
+            "SSH is for direct technical access".to_string(),
+            "Normal game management does not require SSH".to_string(),
+            "Only enable SSH on a trusted home network".to_string(),
+            "LAN Inference is intended only for trusted home networks".to_string(),
+            "Runs the console gaming session".to_string(),
+            "Shares game folders".to_string(),
+            "Adds copied games".to_string(),
+            "Loads the selected local AI model".to_string(),
+            "Lets other home-network devices".to_string(),
+            "Runs this management interface".to_string(),
         ];
         for forbidden in forbidden {
             assert!(
-                !rendered.contains(&forbidden),
-                "forbidden label survived: {forbidden}"
+                !system_html.contains(&forbidden),
+                "forbidden System label survived: {forbidden}"
             );
         }
     }
