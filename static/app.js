@@ -33,9 +33,20 @@ const PopupManager = (() => {
   function showToast(message, variant = 'info') {
     const root = toasts();
     if (!root) return;
-    const node = document.createElement('div');
+    const node = document.createElement('button');
+    const label = document.createElement('span');
+    const dismiss = document.createElement('span');
     node.className = `toast ${variant}`;
-    node.textContent = message;
+    node.type = 'button';
+    node.setAttribute('aria-label', `${message}; dismiss notification`);
+    node.title = 'Dismiss notification';
+    label.className = 'toast-message';
+    label.textContent = message;
+    dismiss.className = 'toast-dismiss';
+    dismiss.setAttribute('aria-hidden', 'true');
+    dismiss.textContent = '×';
+    node.append(label, dismiss);
+    node.addEventListener('click', () => node.remove());
     root.appendChild(node);
     setTimeout(() => node.remove(), 3600);
   }

@@ -471,7 +471,11 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
 .modal-close { position: absolute; transform: translate(550px, -8px); width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: var(--cream); font-size: 22px; cursor: pointer; }
 .modal-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
 .toast-container { position: fixed; top: 14px; right: 14px; display: grid; gap: 8px; max-width: min(400px, calc(100vw - 28px)); pointer-events: auto; }
-.toast { padding: 13px 15px; border-radius: 16px; background: var(--aubergine-1); border: 1px solid var(--line); border-left: 5px solid var(--orange); box-shadow: 0 14px 35px rgba(0,0,0,.32); }
+.toast { width: 100%; padding: 12px 12px 12px 15px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; color: var(--cream); font: inherit; border-radius: 16px; background: var(--aubergine-1); border: 1px solid var(--line); border-left: 5px solid var(--orange); box-shadow: 0 14px 35px rgba(0,0,0,.32); cursor: pointer; }
+.toast:hover { transform: translateY(-1px); border-color: rgba(242,140,40,.55); }
+.toast:focus-visible { outline: 2px solid var(--orange-strong); outline-offset: 2px; }
+.toast-message { min-width: 0; }
+.toast-dismiss { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 999px; background: rgba(255,255,255,.10); color: var(--cream); font-size: 18px; line-height: 1; }
 .toast.error { border-left-color: var(--bad); }
 .toast.success { border-left-color: var(--good); }
 

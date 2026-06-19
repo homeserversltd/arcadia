@@ -5274,6 +5274,16 @@ mod tests {
     }
 
     #[test]
+    fn toasts_are_clickable_dismiss_controls() {
+        assert!(APP_JS.contains("document.createElement('button')"));
+        assert!(APP_JS.contains("dismiss notification"));
+        assert!(APP_JS.contains("node.addEventListener('click', () => node.remove())"));
+        assert!(APP_JS.contains("toast-dismiss"));
+        assert!(APP_CSS.contains(".toast:focus-visible"));
+        assert!(APP_CSS.contains("cursor: pointer"));
+    }
+
+    #[test]
     fn human_text_font_sizes_stay_inside_ordinary_bounds() {
         let allowed_large_icon_selectors = [".product-mark", ".launcher-icon", ".home-action-icon"];
 
