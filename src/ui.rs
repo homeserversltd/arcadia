@@ -809,11 +809,6 @@ fn lan_inference_view() -> Markup {
 
 fn network_view(status: &ConsoleStatus) -> Markup {
     let console_url = status.identity.web_origin.as_str();
-    let ip_url = if status.network.ip_address != "—" {
-        Some(format!("http://{}", status.network.ip_address))
-    } else {
-        None
-    };
     let folders = status
         .samba
         .shares
@@ -825,112 +820,87 @@ fn network_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            article class="network-summary-card" data-network-current="true" {
-                strong class="network-summary-title" { (connection_summary_title(status)) }
-                div class="network-summary-lines" {
-                    @if status.network.active_type == "wifi" {
-                        span { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}% signal", v)).unwrap_or_else(|| "signal unknown".to_string())) }
-                        span { (status.network.ip_address) }
-                    } @else if status.network.active_type == "ethernet" || status.network.active_type == "limited" {
-                        span { (status.network.ip_address) " · " (status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "speed unknown".to_string())) }
-                    } @else {
-                        span { "Connect Ethernet or join a Wi-Fi network." }
+            div class="network-dashboard" {
+                article class="network-section network-section--summary" data-network-current="true" {
+                    div class="network-section-head" {
+                        strong class="network-summary-title" { (connection_summary_title(status)) }
+                        span class=(format!("system-status system-status--{}", if status.network.online { "available" } else { "disabled" })) { (if status.network.online { "Online" } else { "Offline" }) }
                     }
-                    span { (reachability_text(status)) }
-                    span { "Hostname " (status.identity.hostname) " · " (console_url) }
-                }
-            }
-
-            section class="network-section" aria-label="Current Connection" {
-                div class="system-field-grid" {
-                    (system_field("Active connection", &status.network.connection_type))
-                    (system_field("IP address", &status.network.ip_address))
-                    (system_field("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown")))
-                    (system_field("DNS", &status.network.dns_status))
-                    (system_field("LAN", if status.network.console_reachable { "Reachable" } else { "Unavailable" }))
-                    (system_field("Internet", internet_label(status.network.internet_reachable)))
-                    (system_field("Hostname", &status.identity.hostname))
-                    (system_field("Web console", console_url))
-                }
-            }
-
-            section id="wifi-management" class="network-section" tabindex="-1" aria-label="Wi-Fi" {
-                div class="network-section-head" {
-                    h3 { "Wi-Fi" }
+                    div class="network-compact-grid" {
+                        (system_field("Active connection", &status.network.connection_type))
+                        (system_field("IP address", &status.network.ip_address))
+                        (system_field("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown")))
+                        (system_field("LAN", if status.network.console_reachable { "Reachable" } else { "Unavailable" }))
+                        (system_field("Internet", internet_label(status.network.internet_reachable)))
+                        (system_field("DNS", &status.network.dns_status))
+                        (system_field("Hostname", &status.identity.hostname))
+                        (system_field("Web console URL", console_url))
+                    }
                     div class="inline-actions inline-actions--compact" {
-                        button class="btn btn--secondary" type="button" data-network-action="wifi-toggle" data-enabled=(if status.network.active_type == "wifi" { "false" } else { "true" }) disabled[!status.network.wifi_adapter_available] { (if status.network.active_type == "wifi" { "Turn Off" } else { "Turn On" }) }
-                        button class="btn btn--secondary" type="button" data-network-action="scan-wifi" disabled[!status.network.wifi_adapter_available] { "Scan" }
+                        (copy_button("Copy URL", console_url))
+                        @if status.network.ip_address != "—" { (copy_button("Copy IP", &status.network.ip_address)) }
                     }
                 }
-                @if status.network.wifi_adapter_available {
-                    @if status.network.active_type == "wifi" {
-                        div class="network-row network-row--active" {
-                            span { strong { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) } em { (status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "Signal unknown".to_string())) " · Secured" } }
-                            button class="btn btn--secondary" type="button" data-network-action="disconnect-wifi" { "Disconnect" }
-                            button class="btn btn--secondary" type="button" data-network-action="forget-wifi" data-ssid=(status.network.ssid.as_deref().unwrap_or("")) { "Forget" }
+
+                article id="wifi-management" class="network-section network-card" tabindex="-1" aria-label="Wi-Fi" {
+                    div class="network-section-head" {
+                        strong { "Wi-Fi" }
+                        span class=(format!("system-status system-status--{}", if status.network.wifi_adapter_available { "available" } else { "disabled" })) {
+                            (wifi_status_label(status))
+                        }
+                    }
+                    div class="network-summary-lines" {
+                        @if status.network.active_type == "wifi" {
+                            span { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}% signal", v)).unwrap_or_else(|| "Signal unavailable".to_string())) }
+                        } @else if status.network.wifi_adapter_available {
+                            span { "Available for wireless setup." }
+                        } @else {
+                            span { "No Wi-Fi adapter was detected." }
+                        }
+                    }
+                    div class="inline-actions inline-actions--compact" {
+                        button class="btn btn--primary" type="button" data-network-action="choose-wifi" disabled[!status.network.wifi_adapter_available] { "Choose Network" }
+                        button class="btn btn--secondary" type="button" data-network-action="scan-wifi" disabled[!status.network.wifi_adapter_available] { "Scan" }
+                        button class="btn btn--secondary" type="button" data-open-hidden-wifi="true" disabled[!status.network.wifi_adapter_available] { "Join Hidden Network" }
+                        button class="btn btn--secondary" type="button" data-network-action="wifi-toggle" data-enabled=(if status.network.active_type == "wifi" { "false" } else { "true" }) disabled[!status.network.wifi_adapter_available] { (if status.network.active_type == "wifi" { "Turn Off" } else { "Turn On" }) }
+                    }
+                    div id="wifi-message" class="message" hidden {}
+                }
+
+                article class="network-section network-card" aria-label="Wired LAN" {
+                    div class="network-section-head" {
+                        strong { "Wired LAN" }
+                        span class=(format!("system-status system-status--{}", if status.network.ethernet_connected { "available" } else { "disabled" })) {
+                            (if status.network.ethernet_connected { "Connected" } else { "Cable disconnected" })
+                        }
+                    }
+                    @if status.network.ethernet_available {
+                        div class="network-compact-grid network-compact-grid--small" {
+                            (system_field("Link", if status.network.ethernet_connected { "Connected" } else { "Cable disconnected" }))
+                            (system_field("Speed", &status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown".to_string())))
+                            (system_field("Mode", if status.network.ethernet_dhcp { "DHCP" } else { "Manual" }))
+                            (system_field("IP address", &status.network.ip_address))
+                            (system_field("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown")))
+                        }
+                        div class="inline-actions inline-actions--compact" {
+                            button class="btn btn--secondary" type="button" data-open-wired-details="true" { "Details" }
+                            button class="btn btn--secondary" type="button" data-network-action="renew-dhcp" { "Renew DHCP Lease" }
+                            button class="btn btn--secondary" type="button" data-open-ip-settings="true" { "IP Settings" }
                         }
                     } @else {
-                        p class="card-line" { "Wi-Fi is available. Scan to join a network." }
+                        div class="empty-state" { strong { "Cable disconnected" } p { "Connect Ethernet or choose Wi-Fi." } }
                     }
-                    div id="wifi-network-list" class="wifi-network-list" data-empty="true" {
-                        div class="network-row" { span { strong { "Hidden network" } em { "Join by network name" } } button class="btn btn--secondary" type="button" data-open-hidden-wifi="true" { "Join hidden network" } }
-                    }
-                    form class="wifi-connect-panel" data-network-connect-form="true" autocomplete="off" hidden {
-                        label { span { "Network name" } input class="field" name="ssid" autocomplete="off"; }
-                        label { span { "Password" } input class="field" type="password" name="password" autocomplete="new-password"; }
-                        label class="wifi-show-password" { input type="checkbox" data-toggle-password="password"; "Show while typing" }
-                        button class="btn btn--primary" type="submit" { "Connect" }
-                        button class="btn btn--secondary" type="button" data-cancel-wifi-connect="true" { "Cancel" }
-                    }
-                } @else {
-                    div class="empty-state" { strong { "Wi-Fi unavailable" } p { "No Wi-Fi adapter was detected." } }
                 }
-                div id="wifi-message" class="message" hidden {}
-            }
 
-            section class="network-section" aria-label="Wired LAN" {
-                h3 { "Wired LAN" }
-                @if status.network.ethernet_available {
-                    div class="system-field-grid" {
-                        (system_field("Link", if status.network.ethernet_connected { "Connected" } else { "Cable disconnected" }))
-                        (system_field("Speed", &status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown".to_string())))
-                        (system_field("IP address", &status.network.ip_address))
-                        (system_field("MAC address", status.network.ethernet_mac_address.as_deref().unwrap_or("Unknown")))
-                        (system_field("Mode", if status.network.ethernet_dhcp { "DHCP" } else { "Manual" }))
-                        (system_field("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown")))
-                        (system_field("DNS servers", &status.network.dns_status))
+                article class="network-section network-card network-card--wide" aria-label="Services" {
+                    div class="network-section-head" { strong { "Services" } }
+                    div class="network-service-list" {
+                        (network_service_row("Web Console", "Available", console_url, html! { (copy_button("Copy URL", console_url)) }))
+                        @if let Some(share) = folders { (network_service_row("Game Folders", "Available", share.windows_unc.as_deref().or(share.smb_url.as_deref()).unwrap_or("Folder address unavailable"), html! { (folder_copy_menu_button("Copy address", share)) })) }
+                        @else { (network_service_row("Game Folders", "Disabled", "Folder address unavailable", html! { (nav_button("Open System", "system")) })) }
+                        (network_service_row("LAN AI", if status.network.lan_ai_reachable { "Available" } else { "Disabled" }, if status.network.lan_ai_reachable { ":7777" } else { "" }, html! { (nav_button("Open LAN Inference", "lan-inference")) }))
+                        (network_service_row("SSH", "Disabled", "", html! { (nav_button("Open System", "system")) }))
                     }
-                    div class="inline-actions inline-actions--compact" {
-                        button class="btn btn--secondary" type="button" data-network-action="renew-dhcp" { "Renew DHCP Lease" }
-                        button class="btn btn--secondary" type="button" data-open-ip-settings="true" { "Open IP Settings" }
-                    }
-                } @else {
-                    div class="empty-state" { strong { "Cable disconnected" } p { "Connect Ethernet or join Wi-Fi." } }
-                }
-            }
-
-            section class="network-section" aria-label="Addresses" {
-                h3 { "Addresses" }
-                div class="system-endpoints" {
-                    (command_box("Web Console", console_url))
-                    @if let Some(url) = ip_url.as_deref() { (command_box("Web Console fallback", url)) }
-                    @if let Some(share) = folders {
-                        (folder_copy_box("Game Folders", share))
-                    } @else {
-                        div class="command-box" { span { "Game Folders" } code { "Folder address unavailable" } button class="btn btn--secondary" type="button" disabled { "Copy disabled" } }
-                    }
-                    @if status.network.lan_ai_reachable { (command_box("LAN AI", &format!("{}:{}", console_url, 7777))) } @else { div class="command-box" { span { "LAN AI" } code { "LAN AI disabled" } } }
-                }
-            }
-
-            section class="network-section" aria-label="Services" {
-                h3 { "Services" }
-                div class="network-service-list" {
-                    (network_service_row("Web Console", "Available", console_url, html! { (copy_button("Copy URL", console_url)) }))
-                    @if let Some(share) = folders { (network_service_row("Game Folders", "Available", share.windows_unc.as_deref().or(share.smb_url.as_deref()).unwrap_or("Folder address unavailable"), html! { (folder_copy_menu_button("Copy address", share)) })) }
-                    @else { (network_service_row("Game Folders", "Disabled", "Folder address unavailable", html! { (nav_button("Open System Services", "system")) })) }
-                    (network_service_row("LAN AI", if status.network.lan_ai_reachable { "Available" } else { "Disabled" }, ":7777", html! { (nav_button("Open LAN Inference", "lan-inference")) }))
-                    (network_service_row("SSH", "Disabled", "", html! { (nav_button("Open System", "system")) }))
                 }
             }
 
@@ -945,21 +915,18 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                 }
                 div id="diagnostics-results" class="diagnostics-results" {}
             }
-
-            details id="advanced-ip-settings" class="network-section" {
-                summary { "Advanced IP Settings" }
-                form class="settings-form" data-ip-settings-form="true" autocomplete="off" {
-                    label { span { "Mode" } select class="field" name="mode" { option value="dhcp" selected { "Automatic DHCP" } option value="manual" { "Manual IPv4" } } }
-                    label { span { "IP address" } input class="field" name="ip" inputmode="numeric" placeholder="192.168.123.54"; }
-                    label { span { "Subnet prefix" } input class="field" name="prefixLength" inputmode="numeric" placeholder="24"; }
-                    label { span { "Gateway" } input class="field" name="gateway" inputmode="numeric" placeholder="192.168.123.1"; }
-                    label { span { "DNS servers" } input class="field" name="dnsServers" placeholder="192.168.123.1 1.1.1.1"; }
-                    p class="warning" { "Changing IP settings may disconnect the web console. Confirm reachability after applying or roll back." }
-                    div class="inline-actions" { button class="btn btn--primary" type="submit" { "Apply Settings" } button class="btn btn--secondary" type="button" data-network-action="rollback-ip" { "Rollback" } }
-                }
-            }
         },
     )
+}
+
+fn wifi_status_label(status: &ConsoleStatus) -> &'static str {
+    if !status.network.wifi_adapter_available {
+        "Unavailable"
+    } else if status.network.active_type == "wifi" {
+        "On"
+    } else {
+        "Available"
+    }
 }
 
 fn connection_summary_title(status: &ConsoleStatus) -> &'static str {
@@ -980,26 +947,8 @@ fn internet_label(value: Option<bool>) -> &'static str {
     }
 }
 
-fn reachability_text(status: &ConsoleStatus) -> String {
-    let lan = if status.network.console_reachable {
-        "LAN reachable"
-    } else {
-        "LAN unavailable"
-    };
-    let internet = if status.network.internet_reachable == Some(true) {
-        "Internet reachable"
-    } else {
-        "Internet unavailable"
-    };
-    format!("{} · {}", lan, internet)
-}
-
 fn network_service_row(name: &str, state: &str, route: &str, action: Markup) -> Markup {
     html! { div class="network-service-row" { span { strong { (name) } em { (route) } } b class=(format!("system-status system-status--{}", state.to_lowercase())) { (state) } span class="system-row-actions" { (action) } } }
-}
-
-fn folder_copy_box(title: &str, share: &crate::SambaShareStatus) -> Markup {
-    html! { div class="command-box command-box--folder" { span { (title) } code { (share.windows_unc.as_deref().or(share.smb_url.as_deref()).unwrap_or("Folder address unavailable")) } (folder_copy_menu_button("Copy folder address", share)) } }
 }
 
 fn folder_copy_menu_button(label: &str, share: &crate::SambaShareStatus) -> Markup {
