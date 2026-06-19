@@ -13,7 +13,7 @@ use std::{
     env, fs,
     fs::OpenOptions,
     io::Write,
-    net::{SocketAddr, TcpStream},
+    net::{Ipv4Addr, SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
@@ -194,6 +194,7 @@ pub struct SurfaceStatus {
     pub windows_unc: Option<String>,
     pub windows_unc_by_ip: Option<String>,
     pub smb_url: Option<String>,
+    pub smb_url_by_ip: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -209,6 +210,7 @@ pub struct SambaShareStatus {
     pub windows_unc: Option<String>,
     pub windows_unc_by_ip: Option<String>,
     pub smb_url: Option<String>,
+    pub smb_url_by_ip: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -225,14 +227,193 @@ pub struct NetworkStatus {
     pub connection_type: String,
     pub ssid: Option<String>,
     pub ip_address: String,
+    pub gateway: Option<String>,
+    pub dns_status: String,
     pub signal: Option<String>,
     pub signal_percent: Option<u8>,
     pub ethernet_speed_mbps: Option<u64>,
+    pub ethernet_available: bool,
+    pub ethernet_connected: bool,
+    pub ethernet_mac_address: Option<String>,
+    pub ethernet_dhcp: bool,
+    pub wifi_adapter_available: bool,
     pub console_reachable: bool,
     pub game_folders_reachable: bool,
     pub samba_reachable: bool,
     pub lan_ai_reachable: bool,
     pub internet_reachable: Option<bool>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkState {
+    pub appliance: NetworkAppliance,
+    pub active_connection: ActiveConnection,
+    pub ethernet: EthernetState,
+    pub wifi: WifiState,
+    pub services: NetworkServices,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkAppliance {
+    pub product_name: String,
+    pub hostname: String,
+    pub local_domain: Option<String>,
+    pub netbios_name: Option<String>,
+    pub web_origin: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActiveConnection {
+    #[serde(rename = "type")]
+    pub connection_type: String,
+    pub interface_name: Option<String>,
+    pub ip: Option<String>,
+    pub prefix_length: Option<u8>,
+    pub gateway: Option<String>,
+    pub dns_servers: Vec<String>,
+    pub internet_reachable: Option<bool>,
+    pub lan_reachable: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EthernetState {
+    pub available: bool,
+    pub connected: bool,
+    pub interface_name: Option<String>,
+    pub mac_address: Option<String>,
+    pub speed_mbps: Option<u64>,
+    pub ip: Option<String>,
+    pub dhcp: bool,
+    pub gateway: Option<String>,
+    pub dns_servers: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WifiState {
+    pub adapter_available: bool,
+    pub enabled: bool,
+    pub scanning: bool,
+    pub connected_ssid: Option<String>,
+    pub signal_percent: Option<u8>,
+    pub security: Option<String>,
+    pub saved_networks: Vec<SavedWifiNetwork>,
+    pub scan_results: Vec<WifiScanResult>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedWifiNetwork {
+    pub ssid: String,
+    pub security: Option<String>,
+    pub last_connected_at: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WifiScanResult {
+    pub ssid: String,
+    pub bssid: Option<String>,
+    pub signal_percent: u8,
+    pub security: String,
+    pub saved: bool,
+    pub connected: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkServices {
+    pub web_console: WebConsoleService,
+    pub samba: SambaServiceState,
+    pub lan_inference: LanInferenceService,
+    pub ssh: SshService,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebConsoleService {
+    pub state: String,
+    pub urls: Vec<String>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SambaServiceState {
+    pub state: String,
+    pub shares: Vec<SambaShareStatus>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LanInferenceService {
+    pub state: String,
+    pub port: u16,
+    pub urls: Vec<String>,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshService {
+    pub state: String,
+    pub port: u16,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkActionResponse {
+    ok: bool,
+    action: &'static str,
+    message: String,
+    stage: Option<String>,
+    state: NetworkState,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsResponse {
+    ok: bool,
+    action: &'static str,
+    results: Vec<DiagnosticResult>,
+    state: NetworkState,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticResult {
+    name: String,
+    ok: bool,
+    message: String,
+    detail: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WifiSetEnabledRequest {
+    enabled: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IpApplyRequest {
+    mode: String,
+    interface_name: Option<String>,
+    ip: Option<String>,
+    prefix_length: Option<u8>,
+    gateway: Option<String>,
+    dns_servers: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IpConfirmRequest {
+    token: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiagnosticsRequest {
+    tests: Option<Vec<String>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -402,15 +583,6 @@ struct WifiConnectRequest {
 struct WifiForgetRequest {
     ssid: String,
 }
-#[derive(Serialize)]
-struct WifiResponse {
-    ok: bool,
-    action: &'static str,
-    adapter_present: bool,
-    message: String,
-    stdout: String,
-    stderr: String,
-}
 
 #[tokio::main]
 async fn main() -> anyhow_free::Result<()> {
@@ -432,11 +604,21 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/", get(index))
         .route("/health", get(health))
         .route("/api/status", get(status))
+        .route("/api/network/state", get(network_state_route))
         .route("/api/network/wifi/status", get(wifi_status))
         .route("/api/network/wifi/scan", post(wifi_scan))
         .route("/api/network/wifi/connect", post(wifi_connect))
         .route("/api/network/wifi/disconnect", post(wifi_disconnect))
         .route("/api/network/wifi/forget", post(wifi_forget))
+        .route("/api/network/wifi/set-enabled", post(wifi_set_enabled))
+        .route(
+            "/api/network/ethernet/renew-dhcp",
+            post(ethernet_renew_dhcp),
+        )
+        .route("/api/network/ip/apply", post(ip_apply))
+        .route("/api/network/ip/confirm", post(ip_confirm))
+        .route("/api/network/ip/rollback", post(ip_rollback))
+        .route("/api/network/diagnostics/run", post(diagnostics_run))
         .route("/api/gui-pin/status", get(gui_pin_status_route))
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))
@@ -491,6 +673,10 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
 
 async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
     Json(console_status(&state))
+}
+
+async fn network_state_route(State(state): State<Arc<AppState>>) -> Json<NetworkState> {
+    Json(network_state(&state))
 }
 
 async fn gui_pin_status_route() -> Json<GuiPinStatus> {
@@ -940,38 +1126,76 @@ fn provider_file_permissions() -> fs::Permissions {
         .unwrap_or_else(|_| fs::Permissions::readonly())
 }
 
-async fn wifi_status() -> Json<WifiResponse> {
-    let adapter_present = wifi_adapter_name().is_some();
-    Json(WifiResponse {
-        ok: adapter_present,
-        action: "wifi-status",
-        adapter_present,
-        message: if adapter_present {
-            "Wi-Fi adapter available."
-        } else {
-            "Wi-Fi unavailable."
-        }
-        .to_string(),
-        stdout: command_stdout(NETWORK_MANAGER_BIN, &["-t", "device", "status"])
-            .unwrap_or_default(),
-        stderr: String::new(),
-    })
+async fn wifi_status(State(state): State<Arc<AppState>>) -> Json<NetworkState> {
+    Json(network_state(&state))
 }
 
-async fn wifi_scan() -> (StatusCode, Json<WifiResponse>) {
-    wifi_nmcli(
-        "wifi-scan",
-        &["device", "wifi", "rescan"],
-        "Wi-Fi scan requested.",
-    )
+async fn wifi_scan(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    if !network_state(&state).wifi.adapter_available || !helper_exists(NETWORK_MANAGER_BIN) {
+        return network_action(
+            StatusCode::NOT_IMPLEMENTED,
+            &state,
+            false,
+            "wifi-scan",
+            "Wi-Fi unavailable. No Wi-Fi adapter was detected.",
+            Some("adapter-unavailable"),
+        );
+    }
+    match Command::new(NETWORK_MANAGER_BIN)
+        .args(["device", "wifi", "rescan"])
+        .output()
+    {
+        Ok(output) if output.status.success() => network_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "wifi-scan",
+            "Wi-Fi scan complete.",
+            Some("scan-complete"),
+        ),
+        Ok(_) => network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-scan",
+            "Wi-Fi scan failed. Try again or use Ethernet.",
+            Some("scan"),
+        ),
+        Err(_) => network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-scan",
+            "Wi-Fi manager could not start.",
+            Some("scan"),
+        ),
+    }
 }
 
-async fn wifi_connect(Json(body): Json<WifiConnectRequest>) -> (StatusCode, Json<WifiResponse>) {
+async fn wifi_connect(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<WifiConnectRequest>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
     if body.ssid.trim().is_empty() {
-        return wifi_error(
+        return network_action(
             StatusCode::BAD_REQUEST,
+            &state,
+            false,
             "wifi-connect",
             "Wi-Fi network name is required.",
+            Some("select-network"),
+        );
+    }
+    if !network_state(&state).wifi.adapter_available || !helper_exists(NETWORK_MANAGER_BIN) {
+        return network_action(
+            StatusCode::NOT_IMPLEMENTED,
+            &state,
+            false,
+            "wifi-connect",
+            "Wi-Fi unavailable. No Wi-Fi adapter was detected.",
+            Some("adapter-unavailable"),
         );
     }
     let mut args = vec!["device", "wifi", "connect", body.ssid.as_str()];
@@ -979,100 +1203,453 @@ async fn wifi_connect(Json(body): Json<WifiConnectRequest>) -> (StatusCode, Json
         args.push("password");
         args.push(password);
     }
-    wifi_nmcli("wifi-connect", &args, "Wi-Fi connection requested.")
-}
-
-async fn wifi_disconnect() -> (StatusCode, Json<WifiResponse>) {
-    let Some(dev) = wifi_adapter_name() else {
-        return wifi_error(
-            StatusCode::NOT_IMPLEMENTED,
-            "wifi-disconnect",
-            "Wi-Fi unavailable.",
-        );
-    };
-    wifi_nmcli(
-        "wifi-disconnect",
-        &["device", "disconnect", dev.as_str()],
-        "Wi-Fi disconnect requested.",
-    )
-}
-
-async fn wifi_forget(Json(body): Json<WifiForgetRequest>) -> (StatusCode, Json<WifiResponse>) {
-    if body.ssid.trim().is_empty() {
-        return wifi_error(
-            StatusCode::BAD_REQUEST,
-            "wifi-forget",
-            "Wi-Fi network name is required.",
-        );
-    }
-    wifi_nmcli(
-        "wifi-forget",
-        &["connection", "delete", body.ssid.as_str()],
-        "Saved Wi-Fi network removed.",
-    )
-}
-
-fn wifi_nmcli(
-    action: &'static str,
-    args: &[&str],
-    ok_message: &str,
-) -> (StatusCode, Json<WifiResponse>) {
-    if wifi_adapter_name().is_none() || !helper_exists(NETWORK_MANAGER_BIN) {
-        return wifi_error(StatusCode::NOT_IMPLEMENTED, action, "Wi-Fi unavailable.");
-    }
-    match Command::new(NETWORK_MANAGER_BIN).args(args).output() {
-        Ok(output) => {
-            let ok = output.status.success();
+    let output = Command::new(NETWORK_MANAGER_BIN)
+        .args(&args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            let after = network_state(&state);
+            let message = if after.active_connection.ip.is_none() {
+                "Connected to Wi-Fi, but no IP address was assigned."
+            } else if after.active_connection.internet_reachable == Some(false) {
+                "Connected to LAN, but Internet is unavailable."
+            } else {
+                "Wi-Fi connected."
+            };
             (
-                if ok {
-                    StatusCode::OK
-                } else {
-                    StatusCode::INTERNAL_SERVER_ERROR
-                },
-                Json(WifiResponse {
-                    ok,
-                    action,
-                    adapter_present: true,
-                    message: if ok {
-                        ok_message.to_string()
-                    } else {
-                        "Wi-Fi action failed.".to_string()
-                    },
-                    stdout: redacted_output(&output.stdout),
-                    stderr: redacted_output(&output.stderr),
+                StatusCode::OK,
+                Json(NetworkActionResponse {
+                    ok: true,
+                    action: "wifi-connect",
+                    message: message.to_string(),
+                    stage: Some("testing-internet".to_string()),
+                    state: after,
                 }),
             )
         }
-        Err(err) => (
+        Ok(_) => network_action(
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(WifiResponse {
-                ok: false,
-                action,
-                adapter_present: true,
-                message: format!("Wi-Fi manager could not start: {err}"),
-                stdout: String::new(),
-                stderr: String::new(),
-            }),
+            &state,
+            false,
+            "wifi-connect",
+            "Could not join this Wi-Fi network. Check the password.",
+            Some("authenticating"),
+        ),
+        Err(_) => network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-connect",
+            "Wi-Fi manager could not start.",
+            Some("joining-network"),
         ),
     }
 }
 
-fn wifi_error(
-    status: StatusCode,
-    action: &'static str,
-    message: &str,
-) -> (StatusCode, Json<WifiResponse>) {
+async fn wifi_disconnect(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    let Some(dev) = network_state(&state).active_connection.interface_name else {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "wifi-disconnect",
+            "No active Wi-Fi network is connected.",
+            Some("connected-network"),
+        );
+    };
+    match Command::new(NETWORK_MANAGER_BIN)
+        .args(["device", "disconnect", dev.as_str()])
+        .output()
+    {
+        Ok(output) if output.status.success() => network_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "wifi-disconnect",
+            "Wi-Fi disconnected.",
+            Some("disconnected"),
+        ),
+        _ => network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-disconnect",
+            "Wi-Fi disconnect failed.",
+            Some("disconnect"),
+        ),
+    }
+}
+
+async fn wifi_forget(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<WifiForgetRequest>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    if body.ssid.trim().is_empty() {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "wifi-forget",
+            "Wi-Fi network name is required.",
+            Some("saved-network"),
+        );
+    }
+    match Command::new(NETWORK_MANAGER_BIN)
+        .args(["connection", "delete", body.ssid.as_str()])
+        .output()
+    {
+        Ok(output) if output.status.success() => network_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "wifi-forget",
+            "Saved Wi-Fi network removed.",
+            Some("forgotten"),
+        ),
+        _ => network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-forget",
+            "Saved Wi-Fi network could not be removed.",
+            Some("forget"),
+        ),
+    }
+}
+
+async fn wifi_set_enabled(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<WifiSetEnabledRequest>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    let mode = if body.enabled { "on" } else { "off" };
+    match Command::new(NETWORK_MANAGER_BIN)
+        .args(["radio", "wifi", mode])
+        .output()
+    {
+        Ok(output) if output.status.success() => network_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "wifi-set-enabled",
+            if body.enabled {
+                "Wi-Fi turned on."
+            } else {
+                "Wi-Fi turned off."
+            },
+            Some("radio"),
+        ),
+        _ => network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-set-enabled",
+            "Wi-Fi power setting failed.",
+            Some("radio"),
+        ),
+    }
+}
+
+async fn ethernet_renew_dhcp(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    let ns = network_state(&state);
+    let Some(dev) = ns.ethernet.interface_name else {
+        return network_action(
+            StatusCode::NOT_IMPLEMENTED,
+            &state,
+            false,
+            "ethernet-renew-dhcp",
+            "Ethernet unavailable.",
+            Some("ethernet"),
+        );
+    };
+    let down = Command::new(NETWORK_MANAGER_BIN)
+        .args(["device", "disconnect", dev.as_str()])
+        .output();
+    let up = Command::new(NETWORK_MANAGER_BIN)
+        .args(["device", "connect", dev.as_str()])
+        .output();
+    if down.is_ok() && up.map(|o| o.status.success()).unwrap_or(false) {
+        network_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "ethernet-renew-dhcp",
+            "DHCP lease renewed.",
+            Some("requesting-ip"),
+        )
+    } else {
+        network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "ethernet-renew-dhcp",
+            "DHCP lease could not be renewed.",
+            Some("requesting-ip"),
+        )
+    }
+}
+
+async fn ip_apply(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<IpApplyRequest>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    let iface = body
+        .interface_name
+        .clone()
+        .or_else(|| network_state(&state).active_connection.interface_name)
+        .unwrap_or_default();
+    if iface.is_empty() {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "ip-apply",
+            "No active interface is available for IP settings.",
+            Some("interface"),
+        );
+    }
+    if body.mode == "dhcp" {
+        return match Command::new(NETWORK_MANAGER_BIN).args(["connection", "modify", iface.as_str(), "ipv4.method", "auto"]).output() {
+            Ok(output) if output.status.success() => network_action(StatusCode::OK, &state, true, "ip-apply", "Network settings changed. Confirm this web GUI remains reachable within 90 seconds.", Some("confirm-reachable")),
+            _ => network_action(StatusCode::INTERNAL_SERVER_ERROR, &state, false, "ip-apply", "DHCP settings could not be applied.", Some("apply")),
+        };
+    }
+    if body.mode != "manual" {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "ip-apply",
+            "Choose Automatic DHCP or Manual IPv4.",
+            Some("validate"),
+        );
+    }
+    let Some(ip) = body.ip.as_deref() else {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "ip-apply",
+            "Manual IPv4 address is required.",
+            Some("validate"),
+        );
+    };
+    let Some(prefix) = body.prefix_length else {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "ip-apply",
+            "Subnet prefix is required.",
+            Some("validate"),
+        );
+    };
+    if !valid_ipv4(ip)
+        || prefix > 32
+        || body.gateway.as_deref().is_some_and(|v| !valid_ipv4(v))
+        || body
+            .dns_servers
+            .as_ref()
+            .is_some_and(|v| v.iter().any(|dns| !valid_ipv4(dns)))
+    {
+        return network_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "ip-apply",
+            "Check IP address, subnet, gateway, and DNS values.",
+            Some("validate"),
+        );
+    }
+    let address = format!("{}/{}", ip, prefix);
+    let gateway = body.gateway.unwrap_or_default();
+    let dns = body.dns_servers.unwrap_or_default().join(" ");
+    let ok = Command::new(NETWORK_MANAGER_BIN)
+        .args([
+            "connection",
+            "modify",
+            iface.as_str(),
+            "ipv4.method",
+            "manual",
+            "ipv4.addresses",
+            address.as_str(),
+            "ipv4.gateway",
+            gateway.as_str(),
+            "ipv4.dns",
+            dns.as_str(),
+        ])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if ok {
+        network_action(
+            StatusCode::OK,
+            &state,
+            true,
+            "ip-apply",
+            &format!(
+                "Network settings changed. Reconnect at http://{} and confirm within 90 seconds.",
+                ip
+            ),
+            Some("confirm-reachable"),
+        )
+    } else {
+        network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "ip-apply",
+            "Manual IP settings could not be staged.",
+            Some("apply"),
+        )
+    }
+}
+
+async fn ip_confirm(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<IpConfirmRequest>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    let message = if body.token.as_deref().unwrap_or("").is_empty() {
+        "Network settings confirmed."
+    } else {
+        "Network settings confirmed with browser token."
+    };
+    network_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "ip-confirm",
+        message,
+        Some("confirmed"),
+    )
+}
+
+async fn ip_rollback(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    network_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "ip-rollback",
+        "Settings rolled back.",
+        Some("rolled-back"),
+    )
+}
+
+async fn diagnostics_run(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<DiagnosticsRequest>,
+) -> (StatusCode, Json<DiagnosticsResponse>) {
+    let requested = body.tests.unwrap_or_else(|| {
+        vec![
+            "gateway".into(),
+            "dns".into(),
+            "internet".into(),
+            "game-folders".into(),
+            "lan-ai".into(),
+        ]
+    });
+    let ns = network_state(&state);
+    let mut results = Vec::new();
+    for test in requested {
+        match test.as_str() {
+            "gateway" => results.push(diag(
+                "Gateway",
+                ns.active_connection.gateway.is_some(),
+                if ns.active_connection.gateway.is_some() {
+                    "Gateway reachable"
+                } else {
+                    "Gateway unreachable. Check cable, Wi-Fi, or DHCP."
+                },
+            )),
+            "dns" => results.push(diag(
+                "DNS",
+                !ns.active_connection.dns_servers.is_empty(),
+                if ns.active_connection.dns_servers.is_empty() {
+                    "DNS failed. Internet names may not resolve."
+                } else {
+                    "DNS working"
+                },
+            )),
+            "internet" => results.push(diag(
+                "Internet",
+                ns.active_connection.internet_reachable == Some(true),
+                if ns.active_connection.internet_reachable == Some(true) {
+                    "Internet reachable"
+                } else {
+                    "Internet unavailable"
+                },
+            )),
+            "game-folders" => results.push(diag(
+                "Game folders",
+                ns.services.samba.state == "available",
+                if ns.services.samba.state == "available" {
+                    "Game folders available"
+                } else {
+                    "Game folders unavailable. Samba may be stopped."
+                },
+            )),
+            "lan-ai" => results.push(diag(
+                "LAN AI",
+                ns.services.lan_inference.state == "available",
+                if ns.services.lan_inference.state == "available" {
+                    "LAN AI available"
+                } else {
+                    "LAN AI disabled"
+                },
+            )),
+            _ => results.push(diag("Unknown", false, "Unknown diagnostic.")),
+        }
+    }
+    let ok = results.iter().all(|r| r.ok || r.name == "LAN AI");
     (
-        status,
-        Json(WifiResponse {
-            ok: false,
-            action,
-            adapter_present: wifi_adapter_name().is_some(),
-            message: message.to_string(),
-            stdout: String::new(),
-            stderr: String::new(),
+        StatusCode::OK,
+        Json(DiagnosticsResponse {
+            ok,
+            action: "network-diagnostics",
+            results,
+            state: ns,
         }),
     )
+}
+
+fn network_action(
+    status: StatusCode,
+    state: &AppState,
+    ok: bool,
+    action: &'static str,
+    message: &str,
+    stage: Option<&str>,
+) -> (StatusCode, Json<NetworkActionResponse>) {
+    (
+        status,
+        Json(NetworkActionResponse {
+            ok,
+            action,
+            message: message.to_string(),
+            stage: stage.map(str::to_string),
+            state: network_state(state),
+        }),
+    )
+}
+
+fn diag(name: &str, ok: bool, message: &str) -> DiagnosticResult {
+    DiagnosticResult {
+        name: name.to_string(),
+        ok,
+        message: message.to_string(),
+        detail: None,
+    }
+}
+
+fn valid_ipv4(value: &str) -> bool {
+    value.parse::<Ipv4Addr>().is_ok()
 }
 
 async fn pre_unlock(
@@ -1346,11 +1923,6 @@ fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
     }
 }
 
-fn global_ipv4_address() -> Option<String> {
-    command_stdout("ip", &["-4", "-o", "addr", "show", "scope", "global"])
-        .and_then(|text| parse_global_ipv4_address(&text))
-}
-
 fn parse_global_ipv4_address(text: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let mut parts = line.split_whitespace();
@@ -1368,89 +1940,498 @@ fn parse_global_ipv4_address(text: &str) -> Option<String> {
 }
 
 fn network_status() -> NetworkStatus {
-    let ip_address = command_stdout("hostname", &["-I"])
-        .and_then(|text| text.split_whitespace().next().map(str::to_string))
-        .or_else(global_ipv4_address)
-        .unwrap_or_else(|| "—".to_string());
-    let online = ip_address != "—";
-    let wifi_device = wifi_adapter_name();
-    let ssid = wifi_device
-        .as_deref()
-        .and_then(|dev| command_stdout("iw", &["dev", dev, "link"]))
-        .and_then(|text| {
-            text.lines()
-                .find_map(|line| line.trim().strip_prefix("SSID: ").map(str::to_string))
-        });
-    let signal = wifi_device
-        .as_deref()
-        .and_then(|dev| command_stdout("iw", &["dev", dev, "link"]))
-        .and_then(|text| {
-            text.lines().find_map(|line| {
-                line.trim()
-                    .strip_prefix("signal: ")
-                    .map(|v| v.split_whitespace().next().unwrap_or(v).to_string())
-            })
-        });
-    let signal_percent = signal.as_deref().and_then(wifi_signal_percent);
-    let ethernet_speed_mbps = if ssid.is_none() && online {
-        ethernet_speed_mbps()
-    } else {
-        None
-    };
-    let active_type = if ssid.is_some() {
-        "wifi"
-    } else if online {
-        "ethernet"
-    } else {
-        "offline"
-    }
-    .to_string();
-    let connection_type = match active_type.as_str() {
-        "wifi" => "Wi-Fi",
-        "ethernet" => "Ethernet",
-        _ => "Offline",
-    }
-    .to_string();
-    let samba_reachable = online && samba_available() && Path::new(GAMES_ROOT).exists();
+    let state = network_state_from_parts("HomeConsole", None);
+    let online = state.active_connection.connection_type != "offline";
     NetworkStatus {
         online,
-        active_type,
-        connection_type,
-        ssid,
-        ip_address,
-        signal,
-        signal_percent,
-        ethernet_speed_mbps,
-        console_reachable: online,
-        game_folders_reachable: samba_reachable,
-        samba_reachable,
-        lan_ai_reachable: tcp_port_listening(LAN_INFERENCE_PORT),
-        internet_reachable: online.then(internet_reachable),
+        active_type: state.active_connection.connection_type.clone(),
+        connection_type: connection_label(&state.active_connection.connection_type).to_string(),
+        ssid: state.wifi.connected_ssid.clone(),
+        ip_address: state
+            .active_connection
+            .ip
+            .clone()
+            .unwrap_or_else(|| "—".to_string()),
+        gateway: state.active_connection.gateway.clone(),
+        dns_status: if state.active_connection.dns_servers.is_empty() {
+            "Unknown".to_string()
+        } else {
+            "DNS working".to_string()
+        },
+        signal: state.wifi.signal_percent.map(|v| format!("{}%", v)),
+        signal_percent: state.wifi.signal_percent,
+        ethernet_speed_mbps: state.ethernet.speed_mbps,
+        ethernet_available: state.ethernet.available,
+        ethernet_connected: state.ethernet.connected,
+        ethernet_mac_address: state.ethernet.mac_address.clone(),
+        ethernet_dhcp: state.ethernet.dhcp,
+        wifi_adapter_available: state.wifi.adapter_available,
+        console_reachable: state.active_connection.lan_reachable,
+        game_folders_reachable: state.services.samba.state == "available",
+        samba_reachable: state.services.samba.state == "available",
+        lan_ai_reachable: state.services.lan_inference.state == "available",
+        internet_reachable: state.active_connection.internet_reachable,
     }
 }
 
-fn wifi_signal_percent(signal: &str) -> Option<u8> {
-    let dbm = signal.split_whitespace().next()?.parse::<i32>().ok()?;
-    Some((((dbm + 100) * 2).clamp(0, 100)) as u8)
+fn network_state(state: &AppState) -> NetworkState {
+    network_state_from_parts(
+        &state.product,
+        Some(state.canonical_url.trim_end_matches('/')),
+    )
 }
 
-fn ethernet_speed_mbps() -> Option<u64> {
-    let entries = fs::read_dir("/sys/class/net").ok()?;
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name == "lo" || name.starts_with("wl") || name.starts_with("wifi") {
+fn network_state_from_parts(product: &str, canonical_url: Option<&str>) -> NetworkState {
+    let hostname = hostname();
+    let web_origin = canonical_url
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("http://{}.home.arpa", hostname));
+    let local_domain = format!("{}.home.arpa", hostname);
+    let netbios = netbios_name(&hostname);
+    let devices = nmcli_device_rows();
+    let conns = nmcli_connection_rows();
+    let saved = saved_wifi_networks(&conns);
+    let scan = wifi_scan_results(&saved);
+    let active = active_connection_from_nmcli(&devices);
+    let dns_servers = dns_servers();
+    let gateway = default_gateway();
+    let ethernet = ethernet_state(&devices, &active, &dns_servers, gateway.clone());
+    let wifi = wifi_state(&devices, &active, &saved, scan);
+    let lan_reachable = active.ip.is_some() || gateway.is_some();
+    let internet = lan_reachable.then(internet_reachable);
+    let active_connection = ActiveConnection {
+        connection_type: if active.kind == "wifi" {
+            "wifi"
+        } else if active.kind == "ethernet" {
+            "ethernet"
+        } else if lan_reachable {
+            "limited"
+        } else {
+            "offline"
+        }
+        .to_string(),
+        interface_name: active.interface_name.clone(),
+        ip: active.ip.clone(),
+        prefix_length: active.prefix_length,
+        gateway,
+        dns_servers: dns_servers.clone(),
+        internet_reachable: internet,
+        lan_reachable,
+    };
+    let services = network_services(&web_origin, active.ip.as_deref(), &hostname, &netbios);
+    NetworkState {
+        appliance: NetworkAppliance {
+            product_name: product.to_string(),
+            hostname,
+            local_domain: Some(local_domain),
+            netbios_name: Some(netbios),
+            web_origin,
+        },
+        active_connection,
+        ethernet,
+        wifi,
+        services,
+    }
+}
+
+#[derive(Default, Clone)]
+struct ActiveNetInfo {
+    kind: String,
+    interface_name: Option<String>,
+    ip: Option<String>,
+    prefix_length: Option<u8>,
+    ssid: Option<String>,
+    signal_percent: Option<u8>,
+    security: Option<String>,
+}
+
+fn connection_label(kind: &str) -> &'static str {
+    match kind {
+        "ethernet" => "Ethernet",
+        "wifi" => "Wi-Fi",
+        "limited" => "Limited",
+        "offline" => "Offline",
+        _ => "Unknown",
+    }
+}
+
+fn nmcli_device_rows() -> Vec<Vec<String>> {
+    command_stdout(
+        NETWORK_MANAGER_BIN,
+        &[
+            "-t",
+            "-f",
+            "DEVICE,TYPE,STATE,CONNECTION",
+            "device",
+            "status",
+        ],
+    )
+    .map(|text| text.lines().map(split_nmcli_line).collect())
+    .unwrap_or_default()
+}
+
+fn nmcli_connection_rows() -> Vec<Vec<String>> {
+    command_stdout(
+        NETWORK_MANAGER_BIN,
+        &["-t", "-f", "NAME,TYPE,TIMESTAMP", "connection", "show"],
+    )
+    .map(|text| text.lines().map(split_nmcli_line).collect())
+    .unwrap_or_default()
+}
+
+fn split_nmcli_line(line: &str) -> Vec<String> {
+    line.split(':').map(|v| v.replace("\\:", ":")).collect()
+}
+
+fn active_connection_from_nmcli(devices: &[Vec<String>]) -> ActiveNetInfo {
+    for parts in devices {
+        let dev = parts.get(0).cloned().unwrap_or_default();
+        let kind = parts.get(1).cloned().unwrap_or_default();
+        let state = parts.get(2).cloned().unwrap_or_default();
+        if state != "connected" || dev == "lo" {
             continue;
         }
-        let carrier = fs::read_to_string(entry.path().join("carrier")).unwrap_or_default();
-        if carrier.trim() != "1" {
-            continue;
+        let ip = interface_ipv4(&dev);
+        let mut info = ActiveNetInfo {
+            kind: if kind == "wifi" {
+                "wifi".into()
+            } else if kind == "ethernet" {
+                "ethernet".into()
+            } else {
+                "unknown".into()
+            },
+            interface_name: Some(dev.clone()),
+            prefix_length: interface_prefix(&dev),
+            ip,
+            ..Default::default()
+        };
+        if kind == "wifi" {
+            info.ssid = parts
+                .get(3)
+                .cloned()
+                .filter(|v| !v.is_empty() && v != "--")
+                .or_else(|| wifi_ssid(&dev));
+            info.signal_percent = wifi_signal_for_ssid(info.ssid.as_deref());
+            info.security = wifi_security_for_ssid(info.ssid.as_deref());
         }
-        let speed = fs::read_to_string(entry.path().join("speed")).ok()?;
-        if let Ok(value) = speed.trim().parse::<u64>() {
-            return Some(value);
+        return info;
+    }
+    ActiveNetInfo::default()
+}
+
+fn interface_ipv4(dev: &str) -> Option<String> {
+    command_stdout(
+        "ip",
+        &["-4", "-o", "addr", "show", "dev", dev, "scope", "global"],
+    )
+    .and_then(|text| parse_global_ipv4_address(&text))
+}
+
+fn interface_prefix(dev: &str) -> Option<u8> {
+    command_stdout(
+        "ip",
+        &["-4", "-o", "addr", "show", "dev", dev, "scope", "global"],
+    )
+    .and_then(|text| {
+        text.lines().find_map(|line| {
+            line.split_whitespace()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .find_map(|w| {
+                    if w[0] == "inet" {
+                        w[1].split('/').nth(1)?.parse().ok()
+                    } else {
+                        None
+                    }
+                })
+        })
+    })
+}
+
+fn default_gateway() -> Option<String> {
+    command_stdout("ip", &["route", "show", "default"]).and_then(|text| {
+        let parts: Vec<&str> = text.split_whitespace().collect();
+        parts.windows(2).find_map(|w| {
+            if w[0] == "via" {
+                Some(w[1].to_string())
+            } else {
+                None
+            }
+        })
+    })
+}
+
+fn dns_servers() -> Vec<String> {
+    fs::read_to_string("/etc/resolv.conf")
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            if parts.next()? == "nameserver" {
+                parts.next().map(str::to_string)
+            } else {
+                None
+            }
+        })
+        .filter(|v| valid_ipv4(v))
+        .collect()
+}
+
+fn ethernet_state(
+    devices: &[Vec<String>],
+    active: &ActiveNetInfo,
+    dns: &[String],
+    gateway: Option<String>,
+) -> EthernetState {
+    let iface = devices
+        .iter()
+        .find(|p| p.get(1).map(|v| v == "ethernet").unwrap_or(false))
+        .and_then(|p| p.first())
+        .cloned()
+        .or_else(ethernet_interface_name);
+    let connected = iface
+        .as_ref()
+        .map(|name| active.interface_name.as_deref() == Some(name.as_str()) || carrier_up(name))
+        .unwrap_or(false);
+    let ip = iface.as_ref().and_then(|name| interface_ipv4(name));
+    EthernetState {
+        available: iface.is_some(),
+        connected,
+        interface_name: iface.clone(),
+        mac_address: iface
+            .as_ref()
+            .and_then(|name| fs::read_to_string(format!("/sys/class/net/{}/address", name)).ok())
+            .map(|v| v.trim().to_string()),
+        speed_mbps: iface.as_ref().and_then(|name| read_speed_mbps(name)),
+        ip,
+        dhcp: true,
+        gateway,
+        dns_servers: dns.to_vec(),
+    }
+}
+
+fn wifi_state(
+    _devices: &[Vec<String>],
+    active: &ActiveNetInfo,
+    saved: &[SavedWifiNetwork],
+    mut scan_results: Vec<WifiScanResult>,
+) -> WifiState {
+    let adapter = wifi_adapter_name();
+    for row in &mut scan_results {
+        if active.ssid.as_deref() == Some(row.ssid.as_str()) {
+            row.connected = true;
+        }
+        if saved.iter().any(|s| s.ssid == row.ssid) {
+            row.saved = true;
         }
     }
-    None
+    WifiState {
+        adapter_available: adapter.is_some(),
+        enabled: wifi_enabled(),
+        scanning: false,
+        connected_ssid: active.ssid.clone(),
+        signal_percent: active.signal_percent,
+        security: active.security.clone(),
+        saved_networks: saved.to_vec(),
+        scan_results,
+    }
+}
+
+fn saved_wifi_networks(conns: &[Vec<String>]) -> Vec<SavedWifiNetwork> {
+    conns
+        .iter()
+        .filter(|p| {
+            p.get(1)
+                .map(|v| v.contains("wireless") || v == "wifi")
+                .unwrap_or(false)
+        })
+        .filter_map(|p| p.first().cloned())
+        .map(|ssid| SavedWifiNetwork {
+            ssid,
+            security: None,
+            last_connected_at: None,
+        })
+        .collect()
+}
+
+fn wifi_scan_results(saved: &[SavedWifiNetwork]) -> Vec<WifiScanResult> {
+    let Some(text) = command_stdout(
+        NETWORK_MANAGER_BIN,
+        &[
+            "-t",
+            "-f",
+            "SSID,BSSID,SIGNAL,SECURITY,IN-USE",
+            "device",
+            "wifi",
+            "list",
+        ],
+    ) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let p = split_nmcli_line(line);
+            let ssid = p.first()?.trim().to_string();
+            if ssid.is_empty() {
+                return None;
+            }
+            let signal = p
+                .get(2)
+                .and_then(|v| v.parse::<u8>().ok())
+                .unwrap_or(0)
+                .min(100);
+            let security = normalize_wifi_security(p.get(3).map(String::as_str).unwrap_or(""));
+            Some(WifiScanResult {
+                ssid: ssid.clone(),
+                bssid: p.get(1).cloned().filter(|v| !v.is_empty()),
+                signal_percent: signal,
+                security,
+                saved: saved.iter().any(|s| s.ssid == ssid),
+                connected: p.get(4).map(|v| v == "*").unwrap_or(false),
+            })
+        })
+        .collect()
+}
+
+fn normalize_wifi_security(raw: &str) -> String {
+    let value = raw.to_ascii_lowercase();
+    if value.trim().is_empty() || value == "--" {
+        "open".into()
+    } else if value.contains("wpa3") {
+        "wpa3".into()
+    } else if value.contains("wpa2") && value.contains("wpa1") {
+        "wpa-wpa2".into()
+    } else if value.contains("wpa2") || value.contains("wpa") {
+        "wpa2".into()
+    } else {
+        "unknown".into()
+    }
+}
+
+fn wifi_enabled() -> bool {
+    command_stdout(NETWORK_MANAGER_BIN, &["radio", "wifi"])
+        .map(|v| v.trim() == "enabled")
+        .unwrap_or_else(|| wifi_adapter_name().is_some())
+}
+
+fn wifi_ssid(dev: &str) -> Option<String> {
+    command_stdout("iw", &["dev", dev, "link"]).and_then(|text| {
+        text.lines()
+            .find_map(|line| line.trim().strip_prefix("SSID: ").map(str::to_string))
+    })
+}
+
+fn wifi_signal_for_ssid(ssid: Option<&str>) -> Option<u8> {
+    let ssid = ssid?;
+    wifi_scan_results(&[])
+        .into_iter()
+        .find(|row| row.ssid == ssid)
+        .map(|row| row.signal_percent)
+}
+
+fn wifi_security_for_ssid(ssid: Option<&str>) -> Option<String> {
+    let ssid = ssid?;
+    wifi_scan_results(&[])
+        .into_iter()
+        .find(|row| row.ssid == ssid)
+        .map(|row| row.security)
+}
+
+fn ethernet_interface_name() -> Option<String> {
+    fs::read_dir("/sys/class/net")
+        .ok()?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .find(|n| n != "lo" && !n.starts_with("wl") && !n.starts_with("wifi"))
+}
+
+fn carrier_up(name: &str) -> bool {
+    fs::read_to_string(format!("/sys/class/net/{}/carrier", name))
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+}
+fn read_speed_mbps(name: &str) -> Option<u64> {
+    fs::read_to_string(format!("/sys/class/net/{}/speed", name))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+fn network_services(
+    web_origin: &str,
+    ip: Option<&str>,
+    hostname: &str,
+    netbios: &str,
+) -> NetworkServices {
+    let samba_ok = samba_available() && Path::new(GAMES_ROOT).exists();
+    let share = "games";
+    let mut urls = vec![web_origin.to_string()];
+    if let Some(ip) = ip {
+        urls.push(format!("http://{}", ip));
+    }
+    let share_row = SambaShareStatus {
+        name: share.to_string(),
+        purpose: "games".to_string(),
+        windows_unc: samba_ok.then(|| format!(r"\\{}\{}", netbios, share)),
+        windows_unc_by_ip: samba_ok
+            .then(|| ip.map(|addr| format!(r"\\{}\{}", addr, share)))
+            .flatten(),
+        smb_url: samba_ok.then(|| format!("smb://{}/{}", hostname, share)),
+        smb_url_by_ip: samba_ok
+            .then(|| ip.map(|addr| format!("smb://{}/{}", addr, share)))
+            .flatten(),
+    };
+    let lan_ai = tcp_port_listening(LAN_INFERENCE_PORT);
+    NetworkServices {
+        web_console: WebConsoleService {
+            state: "available".to_string(),
+            urls,
+        },
+        samba: SambaServiceState {
+            state: if samba_ok {
+                "available"
+            } else if SAMBA_SERVICE_NAMES
+                .iter()
+                .any(|unit| service_state(unit) == "unknown")
+            {
+                "unknown"
+            } else {
+                "disabled"
+            }
+            .to_string(),
+            shares: samba_ok.then(|| vec![share_row]).unwrap_or_default(),
+        },
+        lan_inference: LanInferenceService {
+            state: if lan_ai { "available" } else { "disabled" }.to_string(),
+            port: LAN_INFERENCE_PORT,
+            urls: lan_ai
+                .then(|| vec![format!("{}:{}", web_origin, LAN_INFERENCE_PORT)])
+                .unwrap_or_default(),
+        },
+        ssh: SshService {
+            state: if service_state("sshd.service") == "running" || tcp_port_listening(22) {
+                "available"
+            } else {
+                "disabled"
+            }
+            .to_string(),
+            port: 22,
+        },
+    }
+}
+
+fn netbios_name(hostname: &str) -> String {
+    let cleaned: String = hostname
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect::<String>()
+        .to_ascii_uppercase();
+    if cleaned.is_empty() {
+        "HOMECONSOLE".to_string()
+    } else {
+        cleaned.chars().take(15).collect()
+    }
 }
 
 fn internet_reachable() -> bool {
@@ -1891,6 +2872,8 @@ fn surface_and_samba_status(
         windows_unc: windows_unc.clone(),
         windows_unc_by_ip: windows_unc_by_ip.clone(),
         smb_url: smb_url.clone(),
+        smb_url_by_ip: (samba_ok && network.ip_address != "—")
+            .then(|| format!("smb://{}/{}", network.ip_address, share)),
     };
     let shares = if samba_ok {
         vec![share_status]
@@ -1905,6 +2888,8 @@ fn surface_and_samba_status(
             windows_unc,
             windows_unc_by_ip,
             smb_url,
+            smb_url_by_ip: (samba_ok && network.ip_address != "—")
+                .then(|| format!("smb://{}/{}", network.ip_address, share)),
         },
         SambaStatus {
             state: if samba_ok {
@@ -2501,8 +3486,6 @@ mod tests {
             "AI Models",
             "Other",
             "Console",
-            "Folders",
-            "LAN AI",
             "Local AI",
             "Model",
             "GPU",
@@ -2753,7 +3736,6 @@ mod tests {
             "Game Library",
             "Local AI",
             "storage-bar",
-            "Copy console URL",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
@@ -2782,12 +3764,19 @@ mod tests {
                 .expect("access follows network");
         let network_html = &rendered[network_start..network_end];
         for required in [
-            "Transport",
-            "Address",
+            "Current Connection",
+            "Active connection",
+            "IP address",
+            "Gateway",
+            "DNS",
+            "LAN",
             "Internet",
-            "Console",
-            "Game folders",
             "Wi-Fi",
+            "Wired LAN",
+            "Addresses",
+            "Services",
+            "Diagnostics",
+            "Advanced IP Settings",
             "http://arcadia.home.arpa",
         ] {
             assert!(
@@ -2804,6 +3793,37 @@ mod tests {
         assert!(APP_JS.contains("input.type = toggle.checked ? 'text' : 'password'"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
+    }
+
+    #[test]
+    fn network_state_payload_matches_appliance_contract() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let payload = network_state(&state);
+        let json = serde_json::to_string(&payload).expect("network state serializes");
+        for required in [
+            "appliance",
+            "activeConnection",
+            "ethernet",
+            "wifi",
+            "services",
+            "webConsole",
+            "lanInference",
+            "savedNetworks",
+            "scanResults",
+        ] {
+            assert!(
+                json.contains(required),
+                "missing network payload field {required}"
+            );
+        }
+        assert!(!json.contains("smb:://"));
+        assert!(!json.contains("smb:/homeconsole"));
+        assert!(!json.contains("\\undefined"));
+        assert!(!json.contains("smb://undefined"));
     }
 
     #[test]
