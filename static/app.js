@@ -79,6 +79,7 @@ function bindNavigation() {
   const buttons = Array.from(document.querySelectorAll('.launcher-button[data-view]'));
   const panels = Array.from(document.querySelectorAll('[data-view-panel]'));
   const activate = (view) => {
+    if (view === 'advanced') view = 'system';
     const next = panels.some((panel) => panel.dataset.viewPanel === view) ? view : 'home';
     buttons.forEach((button) => {
       const active = button.dataset.view === next;
@@ -182,7 +183,7 @@ function formatActionResult(data) {
 function confirmationFor(action) {
   if (action === 'reboot-console') return window.confirm('Restart this console now? Games and services will close.') ? { confirm: 'REBOOT' } : null;
   if (action === 'shutdown-console') return window.confirm('Shut down this console now? The appliance will power off.') ? { confirm: 'SHUTDOWN' } : null;
-  if (action === 'restart-gamescope') return window.confirm('Restart GameScope now? The TV game session will close and reopen.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
+  if (action === 'restart-gamescope') return window.confirm('Restarting GameScope may close the active game session.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
   if (action === 'clear-artwork-cache') return window.confirm('Clear artwork cache? This does not delete games. Artwork can be downloaded again during Sync.') ? { confirm: 'CLEAR_ARTWORK' } : null;
   if (action === 'remove-ai-model') return window.confirm('Remove this local AI model file from console storage? This does not affect games.') ? { confirm: 'REMOVE_MODEL' } : null;
   if (action === 'clean-temporary-files') return window.confirm('Clean safe temporary files? This will not remove games, artwork intentionally kept, or installed AI models.') ? { confirm: 'CLEAN_TEMPORARY' } : null;
@@ -219,6 +220,17 @@ function bindConsoleActions() {
         button.disabled = false;
         button.textContent = action === 'sync-games' ? (document.getElementById('sync-state')?.textContent === 'Sync Complete' ? 'Sync Complete' : (document.getElementById('sync-state')?.textContent === 'Sync Failed' ? 'Sync Failed' : original)) : original;
         if (syncProgress) clearInterval(syncProgress);
+      }
+    });
+  });
+  document.querySelectorAll('.btn[data-copy-value]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      try {
+        await navigator.clipboard.writeText(button.dataset.copyValue || '');
+        PopupManager.showToast('Copied', 'success');
+      } catch (_) {
+        PopupManager.showModal({ title: 'Copy', body: button.dataset.copyValue || '' });
       }
     });
   });

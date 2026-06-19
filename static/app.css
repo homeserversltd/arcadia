@@ -143,7 +143,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .home-action-badge { justify-self: start; padding: 5px 9px; border-radius: 999px; border: 1px solid rgba(255,244,223,.18); background: rgba(0,0,0,.22); color: var(--cream); font-size: 12px; font-weight: 900; }
 .status-card-grid--compact .status-card { min-height: 92px; padding: 12px; }
 .home-recent { padding-bottom: 2px; }
-.status-card, .instruction-card, .path-card, .folder-card, .settings-panel, .form-card, .active-model, .power-card, .collapsible-log, .service-list, .storage-summary, .storage-category-card {
+.status-card, .instruction-card, .path-card, .folder-card, .settings-panel, .form-card, .active-model, .power-card, .collapsible-log, .service-list, .storage-summary, .storage-category-card, .system-card {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.055));
@@ -189,6 +189,27 @@ button { -webkit-tap-highlight-color: transparent; }
 .storage-model-row code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .storage-model-row em { color: var(--muted); font-style: normal; }
 .storage-model-row b { color: var(--good); }
+.system-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.system-card { padding: 16px; }
+.system-card--services, .system-card--logs, .system-card--networking { grid-column: 1 / -1; }
+.system-field-grid, .system-endpoints, .system-port-list { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin: 10px 0; }
+.system-field, .command-box { display: grid; gap: 4px; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+.system-field em, .command-box span { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.system-field strong, .command-box code { color: var(--cream); font-size: 14px; overflow-wrap: anywhere; }
+.command-box .btn { justify-self: start; min-height: 32px; padding: 6px 10px; font-size: 12px; }
+.system-service-list { display: grid; gap: 8px; }
+.system-service-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 10px; border-radius: 14px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
+.system-service-main { display: grid; gap: 3px; }
+.system-service-main strong { color: var(--cream); }
+.system-service-main em, .system-service-row small { color: var(--muted); font-style: normal; }
+.system-status { padding: 5px 8px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.system-status--running { color: var(--good); }
+.system-status--stopped, .system-status--unknown { color: var(--idle); }
+.system-status--starting { color: var(--warn); }
+.system-status--error { color: var(--bad); }
+.system-row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.system-row-actions .btn { min-height: 34px; padding: 7px 10px; font-size: 12px; }
+.system-log-group p { color: var(--muted); }
 h3 { margin: 0 0 8px; font-size: 18px; }
 .path-card { padding: 16px; }
 .path-card code { display: block; margin-top: 7px; color: var(--orange-strong); font-size: 20px; font-weight: 900; overflow-wrap: anywhere; }
@@ -375,7 +396,7 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .sidebar-launcher { padding: 8px; }
   .launcher-button { min-height: 72px; }
   .launcher-label { font-size: 11px; }
-  .status-card-grid, .model-grid, .power-grid, .home-action-grid, .storage-category-grid, .sync-workflow, .sync-result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-card-grid, .model-grid, .power-grid, .home-action-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sync-command-center { grid-template-columns: 1fr; }
   .sync-step:not(:last-child)::after { content: "↓"; right: auto; left: 22px; top: auto; bottom: -19px; }
   .storage-hero { grid-template-columns: 1fr; }
@@ -387,7 +408,10 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
   .view { padding: 20px; }
-  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-action-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid { grid-template-columns: 1fr; }
+  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-action-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list { grid-template-columns: 1fr; }
+  .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
+  .system-service-row { grid-template-columns: 1fr; align-items: start; }
+  .system-row-actions { justify-content: flex-start; }
   .storage-model-row { grid-template-columns: 1fr; align-items: start; }
   .home-action-tile { min-height: 148px; }
   .task-hero { align-items: stretch; flex-direction: column; }
