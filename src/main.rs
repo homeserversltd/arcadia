@@ -25,6 +25,8 @@ use tower_http::trace::TraceLayer;
 mod ui;
 
 const APP_CSS: &str = include_str!("../static/app.css");
+const UX_CSS: &str = include_str!("../static/ux/arcadia-ux.css");
+const VIEWPORT_CSS: &str = include_str!("../static/ux/arcadia-viewports.css");
 const APP_JS: &str = include_str!("../static/app.js");
 const THEME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.css"));
 const THEME_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.js"));
@@ -2993,7 +2995,7 @@ fn gui_pin_response(
 
 async fn css() -> Response {
     asset_owned(
-        format!("{}\n{}", THEME_CSS, APP_CSS),
+        format!("{}\n{}\n{}\n{}", THEME_CSS, UX_CSS, APP_CSS, VIEWPORT_CSS),
         "text/css; charset=utf-8",
     )
 }
@@ -5431,6 +5433,21 @@ mod tests {
         assert!(APP_JS.contains("screenscraper_api_key"));
         assert!(!APP_JS.contains("screenscraper_user"));
         assert!(!APP_JS.contains("screenscraper_password"));
+    }
+
+    #[test]
+    fn ux_library_owns_viewport_contract() {
+        assert!(UX_CSS.contains("Arcadia UX library"));
+        assert!(UX_CSS.contains("--ux-shell-padding"));
+        assert!(VIEWPORT_CSS.contains("Arcadia viewport contract"));
+        assert!(VIEWPORT_CSS.contains("@media (max-width: 980px)"));
+        assert!(VIEWPORT_CSS.contains("@media (max-width: 720px)"));
+        assert!(
+            APP_CSS
+                .lines()
+                .all(|line| !line.trim_start().starts_with("@media")),
+            "static/app.css must not own viewport media bands"
+        );
     }
 
     #[test]

@@ -1,0 +1,40 @@
+/* Arcadia viewport contract. Agents tune mobile/desktop density here, not in scattered view selectors.
+   Desktop baseline is the unqualified app.css + arcadia-ux.css cascade. */
+:root {
+  --ux-breakpoint-tablet: 980px;
+  --ux-breakpoint-phone: 720px;
+}
+
+@media (max-width: 980px) {
+  .app-shell { padding: 10px; }
+  .top-header { align-items: flex-start; flex-direction: column; }
+  .header-indicators { margin-left: 0; justify-content: flex-start; }
+  .workspace { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
+  .sidebar-launcher { padding: 8px; }
+  .launcher-button { min-height: 72px; }
+  .launcher-label { font-size: 11px; }
+  .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .priority-strip { grid-template-columns: 1fr; align-items: start; }
+  .system-power-panel, .system-power-actions { grid-template-columns: 1fr; }
+.sync-command-center { grid-template-columns: 1fr; }
+  .sync-step:not(:last-child)::after { content: "↓"; right: auto; left: 22px; top: auto; bottom: -19px; }
+  .storage-hero { grid-template-columns: 1fr; }
+  .section-heading { align-items: start; flex-direction: column; }
+}
+@media (max-width: 720px) {
+  .network-row { grid-template-columns: 1fr; align-items: start; }
+  .workspace { grid-template-columns: 1fr; }
+  .sidebar-launcher { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .launcher-button { min-height: 62px; }
+  .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
+  .view { padding: 20px; }
+  .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid { grid-template-columns: 1fr; }
+  .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
+  .system-service-row { grid-template-columns: 1fr; align-items: start; }
+.system-row-actions { justify-content: flex-start; }
+  .storage-model-row, .storage-table-row > summary, .storage-table-row.storage-table-head, .location-row { grid-template-columns: 1fr; align-items: start; }
+  .task-hero { align-items: stretch; flex-direction: column; }
+  .btn { width: 100%; }
+  .modal-close { position: static; transform: none; float: right; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
