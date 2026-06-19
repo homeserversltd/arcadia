@@ -129,14 +129,9 @@ fn sidebar_launcher() -> Markup {
     }
 }
 
-fn view_shell(id: &str, eyebrow: &str, title: &str, explanation: &str, body: Markup) -> Markup {
+fn view_shell(id: &str, _eyebrow: &str, _title: &str, _explanation: &str, body: Markup) -> Markup {
     html! {
         section id=(format!("view-{}", id)) class="view" data-view-panel=(id) tabindex="-1" {
-            div class="view-heading" {
-                p class="eyebrow" { (eyebrow) }
-                h2 { (title) }
-                p class="lede" { (explanation) }
-            }
             (body)
         }
     }
@@ -145,66 +140,101 @@ fn view_shell(id: &str, eyebrow: &str, title: &str, explanation: &str, body: Mar
 fn home_view(status: &ConsoleStatus) -> Markup {
     html! {
         section id="view-home" class="view" data-view-panel="home" tabindex="-1" {
-            (priority_card(status))
+            (priority_strip(status))
             div class="home-operational-grid" {
-                (now_card(status))
                 (home_storage_card(status))
                 (home_network_card(status))
-                (home_library_card(status))
                 (home_local_ai_card(status))
+                (home_library_card(status))
+                @if status.arcadia.service != "running" {
+                    (home_gamescope_card(status))
+                }
+            }
+            @if status.library.last_sync_state == "error" || status.local_ai.load_state == "error" {
+                div class="active-warning-strip" {
+                    @if status.library.last_sync_state == "error" {
+                        strong { "Sync failed" }
+                        span { "Open Sync for the last receipt." }
+                        (nav_button("View Sync", "sync"))
+                    } @else {
+                        strong { "Local AI error" }
+                        span { "Open LAN settings or unload the failed model." }
+                        (nav_button("LAN Settings", "lan-inference"))
+                    }
+                }
             }
         }
     }
 }
 
-fn priority_card(status: &ConsoleStatus) -> Markup {
+fn priority_strip(status: &ConsoleStatus) -> Markup {
     let (state, detail, action, target, endpoint): (
-        &str,
+        String,
         String,
         Option<&str>,
         Option<&str>,
         Option<&str>,
     ) = if !status.network.online {
         (
-            "Network offline",
-            "Connect Wi-Fi to copy games.".to_string(),
+            "Network offline".to_string(),
+            "Console and game folders are unreachable.".to_string(),
             Some("Connect Wi-Fi"),
             Some("network"),
             None,
         )
+    } else if status.storage.percent_used >= 90 {
+        (
+            format!("Storage low: {} free", status.storage.free),
+            format!("{} used", status.storage.percent),
+            Some("Open Storage"),
+            Some("storage"),
+            None,
+        )
     } else if status.library.sync_needed {
         (
-            "Games ready to sync",
             format!(
-                "{} files found. No library entries yet.",
-                status.library.detected_games
+                "{} games waiting for first sync",
+                status.library.detected_files
             ),
-            Some("Start first sync"),
+            format!("{} GameScope entries", status.library.gamescope_entries),
+            Some("Start Sync"),
             None,
             Some("/api/actions/sync-games"),
         )
-    } else if status.storage.percent_used >= 90 {
+    } else if status.library.last_sync_state == "error" {
         (
-            "Storage low",
-            format!(
-                "{} free. {} used.",
-                status.storage.free, status.storage.percent
-            ),
-            Some("Free space"),
-            Some("storage"),
+            "Sync failed".to_string(),
+            "Open Sync for the latest receipt.".to_string(),
+            Some("View Sync"),
+            Some("sync"),
+            None,
+        )
+    } else if status.local_ai.load_state == "error" {
+        (
+            "Local AI error".to_string(),
+            status
+                .local_ai
+                .selected_model_name
+                .clone()
+                .unwrap_or_else(|| "Model load failed".to_string()),
+            Some("LAN Settings"),
+            Some("lan-inference"),
             None,
         )
     } else {
         (
-            "Ready",
-            "Console is ready to use.".to_string(),
-            Some("Open GameScope"),
-            Some("system"),
+            "Ready".to_string(),
+            format!(
+                "GameScope {}",
+                title_case_state(status.arcadia.service).to_lowercase()
+            ),
+            None,
+            None,
             None,
         )
     };
     html! {
-        article class="priority-card" {
+        article class="priority-strip" aria-label="Highest priority console state" {
             strong { (state) }
             span { (detail) }
             @if let Some(label) = action {
@@ -218,35 +248,28 @@ fn priority_card(status: &ConsoleStatus) -> Markup {
     }
 }
 
-fn now_card(status: &ConsoleStatus) -> Markup {
-    html! {
-        article class="operational-card now-card" {
-            h3 { "Now" }
-            div class="state-rows" {
-                (state_row("GameScope", title_case_state(status.arcadia.service)))
-                (state_row("Sync", if status.library.sync_needed { "Needed" } else { "Idle" }))
-                (state_row("Local AI", status.local_ai.loaded_model.as_deref().unwrap_or("No AI loaded")))
-                (state_row("Session", "No active game"))
-            }
-        }
-    }
-}
-
 fn home_storage_card(status: &ConsoleStatus) -> Markup {
     html! {
-        article class="operational-card storage-home-card" {
-            h3 { "Storage" }
-            p class="card-line" { (status.storage.free) " free · " (status.storage.percent) " used" }
-            div class="state-rows state-rows--compact" {
-                (state_row("Games", &status.storage.games.size))
-                (state_row("Artwork", &status.storage.artwork.size))
-                (state_row("AI Models", &status.storage.ai_models.size))
-                (state_row("Other", &status.storage.other.size))
+        article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) {
+            div class="card-head" { h3 { "Storage" } strong { (status.storage.free) " free" } }
+            div class="storage-bar storage-bar--home" aria-label="Storage usage by category" {
+                span class="storage-segment storage-segment--games" style=(format!("width: {}%", status.storage.games.percent_of_total.max(if status.storage.games.bytes > 0 { 1 } else { 0 }))) title=(format!("Games {}", status.storage.games.size)) {}
+                span class="storage-segment storage-segment--artwork" style=(format!("width: {}%", status.storage.artwork.percent_of_total.max(if status.storage.artwork.bytes > 0 { 1 } else { 0 }))) title=(format!("Artwork {}", status.storage.artwork.size)) {}
+                span class="storage-segment storage-segment--ai" style=(format!("width: {}%", status.storage.ai_models.percent_of_total.max(if status.storage.ai_models.bytes > 0 { 1 } else { 0 }))) title=(format!("AI Models {}", status.storage.ai_models.size)) {}
+                span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total.max(if status.storage.other.bytes > 0 { 1 } else { 0 }))) title=(format!("Other {}", status.storage.other.size)) {}
+                span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
+            }
+            p class="card-line" { (status.storage.percent) " used · low-space threshold 90%" }
+            div class="storage-mini-rows" {
+                (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total))
+                (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total))
+                (storage_mini_row("AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total))
+                (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total))
             }
             div class="inline-actions inline-actions--compact" {
                 (nav_button("Open Storage", "storage"))
-                @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clear Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
-                @if status.storage.ai_models.bytes >= 1_000_000_000 { (nav_button("Remove Models", "storage")) }
+                @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clean Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
+                @if status.storage.ai_models.bytes > 0 { (nav_button("Manage Models", "ai-model")) }
             }
         }
     }
@@ -256,28 +279,27 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
             @if status.network.online {
-                h3 { "Network" }
-                p class="card-line" {
-                    (status.network.connection_type)
-                    @if let Some(ssid) = &status.network.ssid { " · " (ssid) }
+                div class="card-head" { h3 { "Network" } strong { (status.network.connection_type) } }
+                @if status.network.active_type == "wifi" {
+                    p class="card-line" { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "Unknown signal".to_string())) }
+                    p class="card-line" { (status.network.ip_address) }
+                } @else {
+                    p class="card-line" { (status.network.ip_address) " · " (status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown speed".to_string())) }
                 }
-                p class="card-line" {
-                    (status.network.ip_address)
-                    @if let Some(signal) = &status.network.signal { " · " (signal) }
-                }
-                div class="reachability-row" {
+                div class="reachability-row reachability-row--topology" {
                     (reachability("Console", status.network.console_reachable))
-                    (reachability("Game folders", status.network.game_folders_reachable))
+                    (reachability("Folders", status.network.samba_reachable))
                     (reachability("LAN AI", status.network.lan_ai_reachable))
+                    @if let Some(internet) = status.network.internet_reachable { (reachability("Internet", internet)) }
                 }
                 div class="inline-actions inline-actions--compact" {
                     (nav_button("Manage Wi-Fi", "network"))
-                    (copy_button("Copy folder address", &format!("smb://{}", status.surfaces.smb)))
-                    (copy_button("Copy console address", status.canonical_url.trim_end_matches('/')))
+                    (copy_button("Copy folders", &format!("smb://{}", status.surfaces.smb)))
+                    (copy_button("Copy console URL", status.canonical_url.trim_end_matches('/')))
                 }
             } @else {
                 h3 { "Network offline" }
-                p class="card-line" { "Connect Wi-Fi to copy games." }
+                p class="card-line" { "Console and game folders are unreachable." }
                 (nav_button("Connect Wi-Fi", "network"))
             }
         }
@@ -285,23 +307,17 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_library_card(status: &ConsoleStatus) -> Markup {
-    let line = if status.library.sync_needed {
-        format!("{} files found · not synced", status.library.detected_games)
-    } else if status.library.gamescope_entries > 0 {
-        format!(
-            "{} games · {}",
-            status.library.gamescope_entries, status.library.last_sync
-        )
-    } else {
-        "No games detected".to_string()
-    };
     html! {
         article class="operational-card library-home-card" {
-            h3 { "Library" }
-            p class="card-line" { (line) }
-            p class="card-line" { (if status.library.sync_needed { "First sync needed" } else { status.library.artwork_status.as_str() }) }
+            div class="card-head" { h3 { "Game Library" } strong { (status.library.detected_files) " files" } }
+            div class="state-rows state-rows--compact" {
+                (state_row("Detected files", &status.library.detected_files.to_string()))
+                (state_row("GameScope entries", &status.library.gamescope_entries.to_string()))
+                (state_row("Last sync", &status.library.last_sync))
+                (state_row("Artwork", &status.library.artwork_status))
+            }
             div class="inline-actions inline-actions--compact" {
-                @if status.library.sync_needed { (action_button(ButtonVariant::Primary, "Start Sync", "sync-games", "/api/actions/sync-games")) }
+                @if status.library.sync_needed || status.library.last_sync_state == "error" { (action_button(ButtonVariant::Primary, "Start Sync", "sync-games", "/api/actions/sync-games")) }
                 @else { (nav_button("View Sync", "sync")) }
             }
         }
@@ -309,28 +325,72 @@ fn home_library_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
-    let loaded = status
+    let load_state = title_case_state_like(&status.local_ai.load_state);
+    let selected = status
         .local_ai
-        .loaded_model
+        .selected_model_name
         .as_deref()
-        .unwrap_or("No AI loaded");
+        .unwrap_or("No model selected");
+    let gpu = status.local_ai.gpu_memory.as_deref().unwrap_or("Unknown");
     let lan = if let Some(port) = status.local_ai.lan_inference_port {
-        format!("LAN inference on · :{}", port)
+        format!("On · :{}", port)
     } else {
-        "LAN inference off".to_string()
+        "Off".to_string()
     };
     html! {
-        article class="operational-card local-ai-home-card" {
-            h3 { "Local AI" }
-            p class="card-line" { (loaded) }
-            p class="card-line" { (lan) }
+        article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) {
+            div class="card-head" { h3 { "Local AI" } strong { (load_state) } }
+            label class="compact-select-label" { span { "Model" } select class="compact-select" name="home-local-ai-model" {
+                @if status.local_ai.available_models.is_empty() {
+                    option value="" { "No local models found" }
+                } @else {
+                    @for model in &status.local_ai.available_models {
+                        option value=(model.id) selected[status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str())] { (model.name) }
+                    }
+                }
+            } }
+            div class="state-rows state-rows--compact" {
+                (state_row("Selected", selected))
+                (state_row("GPU", gpu))
+                (state_row("LAN", &lan))
+            }
+            @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
+                div class="gpu-bar" aria-label="GPU memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
+            }
             div class="inline-actions inline-actions--compact" {
-                @if status.local_ai.loaded_model.is_some() { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload support will stop the local model runner when connected.")) }
-                @else { (nav_button("Load AI", "ai-model")) }
-                @if status.local_ai.lan_inference_enabled { (nav_button("Open LAN AI", "lan-inference")) }
+                @if status.local_ai.load_state == "hot" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
+                @else { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
+                (nav_button("LAN Settings", "lan-inference"))
             }
         }
     }
+}
+
+fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
+    html! {
+        article class="operational-card gamescope-home-card attention" {
+            div class="card-head" { h3 { "GameScope" } strong { (title_case_state(status.arcadia.service)) } }
+            p class="card-line" { "No active game reported." }
+            div class="inline-actions inline-actions--compact" {
+                (action_button(ButtonVariant::Secondary, "Restart Session", "restart-gamescope", "/api/actions/restart-gamescope"))
+            }
+        }
+    }
+}
+
+fn title_case_state_like(state: &str) -> &'static str {
+    match state {
+        "unloaded" => "Unloaded",
+        "cold" => "Cold",
+        "loading" => "Loading",
+        "hot" => "Hot",
+        "error" => "Error",
+        _ => "Unknown",
+    }
+}
+
+fn storage_mini_row(label: &str, value: &str, percent: u8) -> Markup {
+    html! { div class="storage-mini-row" { span { (label) } strong { (value) } em { (percent) "%" } } }
 }
 
 fn state_row(label: &str, value: &str) -> Markup {
@@ -715,7 +775,7 @@ fn system_view(status: &ConsoleStatus) -> Markup {
         "system",
         "Machine status",
         "System",
-        "View technical console status, service health, networking details, SSH access, and logs.",
+        "",
         html! {
             section class="system-grid" aria-label="System support panel" {
                 article class="system-card system-card--ssh" aria-labelledby="system-ssh-title" {
@@ -749,15 +809,12 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         (system_service_row("Game Sync", "Adds copied games to the GameScope library.", "Stopped", "Runs on demand", None))
                         (system_service_row("Local AI", "Loads the selected local AI model.", "Stopped", "Not reported", None))
                         (system_service_row("LAN Inference", "Lets other home-network devices use Local AI.", "Stopped", "Not reported", None))
-                        (system_service_row("Web GUI", "Runs this management interface.", "Running", "Now", None))
+                        (system_service_row("Web GUI", "Runs this management interface.", "Running", "Current", None))
                     }
                 }
 
                 article class="system-card system-card--logs" aria-labelledby="system-logs-title" {
-                    div class="section-heading section-heading--compact" {
-                        h3 id="system-logs-title" { "Logs" }
-                        p { "Logs help diagnose problems. They are mostly useful for support or technical users." }
-                    }
+                    span id="system-logs-title" class="sr-only" { "Logs" }
                     (system_log_group("Sync Log", "Sync log output is redacted before display. Provider API keys and saved PINs are never shown."))
                     (system_log_group("Local AI Log", "Local AI service messages appear here when connected to the log reader."))
                     (system_log_group("LAN Inference Log", "LAN inference service messages appear here when connected to the log reader."))
@@ -937,7 +994,6 @@ fn system_service_row(
                 @if let Some((action, endpoint)) = restart {
                     (action_button(ButtonVariant::Secondary, "Restart", action, endpoint))
                 }
-                (modal_button(ButtonVariant::Secondary, "View Logs", &format!("{} logs", name), "Open the Logs section below for redacted troubleshooting output."))
             }
         }
     }
@@ -947,7 +1003,6 @@ fn system_log_group(name: &str, text: &str) -> Markup {
     html! {
         details class="collapsible-log system-log-group" {
             summary { (name) }
-            p { (text) }
             div class="inline-actions" {
                 (modal_button(ButtonVariant::Secondary, "View", name, text))
                 (copy_button("Copy", text))
