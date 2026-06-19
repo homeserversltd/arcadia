@@ -115,21 +115,45 @@ fn view_shell(id: &str, eyebrow: &str, title: &str, explanation: &str, body: Mar
 }
 
 fn home_view(status: &ConsoleStatus) -> Markup {
-    view_shell("home", "Appliance overview", "Console Status", "This page manages your local game console. Copy games over the network, sync them into GameScope, and manage local AI.", html! {
-        div class="status-card-grid" {
-            (status_card("Network", "Online", "Your browser can reach the console management page."))
-            (status_card("GameScope", "Running", "Games appear on the TV after sync creates shortcuts."))
-            (status_card("Storage", "OK", "There is room for game files and artwork."))
-            (status_card("Last Sync", "Not reported", "Run Sync Games after copying new files."))
-            (status_card("Loaded AI Model", "No model loaded", "Load a model only when you need LAN inference."))
-            (status_card("Software Version", status.arcadia.version, "Arcadia web console version."))
+    view_shell("home", "HomeConsole launchpad", "Console Home", "Manage the local game console from here. Add games over the network, sync them into GameScope, or load a local AI model.", html! {
+        section class="home-action-panel" aria-labelledby="home-primary-actions-title" {
+            div class="section-heading" {
+                h3 id="home-primary-actions-title" { "What do you want to do?" }
+                p { "Choose the job first. Status is below when you need it." }
+            }
+            div class="home-action-grid" {
+                (action_tile("▣", "Add Games", "Open the console’s network folders and copy games into the right system folder.", "games", "Network copy"))
+                (action_tile("↻", "Sync Games", "Scan the game folders, fetch artwork, and add games to the GameScope library.", "sync", "Ready"))
+                (action_tile("◉", "Load AI Model", "Select which local llama.cpp model is loaded onto the GPU.", "ai-model", "No model loaded"))
+            }
         }
-        div class="primary-actions" {
-            (action_button(ButtonVariant::Primary, "Sync Games", "sync-games", "/api/actions/sync-games"))
-            (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", "smb://HOMECONSOLE"))
-            (action_button(ButtonVariant::Secondary, "Check for Updates", "check-updates", "/api/actions/update-gui"))
+
+        section class="home-section" aria-labelledby="home-status-title" {
+            div class="section-heading section-heading--compact" {
+                h3 id="home-status-title" { "Console Status" }
+                p { "Health at a glance; actions stay above." }
+            }
+            div class="status-card-grid status-card-grid--compact" {
+                (status_card("Network", "Online", "Console GUI reachable on the home network."))
+                (status_card("GameScope", "Running", "Games appear on the TV after sync creates shortcuts."))
+                (status_card("Storage", "OK", "There is room for game files and artwork."))
+                (status_card("Last Sync", "Not reported", "Run Sync Games after copying new files."))
+                (status_card("Loaded AI Model", "No model loaded", "Load a model only when you need LAN inference."))
+                (status_card("Software Version", status.arcadia.version, "Arcadia web console version."))
+            }
         }
-        (instruction_card("Where to go next", "Add Games shows the network folder names. Sync creates the GameScope entries. Advanced contains Linux details only when you need them."))
+
+        section class="home-section home-recent" aria-labelledby="home-recent-title" {
+            div class="section-heading section-heading--compact" {
+                h3 id="home-recent-title" { "Recent Activity" }
+                p { "Last sync is not reported yet. No local AI model is loaded." }
+            }
+            div class="inline-actions" {
+                (nav_button("Open Games", "games"))
+                (nav_button("Open Sync", "sync"))
+                (nav_button("Open AI Model", "ai-model"))
+            }
+        }
     })
 }
 
@@ -318,6 +342,19 @@ fn advanced_view(status: &ConsoleStatus) -> Markup {
 
 fn status_card(title: &str, value: &str, help: &str) -> Markup {
     html! { article class="status-card" { span { (title) } strong { (value) } p { (help) } } }
+}
+
+fn action_tile(icon: &str, title: &str, text: &str, view: &str, badge: &str) -> Markup {
+    html! {
+        button class="home-action-tile" type="button" data-nav-target=(view) aria-label=(format!("{}: {}", title, text)) {
+            span class="home-action-icon" aria-hidden="true" { (icon) }
+            span class="home-action-copy" {
+                strong { (title) }
+                span { (text) }
+            }
+            span class="home-action-badge" { (badge) }
+        }
+    }
 }
 
 fn instruction_card(title: &str, text: &str) -> Markup {
