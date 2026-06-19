@@ -196,6 +196,9 @@ function confirmationFor(action) {
   if (action === 'clear-artwork-cache') return window.confirm('Clear artwork cache? This does not delete games. Artwork can be downloaded again during Sync.') ? { confirm: 'CLEAR_ARTWORK' } : null;
   if (action === 'remove-ai-model') return window.confirm('Remove this local AI model file from console storage? This does not affect games.') ? { confirm: 'REMOVE_MODEL' } : null;
   if (action === 'clean-temporary-files') return window.confirm('Clean safe temporary files? This will not remove games, artwork intentionally kept, or installed AI models.') ? { confirm: 'CLEAN_TEMPORARY' } : null;
+  if (action === 'clear-partial-ai-downloads') return window.confirm('Clear partial AI downloads? Installed models, games, and artwork are not affected.') ? { confirm: 'CLEAR_PARTIAL_DOWNLOADS' } : null;
+  if (action === 'clear-old-updates') return window.confirm('Clear old update packages? Current installed software is not removed.') ? { confirm: 'CLEAR_OLD_UPDATES' } : null;
+  if (action === 'prune-logs') return window.confirm('Prune managed logs? Games, artwork, and models are not affected.') ? { confirm: 'PRUNE_LOGS' } : null;
   return {};
 }
 
@@ -207,6 +210,13 @@ function bindConsoleActions() {
       const action = button.dataset.action;
       const endpoint = button.dataset.endpoint;
       if (action === 'sync-games' && !prepareSyncStart()) return;
+      if (action === 'storage-rescan') {
+        button.disabled = true;
+        button.textContent = 'Scanning...';
+        try { await postJson(endpoint, {}); window.location.reload(); }
+        catch (_) { PopupManager.showToast('Rescan failed', 'error'); button.disabled = false; button.textContent = original; }
+        return;
+      }
       const body = confirmationFor(action);
       if (body === null) return;
       clearMessage('console-action-message');
@@ -274,6 +284,16 @@ function bindConsoleActions() {
       PopupManager.showModal({ title: 'Copy Game Folders', body: '' });
       const contentNode = document.getElementById('modal-content');
       if (contentNode) { contentNode.textContent = ''; contentNode.appendChild(body); }
+    });
+  });
+  document.querySelectorAll('[data-create-managed-folder]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const path = button.dataset.createManagedFolder || '';
+      if (!path || !window.confirm(`Create managed folder?\n${path}`)) return;
+      const data = await postJson('/api/storage/create-managed-folder', { path });
+      PopupManager.showToast(data.message || (data.ok ? 'Managed folder created' : 'Folder not created'), data.ok ? 'success' : 'error');
+      if (data.ok) window.location.reload();
     });
   });
   document.querySelectorAll('.btn[data-url]').forEach((button) => {
