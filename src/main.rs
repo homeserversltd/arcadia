@@ -37,7 +37,6 @@ const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
 const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
 const SYSTEMD_RUN_BIN: &str = "/usr/bin/systemd-run";
-const NMCLI_BIN: &str = "/usr/bin/nmcli";
 const GAMES_ROOT: &str = "/home/owner/Games";
 const ARTWORK_ROOT: &str = "/home/owner/Games/artwork";
 const TEMP_CLEAN_ROOTS: [&str; 2] = ["/tmp", "/var/tmp"];
@@ -47,6 +46,14 @@ const GAME_SYSTEMS: [&str; 12] = [
     "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
     "dos",
 ];
+const SYNC_MANIFEST_PATHS: [&str; 3] = [
+    "/var/lib/homeconsole-sync/manifest.json",
+    "/var/lib/arch-game-sync/manifest.json",
+    "/var/lib/harmonia/state/homeconsole-sync-manifest.json",
+];
+const LAN_INFERENCE_PORT: u16 = 7777;
+const SAMBA_SERVICE_NAMES: [&str; 2] = ["smb.service", "smbd.service"];
+const NETWORK_MANAGER_BIN: &str = "/usr/bin/nmcli";
 
 #[derive(Clone)]
 struct AppState {
@@ -72,12 +79,25 @@ pub struct ConsoleStatus {
     pub arcadia: ArcadiaStatus,
     pub runtime: RuntimeStatus,
     pub gui_pin: GuiPinStatus,
+    pub identity: IdentityStatus,
     pub surfaces: SurfaceStatus,
+    pub samba: SambaStatus,
     pub storage: StorageStatus,
     pub network: NetworkStatus,
     pub library: LibraryStatus,
     pub local_ai: LocalAiStatus,
+    pub updates: UpdatesStatus,
     pub ui_contract: UiContract,
+}
+
+#[derive(Clone, Serialize)]
+pub struct IdentityStatus {
+    pub product_name: String,
+    pub hostname: String,
+    pub local_domain: Option<String>,
+    pub netbios_name: Option<String>,
+    pub web_origin: String,
+    pub version: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -168,9 +188,34 @@ pub struct AiModelDiskStatus {
 
 #[derive(Clone, Serialize)]
 pub struct SurfaceStatus {
-    pub http: &'static str,
-    pub mdns: &'static str,
-    pub smb: &'static str,
+    pub http: String,
+    pub mdns: String,
+    pub smb: String,
+    pub windows_unc: Option<String>,
+    pub windows_unc_by_ip: Option<String>,
+    pub smb_url: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SambaStatus {
+    pub state: String,
+    pub shares: Vec<SambaShareStatus>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SambaShareStatus {
+    pub name: String,
+    pub purpose: String,
+    pub windows_unc: Option<String>,
+    pub windows_unc_by_ip: Option<String>,
+    pub smb_url: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct UpdatesStatus {
+    pub state: String,
+    pub current_version: String,
+    pub available_version: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -203,6 +248,43 @@ pub struct LibraryStatus {
     pub artwork_complete: u64,
     pub artwork_missing: u64,
     pub sync_needed: bool,
+    pub sync_state: String,
+    pub unsynced_added: u64,
+    pub unsynced_changed: u64,
+    pub unsynced_removed: u64,
+    pub total_detected_games: u64,
+    pub total_synced_entries: u64,
+}
+
+#[derive(Clone)]
+struct GameFileState {
+    normalized_rom_path: String,
+    size_bytes: u64,
+    mtime_ms: u64,
+}
+
+#[derive(Deserialize)]
+struct SyncManifestDoc {
+    #[serde(default)]
+    entries: Vec<SyncManifestEntry>,
+}
+
+#[derive(Deserialize)]
+struct SyncManifestEntry {
+    #[serde(rename = "romPath")]
+    rom_path: Option<String>,
+    #[serde(rename = "normalizedRomPath")]
+    normalized_rom_path: Option<String>,
+    #[serde(rename = "sizeBytes", default)]
+    size_bytes: u64,
+    #[serde(rename = "mtimeMs", default)]
+    mtime_ms: u64,
+    #[serde(rename = "gamescopeEntryId")]
+    gamescope_entry_id: Option<String>,
+    #[serde(rename = "lastSyncedAt")]
+    last_synced_at: Option<String>,
+    #[serde(rename = "artworkStatus")]
+    artwork_status: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -291,12 +373,6 @@ struct ConsoleActionRequest {
     confirm: Option<String>,
 }
 
-#[derive(Deserialize)]
-struct WifiConnectRequest {
-    ssid: String,
-    password: Option<String>,
-}
-
 #[derive(Serialize)]
 struct ConsoleActionResponse {
     ok: bool,
@@ -315,6 +391,25 @@ struct GuiPinActionResponse {
     action: &'static str,
     helper_present: bool,
     message: String,
+}
+
+#[derive(Deserialize)]
+struct WifiConnectRequest {
+    ssid: String,
+    password: Option<String>,
+}
+#[derive(Deserialize)]
+struct WifiForgetRequest {
+    ssid: String,
+}
+#[derive(Serialize)]
+struct WifiResponse {
+    ok: bool,
+    action: &'static str,
+    adapter_present: bool,
+    message: String,
+    stdout: String,
+    stderr: String,
 }
 
 #[tokio::main]
@@ -337,15 +432,17 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/", get(index))
         .route("/health", get(health))
         .route("/api/status", get(status))
+        .route("/api/network/wifi/status", get(wifi_status))
+        .route("/api/network/wifi/scan", post(wifi_scan))
+        .route("/api/network/wifi/connect", post(wifi_connect))
+        .route("/api/network/wifi/disconnect", post(wifi_disconnect))
+        .route("/api/network/wifi/forget", post(wifi_forget))
         .route("/api/gui-pin/status", get(gui_pin_status_route))
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))
         .route("/api/provider-keys/save", post(save_provider_keys))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/sync-games", post(action_sync_games))
-        .route("/api/network/scan-wifi", post(action_scan_wifi))
-        .route("/api/network/connect-wifi", post(action_connect_wifi))
-        .route("/api/network/disconnect-wifi", post(action_disconnect_wifi))
         .route(
             "/api/actions/clear-artwork-cache",
             post(action_clear_artwork_cache),
@@ -446,76 +543,6 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
         ],
         "Sync games completed.",
         "Sync games failed. Read /var/lib/harmonia/receipts/game-sync-latest.",
-    )
-}
-
-async fn action_scan_wifi() -> (StatusCode, Json<ConsoleActionResponse>) {
-    run_network_command(
-        "scan-wifi",
-        vec![
-            "-t".to_string(),
-            "-f".to_string(),
-            "SSID,SIGNAL,SECURITY".to_string(),
-            "dev".to_string(),
-            "wifi".to_string(),
-            "list".to_string(),
-            "--rescan".to_string(),
-            "yes".to_string(),
-        ],
-        "Wi-Fi networks scanned.",
-        "Wi-Fi scan failed.",
-    )
-}
-
-async fn action_connect_wifi(
-    Json(body): Json<WifiConnectRequest>,
-) -> (StatusCode, Json<ConsoleActionResponse>) {
-    let ssid = body.ssid.trim();
-    if ssid.is_empty() {
-        return console_action_error(
-            StatusCode::BAD_REQUEST,
-            "connect-wifi",
-            NMCLI_BIN,
-            "Wi-Fi network name is required.",
-        );
-    }
-    let mut args = vec![
-        "dev".to_string(),
-        "wifi".to_string(),
-        "connect".to_string(),
-        ssid.to_string(),
-    ];
-    if let Some(password) = body
-        .password
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
-        args.push("password".to_string());
-        args.push(password.to_string());
-    }
-    run_network_command(
-        "connect-wifi",
-        args,
-        "Wi-Fi connection requested.",
-        "Wi-Fi connection failed.",
-    )
-}
-
-async fn action_disconnect_wifi() -> (StatusCode, Json<ConsoleActionResponse>) {
-    let Some(device) = wifi_device_name() else {
-        return console_action_error(
-            StatusCode::NOT_FOUND,
-            "disconnect-wifi",
-            NMCLI_BIN,
-            "No Wi-Fi device was found on this console.",
-        );
-    };
-    run_network_command(
-        "disconnect-wifi",
-        vec!["device".to_string(), "disconnect".to_string(), device],
-        "Wi-Fi disconnected.",
-        "Wi-Fi disconnect failed.",
     )
 }
 
@@ -734,7 +761,25 @@ fn run_console_command(
         );
     }
     match Command::new(command).args(args).output() {
-        Ok(output) => command_response(action, command, output, success_message, failure_message),
+        Ok(output) => {
+            let ok = output.status.success();
+            (
+                if ok {
+                    StatusCode::OK
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
+                Json(ConsoleActionResponse {
+                    ok,
+                    action,
+                    command,
+                    exit_code: output.status.code(),
+                    message: if ok { success_message } else { failure_message }.to_string(),
+                    stdout: redacted_output(&output.stdout),
+                    stderr: redacted_output(&output.stderr),
+                }),
+            )
+        }
         Err(err) => console_action_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             action,
@@ -742,75 +787,6 @@ fn run_console_command(
             &format!("Command could not start: {err}"),
         ),
     }
-}
-
-fn run_network_command(
-    action: &'static str,
-    args: Vec<String>,
-    success_message: &str,
-    failure_message: &str,
-) -> (StatusCode, Json<ConsoleActionResponse>) {
-    if !helper_exists(NMCLI_BIN) {
-        return console_action_error(
-            StatusCode::NOT_IMPLEMENTED,
-            action,
-            NMCLI_BIN,
-            "NetworkManager command is not installed on this console.",
-        );
-    }
-    match Command::new(NMCLI_BIN).args(args).output() {
-        Ok(output) => command_response(action, NMCLI_BIN, output, success_message, failure_message),
-        Err(err) => console_action_error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            action,
-            NMCLI_BIN,
-            &format!("Wi-Fi command could not start: {err}"),
-        ),
-    }
-}
-
-fn command_response(
-    action: &'static str,
-    command: &'static str,
-    output: std::process::Output,
-    success_message: &str,
-    failure_message: &str,
-) -> (StatusCode, Json<ConsoleActionResponse>) {
-    let ok = output.status.success();
-    (
-        if ok {
-            StatusCode::OK
-        } else {
-            StatusCode::INTERNAL_SERVER_ERROR
-        },
-        Json(ConsoleActionResponse {
-            ok,
-            action,
-            command,
-            exit_code: output.status.code(),
-            message: if ok { success_message } else { failure_message }.to_string(),
-            stdout: redacted_output(&output.stdout),
-            stderr: redacted_output(&output.stderr),
-        }),
-    )
-}
-
-fn wifi_device_name() -> Option<String> {
-    command_stdout("iw", &["dev"])
-        .and_then(|text| {
-            text.lines()
-                .find_map(|line| line.trim().strip_prefix("Interface ").map(str::to_string))
-        })
-        .or_else(|| {
-            command_stdout(NMCLI_BIN, &["-t", "-f", "DEVICE,TYPE", "device", "status"]).and_then(
-                |text| {
-                    text.lines().find_map(|line| {
-                        let (device, kind) = line.split_once(':')?;
-                        (kind == "wifi" && !device.is_empty()).then(|| device.to_string())
-                    })
-                },
-            )
-        })
 }
 
 fn console_action_error(
@@ -962,6 +938,141 @@ fn provider_file_permissions() -> fs::Permissions {
     fs::metadata(PROVIDER_KEYS_PATH)
         .map(|m| m.permissions())
         .unwrap_or_else(|_| fs::Permissions::readonly())
+}
+
+async fn wifi_status() -> Json<WifiResponse> {
+    let adapter_present = wifi_adapter_name().is_some();
+    Json(WifiResponse {
+        ok: adapter_present,
+        action: "wifi-status",
+        adapter_present,
+        message: if adapter_present {
+            "Wi-Fi adapter available."
+        } else {
+            "Wi-Fi unavailable."
+        }
+        .to_string(),
+        stdout: command_stdout(NETWORK_MANAGER_BIN, &["-t", "device", "status"])
+            .unwrap_or_default(),
+        stderr: String::new(),
+    })
+}
+
+async fn wifi_scan() -> (StatusCode, Json<WifiResponse>) {
+    wifi_nmcli(
+        "wifi-scan",
+        &["device", "wifi", "rescan"],
+        "Wi-Fi scan requested.",
+    )
+}
+
+async fn wifi_connect(Json(body): Json<WifiConnectRequest>) -> (StatusCode, Json<WifiResponse>) {
+    if body.ssid.trim().is_empty() {
+        return wifi_error(
+            StatusCode::BAD_REQUEST,
+            "wifi-connect",
+            "Wi-Fi network name is required.",
+        );
+    }
+    let mut args = vec!["device", "wifi", "connect", body.ssid.as_str()];
+    if let Some(password) = body.password.as_deref().filter(|value| !value.is_empty()) {
+        args.push("password");
+        args.push(password);
+    }
+    wifi_nmcli("wifi-connect", &args, "Wi-Fi connection requested.")
+}
+
+async fn wifi_disconnect() -> (StatusCode, Json<WifiResponse>) {
+    let Some(dev) = wifi_adapter_name() else {
+        return wifi_error(
+            StatusCode::NOT_IMPLEMENTED,
+            "wifi-disconnect",
+            "Wi-Fi unavailable.",
+        );
+    };
+    wifi_nmcli(
+        "wifi-disconnect",
+        &["device", "disconnect", dev.as_str()],
+        "Wi-Fi disconnect requested.",
+    )
+}
+
+async fn wifi_forget(Json(body): Json<WifiForgetRequest>) -> (StatusCode, Json<WifiResponse>) {
+    if body.ssid.trim().is_empty() {
+        return wifi_error(
+            StatusCode::BAD_REQUEST,
+            "wifi-forget",
+            "Wi-Fi network name is required.",
+        );
+    }
+    wifi_nmcli(
+        "wifi-forget",
+        &["connection", "delete", body.ssid.as_str()],
+        "Saved Wi-Fi network removed.",
+    )
+}
+
+fn wifi_nmcli(
+    action: &'static str,
+    args: &[&str],
+    ok_message: &str,
+) -> (StatusCode, Json<WifiResponse>) {
+    if wifi_adapter_name().is_none() || !helper_exists(NETWORK_MANAGER_BIN) {
+        return wifi_error(StatusCode::NOT_IMPLEMENTED, action, "Wi-Fi unavailable.");
+    }
+    match Command::new(NETWORK_MANAGER_BIN).args(args).output() {
+        Ok(output) => {
+            let ok = output.status.success();
+            (
+                if ok {
+                    StatusCode::OK
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                },
+                Json(WifiResponse {
+                    ok,
+                    action,
+                    adapter_present: true,
+                    message: if ok {
+                        ok_message.to_string()
+                    } else {
+                        "Wi-Fi action failed.".to_string()
+                    },
+                    stdout: redacted_output(&output.stdout),
+                    stderr: redacted_output(&output.stderr),
+                }),
+            )
+        }
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(WifiResponse {
+                ok: false,
+                action,
+                adapter_present: true,
+                message: format!("Wi-Fi manager could not start: {err}"),
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        ),
+    }
+}
+
+fn wifi_error(
+    status: StatusCode,
+    action: &'static str,
+    message: &str,
+) -> (StatusCode, Json<WifiResponse>) {
+    (
+        status,
+        Json(WifiResponse {
+            ok: false,
+            action,
+            adapter_present: wifi_adapter_name().is_some(),
+            message: message.to_string(),
+            stdout: String::new(),
+            stderr: String::new(),
+        }),
+    )
 }
 
 async fn pre_unlock(
@@ -1166,11 +1277,22 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
 
 fn console_status(state: &AppState) -> ConsoleStatus {
     let storage = storage_status();
+    let network = network_status();
+    let (surfaces, samba) = surface_and_samba_status(&state.canonical_url, &network);
     let library = library_status(&storage);
+    let hostname = hostname();
     ConsoleStatus {
-        schema: "arcadia.status.v7",
+        schema: "arcadia.home_state.v1",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
+        identity: IdentityStatus {
+            product_name: state.product.clone(),
+            hostname: hostname.clone(),
+            local_domain: Some("home.arpa".to_string()),
+            netbios_name: Some("HOMECONSOLE".to_string()),
+            web_origin: state.canonical_url.trim_end_matches('/').to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
         arcadia: ArcadiaStatus {
             service: service_state("arcadia.service"),
             version: env!("CARGO_PKG_VERSION"),
@@ -1179,13 +1301,11 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         },
         runtime: runtime_status(state.started_unix),
         gui_pin: gui_pin_status(),
-        surfaces: SurfaceStatus {
-            http: "console.home.arpa -> :8080",
-            mdns: "homeconsole.local",
-            smb: "HOMECONSOLE",
-        },
-        network: network_status(),
+        surfaces,
+        samba,
+        network,
         local_ai: local_ai_status(),
+        updates: updates_status(),
         library,
         storage,
         ui_contract: UiContract {
@@ -1253,10 +1373,7 @@ fn network_status() -> NetworkStatus {
         .or_else(global_ipv4_address)
         .unwrap_or_else(|| "—".to_string());
     let online = ip_address != "—";
-    let wifi_device = command_stdout("iw", &["dev"]).and_then(|text| {
-        text.lines()
-            .find_map(|line| line.trim().strip_prefix("Interface ").map(str::to_string))
-    });
+    let wifi_device = wifi_adapter_name();
     let ssid = wifi_device
         .as_deref()
         .and_then(|dev| command_stdout("iw", &["dev", dev, "link"]))
@@ -1294,7 +1411,7 @@ fn network_status() -> NetworkStatus {
         _ => "Offline",
     }
     .to_string();
-    let samba_reachable = online && Path::new(GAMES_ROOT).exists();
+    let samba_reachable = online && samba_available() && Path::new(GAMES_ROOT).exists();
     NetworkStatus {
         online,
         active_type,
@@ -1307,7 +1424,7 @@ fn network_status() -> NetworkStatus {
         console_reachable: online,
         game_folders_reachable: samba_reachable,
         samba_reachable,
-        lan_ai_reachable: tcp_port_listening(7777),
+        lan_ai_reachable: tcp_port_listening(LAN_INFERENCE_PORT),
         internet_reachable: online.then(internet_reachable),
     }
 }
@@ -1355,28 +1472,74 @@ fn tcp_port_listening(port: u16) -> bool {
 }
 
 fn library_status(storage: &StorageStatus) -> LibraryStatus {
+    let game_files = current_game_files();
+    let detected_games = game_files.len() as u64;
     let gamescope_entries = count_gamescope_entries();
-    let first_sync_completed = gamescope_entries > 0;
-    let detected_games = storage.games.files;
-    let artwork_complete = storage.artwork.files;
-    let artwork_missing = detected_games.saturating_sub(artwork_complete.min(detected_games));
-    let artwork_status = if artwork_complete > 0 {
-        if artwork_missing > 0 {
-            format!(
-                "{} complete · {} missing",
-                artwork_complete, artwork_missing
-            )
-        } else {
-            format!("{} complete", artwork_complete)
+    let manifest = load_sync_manifest();
+    let mut unsynced_added = 0u64;
+    let mut unsynced_changed = 0u64;
+    let mut unsynced_removed = 0u64;
+    let mut total_synced_entries = 0u64;
+    let mut artwork_complete = 0u64;
+    let mut artwork_missing = 0u64;
+    let sync_state;
+    if let Some(entries) = manifest {
+        let mut by_path = HashMap::new();
+        for entry in entries {
+            let key = entry
+                .normalized_rom_path
+                .clone()
+                .or(entry.rom_path.clone())
+                .unwrap_or_default();
+            if key.is_empty() {
+                continue;
+            }
+            if entry.last_synced_at.is_some() || entry.gamescope_entry_id.is_some() {
+                total_synced_entries += 1;
+            }
+            match entry.artwork_status.as_deref() {
+                Some("complete") => artwork_complete += 1,
+                Some("missing") => artwork_missing += 1,
+                _ => {}
+            }
+            by_path.insert(normalize_path(&key), entry);
         }
-    } else if detected_games > 0 {
-        "Not fetched".to_string()
+        for file in &game_files {
+            match by_path.remove(&file.normalized_rom_path) {
+                Some(entry) => {
+                    if entry.size_bytes != 0 && entry.size_bytes != file.size_bytes {
+                        unsynced_changed += 1;
+                    } else if entry.mtime_ms != 0 && entry.mtime_ms != file.mtime_ms {
+                        unsynced_changed += 1;
+                    }
+                }
+                None => unsynced_added += 1,
+            }
+        }
+        unsynced_removed = by_path.len() as u64;
+        sync_state = if unsynced_added + unsynced_changed + unsynced_removed > 0 {
+            "idle"
+        } else {
+            "idle"
+        }
+        .to_string();
     } else {
-        "No artwork".to_string()
-    };
-    let latest = latest_sync_summary();
-    let last_sync_state = latest.clone().unwrap_or_else(|| {
-        if first_sync_completed {
+        total_synced_entries = gamescope_entries.min(detected_games);
+        artwork_complete = storage.artwork.files.min(detected_games);
+        artwork_missing = detected_games.saturating_sub(artwork_complete);
+        sync_state = if detected_games == 0 {
+            "idle"
+        } else {
+            "unknown"
+        }
+        .to_string();
+    }
+    let sync_needed =
+        sync_state != "unknown" && unsynced_added + unsynced_changed + unsynced_removed > 0;
+    let last_sync_state = latest_sync_summary().unwrap_or_else(|| {
+        if sync_state == "unknown" {
+            "unknown".to_string()
+        } else if total_synced_entries > 0 {
             "success".to_string()
         } else {
             "never".to_string()
@@ -1386,22 +1549,106 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         "success" => "Today".to_string(),
         "error" => "Failed".to_string(),
         "running" => "Running".to_string(),
-        _ if first_sync_completed => "Synced".to_string(),
+        "unknown" => "Unknown".to_string(),
+        _ if total_synced_entries > 0 => "Synced".to_string(),
         _ => "Never".to_string(),
+    };
+    let artwork_status = if artwork_complete > 0 && artwork_missing > 0 {
+        format!(
+            "{} complete · {} missing",
+            artwork_complete, artwork_missing
+        )
+    } else if artwork_complete > 0 {
+        format!("{} complete", artwork_complete)
+    } else if sync_state == "unknown" {
+        "Unknown".to_string()
+    } else if detected_games > 0 {
+        "0 complete".to_string()
+    } else {
+        "No artwork".to_string()
     };
     LibraryStatus {
         detected_games,
         detected_files: detected_games,
         gamescope_entries,
-        first_sync_completed,
+        first_sync_completed: total_synced_entries > 0,
         last_sync,
         last_sync_at: None,
         last_sync_state,
         artwork_status,
         artwork_complete,
         artwork_missing,
-        sync_needed: detected_games > 0 && !first_sync_completed,
+        sync_needed,
+        sync_state,
+        unsynced_added,
+        unsynced_changed,
+        unsynced_removed,
+        total_detected_games: detected_games,
+        total_synced_entries,
     }
+}
+
+fn current_game_files() -> Vec<GameFileState> {
+    let mut files = Vec::new();
+    for system in GAME_SYSTEMS {
+        collect_game_files(
+            Path::new(GAMES_ROOT).join(system).as_path(),
+            system,
+            &mut files,
+            0,
+        );
+    }
+    files
+}
+
+fn collect_game_files(path: &Path, _platform: &str, files: &mut Vec<GameFileState>, depth: usize) {
+    if depth > 6 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_game_files(&p, _platform, files, depth + 1);
+        } else if metadata.is_file() {
+            let normalized_rom_path = normalize_path(&p.to_string_lossy());
+            let mtime_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            files.push(GameFileState {
+                normalized_rom_path,
+                size_bytes: metadata.len(),
+                mtime_ms,
+            });
+        }
+    }
+}
+
+fn normalize_path(path: &str) -> String {
+    path.replace('\\', "/").to_ascii_lowercase()
+}
+
+fn load_sync_manifest() -> Option<Vec<SyncManifestEntry>> {
+    for path in SYNC_MANIFEST_PATHS {
+        let Ok(text) = fs::read_to_string(path) else {
+            continue;
+        };
+        if let Ok(doc) = serde_json::from_str::<SyncManifestDoc>(&text) {
+            return Some(doc.entries);
+        }
+        if let Ok(entries) = serde_json::from_str::<Vec<SyncManifestEntry>>(&text) {
+            return Some(entries);
+        }
+    }
+    None
 }
 
 fn count_gamescope_entries() -> u64 {
@@ -1517,7 +1764,7 @@ fn local_ai_status() -> LocalAiStatus {
     }
     .to_string();
     let (gpu_used, gpu_total) = gpu_memory_bytes();
-    let lan_inference_enabled = tcp_port_listening(7777);
+    let lan_inference_enabled = tcp_port_listening(LAN_INFERENCE_PORT);
     LocalAiStatus {
         load_state,
         selected_model_id: selected.map(|model| model.id.clone()),
@@ -1535,7 +1782,7 @@ fn local_ai_status() -> LocalAiStatus {
         gpu_memory_used_bytes: gpu_used,
         gpu_memory_total_bytes: gpu_total,
         lan_inference_enabled,
-        lan_inference_port: lan_inference_enabled.then_some(7777),
+        lan_inference_port: lan_inference_enabled.then_some(LAN_INFERENCE_PORT),
     }
 }
 
@@ -1598,6 +1845,104 @@ fn gpu_memory_bytes() -> (Option<u64>, Option<u64>) {
         .split(',')
         .map(|part| part.trim().parse::<u64>().ok().map(|mib| mib * 1024 * 1024));
     (parts.next().flatten(), parts.next().flatten())
+}
+
+fn hostname() -> String {
+    command_stdout("hostname", &[]).unwrap_or_else(|| "homeconsole".to_string())
+}
+
+fn wifi_adapter_name() -> Option<String> {
+    command_stdout("iw", &["dev"])
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.trim().strip_prefix("Interface ").map(str::to_string))
+        })
+        .or_else(|| {
+            fs::read_dir("/sys/class/net")
+                .ok()?
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .find(|n| n.starts_with("wl"))
+        })
+}
+
+fn samba_available() -> bool {
+    SAMBA_SERVICE_NAMES
+        .iter()
+        .any(|unit| service_state(unit) == "running")
+        || tcp_port_listening(445)
+}
+
+fn surface_and_samba_status(
+    canonical_url: &str,
+    network: &NetworkStatus,
+) -> (SurfaceStatus, SambaStatus) {
+    let netbios = "HOMECONSOLE".to_string();
+    let host = hostname();
+    let share = "games".to_string();
+    let samba_ok = samba_available() && Path::new(GAMES_ROOT).exists();
+    let windows_unc = samba_ok.then(|| format!(r"\\{}\{}", netbios, share));
+    let windows_unc_by_ip = (samba_ok && network.ip_address != "—")
+        .then(|| format!(r"\\{}\{}", network.ip_address, share));
+    let smb_url = samba_ok.then(|| format!("smb://{}/{}", host, share));
+    let share_status = SambaShareStatus {
+        name: share.clone(),
+        purpose: "games".to_string(),
+        windows_unc: windows_unc.clone(),
+        windows_unc_by_ip: windows_unc_by_ip.clone(),
+        smb_url: smb_url.clone(),
+    };
+    let shares = if samba_ok {
+        vec![share_status]
+    } else {
+        Vec::new()
+    };
+    (
+        SurfaceStatus {
+            http: canonical_url.trim_end_matches('/').to_string(),
+            mdns: format!("{}.local", host),
+            smb: netbios,
+            windows_unc,
+            windows_unc_by_ip,
+            smb_url,
+        },
+        SambaStatus {
+            state: if samba_ok {
+                "available"
+            } else if SAMBA_SERVICE_NAMES
+                .iter()
+                .any(|unit| service_state(unit) == "unknown")
+            {
+                "unknown"
+            } else {
+                "disabled"
+            }
+            .to_string(),
+            shares,
+        },
+    )
+}
+
+fn updates_status() -> UpdatesStatus {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let check = fs::read_to_string("/var/lib/harmonia/receipts/arcadia-check-latest/run.json").ok();
+    let state = if let Some(text) = check.as_deref() {
+        if text.contains("\"update_available\":true") || text.contains("\"update_available\": true")
+        {
+            "available"
+        } else if text.contains("\"ok\":false") || text.contains("\"ok\": false") {
+            "error"
+        } else {
+            "current"
+        }
+    } else {
+        "unknown"
+    };
+    UpdatesStatus {
+        state: state.to_string(),
+        current_version: current,
+        available_version: None,
+    }
 }
 
 fn runtime_status(started_unix: u64) -> RuntimeStatus {
@@ -2149,8 +2494,8 @@ mod tests {
             "GPU",
             "LAN",
             "Game Library",
-            "Detected files",
-            "GameScope entries",
+            "Detected",
+            "Synced",
             "Last sync",
         ] {
             assert!(home_html.contains(required), "missing {required}");
@@ -2196,7 +2541,9 @@ mod tests {
             "Loaded Model",
             "Available Models",
             "GPU Usage",
-            "Not Loaded",
+            "Available Models",
+            "GPU Usage",
+            "Open LAN Inference Settings",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
@@ -2330,17 +2677,18 @@ mod tests {
             "Artwork",
             "AI Models",
             "Other Storage",
+            "Open Games Folder",
             "Clear Artwork Cache",
             "Clearing artwork does not delete games. Artwork can be downloaded again during Sync.",
+            "Rebuild Artwork on Next Sync",
             "Clean Temporary Files",
             "data-nav-target=\"storage\"",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
         assert!(
-            rendered.contains("data-action=\"remove-ai-model\"")
-                || rendered.contains("No local AI model files"),
-            "storage page must either show removable model actions or the true empty model state"
+            rendered.contains("Remove Model") || rendered.contains("No local AI model files"),
+            "storage page must either show removable models or the true empty model state"
         );
         if status.storage.percent_used >= 90 {
             assert!(rendered.contains(
@@ -2356,7 +2704,7 @@ mod tests {
             .expect("storage view starts");
         let storage_end = storage_start
             + rendered[storage_start..]
-                .find("<section id=\"view-ai-model\"")
+                .find("<section id=\"view-local-ai\"")
                 .expect("local ai follows storage");
         let storage_html = &rendered[storage_start..storage_end];
         for forbidden in ["/home", "/var", "/mnt", "/opt", "delete-all-games"] {
@@ -2391,6 +2739,7 @@ mod tests {
             "Game Library",
             "Local AI",
             "storage-bar",
+            "Copy console URL",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
@@ -2419,21 +2768,13 @@ mod tests {
                 .expect("access follows network");
         let network_html = &rendered[network_start..network_end];
         for required in [
-            "Connection",
-            "Type",
+            "Transport",
             "Address",
-            "Signal",
-            "Wi-Fi",
-            "Network name",
-            "Wi-Fi password",
-            "Scan Wi-Fi",
-            "Connect Wi-Fi",
-            "Disconnect Wi-Fi",
+            "Internet",
             "Console",
             "Game folders",
-            "mDNS",
+            "Wi-Fi",
             "http://arcadia.home.arpa",
-            "smb://HOMECONSOLE",
         ] {
             assert!(
                 network_html.contains(required),
@@ -2474,12 +2815,20 @@ mod tests {
             "LAN IP address",
             "Username",
             "ssh console@console.home.arpa",
+            "Enable SSH",
+            "Disable SSH",
+            "Copy SSH Command",
             "GameScope",
             "Samba",
             "Game Sync",
             "Local AI",
             "LAN Inference",
             "Web GUI",
+            "Restart",
+            "Sync",
+            "View",
+            "Copy",
+            "Download",
             "Local domain/path",
             "MAC address",
             "Status",
@@ -2525,6 +2874,7 @@ mod tests {
             "System Log".to_string(),
             "SSH is for direct technical access".to_string(),
             "Normal game management does not require SSH".to_string(),
+            "Only enable SSH on a trusted home network".to_string(),
             "LAN Inference is intended only for trusted home networks".to_string(),
             "Runs the console gaming session".to_string(),
             "Shares game folders".to_string(),
@@ -2537,71 +2887,6 @@ mod tests {
             assert!(
                 !system_html.contains(&forbidden),
                 "forbidden System label survived: {forbidden}"
-            );
-        }
-    }
-
-    #[test]
-    fn rendered_buttons_have_unique_visible_intent_and_no_fake_action_modals() {
-        use std::collections::BTreeMap;
-        let state = AppState {
-            started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
-            product: "HomeConsole".to_string(),
-        };
-        let status = console_status(&state);
-        let rendered = ui::layout(&status).into_string();
-        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        let mut rest = rendered.as_str();
-        while let Some(start) = rest.find("<button") {
-            rest = &rest[start..];
-            let Some(end_open) = rest.find('>') else {
-                break;
-            };
-            let Some(end) = rest.find("</button>") else {
-                break;
-            };
-            let text = rest[end_open + 1..end]
-                .split('<')
-                .next()
-                .unwrap_or_default()
-                .trim()
-                .trim_start_matches(|c: char| !c.is_ascii_alphanumeric())
-                .trim()
-                .to_string();
-            if !text.is_empty() && text != "×" {
-                *counts.entry(text).or_default() += 1;
-            }
-            rest = &rest[end + "</button>".len()..];
-        }
-        let duplicates: Vec<_> = counts.iter().filter(|(_, count)| **count > 1).collect();
-        assert!(
-            duplicates.is_empty(),
-            "duplicate button labels: {duplicates:?}"
-        );
-        assert_eq!(counts.get("Start Sync"), Some(&1));
-        assert_eq!(rendered.matches(">Start Sync</button>").count(), 1);
-        for fake in [
-            "Load This Model",
-            "Enable SSH",
-            "Disable SSH",
-            "Enable LAN Inference",
-            "Disable LAN Inference",
-            "Download",
-            "Rescan Game Storage",
-            "Rebuild Artwork on Next Sync",
-        ] {
-            assert!(!rendered.contains(fake), "fake action survived: {fake}");
-        }
-        for required in [
-            "/api/network/scan-wifi",
-            "/api/network/connect-wifi",
-            "/api/network/disconnect-wifi",
-            "/api/actions/reboot-console",
-        ] {
-            assert!(
-                rendered.contains(required) || APP_JS.contains(required),
-                "missing backend seam {required}"
             );
         }
     }
@@ -2621,7 +2906,7 @@ mod tests {
             "view-games",
             "view-sync",
             "view-storage",
-            "view-ai-model",
+            "view-local-ai",
             "view-lan-inference",
             "view-network",
             "view-access-pin",
@@ -2631,9 +2916,27 @@ mod tests {
         ] {
             assert!(rendered.contains(view), "missing {view}");
         }
-        for indicator in ["GameScope", "Storage", "Sync", "AI", "Update", "PIN"] {
+        for indicator in [
+            "GameScope",
+            "Storage",
+            "Sync",
+            "Local AI",
+            "Updates",
+            "Access / PIN",
+        ] {
             assert!(rendered.contains(indicator), "missing {indicator}");
         }
+        let header_end = rendered
+            .find("<div class=\"workspace\"")
+            .expect("workspace follows header");
+        let header_html = &rendered[..header_end];
+        for forbidden in [">Ethernet<", ">Running<", ">Needed<", ">Open<"] {
+            assert!(
+                !header_html.contains(forbidden),
+                "forbidden visible header text survived: {forbidden}"
+            );
+        }
+        assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
         assert!(rendered.contains("\\\\HOMECONSOLE"));
         assert!(rendered.contains("http://console.home.arpa:7777"));

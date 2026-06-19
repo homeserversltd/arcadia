@@ -68,7 +68,7 @@ async function initializeGuiPinGate() {
 function setPinIndicator(required) {
   document.querySelectorAll('.status-badge').forEach((badge) => {
     if (badge.dataset.chipKind !== 'pin') return;
-    badge.querySelector('strong').textContent = required ? 'PIN' : 'Open';
+    badge.setAttribute('aria-label', required ? 'PIN required for GUI access' : 'GUI open without PIN');
     badge.classList.toggle('status-badge--warn', required);
     badge.classList.toggle('status-badge--idle', !required);
   });
@@ -79,6 +79,7 @@ function bindNavigation() {
   const panels = Array.from(document.querySelectorAll('[data-view-panel]'));
   const activate = (view) => {
     if (view === 'advanced') view = 'system';
+    if (view === 'ai-model') view = 'local-ai';
     const next = panels.some((panel) => panel.dataset.viewPanel === view) ? view : 'home';
     buttons.forEach((button) => {
       const active = button.dataset.view === next;
@@ -95,7 +96,16 @@ function bindNavigation() {
   };
   window.activateArcadiaView = activate;
   buttons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.view)));
-  document.querySelectorAll('[data-nav-target]').forEach((button) => button.addEventListener('click', () => activate(button.dataset.navTarget)));
+  document.querySelectorAll('[data-nav-target]').forEach((button) => button.addEventListener('click', () => {
+    activate(button.dataset.navTarget);
+    if (button.dataset.focusTarget) {
+      setTimeout(() => {
+        const node = document.getElementById(button.dataset.focusTarget);
+        if (node) { node.focus({ preventScroll: false }); node.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        if (button.dataset.focusTarget === 'wifi-management') requestWifiScan(true);
+      }, 40);
+    }
+  }));
   let stored = 'home';
   try { stored = localStorage.getItem('arcadia-active-view') || 'home'; } catch (_) {}
   activate(stored);
@@ -224,12 +234,13 @@ function bindConsoleActions() {
   document.querySelectorAll('.btn[data-copy-value]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
-      try {
-        await navigator.clipboard.writeText(button.dataset.copyValue || '');
-        PopupManager.showToast('Copied', 'success');
-      } catch (_) {
-        PopupManager.showModal({ title: 'Copy', body: button.dataset.copyValue || '' });
+      const value = button.dataset.copyValue || '';
+      if (!value || /smb::|smb:\/|undefined/i.test(value)) {
+        PopupManager.showToast('Address unavailable', 'error');
+        return;
       }
+      const ok = await copyToClipboard(value);
+      PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
     });
   });
   document.querySelectorAll('.btn[data-url]').forEach((button) => {
@@ -238,6 +249,24 @@ function bindConsoleActions() {
       window.location.href = button.dataset.url;
     });
   });
+}
+
+async function copyToClipboard(value) {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(value); return true; }
+  } catch (_) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (_) { return false; }
 }
 
 function prepareSyncStart() {
@@ -262,9 +291,9 @@ function setSyncState(state) {
     node.dataset.syncState = state.toLowerCase().replace(/\s+/g, '-');
   }
   document.querySelectorAll('.status-badge').forEach((badge) => {
-    const label = badge.querySelector('span')?.textContent?.trim().toLowerCase();
-    if (label !== 'sync') return;
-    badge.querySelector('strong').textContent = state.replace('Sync ', '');
+    if (badge.dataset.chipKind !== 'sync') return;
+    badge.setAttribute('aria-label', state);
+    badge.title = state;
   });
 }
 
@@ -377,55 +406,58 @@ function markOnboardingFirstSyncComplete(data = {}) {
   if (card) card.hidden = true;
 }
 
+async function requestWifiScan(quiet = false) {
+  try {
+    const data = await postJson('/api/network/wifi/scan', {});
+    setMessage('wifi-message', data.message || 'Wi-Fi scan requested.', data.ok ? 'success' : 'error');
+    if (!quiet) PopupManager.showToast(data.message || 'Wi-Fi scan requested.', data.ok ? 'success' : 'error');
+  } catch (_) {
+    setMessage('wifi-message', 'Wi-Fi scan request failed.', 'error');
+    if (!quiet) PopupManager.showToast('Wi-Fi scan request failed', 'error');
+  }
+}
+
 function bindNetworkControls() {
-  document.querySelectorAll('[data-network-action][data-network-endpoint]').forEach((button) => {
+  document.querySelectorAll('[data-network-action]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
-      clearMessage('wifi-message');
       const action = button.dataset.networkAction;
-      const original = button.textContent;
-      button.disabled = true;
-      button.textContent = action === 'scan-wifi' ? 'Scanning...' : 'Disconnecting...';
+      let url = '/api/network/wifi/status';
+      let body = {};
+      if (action === 'scan-wifi') return requestWifiScan(false);
+      if (action === 'disconnect-wifi') url = '/api/network/wifi/disconnect';
+      if (action === 'forget-wifi') { url = '/api/network/wifi/forget'; body = { ssid: button.dataset.ssid || '' }; }
       try {
-        const data = await postJson(button.dataset.networkEndpoint, {});
-        setMessage('wifi-message', formatActionResult(data), data.ok ? 'success' : 'error');
-        PopupManager.showToast(data.message || (data.ok ? 'Wi-Fi command complete' : 'Wi-Fi command failed'), data.ok ? 'success' : 'error');
+        const data = await postJson(url, body);
+        setMessage('wifi-message', data.message || 'Network action returned no message.', data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.message || 'Network action complete.', data.ok ? 'success' : 'error');
       } catch (_) {
-        setMessage('wifi-message', 'Wi-Fi request failed.', 'error');
-        PopupManager.showToast('Wi-Fi request failed', 'error');
-      } finally {
-        button.disabled = false;
-        button.textContent = original;
+        setMessage('wifi-message', 'Network action request failed.', 'error');
+        PopupManager.showToast('Network action request failed', 'error');
       }
     });
   });
-
-  const form = document.getElementById('wifi-connect-form');
-  if (form) {
+  document.querySelectorAll('[data-network-connect-form]').forEach((form) => {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      clearMessage('wifi-message');
       const ssid = form.querySelector('input[name="ssid"]')?.value || '';
       const password = form.querySelector('input[name="password"]')?.value || '';
-      const button = form.querySelector('button[type="submit"]');
       if (!ssid.trim()) return setMessage('wifi-message', 'Wi-Fi network name is required.', 'error');
-      button.disabled = true;
-      button.textContent = 'Connecting...';
+      const button = form.querySelector('button[type="submit"]');
+      const old = button?.textContent;
+      if (button) { button.disabled = true; button.textContent = 'Connecting...'; }
       try {
-        const data = await postJson('/api/network/connect-wifi', { ssid, password });
+        const data = await postJson('/api/network/wifi/connect', { ssid, password });
         form.querySelector('input[name="password"]').value = '';
-        setMessage('wifi-message', formatActionResult(data), data.ok ? 'success' : 'error');
-        PopupManager.showToast(data.message || (data.ok ? 'Wi-Fi connected' : 'Wi-Fi connection failed'), data.ok ? 'success' : 'error');
+        setMessage('wifi-message', data.message || 'Wi-Fi connect returned no message.', data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.message || 'Wi-Fi connect complete.', data.ok ? 'success' : 'error');
       } catch (_) {
-        form.querySelector('input[name="password"]').value = '';
-        setMessage('wifi-message', 'Wi-Fi connection request failed.', 'error');
+        setMessage('wifi-message', 'Wi-Fi connect request failed.', 'error');
       } finally {
-        button.disabled = false;
-        button.textContent = 'Connect Wi-Fi';
+        if (button) { button.disabled = false; button.textContent = old; }
       }
     });
-  }
-
+  });
   document.querySelectorAll('[data-toggle-password]').forEach((toggle) => {
     toggle.addEventListener('change', () => {
       const input = document.querySelector(`input[name="${toggle.dataset.togglePassword}"]`);
