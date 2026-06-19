@@ -67,9 +67,8 @@ async function initializeGuiPinGate() {
 
 function setPinIndicator(required) {
   document.querySelectorAll('.status-badge').forEach((badge) => {
-    const label = badge.querySelector('span')?.textContent?.trim().toLowerCase();
-    if (label !== 'pin') return;
-    badge.querySelector('strong').textContent = required ? 'Required' : 'Open';
+    if (badge.dataset.chipKind !== 'pin') return;
+    badge.querySelector('strong').textContent = required ? 'PIN' : 'Open';
     badge.classList.toggle('status-badge--warn', required);
     badge.classList.toggle('status-badge--idle', !required);
   });

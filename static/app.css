@@ -61,14 +61,17 @@ button { -webkit-tap-highlight-color: transparent; }
 .product-lockup p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
 .header-indicators { margin-left: auto; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
 .status-badge {
-  min-width: 92px;
-  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(0,0,0,.18);
 }
-.status-badge span { display: block; color: var(--muted); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
-.status-badge strong { display: block; margin-top: 1px; font-size: 13px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-icon { display: inline-grid; place-items: center; width: 14px; color: var(--muted); font-size: 12px; line-height: 1; }
+.status-badge strong { display: block; font-size: 13px; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status-badge--good strong { color: var(--good); }
 .status-badge--warn strong { color: var(--warn); }
 .status-badge--bad strong { color: var(--bad); }
@@ -127,38 +130,32 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .status-card-grid, .model-grid, .power-grid, .path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
 .path-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.onboarding-card { margin: 16px 0 18px; padding: 18px; border-color: rgba(242,140,40,.52); background: linear-gradient(145deg, rgba(242,140,40,.26), rgba(255,255,255,.08)); }
-.onboarding-card[hidden] { display: none; }
-.onboarding-head { display: flex; justify-content: space-between; gap: 14px; align-items: start; }
-.onboarding-head h3 { margin: 0; font-size: 22px; }
-.onboarding-head p:not(.eyebrow) { margin: 6px 0 0; color: var(--muted); }
-.onboarding-checklist { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 10px; }
-.onboarding-step { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 10px; padding: 12px; border-radius: 18px; background: rgba(0,0,0,.18); border: 1px solid var(--line); }
-.onboarding-number { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 999px; background: var(--orange-strong); color: #23091d; font-weight: 900; }
-.onboarding-copy { display: grid; gap: 3px; }
-.onboarding-copy strong { color: var(--cream); }
-.onboarding-copy p, .onboarding-copy small { margin: 0; color: var(--muted); }
-.onboarding-state { padding: 5px 8px; border: 1px solid currentColor; border-radius: 999px; color: var(--warn); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
-.onboarding-step[data-onboarding-state="Complete"] .onboarding-state { color: var(--good); }
-.onboarding-step[data-onboarding-state="Needs Attention"] .onboarding-state { color: var(--bad); }
-.home-action-panel { margin: 16px 0 18px; padding: 18px; border: 1px solid rgba(242,140,40,.34); border-radius: 26px; background: linear-gradient(145deg, rgba(242,140,40,.20), rgba(255,255,255,.075)); box-shadow: 0 18px 44px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.10); }
-.home-section { margin: 16px 0 0; }
+.priority-card { margin: 0 0 14px; padding: 18px; display: grid; gap: 9px; align-items: start; border: 1px solid rgba(242,140,40,.42); border-radius: 26px; background: linear-gradient(145deg, rgba(242,140,40,.22), rgba(255,255,255,.075)); box-shadow: 0 18px 44px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.10); }
+.priority-card strong { font-size: 22px; line-height: 1.12; }
+.priority-card span, .card-line { color: var(--muted); font-size: 14px; line-height: 1.35; }
+.priority-card .btn { justify-self: start; }
+.home-operational-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.operational-card { min-height: 156px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.055)); box-shadow: 0 15px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.07); }
+.operational-card h3 { margin: 0 0 10px; font-size: 18px; }
+.operational-card.attention { border-color: rgba(255,196,92,.45); background: linear-gradient(145deg, rgba(255,196,92,.16), rgba(255,255,255,.06)); }
+.local-ai-home-card { grid-column: 1 / -1; }
+.state-rows { display: grid; gap: 7px; }
+.state-row { display: grid; grid-template-columns: minmax(96px, .42fr) minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.state-row span { color: var(--muted); font-size: 13px; }
+.state-row strong { color: var(--cream); font-size: 14px; overflow-wrap: anywhere; }
+.state-rows--compact .state-row { grid-template-columns: minmax(84px, .34fr) minmax(0,1fr); }
+.reachability-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0 0; }
+.reachability { padding: 5px 8px; border-radius: 999px; background: rgba(0,0,0,.18); border: 1px solid var(--line); color: var(--idle); font-size: 12px; font-weight: 900; }
+.reachability--ok { color: var(--good); }
+.inline-actions--compact { gap: 7px; margin: 10px 0 0; }
+.inline-actions--compact .btn { min-height: 34px; padding: 7px 10px; font-size: 12px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 14px; margin: 0 0 14px; }
 .section-heading h3 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
 .section-heading p { margin: 0; max-width: 520px; color: var(--muted); font-size: 14px; line-height: 1.35; }
 .section-heading--compact h3 { font-size: 18px; }
-.home-action-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.home-action-tile { min-height: 176px; display: grid; grid-template-rows: auto 1fr auto; gap: 12px; padding: 18px; text-align: left; border: 1px solid rgba(255,244,223,.17); border-radius: 24px; color: var(--cream); background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.07)); cursor: pointer; box-shadow: 0 16px 36px rgba(0,0,0,.25); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease; }
-.home-action-tile:hover, .home-action-tile:focus-visible { transform: translateY(-3px); outline: none; border-color: rgba(255,159,47,.72); box-shadow: 0 22px 46px rgba(0,0,0,.34), 0 0 0 4px rgba(242,140,40,.14); background: linear-gradient(145deg, rgba(242,140,40,.24), rgba(255,255,255,.10)); }
-.home-action-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 18px; font-size: 30px; font-weight: 900; color: #23091d; background: linear-gradient(145deg, var(--orange-strong), #d95e20); box-shadow: 0 12px 26px rgba(242,140,40,.24); }
-.home-action-copy { display: grid; gap: 7px; }
-.home-action-copy strong { font-size: 20px; line-height: 1.1; }
-.home-action-copy span { color: var(--muted); font-size: 14px; line-height: 1.4; }
-.home-action-badge { justify-self: start; padding: 5px 9px; border-radius: 999px; border: 1px solid rgba(255,244,223,.18); background: rgba(0,0,0,.22); color: var(--cream); font-size: 12px; font-weight: 900; }
 .status-card-grid--compact .status-card { min-height: 92px; padding: 12px; }
-.home-recent { padding-bottom: 2px; }
-.status-card, .instruction-card, .path-card, .folder-card, .settings-panel, .form-card, .active-model, .power-card, .collapsible-log, .service-list, .storage-summary, .storage-category-card, .system-card, .onboarding-card, .network-summary-card, .network-card {
-  border: 1px solid var(--line);
+.status-card, .instruction-card, .path-card, .folder-card, .settings-panel, .form-card, .active-model, .power-card, .collapsible-log, .service-list, .storage-summary, .storage-category-card, .system-card {
+
   border-radius: var(--radius);
   background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.055));
   box-shadow: 0 15px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.07);
@@ -424,8 +421,8 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .sidebar-launcher { padding: 8px; }
   .launcher-button { min-height: 72px; }
   .launcher-label { font-size: 11px; }
-  .status-card-grid, .model-grid, .power-grid, .home-action-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .network-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sync-command-center { grid-template-columns: 1fr; }
+  .status-card-grid, .model-grid, .power-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sync-command-center { grid-template-columns: 1fr; }
   .sync-step:not(:last-child)::after { content: "↓"; right: auto; left: 22px; top: auto; bottom: -19px; }
   .storage-hero { grid-template-columns: 1fr; }
   .section-heading { align-items: start; flex-direction: column; }
@@ -436,12 +433,11 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
   .view { padding: 20px; }
-  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-action-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .network-grid { grid-template-columns: 1fr; }
-  .system-card--services, .system-card--logs, .system-card--networking, .network-card--wide { grid-column: auto; }
-  .system-service-row, .network-service-row, .onboarding-step { grid-template-columns: 1fr; align-items: start; }
-  .system-row-actions { justify-content: flex-start; }
+  .status-card-grid, .model-grid, .power-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list { grid-template-columns: 1fr; }
+  .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
+  .system-service-row { grid-template-columns: 1fr; align-items: start; }
+.system-row-actions { justify-content: flex-start; }
   .storage-model-row { grid-template-columns: 1fr; align-items: start; }
-  .home-action-tile { min-height: 148px; }
   .task-hero { align-items: stretch; flex-direction: column; }
   .btn { width: 100%; }
   .modal-close { position: static; transform: none; float: right; }

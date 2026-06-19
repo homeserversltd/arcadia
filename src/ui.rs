@@ -14,7 +14,7 @@ const VIEWS: [(&str, &str, &str); 11] = [
     ("storage", "▰", "Storage"),
     ("ai-model", "◉", "Local AI"),
     ("lan-inference", "⇄", "LAN Inference"),
-    ("network", "⌁", "Network"),
+    ("network", "◌", "Network"),
     ("access-pin", "●", "Access / PIN"),
     ("updates", "⬆", "Updates"),
     ("power", "⏻", "Power"),
@@ -71,42 +71,48 @@ fn header(status: &ConsoleStatus) -> Markup {
                 }
             }
             div class="header-indicators" aria-label="Console state" {
-                (nav_status_badge("Network", "Ethernet", "good", "Connected by Ethernet.", "network"))
-                (nav_status_badge("GameScope", "Running", "good", "The TV game session is expected to be running.", "system"))
-                (storage_status_badge(&status.storage.header_state, status.storage.header_class, &status.storage.header_tooltip))
-                (status_badge("Sync", "Idle", "idle", "No game sync is running right now."))
-                (status_badge("AI", "Not Loaded", "idle", "No local AI model is currently marked as loaded."))
-                (status_badge("Update", "Current", "good", "No update is currently reported."))
-                (status_badge("PIN", if status.gui_pin.pin_required { "Required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, "Whether the web console asks for the setup PIN before opening."))
+                (nav_status_badge("network", if status.network.online { "◌" } else { "!" }, if status.network.online { &status.network.connection_type } else { "Offline" }, if status.network.online { "good" } else { "bad" }, "Open Network", "network"))
+                (nav_status_badge("gamescope", "▶", title_case_state(status.arcadia.service), if status.arcadia.service == "running" { "good" } else { "idle" }, "Open System", "system"))
+                (nav_status_badge("storage", "▰", &status.storage.free, status.storage.header_class, &status.storage.header_tooltip, "storage"))
+                (status_badge("sync", "↻", if status.library.sync_needed { "Needed" } else { "Idle" }, if status.library.sync_needed { "warn" } else { "idle" }, "Game sync state."))
+                (status_badge("ai", "◉", if status.local_ai.loaded_model.is_some() { "Loaded" } else { "No AI" }, if status.local_ai.loaded_model.is_some() { "good" } else { "idle" }, "Local AI state."))
+                (status_badge("pin", "●", if status.gui_pin.pin_required { "PIN" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, "GUI PIN state."))
             }
         }
     }
 }
 
-fn status_badge(label: &str, state: &str, class: &str, help: &str) -> Markup {
+fn status_badge(kind: &str, icon: &str, state: &str, class: &str, help: &str) -> Markup {
     html! {
-        div class=(format!("status-badge status-badge--{}", class)) title=(help) {
-            span { (label) }
+        div class=(format!("status-badge status-badge--{}", class)) title=(help) data-chip-kind=(kind) aria-label=(format!("{}: {}", kind, state)) {
+            span class="chip-icon" aria-hidden="true" { (icon) }
             strong { (state) }
         }
     }
 }
 
-fn nav_status_badge(label: &str, state: &str, class: &str, help: &str, target: &str) -> Markup {
+fn nav_status_badge(
+    kind: &str,
+    icon: &str,
+    state: &str,
+    class: &str,
+    help: &str,
+    target: &str,
+) -> Markup {
     html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target=(target) title=(help) aria-label=(format!("Open {}", label)) {
-            span { (label) }
+        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) title=(help) aria-label=(format!("{}: {}", kind, state)) {
+            span class="chip-icon" aria-hidden="true" { (icon) }
             strong { (state) }
         }
     }
 }
 
-fn storage_status_badge(state: &str, class: &str, help: &str) -> Markup {
-    html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav", class)) type="button" data-nav-target="storage" title=(help) aria-label="Open Storage" {
-            span { "Storage" }
-            strong { (state) }
-        }
+fn title_case_state(state: &str) -> &'static str {
+    match state {
+        "running" => "Running",
+        "stopped" => "Stopped",
+        "starting" => "Starting",
+        _ => "Unknown",
     }
 }
 
@@ -137,48 +143,202 @@ fn view_shell(id: &str, eyebrow: &str, title: &str, explanation: &str, body: Mar
 }
 
 fn home_view(status: &ConsoleStatus) -> Markup {
-    view_shell("home", "HomeConsole launchpad", "Console Home", "Manage the local game console from here. Add games over the network, sync them into GameScope, or load a local AI model.", html! {
-        (onboarding_card())
-
-        section class="home-action-panel" aria-labelledby="home-primary-actions-title" {
-            div class="section-heading" {
-                h3 id="home-primary-actions-title" { "What do you want to do?" }
-                p { "Choose the job first. Status is below when you need it." }
-            }
-            div class="home-action-grid" {
-                (action_tile("▣", "Add Games", "Open the console’s network folders and copy games into the right system folder.", "games", "Network copy"))
-                (action_tile("↻", "Sync Games", "Scan the game folders, fetch artwork, and add games to the GameScope library.", "sync", "Ready"))
-                (action_tile("◉", "Local AI", "Choose the local AI that runs on this console and can be used on your home network.", "ai-model", "Not Loaded"))
+    html! {
+        section id="view-home" class="view" data-view-panel="home" tabindex="-1" {
+            (priority_card(status))
+            div class="home-operational-grid" {
+                (now_card(status))
+                (home_storage_card(status))
+                (home_network_card(status))
+                (home_library_card(status))
+                (home_local_ai_card(status))
             }
         }
+    }
+}
 
-        section class="home-section" aria-labelledby="home-status-title" {
-            div class="section-heading section-heading--compact" {
-                h3 id="home-status-title" { "Console Status" }
-                p { "Health at a glance; actions stay above." }
-            }
-            div class="status-card-grid status-card-grid--compact" {
-                (status_card("Network", "Online", "Console GUI reachable on the home network."))
-                (status_card("GameScope", "Running", "Games appear on the TV after sync creates shortcuts."))
-                (status_card("Storage", &format!("{} — {} free", status.storage.health, status.storage.free), &format!("{} used. Open Storage for the full breakdown.", status.storage.percent)))
-                (status_card("Last Sync", "Not reported", "Run Sync Games after copying new files."))
-                (status_card("Loaded Local AI", "Not Loaded", "Load local AI only when you need LAN inference."))
-                (status_card("Software Version", status.arcadia.version, "Arcadia web console version."))
+fn priority_card(status: &ConsoleStatus) -> Markup {
+    let (state, detail, action, target, endpoint): (
+        &str,
+        String,
+        Option<&str>,
+        Option<&str>,
+        Option<&str>,
+    ) = if !status.network.online {
+        (
+            "Network offline",
+            "Connect Wi-Fi to copy games.".to_string(),
+            Some("Connect Wi-Fi"),
+            Some("network"),
+            None,
+        )
+    } else if status.library.sync_needed {
+        (
+            "Games ready to sync",
+            format!(
+                "{} files found. No library entries yet.",
+                status.library.detected_games
+            ),
+            Some("Start first sync"),
+            None,
+            Some("/api/actions/sync-games"),
+        )
+    } else if status.storage.percent_used >= 90 {
+        (
+            "Storage low",
+            format!(
+                "{} free. {} used.",
+                status.storage.free, status.storage.percent
+            ),
+            Some("Free space"),
+            Some("storage"),
+            None,
+        )
+    } else {
+        (
+            "Ready",
+            "Console is ready to use.".to_string(),
+            Some("Open GameScope"),
+            Some("system"),
+            None,
+        )
+    };
+    html! {
+        article class="priority-card" {
+            strong { (state) }
+            span { (detail) }
+            @if let Some(label) = action {
+                @if let Some(endpoint) = endpoint {
+                    (action_button(ButtonVariant::Primary, label, "sync-games", endpoint))
+                } @else if let Some(target) = target {
+                    (nav_button(label, target))
+                }
             }
         }
+    }
+}
 
-        section class="home-section home-recent" aria-labelledby="home-recent-title" {
-            div class="section-heading section-heading--compact" {
-                h3 id="home-recent-title" { "Recent Activity" }
-                p { "Last sync is not reported yet. Local AI is not loaded." }
-            }
-            div class="inline-actions" {
-                (nav_button("Open Games", "games"))
-                (nav_button("Open Sync", "sync"))
-                (nav_button("Open Local AI", "ai-model"))
+fn now_card(status: &ConsoleStatus) -> Markup {
+    html! {
+        article class="operational-card now-card" {
+            h3 { "Now" }
+            div class="state-rows" {
+                (state_row("GameScope", title_case_state(status.arcadia.service)))
+                (state_row("Sync", if status.library.sync_needed { "Needed" } else { "Idle" }))
+                (state_row("Local AI", status.local_ai.loaded_model.as_deref().unwrap_or("No AI loaded")))
+                (state_row("Session", "No active game"))
             }
         }
-    })
+    }
+}
+
+fn home_storage_card(status: &ConsoleStatus) -> Markup {
+    html! {
+        article class="operational-card storage-home-card" {
+            h3 { "Storage" }
+            p class="card-line" { (status.storage.free) " free · " (status.storage.percent) " used" }
+            div class="state-rows state-rows--compact" {
+                (state_row("Games", &status.storage.games.size))
+                (state_row("Artwork", &status.storage.artwork.size))
+                (state_row("AI Models", &status.storage.ai_models.size))
+                (state_row("Other", &status.storage.other.size))
+            }
+            div class="inline-actions inline-actions--compact" {
+                (nav_button("Open Storage", "storage"))
+                @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clear Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
+                @if status.storage.ai_models.bytes >= 1_000_000_000 { (nav_button("Remove Models", "storage")) }
+            }
+        }
+    }
+}
+
+fn home_network_card(status: &ConsoleStatus) -> Markup {
+    html! {
+        article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
+            @if status.network.online {
+                h3 { "Network" }
+                p class="card-line" {
+                    (status.network.connection_type)
+                    @if let Some(ssid) = &status.network.ssid { " · " (ssid) }
+                }
+                p class="card-line" {
+                    (status.network.ip_address)
+                    @if let Some(signal) = &status.network.signal { " · " (signal) }
+                }
+                div class="reachability-row" {
+                    (reachability("Console", status.network.console_reachable))
+                    (reachability("Game folders", status.network.game_folders_reachable))
+                    (reachability("LAN AI", status.network.lan_ai_reachable))
+                }
+                div class="inline-actions inline-actions--compact" {
+                    (nav_button("Manage Wi-Fi", "network"))
+                    (copy_button("Copy folder address", &format!("smb://{}", status.surfaces.smb)))
+                    (copy_button("Copy console address", status.canonical_url.trim_end_matches('/')))
+                }
+            } @else {
+                h3 { "Network offline" }
+                p class="card-line" { "Connect Wi-Fi to copy games." }
+                (nav_button("Connect Wi-Fi", "network"))
+            }
+        }
+    }
+}
+
+fn home_library_card(status: &ConsoleStatus) -> Markup {
+    let line = if status.library.sync_needed {
+        format!("{} files found · not synced", status.library.detected_games)
+    } else if status.library.gamescope_entries > 0 {
+        format!(
+            "{} games · {}",
+            status.library.gamescope_entries, status.library.last_sync
+        )
+    } else {
+        "No games detected".to_string()
+    };
+    html! {
+        article class="operational-card library-home-card" {
+            h3 { "Library" }
+            p class="card-line" { (line) }
+            p class="card-line" { (if status.library.sync_needed { "First sync needed" } else { status.library.artwork_status.as_str() }) }
+            div class="inline-actions inline-actions--compact" {
+                @if status.library.sync_needed { (action_button(ButtonVariant::Primary, "Start Sync", "sync-games", "/api/actions/sync-games")) }
+                @else { (nav_button("View Sync", "sync")) }
+            }
+        }
+    }
+}
+
+fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
+    let loaded = status
+        .local_ai
+        .loaded_model
+        .as_deref()
+        .unwrap_or("No AI loaded");
+    let lan = if let Some(port) = status.local_ai.lan_inference_port {
+        format!("LAN inference on · :{}", port)
+    } else {
+        "LAN inference off".to_string()
+    };
+    html! {
+        article class="operational-card local-ai-home-card" {
+            h3 { "Local AI" }
+            p class="card-line" { (loaded) }
+            p class="card-line" { (lan) }
+            div class="inline-actions inline-actions--compact" {
+                @if status.local_ai.loaded_model.is_some() { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload support will stop the local model runner when connected.")) }
+                @else { (nav_button("Load AI", "ai-model")) }
+                @if status.local_ai.lan_inference_enabled { (nav_button("Open LAN AI", "lan-inference")) }
+            }
+        }
+    }
+}
+
+fn state_row(label: &str, value: &str) -> Markup {
+    html! { div class="state-row" { span { (label) } strong { (value) } } }
+}
+
+fn reachability(label: &str, ok: bool) -> Markup {
+    html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) { (label) " " (if ok { "✓" } else { "—" }) } }
 }
 
 fn games_view(status: &ConsoleStatus) -> Markup {
@@ -470,102 +630,28 @@ fn lan_inference_view() -> Markup {
     })
 }
 
-fn network_view(_status: &ConsoleStatus) -> Markup {
-    view_shell("network", "Home network", "Network", "Manage how Arcadia connects to your home network. Network access is required for copying games, using the web console, and LAN inference.", html! {
-        section class="network-summary-card" aria-labelledby="network-status-title" data-network-state="connected" {
-            div class="section-heading" {
-                h3 id="network-status-title" { "Connection Status" }
-                p { "Arcadia is connected by Ethernet and can be reached from other devices on your LAN." }
-            }
-            div class="network-summary-main" {
-                strong { "Connected by Ethernet" }
-                span class="system-status system-status--running" { "Connected" }
-            }
-            div class="system-field-grid" {
-                (system_field("Status", "Connected"))
-                (system_field("Active connection", "Ethernet"))
-                (system_field("Network name", "Wired LAN"))
-                (system_field("IP address", "DHCP assigned"))
-                (system_field("Signal strength", "Ethernet"))
-                (system_field("Internet reachability", "Not Checked"))
-            }
-            p class="network-alt-copy" { "No network connection" }
-            p class="network-alt-copy" { "Connect Ethernet or choose a Wi-Fi network to continue setup." }
-        }
-
-        section class="network-grid" aria-label="Network management" {
-            article class="network-card" aria-labelledby="wifi-title" {
-                div class="section-heading section-heading--compact" {
-                    h3 id="wifi-title" { "Wi-Fi" }
-                    p { "Choose a home Wi-Fi network when Ethernet is not connected." }
-                }
+fn network_view(status: &ConsoleStatus) -> Markup {
+    view_shell(
+        "network",
+        "Connection",
+        "Network",
+        "Manage Wi-Fi and copy addresses.",
+        html! {
+            article class="system-card system-card--networking" {
+                h3 { "Connection" }
                 div class="system-field-grid" {
-                    (system_field("Wi-Fi adapter status", "Enabled"))
-                    (system_field("Current SSID", "Not connected"))
-                    (system_field("Signal strength", "Not connected"))
-                    (system_field("Security type", "WPA/WPA2 when available"))
-                    (system_field("IP address", "Not connected"))
-                    (system_field("Saved networks", "Show Saved Networks"))
-                }
-                div class="wifi-connect-panel" {
-                    label { span { "SSID" } select class="field" name="wifi_ssid" { option { "Choose a network after scanning" } option { "HomeNetwork" } option { "Hidden network" } } }
-                    label { span { "Hidden network name" } input class="field" type="text" name="hidden_ssid" autocomplete="off" placeholder="Hidden SSID"; }
-                    label { span { "Wi-Fi password" } input class="field" type="password" name="wifi_password" autocomplete="new-password" placeholder="Password is never saved in the browser"; }
-                    label class="wifi-show-password" { input type="checkbox" data-toggle-password="wifi_password"; span { "Show while typing" } }
-                    div id="wifi-message" class="message" hidden {}
-                }
-                div class="inline-actions" {
-                    (network_button("Scan for Networks", "scan-wifi"))
-                    (network_button("Connect", "connect-wifi"))
-                    (network_button("Disconnect", "disconnect-wifi"))
-                    (network_button("Forget Network", "forget-wifi"))
-                    (network_button("Show Saved Networks", "show-saved-wifi"))
-                }
-                p class="note" { "Could not connect to this Wi-Fi network. Check the password and try again." }
-                p class="note" { "Wi-Fi signal is weak. Move Arcadia closer to the router or use Ethernet." }
-            }
-
-            article class="network-card" aria-labelledby="ethernet-title" {
-                div class="section-heading section-heading--compact" {
-                    h3 id="ethernet-title" { "Ethernet" }
-                    p { "Ethernet is recommended for large game transfers and stable LAN inference." }
-                }
-                div class="system-field-grid" {
-                    (system_field("Ethernet status", "Connected"))
-                    (system_field("Link speed", "Not reported"))
-                    (system_field("IP address", "DHCP assigned"))
-                    (system_field("MAC address", "Not reported"))
-                }
-            }
-
-            article class="network-card network-card--wide" aria-labelledby="device-addresses-title" {
-                div class="section-heading section-heading--compact" {
-                    h3 id="device-addresses-title" { "Device Addresses" }
-                    p { "Use these addresses from devices on your home network." }
+                    (system_field("Type", &status.network.connection_type))
+                    (system_field("Address", &status.network.ip_address))
+                    (system_field("Signal", status.network.signal.as_deref().unwrap_or("—")))
                 }
                 div class="system-endpoints" {
-                    (command_box("Web console", "http://arcadia.home.arpa"))
-                    (command_box("Games folder - Windows", "\\\\ARCADIA"))
-                    (command_box("Games folder - Linux/macOS", "smb://ARCADIA"))
-                    (command_box("LAN inference", "http://arcadia.home.arpa:7777"))
+                    (command_box("Console", status.canonical_url.trim_end_matches('/')))
+                    (command_box("Game folders", &format!("smb://{}", status.surfaces.smb)))
+                    (command_box("mDNS", status.surfaces.mdns))
                 }
             }
-
-            article class="network-card network-card--wide" aria-labelledby="network-services-title" {
-                div class="section-heading section-heading--compact" {
-                    h3 id="network-services-title" { "Network Services" }
-                    p { "Reachability for appliance services. Configuration stays on each service page." }
-                }
-                div class="network-service-list" {
-                    (network_service_row("Web Console", "Available", "http://arcadia.home.arpa", None))
-                    (network_service_row("Games Folder", "Available", "\\\\ARCADIA / smb://ARCADIA", Some("games")))
-                    (network_service_row("LAN Inference", "Disabled", "7777", Some("lan-inference")))
-                    (network_service_row("SSH", "Disabled", "22", Some("system")))
-                }
-                p class="warning" { "LAN Inference is intended only for trusted home networks. Do not expose port 7777 to the public internet." }
-            }
-        }
-    })
+        },
+    )
 }
 
 fn access_pin_view(status: &ConsoleStatus) -> Markup {
@@ -711,83 +797,8 @@ fn system_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn onboarding_card() -> Markup {
-    html! {
-        section class="onboarding-card" data-onboarding-card="true" aria-labelledby="onboarding-title" {
-            div class="onboarding-head" {
-                div {
-                    p class="eyebrow" { "First setup" }
-                    h3 id="onboarding-title" { "Welcome to Arcadia" }
-                    p { "Finish these steps to set up your local game console." }
-                }
-                button class="btn btn--secondary" type="button" data-onboarding-hide-session="true" { "Hide for now" }
-            }
-            ol class="onboarding-checklist" {
-                (onboarding_step("1", "Connect to Network", "Connect Arcadia to your home network so other devices can copy games to it and use Local AI.", "Ready", "Open Network Settings", "network", "Connected by Ethernet", "Connected to Wi-Fi", "No network connection"))
-                (onboarding_step("2", "Add Games", "Copy games into Arcadia’s network folders from another device on your home network.", "Ready", "Add Games", "games", "", "", ""))
-                (onboarding_step("3", "Run First Sync", "Sync turns copied files into playable GameScope entries with artwork and titles when available.", "Not Started", "Start Sync", "sync", "", "", ""))
-                (onboarding_step("4", "Start Playing", "Open the GameScope library and launch your games from the console interface.", "Not Started", "Return to Console", "power", "GameScope is not running", "Restart GameScope", ""))
-            }
-        }
-    }
-}
-
-fn onboarding_step(
-    number: &str,
-    title: &str,
-    text: &str,
-    state: &str,
-    action: &str,
-    target: &str,
-    note_a: &str,
-    note_b: &str,
-    note_c: &str,
-) -> Markup {
-    html! {
-        li class="onboarding-step" data-onboarding-step=(number) data-onboarding-state=(state) {
-            span class="onboarding-number" { (number) }
-            div class="onboarding-copy" {
-                strong { (title) }
-                p { (text) }
-                @if !note_a.is_empty() { small { (note_a) } }
-                @if !note_b.is_empty() { small { (note_b) } }
-                @if !note_c.is_empty() { small { (note_c) } }
-            }
-            b class="onboarding-state" { (state) }
-            (nav_button(action, target))
-        }
-    }
-}
-
-fn network_button(label: &str, action: &str) -> Markup {
-    html! { button class="btn btn--secondary" type="button" data-network-action=(action) { (label) } }
-}
-
-fn network_service_row(name: &str, status: &str, address: &str, target: Option<&str>) -> Markup {
-    html! {
-        div class="network-service-row" {
-            span { strong { (name) } em { (address) } }
-            b class=(format!("system-status system-status--{}", status.to_lowercase())) { (status) }
-            @if let Some(view) = target { (nav_button("Open", view)) } @else { span class="network-service-spacer" {} }
-        }
-    }
-}
-
 fn status_card(title: &str, value: &str, help: &str) -> Markup {
     html! { article class="status-card" { span { (title) } strong { (value) } p { (help) } } }
-}
-
-fn action_tile(icon: &str, title: &str, text: &str, view: &str, badge: &str) -> Markup {
-    html! {
-        button class="home-action-tile" type="button" data-nav-target=(view) aria-label=(format!("{}: {}", title, text)) {
-            span class="home-action-icon" aria-hidden="true" { (icon) }
-            span class="home-action-copy" {
-                strong { (title) }
-                span { (text) }
-            }
-            span class="home-action-badge" { (badge) }
-        }
-    }
 }
 
 fn instruction_card(title: &str, text: &str) -> Markup {
