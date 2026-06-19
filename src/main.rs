@@ -5533,7 +5533,7 @@ mod tests {
             "Clear Artwork Cache",
             "Clear Partial Downloads",
             "Locations",
-            "Details / Diagnostics",
+            "Diagnostics",
             "data-nav-target=\"storage\"",
         ] {
             assert!(rendered.contains(required), "missing {required}");
@@ -5545,6 +5545,9 @@ mod tests {
         assert!(rendered.contains("/api/storage/cleanup/artwork"));
         assert!(rendered.contains("/api/storage/cleanup/temporary"));
         assert!(rendered.contains("/api/storage/rescan"));
+        assert!(rendered.contains("data-storage-modal=\"games\""));
+        assert!(rendered.contains("data-storage-modal-template=\"games\""));
+        assert!(!rendered.contains("<details class=\"storage-section"));
         assert!(!rendered.contains("delete-all-games"));
     }
 

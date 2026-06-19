@@ -218,6 +218,7 @@ function bindConsoleActions() {
       const action = button.dataset.action;
       const endpoint = button.dataset.endpoint;
       if (action === 'sync-games' && !prepareSyncStart()) return;
+      const original = button.textContent;
       if (action === 'storage-rescan') {
         button.disabled = true;
         button.textContent = 'Scanning...';
@@ -228,7 +229,6 @@ function bindConsoleActions() {
       const body = confirmationFor(action);
       if (body === null) return;
       clearMessage('console-action-message');
-      const original = button.textContent;
       button.disabled = true;
       button.textContent = action === 'sync-games' ? 'Sync Running' : 'Running...';
       let syncProgress = null;
@@ -308,6 +308,104 @@ function bindConsoleActions() {
     button.addEventListener('click', (event) => {
       event.preventDefault();
       window.location.href = button.dataset.url;
+    });
+  });
+}
+
+
+function bindStorageModals() {
+  document.querySelectorAll('[data-storage-modal]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const key = button.dataset.storageModal;
+      const template = document.querySelector(`[data-storage-modal-template="${CSS.escape(key)}"]`);
+      if (!template) return PopupManager.showToast('Storage details unavailable', 'error');
+      const body = document.createElement('div');
+      body.className = 'storage-modal-body';
+      body.innerHTML = template.innerHTML;
+      bindStorageModalContent(body);
+      PopupManager.showModal({ title: button.dataset.storageModalTitle || 'Storage', body, hideDefaultAction: false });
+    });
+  });
+}
+
+function bindStorageModalContent(root) {
+  root.querySelectorAll('.btn[data-copy-value]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const value = button.dataset.copyValue || '';
+      if (!validCopyValue(value)) return PopupManager.showToast('Address unavailable', 'error');
+      const ok = await copyToClipboard(value);
+      PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
+    });
+  });
+  root.querySelectorAll('.btn[data-folder-copy]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const choices = [
+        ['Copy Windows path', button.dataset.windows],
+        ['Copy Windows IP fallback', button.dataset.windowsIp],
+        ['Copy Linux/macOS path', button.dataset.smb],
+        ['Copy Linux/macOS IP fallback', button.dataset.smbIp],
+      ].filter(([, value]) => validCopyValue(value));
+      if (choices.length === 0) return PopupManager.showToast('Folder address unavailable', 'error');
+      if (choices.length === 1) {
+        const ok = await copyToClipboard(choices[0][1]);
+        return PopupManager.showToast(ok ? `Copied ${choices[0][1]}` : `Copy unavailable: ${choices[0][1]}`, ok ? 'success' : 'error');
+      }
+      const choiceBody = document.createElement('div');
+      choiceBody.className = 'copy-choice-list';
+      choices.forEach(([label, value]) => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'btn btn--secondary';
+        choice.textContent = label;
+        choice.addEventListener('click', async () => {
+          const ok = await copyToClipboard(value);
+          PopupManager.closeModal();
+          PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
+        });
+        choiceBody.appendChild(choice);
+      });
+      PopupManager.showModal({ title: 'Copy path', body: choiceBody, hideDefaultAction: true });
+    });
+  });
+  root.querySelectorAll('.btn[data-action][data-endpoint]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const action = button.dataset.action;
+      const endpoint = button.dataset.endpoint;
+      const body = confirmationFor(action);
+      if (body === null) return;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Running...';
+      try {
+        const data = await postJson(endpoint, body);
+        PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), data.ok ? 'success' : 'error');
+        if (data.ok && endpoint.startsWith('/api/storage/')) window.location.reload();
+      } catch (_) {
+        PopupManager.showToast('Action request failed', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+  });
+  root.querySelectorAll('[data-create-managed-folder]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const path = button.dataset.createManagedFolder || '';
+      if (!path || !window.confirm(`Create managed folder?\n${path}`)) return;
+      const data = await postJson('/api/storage/create-managed-folder', { path });
+      PopupManager.showToast(data.message || (data.ok ? 'Managed folder created' : 'Folder not created'), data.ok ? 'success' : 'error');
+      if (data.ok) window.location.reload();
+    });
+  });
+  root.querySelectorAll('[data-nav-target]').forEach((button) => {
+    button.addEventListener('click', () => {
+      PopupManager.closeModal();
+      window.activateArcadiaView?.(button.dataset.navTarget);
     });
   });
 }
@@ -968,6 +1066,7 @@ function bindProviderKeys() {
 document.documentElement.dataset.theme = 'dark';
 bindNavigation();
 bindConsoleActions();
+bindStorageModals();
 bindProviderKeys();
 bindGuiPinUnlock();
 bindGuiPinAccess();
