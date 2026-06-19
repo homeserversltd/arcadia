@@ -898,6 +898,41 @@ mod tests {
     }
 
     #[test]
+    fn human_text_font_sizes_stay_inside_ordinary_bounds() {
+        let allowed_large_icon_selectors = [".product-mark", ".launcher-icon"];
+
+        for (index, line) in APP_CSS.lines().enumerate() {
+            if !line.contains("font-size:") {
+                continue;
+            }
+            if allowed_large_icon_selectors
+                .iter()
+                .any(|selector| line.contains(selector))
+            {
+                continue;
+            }
+
+            let font_size = line.split("font-size:").nth(1).unwrap_or_default();
+            for part in font_size.split("px") {
+                let value = part
+                    .rsplit(|c: char| !(c.is_ascii_digit() || c == '.'))
+                    .next()
+                    .unwrap_or_default();
+                if value.is_empty() {
+                    continue;
+                }
+                let parsed: f32 = value.parse().expect("font-size px value parses");
+                assert!(
+                    parsed <= 22.0,
+                    "human text font-size above 22px on CSS line {}: {}",
+                    index + 1,
+                    line
+                );
+            }
+        }
+    }
+
+    #[test]
     fn appliance_shell_renders_required_viewports_and_no_vault_indicator() {
         let state = AppState {
             started_unix: 0,
