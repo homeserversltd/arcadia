@@ -1732,6 +1732,100 @@ mod tests {
     }
 
     #[test]
+    fn system_view_replaces_advanced_with_structured_support_panel() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let system_start = rendered
+            .find("id=\"view-system\"")
+            .expect("system view starts");
+        let system_html = &rendered[system_start..];
+
+        assert!(rendered.contains("data-view=\"system\""));
+        for required in [
+            "System",
+            "View technical console status, service health, networking details, SSH access, and logs.",
+            "SSH",
+            "SSH status",
+            "Disabled",
+            "Hostname",
+            "LAN IP address",
+            "Username",
+            "ssh console@console.home.arpa",
+            "SSH is for direct technical access to the console. Normal game management does not require SSH.",
+            "Only enable SSH on a trusted home network. Use a strong password or key-based access.",
+            "Enable SSH",
+            "Disable SSH",
+            "Copy SSH Command",
+            "Services",
+            "GameScope",
+            "Runs the console gaming session.",
+            "Samba",
+            "Shares game folders over the home network.",
+            "Game Sync",
+            "Adds copied games to the GameScope library.",
+            "Local AI",
+            "Loads the selected local AI model.",
+            "LAN Inference",
+            "Lets other home-network devices use Local AI.",
+            "Web GUI",
+            "Runs this management interface.",
+            "Restart",
+            "View Logs",
+            "Logs",
+            "Logs help diagnose problems. They are mostly useful for support or technical users.",
+            "Sync Log",
+            "Local AI Log",
+            "LAN Inference Log",
+            "System Log",
+            "Web GUI Log",
+            "View",
+            "Copy",
+            "Download",
+            "Networking",
+            "Local domain/path",
+            "MAC address",
+            "Network status",
+            "Active interface",
+            "Open local ports",
+            "Web GUI",
+            "http://console.home.arpa",
+            "Games Folder",
+            "\\\\HOMECONSOLE",
+            "http://console.home.arpa:7777",
+            "80/443",
+            "445",
+            "7777",
+            "22",
+            "LAN Inference is intended only for trusted home networks. Do not expose port 7777 to the public internet.",
+        ] {
+            assert!(system_html.contains(required), "missing {required}");
+        }
+
+        let logs = system_html.find("Logs").expect("logs section shown");
+        let first_log_group = system_html.find("Sync Log").expect("sync log group shown");
+        assert!(
+            logs < first_log_group,
+            "logs are structured below section intro"
+        );
+        assert!(rendered.contains("data-nav-target=\"system\""));
+        assert!(APP_JS.contains("if (view === 'advanced') view = 'system';"));
+        assert!(APP_JS.contains("Restarting GameScope may close the active game session."));
+        assert!(!rendered.contains("data-view=\"advanced\""));
+        assert!(!rendered.contains(">Advanced<"));
+        for forbidden in ["Expert Mode", "Developer"] {
+            assert!(
+                !rendered.contains(forbidden),
+                "forbidden label survived: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
     fn appliance_shell_renders_required_viewports_and_no_vault_indicator() {
         let state = AppState {
             started_unix: 0,
@@ -1751,7 +1845,7 @@ mod tests {
             "view-access-pin",
             "view-updates",
             "view-power",
-            "view-advanced",
+            "view-system",
         ] {
             assert!(rendered.contains(view), "missing {view}");
         }
