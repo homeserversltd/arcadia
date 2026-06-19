@@ -25,12 +25,11 @@ mod ui;
 
 const APP_CSS: &str = include_str!("../static/app.css");
 const APP_JS: &str = include_str!("../static/app.js");
-const VAULT_MOUNTPOINT: &str = "/vault";
-const VAULT_STATE_PATH: &str = "/var/lib/homeconsole/state.json";
-const VAULT_UNLOCK_HELPER: &str = "/usr/local/sbin/homeconsole-vault-unlock";
-const VAULT_PASSWORD_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-vault-password-change";
-const VAULT_PASSWORD_RESET_HELPER: &str =
-    "/usr/local/sbin/homeconsole-vault-password-reset-default";
+const GUI_PIN_STATE_PATH: &str = "/var/lib/homeconsole/gui-pin-access.json";
+const GUI_PIN_VERIFY_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-verify";
+const GUI_PIN_ACCESS_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-access";
+const GUI_PIN_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-change";
+const GUI_PIN_RESET_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-reset-default";
 const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
 const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
 const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
@@ -61,7 +60,7 @@ pub struct ConsoleStatus {
     pub canonical_url: String,
     pub arcadia: ArcadiaStatus,
     pub runtime: RuntimeStatus,
-    pub vault: VaultStatus,
+    pub gui_pin: GuiPinStatus,
     pub surfaces: SurfaceStatus,
     pub ui_contract: UiContract,
 }
@@ -91,16 +90,14 @@ pub struct UiContract {
 }
 
 #[derive(Clone, Serialize)]
-pub struct VaultStatus {
-    pub mounted: bool,
-    pub mountpoint: &'static str,
+pub struct GuiPinStatus {
+    pub pin_required: bool,
     pub state_path: &'static str,
-    pub mapper_present: bool,
-    pub unlock_helper_present: bool,
-    pub password_change_helper_present: bool,
-    pub password_reset_helper_present: bool,
+    pub access_helper_present: bool,
+    pub pin_change_helper_present: bool,
+    pub pin_reset_helper_present: bool,
+    pub pin_storage: &'static str,
     pub default_reset_available: bool,
-    pub first_gate: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -128,18 +125,23 @@ impl ButtonVariant {
 }
 
 #[derive(Deserialize)]
-struct UnlockRequest {
-    password: String,
+struct GuiPinUnlockRequest {
+    pin: String,
 }
 
 #[derive(Deserialize)]
-struct PasswordChangeRequest {
-    current_password: String,
-    new_password: String,
+struct GuiPinAccessRequest {
+    pin_required: bool,
 }
 
 #[derive(Deserialize)]
-struct PasswordResetRequest {
+struct PinChangeRequest {
+    current_pin: String,
+    new_pin: String,
+}
+
+#[derive(Deserialize)]
+struct PinResetRequest {
     confirm: String,
 }
 
@@ -176,9 +178,9 @@ struct ConsoleActionResponse {
 }
 
 #[derive(Serialize)]
-struct VaultActionResponse {
+struct GuiPinActionResponse {
     ok: bool,
-    mounted: bool,
+    pin_required: bool,
     action: &'static str,
     helper_present: bool,
     message: String,
@@ -204,8 +206,9 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/", get(index))
         .route("/health", get(health))
         .route("/api/status", get(status))
-        .route("/api/vault/status", get(vault_status_route))
-        .route("/api/vault/password/change", post(change_vault_password))
+        .route("/api/gui-pin/status", get(gui_pin_status_route))
+        .route("/api/gui-pin/access", post(set_gui_pin_access))
+        .route("/api/gui-pin/change", post(change_gui_pin))
         .route("/api/provider-keys/save", post(save_provider_keys))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/sync-games", post(action_sync_games))
@@ -214,10 +217,7 @@ async fn main() -> anyhow_free::Result<()> {
             "/api/actions/shutdown-console",
             post(action_shutdown_console),
         )
-        .route(
-            "/api/vault/password/reset-default",
-            post(reset_vault_password_default),
-        )
+        .route("/api/gui-pin/reset-default", post(reset_gui_pin_default))
         .route("/pre-unlock", post(pre_unlock))
         .route("/static/app.css", get(css))
         .route("/static/app.js", get(js))
@@ -249,8 +249,8 @@ async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
     Json(console_status(&state))
 }
 
-async fn vault_status_route() -> Json<VaultStatus> {
-    Json(vault_status())
+async fn gui_pin_status_route() -> Json<GuiPinStatus> {
+    Json(gui_pin_status())
 }
 
 async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -537,98 +537,124 @@ fn provider_file_permissions() -> fs::Permissions {
         .unwrap_or_else(|_| fs::Permissions::readonly())
 }
 
-async fn pre_unlock(Json(body): Json<UnlockRequest>) -> (StatusCode, Json<VaultActionResponse>) {
-    if body.password.is_empty() {
-        return action_response(
+async fn pre_unlock(
+    Json(body): Json<GuiPinUnlockRequest>,
+) -> (StatusCode, Json<GuiPinActionResponse>) {
+    if body.pin.is_empty() {
+        return gui_pin_response(
             StatusCode::BAD_REQUEST,
             false,
-            false,
-            "unlock",
-            helper_exists(VAULT_UNLOCK_HELPER),
-            "Vault password is required.",
+            gui_pin_required(),
+            "verify-pin",
+            helper_exists(GUI_PIN_VERIFY_HELPER),
+            "GUI PIN is required.",
         );
     }
 
-    run_vault_helper(
-        VAULT_UNLOCK_HELPER,
-        "unlock",
-        &[body.password.as_str()],
-        "Vault unlocked.",
-        "Vault unlock failed.",
+    run_gui_pin_helper(
+        GUI_PIN_VERIFY_HELPER,
+        "verify-pin",
+        &[body.pin.as_str()],
+        "GUI PIN accepted.",
+        "GUI PIN rejected.",
     )
 }
 
-async fn change_vault_password(
-    Json(body): Json<PasswordChangeRequest>,
-) -> (StatusCode, Json<VaultActionResponse>) {
-    if body.current_password.is_empty() || body.new_password.is_empty() {
-        return action_response(
-            StatusCode::BAD_REQUEST,
-            false,
-            vault_status().mounted,
-            "change-password",
-            helper_exists(VAULT_PASSWORD_CHANGE_HELPER),
-            "Current password and new password are required.",
-        );
-    }
-    if body.new_password.len() < 4 {
-        return action_response(
-            StatusCode::BAD_REQUEST,
-            false,
-            vault_status().mounted,
-            "change-password",
-            helper_exists(VAULT_PASSWORD_CHANGE_HELPER),
-            "New password is too short.",
-        );
-    }
-
-    run_vault_helper(
-        VAULT_PASSWORD_CHANGE_HELPER,
-        "change-password",
-        &[body.current_password.as_str(), body.new_password.as_str()],
-        "Vault password changed.",
-        "Vault password change failed.",
+async fn set_gui_pin_access(
+    Json(body): Json<GuiPinAccessRequest>,
+) -> (StatusCode, Json<GuiPinActionResponse>) {
+    run_gui_pin_helper(
+        GUI_PIN_ACCESS_HELPER,
+        if body.pin_required {
+            "require-gui-pin"
+        } else {
+            "disable-gui-pin"
+        },
+        &[if body.pin_required {
+            "required"
+        } else {
+            "disabled"
+        }],
+        if body.pin_required {
+            "GUI PIN is now required before Arcadia opens."
+        } else {
+            "GUI PIN gate is disabled; Arcadia opens directly."
+        },
+        "GUI PIN access setting failed.",
     )
 }
 
-async fn reset_vault_password_default(
-    Json(body): Json<PasswordResetRequest>,
-) -> (StatusCode, Json<VaultActionResponse>) {
+async fn change_gui_pin(
+    Json(body): Json<PinChangeRequest>,
+) -> (StatusCode, Json<GuiPinActionResponse>) {
+    if body.current_pin.is_empty() || body.new_pin.is_empty() {
+        return gui_pin_response(
+            StatusCode::BAD_REQUEST,
+            false,
+            gui_pin_required(),
+            "change-pin",
+            helper_exists(GUI_PIN_CHANGE_HELPER),
+            "Current PIN and new PIN are required.",
+        );
+    }
+    if body.new_pin.len() < 4 {
+        return gui_pin_response(
+            StatusCode::BAD_REQUEST,
+            false,
+            gui_pin_required(),
+            "change-pin",
+            helper_exists(GUI_PIN_CHANGE_HELPER),
+            "New PIN is too short.",
+        );
+    }
+
+    run_gui_pin_helper(
+        GUI_PIN_CHANGE_HELPER,
+        "change-pin",
+        &[body.current_pin.as_str(), body.new_pin.as_str()],
+        "GUI PIN changed.",
+        "GUI PIN change failed.",
+    )
+}
+
+async fn reset_gui_pin_default(
+    Json(body): Json<PinResetRequest>,
+) -> (StatusCode, Json<GuiPinActionResponse>) {
     if body.confirm != "RESET" {
-        return action_response(
+        return gui_pin_response(
             StatusCode::BAD_REQUEST,
             false,
-            vault_status().mounted,
-            "reset-default-password",
-            helper_exists(VAULT_PASSWORD_RESET_HELPER),
-            "Type RESET to restore the default vault password.",
+            gui_pin_required(),
+            "reset-default-pin",
+            helper_exists(GUI_PIN_RESET_HELPER),
+            "Type RESET to restore the default GUI PIN.",
         );
     }
 
-    run_vault_helper(
-        VAULT_PASSWORD_RESET_HELPER,
-        "reset-default-password",
+    run_gui_pin_helper(
+        GUI_PIN_RESET_HELPER,
+        "reset-default-pin",
         &[],
-        "Vault password reset to the appliance default.",
-        "Vault password reset failed.",
+        "GUI PIN reset to the appliance default.",
+        "GUI PIN reset failed.",
     )
 }
 
-fn run_vault_helper(
+fn run_gui_pin_helper(
     helper: &'static str,
     action: &'static str,
     secret_lines: &[&str],
     success_message: &str,
     failure_message: &str,
-) -> (StatusCode, Json<VaultActionResponse>) {
+) -> (StatusCode, Json<GuiPinActionResponse>) {
     if !helper_exists(helper) {
-        return action_response(
+        return gui_pin_response(
             StatusCode::NOT_IMPLEMENTED,
             false,
-            vault_status().mounted,
+            gui_pin_required(),
             action,
             false,
-            "Vault password helper is not installed on this unit yet.",
+            "GUI PIN helper is not installed on this unit yet.",
         );
     }
 
@@ -640,13 +666,13 @@ fn run_vault_helper(
     {
         Ok(child) => child,
         Err(_) => {
-            return action_response(
+            return gui_pin_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 false,
-                vault_status().mounted,
+                gui_pin_required(),
                 action,
                 true,
-                "Failed to start vault password helper.",
+                "Failed to start GUI PIN helper.",
             )
         }
     };
@@ -659,33 +685,33 @@ fn run_vault_helper(
     }
 
     let ok = child.wait().map(|status| status.success()).unwrap_or(false);
-    action_response(
+    gui_pin_response(
         if ok {
             StatusCode::OK
         } else {
             StatusCode::FORBIDDEN
         },
         ok,
-        vault_status().mounted,
+        gui_pin_required(),
         action,
         true,
         if ok { success_message } else { failure_message },
     )
 }
 
-fn action_response(
+fn gui_pin_response(
     status: StatusCode,
     ok: bool,
-    mounted: bool,
+    pin_required: bool,
     action: &'static str,
     helper_present: bool,
     message: &str,
-) -> (StatusCode, Json<VaultActionResponse>) {
+) -> (StatusCode, Json<GuiPinActionResponse>) {
     (
         status,
-        Json(VaultActionResponse {
+        Json(GuiPinActionResponse {
             ok,
-            mounted,
+            pin_required,
             action,
             helper_present,
             message: message.to_string(),
@@ -720,10 +746,10 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
             mode: "compact-console-controls",
-            ui: "status-actions-smb-sync-keys-password",
+            ui: "status-actions-smb-sync-keys-gui-pin",
         },
         runtime: runtime_status(state.started_unix),
-        vault: vault_status(),
+        gui_pin: gui_pin_status(),
         surfaces: SurfaceStatus {
             http: "console.home.arpa -> :8080",
             mdns: "homeconsole.local",
@@ -732,8 +758,8 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         ui_contract: UiContract {
             schema: "arcadia.ui.contract.v4",
             button_variants: ["primary", "secondary", "danger"],
-            composition: "slim app header, one compact pane, status, five buttons, SMB folders, sync explanation, API keys, vault password",
-            modal: "confirmation/readback only; password mutation posts to local root-owned helpers",
+            composition: "slim app header, one compact pane, status, five buttons, SMB folders, sync explanation, API keys, GUI PIN access",
+            modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers",
         }
     }
 }
@@ -770,33 +796,34 @@ fn format_duration(total_seconds: u64) -> String {
     }
 }
 
-fn vault_status() -> VaultStatus {
-    let reset_helper_present = helper_exists(VAULT_PASSWORD_RESET_HELPER);
-    VaultStatus {
-        mounted: is_mountpoint(VAULT_MOUNTPOINT),
-        mountpoint: VAULT_MOUNTPOINT,
-        state_path: VAULT_STATE_PATH,
-        mapper_present: Path::new("/dev/mapper/homeconsole-vault").exists(),
-        unlock_helper_present: helper_exists(VAULT_UNLOCK_HELPER),
-        password_change_helper_present: helper_exists(VAULT_PASSWORD_CHANGE_HELPER),
-        password_reset_helper_present: reset_helper_present,
+fn gui_pin_status() -> GuiPinStatus {
+    let reset_helper_present = helper_exists(GUI_PIN_RESET_HELPER);
+    GuiPinStatus {
+        pin_required: gui_pin_required(),
+        state_path: GUI_PIN_STATE_PATH,
+        access_helper_present: helper_exists(GUI_PIN_ACCESS_HELPER),
+        pin_change_helper_present: helper_exists(GUI_PIN_CHANGE_HELPER),
+        pin_reset_helper_present: reset_helper_present,
+        pin_storage: "keyman-redacted",
         default_reset_available: reset_helper_present,
-        first_gate: "vault-status-before-console-dashboard",
     }
+}
+
+fn gui_pin_required() -> bool {
+    fs::read_to_string(GUI_PIN_STATE_PATH)
+        .map(|state| {
+            let normalized = state.to_ascii_lowercase();
+            normalized.contains("pin_required=true")
+                || normalized.contains("pin_required: true")
+                || normalized.contains("\"pin_required\":true")
+                || normalized.trim() == "required"
+                || normalized.trim() == "true"
+        })
+        .unwrap_or(false)
 }
 
 fn helper_exists(path: &str) -> bool {
     Path::new(path).exists()
-}
-
-fn is_mountpoint(path: &str) -> bool {
-    fs::read_to_string("/proc/mounts")
-        .map(|mounts| {
-            mounts
-                .lines()
-                .any(|line| line.split_whitespace().nth(1) == Some(path))
-        })
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

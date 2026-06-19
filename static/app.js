@@ -53,6 +53,87 @@ const ThemeManager = (() => {
   return { apply, preferredTheme };
 })();
 
+async function checkGuiPinStatus() {
+  const res = await fetch('/api/gui-pin/status', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error('GUI PIN status request failed');
+  return await res.json();
+}
+
+function openArcadia() {
+  document.body.classList.add('pin-open');
+  document.body.dataset.guiPinRequired = 'false';
+  document.getElementById('app')?.removeAttribute('aria-hidden');
+}
+
+function keepGuiPinGate() {
+  document.body.classList.remove('pin-open');
+  document.body.dataset.guiPinRequired = 'true';
+  document.getElementById('app')?.setAttribute('aria-hidden', 'true');
+  document.querySelector('.field--pin')?.focus();
+}
+
+async function initializeGuiPinGate() {
+  try {
+    const status = await checkGuiPinStatus();
+    if (status.pin_required) keepGuiPinGate(); else openArcadia();
+  } catch (_) {
+    openArcadia();
+    PopupManager.showToast('GUI PIN status unavailable; opening Arcadia', 'error');
+  }
+}
+
+function bindGuiPinUnlock() {
+  const form = document.getElementById('gui-pin-unlock-form');
+  if (!form) return;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = form.querySelector('input[name="pin"]');
+    const error = document.getElementById('gui-pin-auth-error');
+    const button = form.querySelector('button[type="submit"]');
+    if (!input?.value) { error.textContent = 'GUI PIN is required'; error.hidden = false; return; }
+    error.hidden = true;
+    button.disabled = true;
+    button.textContent = 'Opening...';
+    try {
+      const data = await postJson('/pre-unlock', { pin: input.value });
+      input.value = '';
+      if (data.ok) { openArcadia(); PopupManager.showToast('Arcadia opened', 'success'); }
+      else { error.textContent = data.message || 'GUI PIN rejected.'; error.hidden = false; }
+    } catch (_) {
+      input.value = '';
+      error.textContent = 'GUI PIN request failed.';
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Open Arcadia';
+    }
+  });
+}
+
+function bindGuiPinAccess() {
+  document.querySelectorAll('[data-module="gui-pin-access"] .btn[data-pin-required]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      clearMessage('gui-pin-access-message');
+      const pinRequired = button.dataset.pinRequired === 'true';
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Saving...';
+      try {
+        const data = await postJson('/api/gui-pin/access', { pin_required: pinRequired });
+        setMessage('gui-pin-access-message', data.message || 'GUI PIN access setting returned no message.', data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved', data.ok ? 'success' : 'error');
+        if (data.ok) document.body.dataset.guiPinRequired = String(data.pin_required);
+      } catch (_) {
+        setMessage('gui-pin-access-message', 'GUI PIN access request failed.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+  });
+}
+
 function setMessage(id, text, variant = 'info') {
   const node = document.getElementById(id);
   if (!node) return;
@@ -126,33 +207,33 @@ async function postJson(url, body) {
   return data;
 }
 
-function bindVaultPasswordChange() {
-  const form = document.getElementById('vault-password-change-form');
+function bindGuiPinChange() {
+  const form = document.getElementById('gui-pin-change-form');
   if (!form) return;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    clearMessage('vault-password-change-message');
-    const current = form.querySelector('input[name="current_password"]')?.value || '';
-    const next = form.querySelector('input[name="new_password"]')?.value || '';
-    const confirm = form.querySelector('input[name="confirm_password"]')?.value || '';
+    clearMessage('gui-pin-change-message');
+    const current = form.querySelector('input[name="current_pin"]')?.value || '';
+    const next = form.querySelector('input[name="new_pin"]')?.value || '';
+    const confirm = form.querySelector('input[name="confirm_pin"]')?.value || '';
     const button = form.querySelector('button[type="submit"]');
 
-    if (!current || !next) return setMessage('vault-password-change-message', 'Current password and new password are required.', 'error');
-    if (next !== confirm) return setMessage('vault-password-change-message', 'New password confirmation does not match.', 'error');
+    if (!current || !next) return setMessage('gui-pin-change-message', 'Current PIN and new PIN are required.', 'error');
+    if (next !== confirm) return setMessage('gui-pin-change-message', 'New PIN confirmation does not match.', 'error');
 
     button.disabled = true;
     button.textContent = 'Saving...';
     try {
-      const data = await postJson('/api/vault/password/change', { current_password: current, new_password: next });
+      const data = await postJson('/api/gui-pin/change', { current_pin: current, new_pin: next });
       form.reset();
-      setMessage('vault-password-change-message', data.message || 'Vault password change returned no message.', data.ok ? 'success' : 'error');
-      PopupManager.showToast(data.ok ? 'Vault password changed' : 'Vault password change failed', data.ok ? 'success' : 'error');
+      setMessage('gui-pin-change-message', data.message || 'GUI PIN change returned no message.', data.ok ? 'success' : 'error');
+      PopupManager.showToast(data.ok ? 'GUI PIN changed' : 'GUI PIN change failed', data.ok ? 'success' : 'error');
     } catch (_) {
       form.reset();
-      setMessage('vault-password-change-message', 'Vault password change request failed.', 'error');
+      setMessage('gui-pin-change-message', 'GUI PIN change request failed.', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Change Vault password';
+      button.textContent = 'Change GUI PIN';
     }
   });
 }
@@ -191,7 +272,10 @@ function bindProviderKeys() {
 ThemeManager.apply(ThemeManager.preferredTheme());
 bindConsoleActions();
 bindProviderKeys();
-bindVaultPasswordChange();
+bindGuiPinUnlock();
+bindGuiPinAccess();
+bindGuiPinChange();
+initializeGuiPinGate();
 
 document.addEventListener('click', (event) => {
   const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
