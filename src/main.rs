@@ -217,6 +217,10 @@ async fn main() -> anyhow_free::Result<()> {
             "/api/actions/shutdown-console",
             post(action_shutdown_console),
         )
+        .route(
+            "/api/actions/restart-gamescope",
+            post(action_restart_gamescope),
+        )
         .route("/api/gui-pin/reset-default", post(reset_gui_pin_default))
         .route("/pre-unlock", post(pre_unlock))
         .route("/static/app.css", get(css))
@@ -339,6 +343,26 @@ async fn action_shutdown_console(
         &["poweroff"],
         "Shutdown requested.",
         "Shutdown request failed.",
+    )
+}
+
+async fn action_restart_gamescope(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("RESTART_GAMESCOPE") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "restart-gamescope",
+            SYSTEMCTL_BIN,
+            "Confirm GameScope restart before closing the active game session.",
+        );
+    }
+    run_console_command(
+        "restart-gamescope",
+        SYSTEMCTL_BIN,
+        &["restart", "gamescope.service"],
+        "GameScope restart requested.",
+        "GameScope restart request failed.",
     )
 }
 
@@ -739,14 +763,14 @@ fn asset(body: &'static str, content_type: &'static str) -> Response {
 
 fn console_status(state: &AppState) -> ConsoleStatus {
     ConsoleStatus {
-        schema: "arcadia.status.v5",
+        schema: "arcadia.status.v6",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         arcadia: ArcadiaStatus {
             service: "arcadia",
             version: env!("CARGO_PKG_VERSION"),
-            mode: "compact-console-controls",
-            ui: "status-actions-smb-sync-keys-gui-pin",
+            mode: "unity-appliance-shell",
+            ui: "top-header-left-launcher-focused-viewports",
         },
         runtime: runtime_status(state.started_unix),
         gui_pin: gui_pin_status(),
@@ -756,9 +780,9 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             smb: "HOMECONSOLE",
         },
         ui_contract: UiContract {
-            schema: "arcadia.ui.contract.v4",
+            schema: "arcadia.ui.contract.v5",
             button_variants: ["primary", "secondary", "danger"],
-            composition: "slim app header, one compact pane, status, five buttons, SMB folders, sync explanation, API keys, GUI PIN access",
+            composition: "top header status badges, Ubuntu-style left launcher, one focused viewport at a time",
             modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers",
         }
     }
@@ -871,6 +895,45 @@ mod tests {
         assert!(APP_JS.contains("screenscraper_api_key"));
         assert!(!APP_JS.contains("screenscraper_user"));
         assert!(!APP_JS.contains("screenscraper_password"));
+    }
+
+    #[test]
+    fn appliance_shell_renders_required_viewports_and_no_vault_indicator() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+
+        for view in [
+            "view-home",
+            "view-games",
+            "view-sync",
+            "view-ai-model",
+            "view-lan-inference",
+            "view-access-pin",
+            "view-updates",
+            "view-power",
+            "view-advanced",
+        ] {
+            assert!(rendered.contains(view), "missing {view}");
+        }
+        for indicator in [
+            "Network",
+            "GameScope",
+            "Storage",
+            "Sync",
+            "AI",
+            "Update",
+            "PIN",
+        ] {
+            assert!(rendered.contains(indicator), "missing {indicator}");
+        }
+        assert!(!rendered.contains("Vault"));
+        assert!(rendered.contains("\\\\HOMECONSOLE"));
+        assert!(rendered.contains("http://console.home.arpa:7777"));
     }
 }
 

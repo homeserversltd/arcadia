@@ -9,7 +9,7 @@ const PopupManager = (() => {
     const el = overlay();
     if (!el) return;
     previousFocus = document.activeElement;
-    title().textContent = modalTitle || 'Arcadia';
+    title().textContent = modalTitle || 'Arcadia Console';
     content().textContent = body || '';
     el.hidden = false;
     document.querySelector('#modal-overlay [data-action="modal-ok"]')?.focus();
@@ -29,28 +29,10 @@ const PopupManager = (() => {
     node.className = `toast ${variant}`;
     node.textContent = message;
     root.appendChild(node);
-    setTimeout(() => node.remove(), 3200);
+    setTimeout(() => node.remove(), 3600);
   }
 
   return { showModal, closeModal, showToast };
-})();
-
-const ThemeManager = (() => {
-  const storageKey = 'arcadia-theme';
-  function preferredTheme() {
-    let stored = null;
-    try { stored = localStorage.getItem(storageKey); } catch (_) { stored = null; }
-    if (stored === 'light' || stored === 'dark') return stored;
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-
-  function apply(theme) {
-    const next = theme === 'light' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    document.body.dataset.theme = next;
-  }
-
-  return { apply, preferredTheme };
 })();
 
 async function checkGuiPinStatus() {
@@ -76,10 +58,46 @@ async function initializeGuiPinGate() {
   try {
     const status = await checkGuiPinStatus();
     if (status.pin_required) keepGuiPinGate(); else openArcadia();
+    setPinIndicator(Boolean(status.pin_required));
   } catch (_) {
     openArcadia();
     PopupManager.showToast('GUI PIN status unavailable; opening Arcadia', 'error');
   }
+}
+
+function setPinIndicator(required) {
+  document.querySelectorAll('.status-badge').forEach((badge) => {
+    const label = badge.querySelector('span')?.textContent?.trim().toLowerCase();
+    if (label !== 'pin') return;
+    badge.querySelector('strong').textContent = required ? 'Required' : 'Open';
+    badge.classList.toggle('status-badge--warn', required);
+    badge.classList.toggle('status-badge--idle', !required);
+  });
+}
+
+function bindNavigation() {
+  const buttons = Array.from(document.querySelectorAll('.launcher-button[data-view]'));
+  const panels = Array.from(document.querySelectorAll('[data-view-panel]'));
+  const activate = (view) => {
+    const next = panels.some((panel) => panel.dataset.viewPanel === view) ? view : 'home';
+    buttons.forEach((button) => {
+      const active = button.dataset.view === next;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    panels.forEach((panel) => {
+      const active = panel.dataset.viewPanel === next;
+      panel.classList.toggle('is-active', active);
+      panel.hidden = !active;
+      if (active) panel.focus({ preventScroll: true });
+    });
+    try { localStorage.setItem('arcadia-active-view', next); } catch (_) {}
+  };
+  buttons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.view)));
+  document.querySelectorAll('[data-nav-target]').forEach((button) => button.addEventListener('click', () => activate(button.dataset.navTarget)));
+  let stored = 'home';
+  try { stored = localStorage.getItem('arcadia-active-view') || 'home'; } catch (_) {}
+  activate(stored);
 }
 
 function bindGuiPinUnlock() {
@@ -123,7 +141,10 @@ function bindGuiPinAccess() {
         const data = await postJson('/api/gui-pin/access', { pin_required: pinRequired });
         setMessage('gui-pin-access-message', data.message || 'GUI PIN access setting returned no message.', data.ok ? 'success' : 'error');
         PopupManager.showToast(data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved', data.ok ? 'success' : 'error');
-        if (data.ok) document.body.dataset.guiPinRequired = String(data.pin_required);
+        if (data.ok) {
+          document.body.dataset.guiPinRequired = String(data.pin_required);
+          setPinIndicator(Boolean(data.pin_required));
+        }
       } catch (_) {
         setMessage('gui-pin-access-message', 'GUI PIN access request failed.', 'error');
       } finally {
@@ -154,44 +175,61 @@ function formatActionResult(data) {
   if (data.exit_code !== undefined && data.exit_code !== null) bits.push(`exit ${data.exit_code}`);
   if (data.stdout) bits.push(data.stdout);
   if (data.stderr) bits.push(data.stderr);
-  return bits.join('\\n');
+  return bits.join('\n');
 }
 
 function confirmationFor(action) {
-  if (action === 'reboot-console') return window.confirm('Reboot this console now?') ? { confirm: 'REBOOT' } : null;
-  if (action === 'shutdown-console') return window.confirm('Shut down this console now?') ? { confirm: 'SHUTDOWN' } : null;
+  if (action === 'reboot-console') return window.confirm('Restart this console now? Games and services will close.') ? { confirm: 'REBOOT' } : null;
+  if (action === 'shutdown-console') return window.confirm('Shut down this console now? The appliance will power off.') ? { confirm: 'SHUTDOWN' } : null;
+  if (action === 'restart-gamescope') return window.confirm('Restart GameScope now? The TV game session will close and reopen.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
   return {};
 }
 
 function bindConsoleActions() {
-  document.querySelectorAll('.button-row--five .btn[data-action]').forEach((button) => {
+  document.querySelectorAll('.btn[data-action][data-endpoint]').forEach((button) => {
+    if (button.dataset.pinRequired !== undefined) return;
     button.addEventListener('click', async (event) => {
       event.preventDefault();
       const action = button.dataset.action;
-      const url = button.dataset.url;
       const endpoint = button.dataset.endpoint;
-      if (url) {
-        window.location.href = url;
-        return;
-      }
-      if (!endpoint) return;
       const body = confirmationFor(action);
       if (body === null) return;
       clearMessage('console-action-message');
       const original = button.textContent;
       button.disabled = true;
-      button.textContent = 'Running...';
+      button.textContent = action === 'sync-games' ? 'Sync running...' : 'Running...';
+      if (action === 'sync-games') setSyncState('Running');
       try {
         const data = await postJson(endpoint, body);
-        setMessage('console-action-message', formatActionResult(data), data.ok ? 'success' : 'error');
-        PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), data.ok ? 'success' : 'error');
+        const variant = data.ok ? 'success' : 'error';
+        setMessage('console-action-message', formatActionResult(data), variant);
+        PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
+        if (action === 'sync-games') setSyncState(data.ok ? 'Complete' : 'Error');
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
+        PopupManager.showToast('Action request failed', 'error');
+        if (action === 'sync-games') setSyncState('Error');
       } finally {
         button.disabled = false;
         button.textContent = original;
       }
     });
+  });
+  document.querySelectorAll('.btn[data-url]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      window.location.href = button.dataset.url;
+    });
+  });
+}
+
+function setSyncState(state) {
+  const node = document.getElementById('sync-state');
+  if (node) node.textContent = state;
+  document.querySelectorAll('.status-badge').forEach((badge) => {
+    const label = badge.querySelector('span')?.textContent?.trim().toLowerCase();
+    if (label !== 'sync') return;
+    badge.querySelector('strong').textContent = state;
   });
 }
 
@@ -233,7 +271,7 @@ function bindGuiPinChange() {
       setMessage('gui-pin-change-message', 'GUI PIN change request failed.', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Change GUI PIN';
+      button.textContent = 'Change PIN';
     }
   });
 }
@@ -251,7 +289,7 @@ function bindProviderKeys() {
       screenscraper_api_key: form.querySelector('input[name="screenscraper_api_key"]')?.value || '',
     };
     if (!Object.values(body).some((value) => value.trim())) {
-      return setMessage('provider-keys-message', 'Enter at least one API key.', 'error');
+      return setMessage('provider-keys-message', 'Enter at least one optional API key, or leave this section closed.', 'error');
     }
     button.disabled = true;
     button.textContent = 'Saving...';
@@ -259,17 +297,18 @@ function bindProviderKeys() {
       const data = await postJson('/api/provider-keys/save', body);
       form.reset();
       setMessage('provider-keys-message', data.message || 'Provider key save returned no message.', data.ok ? 'success' : 'error');
-      PopupManager.showToast(data.ok ? 'API keys saved' : 'API keys not saved', data.ok ? 'success' : 'error');
+      PopupManager.showToast(data.ok ? 'Optional keys saved' : 'Optional keys not saved', data.ok ? 'success' : 'error');
     } catch (_) {
       setMessage('provider-keys-message', 'API key save request failed.', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Save API keys';
+      button.textContent = 'Save Optional Keys';
     }
   });
 }
 
-ThemeManager.apply(ThemeManager.preferredTheme());
+document.documentElement.dataset.theme = 'dark';
+bindNavigation();
 bindConsoleActions();
 bindProviderKeys();
 bindGuiPinUnlock();
