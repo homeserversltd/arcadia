@@ -73,8 +73,7 @@ function formatActionResult(data) {
   if (data.exit_code !== undefined && data.exit_code !== null) bits.push(`exit ${data.exit_code}`);
   if (data.stdout) bits.push(data.stdout);
   if (data.stderr) bits.push(data.stderr);
-  return bits.join('
-');
+  return bits.join('\\n');
 }
 
 function confirmationFor(action) {
@@ -168,8 +167,7 @@ function bindProviderKeys() {
     const body = {
       steamgriddb_api_key: form.querySelector('input[name="steamgriddb_api_key"]')?.value || '',
       thegamesdb_api_key: form.querySelector('input[name="thegamesdb_api_key"]')?.value || '',
-      screenscraper_user: form.querySelector('input[name="screenscraper_user"]')?.value || '',
-      screenscraper_password: form.querySelector('input[name="screenscraper_password"]')?.value || '',
+      screenscraper_api_key: form.querySelector('input[name="screenscraper_api_key"]')?.value || '',
     };
     if (!Object.values(body).some((value) => value.trim())) {
       return setMessage('provider-keys-message', 'Enter at least one API key.', 'error');
