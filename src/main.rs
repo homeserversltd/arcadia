@@ -1585,6 +1585,91 @@ mod tests {
     }
 
     #[test]
+    fn sync_view_is_ceremonial_workflow_not_log_first() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let sync_start = rendered.find("id=\"view-sync\"").expect("sync view starts");
+        let sync_end = rendered
+            .find("id=\"view-storage\"")
+            .expect("storage follows sync");
+        let sync_html = &rendered[sync_start..sync_end];
+
+        for required in [
+            "Sync Games",
+            "Sync scans the console’s game folders, finds copied games, fetches artwork, and adds playable entries to GameScope.",
+            "I copy games into folders. Sync turns those files into a usable console library.",
+            "Start Sync",
+            "data-action=\"sync-games\"",
+            "Copy Games",
+            "Copy game files into the matching console folders over the network.",
+            "Scan Library",
+            "The console scans game folders and detects new, changed, or removed files.",
+            "Fetch Artwork",
+            "Optional metadata providers improve titles, covers, and artwork.",
+            "Create Game Entries",
+            "The console creates or updates GameScope library entries for detected games.",
+            "Available in GameScope",
+            "Synced games appear in the GameScope library after sync completes.",
+            "Waiting",
+            "Running",
+            "Complete",
+            "Skipped",
+            "Error",
+            "Games found",
+            "New games",
+            "Removed games",
+            "Changed files",
+            "Artwork found",
+            "Artwork missing",
+            "Provider key status",
+            "Configure Metadata Providers",
+            "Games still work without artwork keys.",
+            "Entries created",
+            "Entries updated",
+            "Entries skipped",
+            "Last successful sync",
+            "Total synced games",
+            "GameScope state",
+            "GameScope is running. Synced games should appear after sync completes.",
+            "Result Summary",
+            "New entries created",
+            "Artwork downloaded",
+            "Duration",
+            "Completed time",
+            "View Sync Log",
+            "Metadata keys are optional. They improve artwork and titles, but games can still sync without them.",
+            "SteamGridDB",
+            "TheGamesDB",
+            "ScreenScraper",
+        ] {
+            assert!(sync_html.contains(required), "missing {required}");
+        }
+
+        let workflow = sync_html.find("sync-workflow").expect("workflow shown");
+        let log = sync_html.find("sync-log-panel").expect("log available");
+        assert!(workflow < log, "workflow appears before the collapsed log");
+        assert!(sync_html.contains("data-storage-health=\"OK\""));
+        assert!(sync_html.contains("data-sync-step=\"1\""));
+        assert!(sync_html.contains("data-sync-step=\"5\""));
+        for forbidden in ["ROM parser", "shortcut VDF", "SteamGrid pipeline"] {
+            assert!(
+                !sync_html.contains(forbidden),
+                "developer jargon leaked: {forbidden}"
+            );
+        }
+        assert!(APP_JS.contains("Scanning game folders…"));
+        assert!(APP_JS.contains("Fetching artwork…"));
+        assert!(APP_JS.contains("Creating GameScope entries…"));
+        assert!(APP_JS.contains("Sync complete. Your games are ready in GameScope."));
+        assert!(APP_JS.contains("Storage is full. Free space before syncing games."));
+    }
+
+    #[test]
     fn storage_view_answers_where_disk_space_went_safely() {
         let state = AppState {
             started_unix: 0,
