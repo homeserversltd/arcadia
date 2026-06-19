@@ -5846,14 +5846,43 @@ mod tests {
         ] {
             assert!(rendered.contains(indicator), "missing {indicator}");
         }
+        let header_start = rendered
+            .find("<header class=\"top-header\"")
+            .expect("top header rendered");
         let header_end = rendered
             .find("<div class=\"workspace\"")
             .expect("workspace follows header");
-        let header_html = &rendered[..header_end];
-        for forbidden in [">Ethernet<", ">Running<", ">Needed<", ">Open<"] {
+        let header_html = &rendered[header_start..header_end];
+        for required in [
+            "HomeConsole",
+            "Network",
+            "Games",
+            "Updates",
+            "Uptime",
+            "AI",
+            "Lock",
+            "data-chip-kind=\"network\"",
+            "data-chip-kind=\"games\"",
+            "data-chip-kind=\"updates\"",
+            "data-chip-kind=\"uptime\"",
+            "data-chip-kind=\"local-ai\"",
+            "data-chip-kind=\"pin\"",
+        ] {
+            assert!(
+                header_html.contains(required),
+                "missing header currentness item: {required}"
+            );
+        }
+        for forbidden in [
+            "Arcadia Console",
+            "GameScope",
+            "Storage",
+            "UI contract",
+            "Vault status",
+        ] {
             assert!(
                 !header_html.contains(forbidden),
-                "forbidden visible header text survived: {forbidden}"
+                "developer/proof header item survived: {forbidden}"
             );
         }
         assert!(!rendered.contains("smb:://"));

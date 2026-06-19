@@ -60,6 +60,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .product-lockup h1 { margin: 0; font-size: 20px; letter-spacing: -.02em; line-height: 1; }
 .product-lockup p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
 .header-indicators { margin-left: auto; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.header-indicators--currentness { gap: 8px; align-items: center; }
 .status-badge {
   position: relative;
   display: inline-flex;
@@ -84,6 +85,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .status-badge--warn::after { color: var(--warn); }
 .status-badge--bad::after { color: var(--bad); }
 .status-badge--idle::after { color: var(--idle); opacity: .45; }
+.status-badge--currentness { min-width: 104px; min-height: 42px; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 13px 7px 11px; }
+.status-badge--currentness span { color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .07em; line-height: 1; text-transform: uppercase; }
+.status-badge--currentness strong { display: block; max-width: 150px; color: var(--cream); font-size: 13px; font-weight: 850; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-badge--storage { min-width: 74px; justify-content: flex-start; }
 .status-badge--storage small { font-size: 11px; color: var(--muted); font-weight: 900; line-height: 1; }
 .header-microbar { display: block; width: 22px; height: 5px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.18); }
