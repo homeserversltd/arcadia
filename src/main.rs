@@ -5695,8 +5695,17 @@ mod tests {
         let system_html = &rendered[system_start..];
 
         assert!(rendered.contains("data-view=\"system\""));
+        assert!(!rendered.contains("data-view=\"power\""));
+        assert!(!rendered.contains("id=\"view-power\""));
         for required in [
             "System",
+            "Power",
+            "Console controls",
+            "Full system reboot",
+            "Power off appliance",
+            "Game session only",
+            "reboot-console",
+            "shutdown-console",
             "SSH status",
             "Disabled",
             "Hostname",
@@ -5823,7 +5832,6 @@ mod tests {
             "view-network",
             "view-access-pin",
             "view-updates",
-            "view-power",
             "view-system",
         ] {
             assert!(rendered.contains(view), "missing {view}");
