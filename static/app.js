@@ -94,6 +94,7 @@ function bindNavigation() {
     });
     try { localStorage.setItem('arcadia-active-view', next); } catch (_) {}
   };
+  window.activateArcadiaView = activate;
   buttons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.view)));
   document.querySelectorAll('[data-nav-target]').forEach((button) => button.addEventListener('click', () => activate(button.dataset.navTarget)));
   let stored = 'home';
@@ -150,8 +151,7 @@ function bindGuiPinAccess() {
         setMessage('gui-pin-access-message', 'GUI PIN access request failed.', 'error');
       } finally {
         button.disabled = false;
-        button.textContent = action === 'sync-games' ? (document.getElementById('sync-state')?.textContent === 'Sync Complete' ? 'Sync Complete' : (document.getElementById('sync-state')?.textContent === 'Sync Failed' ? 'Sync Failed' : original)) : original;
-        if (syncProgress) clearInterval(syncProgress);
+        button.textContent = original;
       }
     });
   });
@@ -218,8 +218,7 @@ function bindConsoleActions() {
         if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.' });
       } finally {
         button.disabled = false;
-        button.textContent = action === 'sync-games' ? (document.getElementById('sync-state')?.textContent === 'Sync Complete' ? 'Sync Complete' : (document.getElementById('sync-state')?.textContent === 'Sync Failed' ? 'Sync Failed' : original)) : original;
-        if (syncProgress) clearInterval(syncProgress);
+        button.textContent = original;
       }
     });
   });
@@ -326,6 +325,7 @@ function finishSyncProgress(ok, data = {}) {
     if (result) result.dataset.syncResult = 'success';
     if (resultCopy) resultCopy.textContent = 'Sync complete. Your games are ready in GameScope.';
     if (log) log.textContent = formatActionResult(data);
+    markOnboardingFirstSyncComplete(data);
   } else {
     setWorkflowStep(Math.max(0, Array.from(document.querySelectorAll('.sync-step')).findIndex((step) => step.dataset.stepState === 'running')), true);
     setSyncState('Sync Failed');
@@ -336,6 +336,71 @@ function finishSyncProgress(ok, data = {}) {
     if (resultCopy) resultCopy.textContent = 'Sync could not complete. Open the log for details or try again after fixing the issue shown below.';
     if (log) log.textContent = formatActionResult(data);
   }
+}
+
+
+function initializeOnboarding() {
+  const card = document.querySelector('[data-onboarding-card]');
+  if (!card) return;
+  let done = false;
+  let hidden = false;
+  try {
+    done = localStorage.getItem('onboarding.firstSyncComplete') === 'true';
+    hidden = sessionStorage.getItem('onboarding.hideForNow') === 'true';
+  } catch (_) {}
+  card.hidden = done || hidden;
+  card.querySelector('[data-onboarding-hide-session]')?.addEventListener('click', () => {
+    try { sessionStorage.setItem('onboarding.hideForNow', 'true'); } catch (_) {}
+    card.hidden = true;
+  });
+  updateOnboardingSteps(done);
+}
+
+function updateOnboardingSteps(firstSyncComplete = false) {
+  const steps = document.querySelectorAll('[data-onboarding-step]');
+  steps.forEach((step) => {
+    const n = step.dataset.onboardingStep;
+    let state = 'Not Started';
+    if (n === '1' || n === '2') state = 'Ready';
+    if (firstSyncComplete) state = 'Complete';
+    if (n === '3' && !firstSyncComplete && document.getElementById('sync-state')?.textContent === 'Sync Running') state = 'In Progress';
+    step.dataset.onboardingState = state;
+    const badge = step.querySelector('.onboarding-state');
+    if (badge) badge.textContent = state;
+  });
+}
+
+function markOnboardingFirstSyncComplete(data = {}) {
+  if (data.ok === false) return;
+  try { localStorage.setItem('onboarding.firstSyncComplete', 'true'); } catch (_) {}
+  updateOnboardingSteps(true);
+  const card = document.querySelector('[data-onboarding-card]');
+  if (card) card.hidden = true;
+}
+
+function bindNetworkControls() {
+  document.querySelectorAll('[data-network-action]').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      const action = button.dataset.networkAction;
+      const message = document.getElementById('wifi-message');
+      const responses = {
+        'scan-wifi': 'Scanning for nearby Wi-Fi networks…',
+        'connect-wifi': 'Connecting… Could not connect to this Wi-Fi network. Check the password and try again.',
+        'disconnect-wifi': 'Disconnect requested. Ethernet remains preferred when connected.',
+        'forget-wifi': 'Saved network removal requested. Saved Wi-Fi passwords are never displayed.',
+        'show-saved-wifi': 'Saved networks will appear here when the network manager adapter is connected.',
+      };
+      if (message) setMessage('wifi-message', responses[action] || 'Network action requested.', action === 'connect-wifi' ? 'error' : 'info');
+      PopupManager.showToast(responses[action] || 'Network action requested.', action === 'connect-wifi' ? 'error' : 'info');
+    });
+  });
+  document.querySelectorAll('[data-toggle-password]').forEach((toggle) => {
+    toggle.addEventListener('change', () => {
+      const input = document.querySelector(`input[name="${toggle.dataset.togglePassword}"]`);
+      if (input) input.type = toggle.checked ? 'text' : 'password';
+    });
+  });
 }
 
 async function postJson(url, body) {
@@ -419,6 +484,8 @@ bindProviderKeys();
 bindGuiPinUnlock();
 bindGuiPinAccess();
 bindGuiPinChange();
+bindNetworkControls();
+initializeOnboarding();
 initializeGuiPinGate();
 
 document.addEventListener('click', (event) => {
