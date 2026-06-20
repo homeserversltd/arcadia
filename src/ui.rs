@@ -2,14 +2,8 @@ use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{ButtonVariant, ConsoleStatus};
 
-const FOLDERS: [&str; 12] = [
-    "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
-    "dos",
-];
-
-const VIEWS: [(&str, &str, &str); 9] = [
+const VIEWS: [(&str, &str, &str); 8] = [
     ("home", "⌂", "Home"),
-    ("games", "▣", "Games"),
     ("sync", "↻", "Sync"),
     ("storage", "▰", "Storage"),
     ("local-ai", "◉", "Local AI"),
@@ -38,7 +32,6 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                         (sidebar_launcher())
                         main class="viewport" aria-live="polite" {
                             (home_view(status))
-                            (games_view(status))
                             (sync_view(status))
                             (storage_view(status))
                             (ai_model_view(status))
@@ -528,41 +521,6 @@ fn reachability(label: &str, ok: bool) -> Markup {
     html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) { (label) " " (if ok { "✓" } else { "—" }) } }
 }
 
-fn games_view(status: &ConsoleStatus) -> Markup {
-    view_shell(
-        "games",
-        "Network copy",
-        "Add Games",
-        "Copy games to the console over your home network. The console stores them locally.",
-        html! {
-            div class="path-grid" {
-                (path_card("Windows", "\\\\HOMECONSOLE"))
-                (path_card("Linux / macOS", status.surfaces.smb_url.as_deref().unwrap_or("Folder address unavailable")))
-            }
-            div class="folder-card" {
-                h3 { "Game folders" }
-                div class="folder-list" {
-                    @for folder in FOLDERS { code { (folder) } }
-                }
-            }
-            article class="instruction-card" {
-                h3 { "Add games in four steps" }
-                ol class="numbered-list" {
-                    li { "Open the network share." }
-                    li { "Copy games into the matching folder." }
-                    li { "Return here and press Sync Games." }
-                    li { "Games appear in the GameScope library after sync." }
-                }
-                p class="note" { "Do not rename system folders. Large copies may take time before sync sees the files." }
-            }
-            div class="primary-actions" {
-                (link_button(ButtonVariant::Primary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
-                (nav_button("Go to Sync", "sync"))
-            }
-        },
-    )
-}
-
 fn sync_view(status: &ConsoleStatus) -> Markup {
     let storage_blocked = status.storage.health == "Full";
     let storage_low = status.storage.percent_used >= 90;
@@ -616,7 +574,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
             section class="sync-workflow sync-workflow--flasks" aria-label="Alchemical sync workflow" {
                 (sync_step("1", "▣", "Copy Games", "Source files enter the console folders over the home network.", "Waiting", html! {
                     (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
-                    (nav_button("Add Games", "games"))
+                    (copy_button("Copy Windows path", "\\\\HOMECONSOLE"))
                 }))
                 (sync_step("2", "⌕", "Scan Library", "Folders are measured for new, changed, and removed game files.", "Waiting", html! {
                     (sync_detail("Games found", "Not run yet"))
@@ -1294,10 +1252,6 @@ fn system_view(status: &ConsoleStatus) -> Markup {
 
 fn status_card(title: &str, value: &str, help: &str) -> Markup {
     html! { article class="status-card" { span { (title) } strong { (value) } p { (help) } } }
-}
-
-fn path_card(title: &str, path: &str) -> Markup {
-    html! { article class="path-card" { span { (title) } code { (path) } } }
 }
 
 fn sync_step(

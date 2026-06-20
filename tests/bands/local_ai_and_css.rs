@@ -34,7 +34,6 @@
 
         for view in [
             "view-home",
-            "view-games",
             "view-sync",
             "view-storage",
             "view-local-ai",
@@ -98,6 +97,19 @@
         assert!(!rendered.contains("Vault"));
         assert!(rendered.contains("\\\\HOMECONSOLE"));
         assert!(rendered.contains("Trust &amp; HTTPS"));
+
+        assert!(
+            !rendered.contains("data-view=\"games\""),
+            "left launcher games section survived"
+        );
+        assert!(
+            !rendered.contains("id=\"view-games\""),
+            "dedicated games viewport survived"
+        );
+        assert!(
+            !rendered.contains("aria-controls=\"view-games\""),
+            "games launcher control survived"
+        );
         assert!(!rendered.contains(r#"data-view="lan-inference""#));
         assert!(!rendered.contains("view-lan-inference"));
         assert!(APP_JS.contains("view === 'ai-model' || view === 'lan-inference'"));
