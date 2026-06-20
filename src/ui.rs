@@ -1,6 +1,9 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
-use crate::{platform_display_name, ButtonVariant, ConsoleStatus, GAME_SYSTEMS};
+use crate::{
+    platform_display_name, AiModelStorageStatus, ButtonVariant, ConsoleStatus,
+    StorageCategoryStatus, GAME_SYSTEMS,
+};
 
 const VIEWS: [(&str, &str, &str); 8] = [
     ("home", "⌂", "Home"),
@@ -149,8 +152,9 @@ fn header(status: &ConsoleStatus) -> Markup {
 
 fn theme_cycle_button() -> Markup {
     html! {
-        button class="status-badge status-badge--theme" type="button" data-theme-cycle="true" data-theme-current="ember-aubergine" title="Theme Ember Aubergine" aria-label="Theme Ember Aubergine" {
-            span { "THEME" }
+        button class="status-badge status-badge--theme status-badge--action" type="button" data-theme-cycle="true" data-theme-current="ember-aubergine" data-tooltip="Toggle theme" aria-label="Toggle theme, current theme Ember Aubergine" {
+            span class="chip-icon" aria-hidden="true" { (lucide_icon("palette")) }
+            span class="chip-copy" { "Theme" }
             strong class="theme-name" { "ember aubergine" }
         }
     }
@@ -173,12 +177,60 @@ fn currentness_status_chip(
     help: &str,
     target: &str,
 ) -> Markup {
+    let icon = chip_icon(kind, value);
     html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) title=(help) aria-label=(format!("{}: {}", label, value)) {
-            span { (label) }
+        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) aria-label=(format!("{}: {}", label, value)) {
+            span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
+            span class="chip-copy" { (label) }
             strong { (value) }
         }
     }
+}
+
+fn chip_icon(kind: &str, value: &str) -> &'static str {
+    match kind {
+        "network" => "network",
+        "games" => "gamepad-2",
+        "updates" => "badge-check",
+        "uptime" => "clock-3",
+        "local-ai" => "bot",
+        "pin" if value == "Open" => "unlock-keyhole",
+        "pin" => "lock-keyhole",
+        _ => "circle-dot",
+    }
+}
+
+fn lucide_icon(name: &str) -> Markup {
+    // Inline SVG path data is from Lucide, an open-source ISC-licensed icon set.
+    let body = match name {
+        "network" => {
+            r#"<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M12 8v4m-7 4v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/>"#
+        }
+        "gamepad-2" => {
+            r#"<line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68A4.68 4.68 0 0 0 2 9.68v6.64a2.68 2.68 0 0 0 4.66 1.8l1.7-1.9A2 2 0 0 1 9.85 15h4.3a2 2 0 0 1 1.49.66l1.7 1.9A2.68 2.68 0 0 0 22 15.76V9.68A4.68 4.68 0 0 0 17.32 5Z"/>"#
+        }
+        "badge-check" => {
+            r#"<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>"#
+        }
+        "clock-3" => r#"<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 12"/>"#,
+        "bot" => {
+            r#"<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>"#
+        }
+        "unlock-keyhole" => {
+            r#"<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/><circle cx="12" cy="16" r="1"/>"#
+        }
+        "lock-keyhole" => {
+            r#"<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="16" r="1"/>"#
+        }
+        "palette" => {
+            r#"<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 22C6.5 22 2 17.97 2 13c0-5 4.03-9 9-9s9 3.58 9 8c0 2.76-2.24 5-5 5h-1.77c-.88 0-1.6.72-1.6 1.6 0 .38.15.74.41 1.01.26.26.41.62.41.99C12.45 21.37 12.17 22 12 22z"/>"#
+        }
+        _ => r#"<circle cx="12" cy="12" r="10"/>"#,
+    };
+    PreEscaped(format!(
+        r#"<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">{}</svg>"#,
+        body
+    ))
 }
 
 fn network_tooltip(status: &ConsoleStatus) -> String {
@@ -703,100 +755,214 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
         .saturating_add(status.storage.cleanup.partial_downloads_bytes_clearable)
         .saturating_add(status.storage.cleanup.old_update_bytes_clearable)
         .saturating_add(status.storage.cleanup.logs_bytes_clearable);
-    let diagnostics_count = status.storage.diagnostics.missing_dirs.len()
-        + status.storage.diagnostics.permission_errors.len()
-        + status.storage.diagnostics.warnings.len()
-        + status.storage.diagnostics.overlap_warnings.len()
-        + status.storage.diagnostics.category_scan_errors.len();
+    let diagnostics_count = storage_diagnostics_count(status);
+    let classified_bytes = status
+        .storage
+        .games
+        .bytes
+        .saturating_add(status.storage.artwork.bytes)
+        .saturating_add(status.storage.ai_models.bytes)
+        .saturating_add(status.storage.categories.updates.bytes)
+        .saturating_add(status.storage.categories.logs.bytes)
+        .saturating_add(status.storage.categories.temporary.bytes)
+        .saturating_add(status.storage.categories.system.bytes);
+    let accounted_bytes = classified_bytes.saturating_add(status.storage.other.bytes);
+    let mismatch_copy = if diagnostics_count > 0 {
+        storage_mismatch_copy(status, classified_bytes, accounted_bytes)
+    } else if status.storage.percent_used >= status.storage.thresholds.low_percent {
+        format!(
+            "Filesystem reports {} used and {} free. Review cleanup before downloads or sync.",
+            status.storage.used, status.storage.free
+        )
+    } else {
+        format!(
+            "Filesystem reports {} used. Category scan accounts for {} classified plus {} other.",
+            status.storage.used,
+            human_or_zero(classified_bytes),
+            status.storage.other.size
+        )
+    };
     view_shell(
         "storage",
         "",
         "",
         "",
         html! {
-            section class="storage-appliance" aria-label="Storage overview" {
-                article class="storage-summary storage-summary--compact" {
-                    div class="storage-overview-line" {
-                        div {
-                            strong { "Storage " (status.storage.health) }
-                            span { (status.storage.free) " free · " (status.storage.percent) " used" }
+            section class="storage-appliance storage-appliance--one-pane" aria-label="Storage overview" {
+                article class=(if diagnostics_count > 0 { "storage-summary storage-dashboard storage-dashboard--warning" } else { "storage-summary storage-dashboard" }) {
+                    div class="storage-command-center" {
+                        div class="storage-health-block" {
+                            span class=(if diagnostics_count > 0 { "status-pill partial" } else { "status-pill up" }) {
+                                @if diagnostics_count > 0 { "Mismatch detected" } @else { "Storage " (status.storage.health) }
+                            }
+                            strong { (status.storage.free) " free" }
+                            em { (status.storage.percent) " used · scanned " (human_scan_time(&status.storage.scanned_at)) }
                         }
-                        (action_button(ButtonVariant::Secondary, "Rescan", "storage-rescan", "/api/storage/rescan-summary"))
+                        div class="storage-actions" aria-label="Storage actions" {
+                            (action_button(ButtonVariant::Primary, "Rescan", "storage-rescan", "/api/storage/rescan-summary"))
+                            @if diagnostics_count > 0 {
+                                button class="btn btn--secondary" type="button" data-storage-modal="diagnostics" { "Review mismatch" }
+                            } @else if cleanup_total > 0 {
+                                button class="btn btn--secondary" type="button" data-storage-modal="cleanup-review" { "Review cleanup" }
+                            }
+                            button class="btn btn--secondary" type="button" data-storage-modal="locations" { "Managed locations" }
+                        }
                     }
-                    div class="storage-hero-stats storage-hero-stats--compact" {
+
+                    div class="storage-hero-metrics" aria-label="Capacity summary" {
                         (storage_stat("Total", &status.storage.total))
                         (storage_stat("Used", &status.storage.used))
-                        (storage_stat("Scanned", &human_scan_time(&status.storage.scanned_at)))
+                        (storage_stat("Free", &status.storage.free))
+                        (storage_stat("Scan", &human_scan_time(&status.storage.scanned_at)))
                     }
-                    (storage_usage_bar(status))
-                    @if diagnostics_count > 0 {
-                        div class="storage-alert-line" { strong { "Storage mismatch detected" } button class="btn btn--secondary" type="button" data-storage-modal="diagnostics" { "Review" } }
-                    } @else if status.storage.percent_used >= status.storage.thresholds.low_percent {
-                        div class="storage-alert-line" { strong { "Storage low" } button class="btn btn--secondary" type="button" data-storage-modal="cleanup-review" { "Review Cleanup" } }
+
+                    div class="storage-visual-panel" {
+                        div class="storage-meter-head" {
+                            strong { "Capacity" }
+                            span { (status.storage.used) " used of " (status.storage.total) }
+                        }
+                        (storage_usage_bar(status))
+                        div class="storage-legend storage-legend--inline" aria-label="Storage legend" {
+                            (storage_legend_item("games", "Games", &status.storage.games.size))
+                            (storage_legend_item("artwork", "Artwork", &status.storage.artwork.size))
+                            (storage_legend_item("ai", "AI Models", &status.storage.ai_models.size))
+                            (storage_legend_item("other", "Other", &status.storage.other.size))
+                            (storage_legend_item("free", "Free", &status.storage.free))
+                        }
                     }
                 }
 
-                div class="storage-category-list" aria-label="Storage categories" {
-                    (storage_category_row("🎮", "Games", &status.storage.games.size, status.storage.games.percent_of_total, "games", "games", None, None, true))
-                    (storage_category_row("🖼", "Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total, "artwork", "artwork-detail", Some("Clear"), Some("clear-artwork-cache"), status.storage.artwork.bytes > 0))
-                    (storage_category_row("◉", "AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total, "ai", "ai-models-detail", None, None, true))
-                    (storage_category_row("⬇", "Updates", &status.storage.categories.updates.size, status.storage.categories.updates.percent_of_total, "updates", "updates-detail", Some("Clean"), Some("clear-old-updates"), status.storage.categories.updates.bytes > 0))
-                    (storage_category_row("≋", "Logs", &status.storage.categories.logs.size, status.storage.categories.logs.percent_of_total, "logs", "logs-detail", Some("Prune"), Some("prune-logs"), status.storage.categories.logs.bytes > 0))
-                    (storage_category_row("⌁", "Temporary Files", &status.storage.categories.temporary.size, status.storage.categories.temporary.percent_of_total, "temporary", "temporary-detail", Some("Clean"), Some("clean-temporary-files"), status.storage.categories.temporary.bytes > 0))
-                    (storage_category_row("▣", "System", &status.storage.categories.system.size, status.storage.categories.system.percent_of_total, "system", "system-detail", None, None, status.storage.categories.system.bytes > 0))
-                    (storage_category_row("◇", "Other", &status.storage.other.size, status.storage.other.percent_of_total, "other", "category-other", None, None, status.storage.other.bytes > 0))
-                    (storage_category_row("○", "Free", &status.storage.free, 100u8.saturating_sub(status.storage.percent_used), "free", "category-free", None, None, true))
+                article class=(if diagnostics_count > 0 { "storage-alert-panel storage-alert-panel--warning" } else { "storage-alert-panel" }) {
+                    strong {
+                        @if diagnostics_count > 0 { "Storage mismatch detected" }
+                        @else if status.storage.percent_used >= status.storage.thresholds.low_percent { "Storage low" }
+                        @else { "Storage accounting matches" }
+                    }
+                    span { (mismatch_copy) }
+                    div class="storage-accounting-grid" aria-label="Storage accounting" {
+                        (storage_accounting_fact("Filesystem used", &status.storage.used))
+                        (storage_accounting_fact("Category scan", &human_or_zero(classified_bytes)))
+                        (storage_accounting_fact("Other / unclassified", &status.storage.other.size))
+                        (storage_accounting_fact("Scan time", &format!("{} ms", status.storage.diagnostics.scan_duration_ms)))
+                    }
                 }
 
-                article class="storage-compact-entry" {
-                    span { "Cleanup available: " (human_or_zero(cleanup_total)) }
-                    button class="btn btn--secondary" type="button" data-storage-modal="cleanup-review" { "Review Cleanup" }
-                }
-                article class="storage-compact-entry" {
-                    span { "Managed Locations" }
-                    small { "Games, artwork, AI models, updates, logs" }
-                    button class="btn btn--secondary" type="button" data-storage-modal="locations" { "Open" }
-                }
-                article class="storage-compact-entry storage-compact-entry--diagnostics" {
-                    @if diagnostics_count > 0 {
-                        span { "Storage scan warnings: " (diagnostics_count) }
-                        button class="btn btn--secondary" type="button" data-storage-modal="diagnostics" { "Review" }
-                    } @else {
-                        span { "Diagnostics" }
-                        button class="btn btn--secondary" type="button" data-storage-modal="diagnostics" { "Open" }
-                    }
+                div class="storage-category-list storage-category-list--dashboard" aria-label="Storage consumption breakdown" {
+                    (storage_category_row("🎮", "Games", &status.storage.games, "games"))
+                    (storage_category_row("🖼", "Artwork", &status.storage.artwork, "artwork"))
+                    (storage_ai_category_row(&status.storage.ai_models))
+                    (storage_category_row("⬇", "Updates", &status.storage.categories.updates, "updates"))
+                    (storage_category_row("≋", "Logs", &status.storage.categories.logs, "logs"))
+                    (storage_category_row("⌁", "Temporary Files", &status.storage.categories.temporary, "temporary"))
+                    (storage_category_row("▣", "System", &status.storage.categories.system, "system"))
+                    (storage_category_row("◇", "Other", &status.storage.other, "other"))
+                    (storage_free_row(status))
                 }
             }
         },
     )
 }
 
+fn storage_diagnostics_count(status: &ConsoleStatus) -> usize {
+    status.storage.diagnostics.missing_dirs.len()
+        + status.storage.diagnostics.permission_errors.len()
+        + status.storage.diagnostics.warnings.len()
+        + status.storage.diagnostics.overlap_warnings.len()
+        + status.storage.diagnostics.category_scan_errors.len()
+}
+
+fn storage_mismatch_copy(
+    status: &ConsoleStatus,
+    classified_bytes: u64,
+    accounted_bytes: u64,
+) -> String {
+    let first_warning = status
+        .storage
+        .diagnostics
+        .warnings
+        .first()
+        .or_else(|| status.storage.diagnostics.overlap_warnings.first())
+        .or_else(|| status.storage.diagnostics.category_scan_errors.first())
+        .or_else(|| status.storage.diagnostics.missing_dirs.first())
+        .map(String::as_str)
+        .unwrap_or("Managed storage scan reported a mismatch.");
+    format!(
+        "{} Filesystem used {}. Managed categories classify {}; accounting total is {}. Rescan, then review mismatch if it remains.",
+        first_warning,
+        status.storage.used,
+        human_or_zero(classified_bytes),
+        human_or_zero(accounted_bytes)
+    )
+}
+
+fn storage_accounting_fact(label: &str, value: &str) -> Markup {
+    html! { span class="storage-accounting-fact" { em { (label) } strong { (value) } } }
+}
+
+fn storage_legend_item(color: &str, label: &str, value: &str) -> Markup {
+    html! { span class=(format!("storage-legend-item storage-legend-item--{}", color)) { em {} strong { (label) } small { (value) } } }
+}
+
 fn storage_category_row(
     icon: &str,
     label: &str,
-    size: &str,
-    percent: u8,
+    category: &StorageCategoryStatus,
     color: &str,
-    modal: &str,
-    cleanup_label: Option<&str>,
-    cleanup_action: Option<&str>,
-    show: bool,
 ) -> Markup {
-    if !show {
-        return html! {};
-    }
     html! {
-        article class="storage-category-row" data-storage-category=(modal) {
+        article class="storage-category-row storage-category-row--inline" data-storage-category=(color) {
             span class="storage-category-icon" { (icon) }
-            strong { (label) }
-            b { (size) }
-            em { (percent_label(percent, if size == "0 B" { 0 } else { 1 })) }
-            div class="storage-category-mini" aria-hidden="true" { span class=(format!("storage-segment--{}", color)) style=(format!("width: {}%", percent.max(if size == "0 B" { 0 } else { 1 }))) {} }
-            button class="btn btn--secondary" type="button" data-storage-modal=(modal) { "Details" }
-            @if let (Some(text), Some(action)) = (cleanup_label, cleanup_action) {
-                button class="btn btn--secondary" type="button" data-storage-cleanup=(action) { (text) }
+            div class="storage-category-main" {
+                strong { (label) }
+                small { (category.detail) }
             }
+            b { (category.size) }
+            em { (percent_label(category.percent_of_total, category.bytes)) }
+            div class="storage-category-mini" aria-hidden="true" { span class=(format!("storage-segment--{}", color)) style=(format!("width: {}%", category.percent_of_total.max(if category.bytes == 0 { 0 } else { 1 }))) {} }
+            span class=(format!("system-status system-status--{}", state_class(&category.state))) { (title_case_state_like(&category.state)) }
         }
+    }
+}
+
+fn storage_ai_category_row(category: &AiModelStorageStatus) -> Markup {
+    html! {
+        article class="storage-category-row storage-category-row--inline" data-storage-category="ai" {
+            span class="storage-category-icon" { "◉" }
+            div class="storage-category-main" {
+                strong { "AI Models" }
+                small { (category.detail) }
+            }
+            b { (category.size) }
+            em { (percent_label(category.percent_of_total, category.bytes)) }
+            div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--ai" style=(format!("width: {}%", category.percent_of_total.max(if category.bytes == 0 { 0 } else { 1 }))) {} }
+            span class="system-status system-status--available" { (category.meta) }
+        }
+    }
+}
+
+fn storage_free_row(status: &ConsoleStatus) -> Markup {
+    let free_percent = 100u8.saturating_sub(status.storage.percent_used);
+    html! {
+        article class="storage-category-row storage-category-row--inline" data-storage-category="free" {
+            span class="storage-category-icon" { "○" }
+            div class="storage-category-main" {
+                strong { "Free" }
+                small { "Available capacity for games, artwork, updates, and Local AI models." }
+            }
+            b { (status.storage.free) }
+            em { (percent_label(free_percent, status.storage.free_bytes)) }
+            div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--free" style=(format!("width: {}%", free_percent)) {} }
+            span class="system-status system-status--available" { "Available" }
+        }
+    }
+}
+
+fn state_class(state: &str) -> &'static str {
+    match state {
+        "ok" => "available",
+        "warning" => "starting",
+        "unknown" => "unknown",
+        _ => "unknown",
     }
 }
 

@@ -85,8 +85,9 @@ function setArcadiaTheme(name, announce = false) {
     button.dataset.themeCurrent = theme;
     const label = button.querySelector('.theme-name');
     if (label) label.textContent = theme.replace(/-/g, ' ');
-    button.setAttribute('aria-label', `Theme ${theme.replace(/-/g, ' ')}`);
-    button.title = `Theme ${theme.replace(/-/g, ' ')}`;
+    const pretty = theme.replace(/-/g, ' ');
+    button.setAttribute('aria-label', `Toggle theme, current theme ${pretty}`);
+    button.dataset.tooltip = `Toggle theme; current theme ${pretty}`;
   });
   if (announce) PopupManager.showToast(`Theme ${theme.replace(/-/g, ' ')}`, 'success');
 }
