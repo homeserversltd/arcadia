@@ -170,7 +170,7 @@
     }
 
     #[test]
-    fn sync_view_is_ceremonial_workflow_not_log_first() {
+    fn sync_view_is_samba_rom_scan_not_log_first() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -188,80 +188,69 @@
         let sync_html = &rendered[sync_start..sync_end];
 
         for required in [
-            "Copy games into the console folders, then Sync scans the files",
-            "Start Sync",
+            "Scan Samba ROM folders into GameScope",
+            "Copy ROM files into the network game folders.",
+            "matches systems and artwork where possible",
+            "playable GameScope entries",
+            "Scan for ROMs",
             r#"data-action="sync-games""#,
-            "Copy Games",
-            "Source files enter the console folders over the home network.",
-            "Scan Library",
-            "Folders are measured for new, changed, and removed game files.",
-            "Fetch Artwork",
-            "Configured scrapers enrich titles, covers, and artwork.",
-            "Create Game Entries",
-            "The sync writes or updates the library records GameScope reads.",
-            "Available in GameScope",
-            "Completed entries appear in the GameScope library after sync.",
-            "Waiting",
-            "Running",
-            "Complete",
-            "Skipped",
-            "Error",
-            "Before",
-            "Optional",
-            "After",
-            "Games found",
-            "Changed files",
-            "Configure Scrapers",
-            "Created",
-            "Updated",
-            "Skipped",
+            "Put ROMs here",
+            r#"\\HOMECONSOLE\games"#,
+            "smb://homeconsole/games",
+            "Configured ROM folders",
+            "GBA",
+            "games/gba",
+            "Open Games Folder",
+            "Copy Windows path",
+            "Copy Linux/macOS path",
+            "sync-running-panel",
+            "Scanning ROM folders",
             "Last sync",
-            "Synced entries",
-            "Sync readback",
-            "Detected",
-            "Artwork",
+            "No ROMs have been detected yet.",
+            "Tools and troubleshooting",
+            "Configure Scrapers",
             "Output",
-            "SteamGridDB",
-            "TheGamesDB",
-            "ScreenScraper",
-            "sync-flask-stage",
-            "sync-flask-liquid",
         ] {
             assert!(sync_html.contains(required), "missing {required}");
         }
-        assert!(APP_CSS.contains("flask-hydrate"));
         assert!(VIEWPORT_CSS.contains("prefers-reduced-motion"));
+        assert!(APP_CSS.contains("sync-scan-dot"));
         assert!(!sync_html.contains("provider-keys-form"));
         assert!(!sync_html.contains("screenscraper_api_key"));
 
-        let workflow = sync_html.find("sync-workflow").expect("workflow shown");
+        let folder_source = sync_html
+            .find("sync-folder-source")
+            .expect("folder source shown");
         let output = sync_html
             .find("sync-output-panel")
             .expect("output available");
         assert!(
-            workflow < output,
-            "workflow appears before the collapsed output"
+            folder_source < output,
+            "folder source appears before the collapsed output"
         );
-        for forbidden in ["View Sync Log", "Logs are secondary"] {
+        for forbidden in [
+            "Turn copied files into playable games",
+            "sync-workflow",
+            "sync-flask-stage",
+            "sync-flask-liquid",
+            "Waiting",
+            "Skipped",
+            "View Sync Log",
+            "Logs are secondary",
+            "ROM parser",
+            "shortcut VDF",
+            "SteamGrid pipeline",
+        ] {
             assert!(
                 !sync_html.contains(forbidden),
                 "rejected sync copy survived: {forbidden}"
             );
         }
         assert!(sync_html.contains("data-storage-health=\"OK\""));
-        assert!(sync_html.contains("data-sync-step=\"1\""));
-        assert!(sync_html.contains("data-sync-step=\"5\""));
-        for forbidden in ["ROM parser", "shortcut VDF", "SteamGrid pipeline"] {
-            assert!(
-                !sync_html.contains(forbidden),
-                "developer jargon leaked: {forbidden}"
-            );
-        }
-        assert!(APP_JS.contains("Scanning game folders…"));
-        assert!(APP_JS.contains("Fetching artwork…"));
-        assert!(APP_JS.contains("Creating GameScope entries…"));
-        assert!(APP_JS.contains("Sync complete. Your games are ready in GameScope."));
-        assert!(APP_JS.contains("Storage is full. Free space before syncing games."));
+        assert!(APP_JS.contains("Scanning Samba ROM folders…"));
+        assert!(APP_JS.contains("Sync complete. Playable GameScope entries were updated from the ROM folders."));
+        assert!(APP_JS.contains("Storage is full. Free space before scanning ROMs."));
+        assert!(APP_JS.contains("ROM scan is already running."));
     }
 
     #[test]
