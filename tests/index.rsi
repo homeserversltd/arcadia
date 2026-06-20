@@ -1,0 +1,9 @@
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    include!("bands/provider_and_ux.rs");
+    include!("bands/home_sync_storage.rs");
+    include!("bands/network_system.rs");
+    include!("bands/local_ai_and_css.rs");
+}
