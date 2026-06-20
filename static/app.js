@@ -643,9 +643,10 @@ function updateControllerLiveInput(data) {
   const device = root.querySelector('[data-controller-input-device]');
   if (device) device.textContent = data.device || 'No controller detected';
   const pressed = new Set((data.pressed || []).map((item) => item.control));
-  root.querySelectorAll('[data-controller-control]').forEach((pill) => {
+  document.querySelectorAll('[data-controller-control]').forEach((pill) => {
     const active = pressed.has(pill.dataset.controllerControl || '');
     pill.classList.toggle('controller-button-dot--active', active);
+    pill.classList.toggle('is-active', active);
   });
   const axes = root.querySelector('[data-controller-axes]');
   if (axes) {

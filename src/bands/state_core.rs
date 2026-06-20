@@ -110,8 +110,11 @@ pub struct ControllerStatus {
     pub detected_count: usize,
     pub primary_device: String,
     pub last_scan: String,
+    pub recovery: ControllerRecoveryStatus,
     pub devices: Vec<ControllerDeviceStatus>,
     pub profile: ControllerProfileStatus,
+    pub profile_presets: Vec<ControllerProfilePresetStatus>,
+    pub bind_steps: Vec<ControllerBindStepStatus>,
     pub live_input: ControllerInputStatus,
     pub emulators: Vec<EmulatorControllerStatus>,
 }
@@ -123,6 +126,33 @@ pub struct ControllerDeviceStatus {
     pub handler: String,
     pub kind: String,
     pub path: String,
+    pub state: String,
+    pub transport: String,
+    pub glyph: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerRecoveryStatus {
+    pub state: String,
+    pub title: String,
+    pub detail: String,
+    pub action: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerProfilePresetStatus {
+    pub name: String,
+    pub layout: String,
+    pub state: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerBindStepStatus {
+    pub control: String,
+    pub prompt: String,
     pub state: String,
 }
 

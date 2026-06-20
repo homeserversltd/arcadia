@@ -64,3 +64,35 @@
 .ux-grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--ux-grid-gap); }
 .ux-row-actions { display: flex; flex-wrap: wrap; gap: var(--ux-control-gap); }
 .ux-readable { font-size: var(--ux-text-md); line-height: 1.4; color: var(--muted); }
+
+/* Controller appliance primitives: Steam Input + EmulationStation + Windows controller-test grammar. */
+.ux-controller-silhouette {
+  position: relative;
+  min-height: 88px;
+  display: grid;
+  grid-template-columns: minmax(70px, .35fr) minmax(260px, 1fr) minmax(70px, .35fr);
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--orange-strong) 16%, transparent), transparent 42%), color-mix(in srgb, var(--theme-field-surface) 76%, transparent);
+}
+.ux-controller-grip { min-height: 58px; border: 1px solid var(--line); background: color-mix(in srgb, var(--theme-bg-raised) 78%, transparent); }
+.ux-controller-grip--left { border-radius: 48px 24px 32px 58px; }
+.ux-controller-grip--right { border-radius: 24px 48px 58px 32px; }
+.ux-controller-center { min-width: 0; display: grid; grid-template-columns: .72fr .72fr 1fr .72fr 1fr; align-items: center; gap: 6px; }
+.ux-controller-stick, .ux-controller-dpad, .ux-controller-button { display: grid; place-items: center; min-width: 24px; min-height: 24px; border-radius: 999px; border: 1px solid var(--line); background: var(--theme-button-surface); color: var(--cream); font-size: var(--ux-text-xs); font-weight: 900; }
+.ux-controller-dpad { border-radius: 14px; }
+.ux-controller-face-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.ux-controller-status { justify-self: center; min-width: 92px; padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); text-align: center; font-size: var(--ux-text-xs); text-transform: uppercase; letter-spacing: .08em; }
+.ux-controller-stick.is-active, .ux-controller-dpad.is-active, .ux-controller-button.is-active { border-color: var(--good); color: var(--good); box-shadow: 0 0 18px color-mix(in srgb, var(--good) 45%, transparent); }
+.ux-controller-shoulders { position: absolute; left: 20%; right: 20%; top: -11px; display: flex; justify-content: space-between; pointer-events: none; }
+.ux-controller-shoulders span { min-width: 54px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 14px 14px 6px 6px; background: var(--theme-bg-raised); color: var(--muted); text-align: center; font-size: var(--ux-text-xs); font-weight: 900; }
+.controller-profile-cards, .controller-bind-flow { display: grid; gap: 6px; }
+.controller-profile-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.controller-profile-card, .controller-bind-step, .controller-recovery-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent); padding: 5px 7px; }
+.controller-profile-card strong, .controller-bind-step strong, .controller-recovery-card strong { display: block; color: var(--cream); font-size: var(--ux-text-xs); }
+.controller-profile-card span, .controller-profile-card em, .controller-bind-step span, .controller-recovery-card span, .controller-recovery-card em { display: block; color: var(--muted); font-size: var(--ux-text-xs); font-style: normal; }
+.controller-bind-flow { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.controller-bind-step.is-active { border-color: var(--good); }

@@ -1,11 +1,12 @@
 fn controller_status() -> ControllerStatus {
     let devices = controller_devices();
     let detected_count = devices.len();
-    let state = if detected_count > 0 { "ready" } else { "waiting" }.to_string();
+    let recovery = controller_recovery_status(&devices);
+    let state = if detected_count > 0 { "connected".to_string() } else { recovery.state.clone() };
     let primary_device = devices
         .first()
         .map(|device| device.name.clone())
-        .unwrap_or_else(|| "No gamepad detected".to_string());
+        .unwrap_or_else(|| recovery.title.clone());
     let profile = controller_profile_status(devices.first());
     let live_input = read_controller_input(devices.first());
     ControllerStatus {
@@ -13,8 +14,11 @@ fn controller_status() -> ControllerStatus {
         detected_count,
         primary_device,
         last_scan: human_now_label(),
+        recovery,
         devices,
         profile,
+        profile_presets: controller_profile_presets(),
+        bind_steps: controller_bind_steps(),
         live_input,
         emulators: emulator_controller_statuses(),
     }
@@ -28,6 +32,79 @@ fn controller_devices() -> Vec<ControllerDeviceStatus> {
     devices.sort_by(|a, b| controller_rank(a).cmp(&controller_rank(b)).then(a.name.cmp(&b.name)));
     devices.dedup_by(|a, b| a.path == b.path || a.handler == b.handler);
     devices
+}
+
+fn controller_recovery_status(devices: &[ControllerDeviceStatus]) -> ControllerRecoveryStatus {
+    if let Some(device) = devices.first() {
+        return ControllerRecoveryStatus {
+            state: "connected".to_string(),
+            title: format!("{} ready", device.name),
+            detail: "Press a button or move a stick; the controller face lights live.".to_string(),
+            action: "Map or assign profile".to_string(),
+        };
+    }
+    if let Some(receiver) = idle_receiver_label() {
+        return ControllerRecoveryStatus {
+            state: "receiver-only".to_string(),
+            title: receiver,
+            detail: "Receiver is awake; no gamepad event surface is exposed yet.".to_string(),
+            action: "Wake or pair the controller".to_string(),
+        };
+    }
+    ControllerRecoveryStatus {
+        state: "disconnected".to_string(),
+        title: "No controller connected".to_string(),
+        detail: "Plug in USB, wake Bluetooth, or pair the 2.4G receiver.".to_string(),
+        action: "Scan controllers".to_string(),
+    }
+}
+
+fn idle_receiver_label() -> Option<String> {
+    for root in ["/dev/input/by-id", "/dev/hidraw0"] {
+        if root == "/dev/hidraw0" && Path::new(root).exists() {
+            return Some("Receiver only".to_string());
+        }
+        let Ok(entries) = fs::read_dir(root) else { continue; };
+        for entry in entries.flatten() {
+            let raw = entry.file_name().to_string_lossy().to_string();
+            let lowered = raw.to_ascii_lowercase();
+            if lowered.contains("8bitdo") && (lowered.contains("idle") || lowered.contains("hidraw")) {
+                return Some(controller_display_name(&raw));
+            }
+        }
+    }
+    None
+}
+
+fn controller_transport(name: &str, path: &str) -> String {
+    let lowered = format!("{} {}", name, path).to_ascii_lowercase();
+    if lowered.contains("bluetooth") { "Bluetooth" }
+    else if lowered.contains("usb") { "USB" }
+    else if lowered.contains("8bitdo") { "2.4G / USB" }
+    else { "Input" }.to_string()
+}
+
+fn controller_glyph(name: &str) -> String {
+    let lowered = name.to_ascii_lowercase();
+    if lowered.contains("8bitdo") { "8B" }
+    else if lowered.contains("xbox") { "XB" }
+    else if lowered.contains("dual") || lowered.contains("playstation") { "PS" }
+    else if lowered.contains("nintendo") || lowered.contains("switch") { "NS" }
+    else { "GP" }.to_string()
+}
+
+fn controller_profile_presets() -> Vec<ControllerProfilePresetStatus> {
+    [("Default", "Xbox / SDL order", "active"), ("Nintendo", "A/B swapped", "available"), ("PlayStation", "Cross/Circle labels", "available"), ("Arcade", "D-pad priority", "available")]
+        .into_iter()
+        .map(|(name, layout, state)| ControllerProfilePresetStatus { name: name.to_string(), layout: layout.to_string(), state: state.to_string() })
+        .collect()
+}
+
+fn controller_bind_steps() -> Vec<ControllerBindStepStatus> {
+    ["A", "B", "X", "Y", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "L1", "R1", "L2", "R2", "Start", "Select", "Left Stick", "Right Stick"]
+        .into_iter()
+        .map(|control| ControllerBindStepStatus { control: control.to_string(), prompt: format!("Press {}", control), state: "waiting".to_string() })
+        .collect()
 }
 
 fn controller_rank(device: &ControllerDeviceStatus) -> u8 {
@@ -63,11 +140,13 @@ fn controllers_from_proc_bus_input() -> Vec<ControllerDeviceStatus> {
             "/dev/input".to_string()
         };
         out.push(ControllerDeviceStatus {
-            name,
+            name: name.clone(),
             handler: handler.to_string(),
             kind: if handler.starts_with("js") { "joystick" } else { "gamepad" }.to_string(),
-            path,
+            path: path.clone(),
             state: "detected".to_string(),
+            transport: controller_transport(&name, &path),
+            glyph: controller_glyph(&name),
         });
     }
     out
@@ -111,6 +190,8 @@ fn controllers_from_dev_input() -> Vec<ControllerDeviceStatus> {
                 kind: if lowered.starts_with("js") || lowered.ends_with("-joystick") { "joystick" } else { "gamepad" }.to_string(),
                 path: path.display().to_string(),
                 state: "detected".to_string(),
+                transport: controller_transport(&file_name, &path.display().to_string()),
+                glyph: controller_glyph(&file_name),
             });
         }
     }

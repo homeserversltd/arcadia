@@ -206,8 +206,9 @@
             "data-view=\"controllers\"",
             "data-view-panel=\"controllers\"",
             "Controller manager",
-            "Detected devices",
-            "Default profile",
+            "Controller",
+            "Profiles",
+            "Bind",
             "RetroArch",
             "Dolphin",
             "DuckStation",
@@ -217,6 +218,9 @@
             "data-action=\"controllers-test\"",
             "data-controller-live-input",
             "data-controller-mapping-editor=\"default\"",
+            "data-controller-face",
+            "controller-profile-card",
+            "controller-bind-flow",
             "Live input",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
@@ -231,9 +235,10 @@
         }
         assert!(APP_JS.contains("bindControllerLiveInput"));
         assert!(APP_JS.contains("/api/controllers/input"));
-        assert!(APP_CSS.contains(".controllers-hero"));
+        assert!(APP_CSS.contains(".controllers-command-deck"));
         assert!(APP_CSS.contains(".emulator-controller-grid"));
         assert!(APP_CSS.contains(".controller-button-dot--active"));
+        assert!(UX_CSS.contains(".ux-controller-silhouette"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
         assert!(controller_backend.contains("/proc/bus/input/devices"));
         assert!(controller_backend.contains("Keyboard") || controller_backend.contains("keyboard"));
