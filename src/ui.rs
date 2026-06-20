@@ -1636,26 +1636,95 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
         .iter()
         .map(|b| b.control.as_str())
         .collect::<Vec<_>>();
+    let binding_for = |control: &str| -> &str {
+        status
+            .controllers
+            .profile
+            .bindings
+            .iter()
+            .find(|binding| binding.control == control)
+            .map(|binding| binding.binding.as_str())
+            .unwrap_or(if connected { "Tap to bind" } else { "Waiting" })
+    };
     html! {
-        div class="ux-controller-silhouette" aria-label="Live controller face" data-controller-face {
-            div class="ux-controller-grip ux-controller-grip--left" aria-hidden="true" {}
-            div class="ux-controller-center" {
-                div class=(if active.contains(&"Left stick X") { "ux-controller-stick is-active" } else { "ux-controller-stick" }) data-controller-control="Left stick X" { "L" }
-                div class=(if active.contains(&"D-pad") { "ux-controller-dpad is-active" } else { "ux-controller-dpad" }) aria-label="D-pad" data-controller-control="D-pad" { "✚" }
-                div class="ux-controller-status" { (if connected { "Connected" } else { title_case_state_like(&status.controllers.state) }) }
-                div class="ux-controller-stick" data-controller-control="Right stick" { "R" }
-                div class="ux-controller-face-buttons" {
-                    @for label in ["Y", "X", "B", "A"] { (controller_face_button(label, active.contains(&label))) }
+        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer {
+            div class="ux-gamepad-body" {
+                div class="ux-gamepad-shell ux-gamepad-shell--left" aria-hidden="true" {}
+                div class="ux-gamepad-shell ux-gamepad-shell--right" aria-hidden="true" {}
+                div class="ux-gamepad-top-row" aria-label="Shoulder and trigger mapping" {
+                    (gamepad_control("L2", "Left trigger", binding_for("L2"), active.contains(&"L2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
+                    (gamepad_control("L1", "Left shoulder", binding_for("L1"), active.contains(&"L1"), "ux-gamepad-shoulder"))
+                    div class="ux-gamepad-status" { (if connected { "Connected" } else { title_case_state_like(&status.controllers.state) }) }
+                    (gamepad_control("R1", "Right shoulder", binding_for("R1"), active.contains(&"R1"), "ux-gamepad-shoulder"))
+                    (gamepad_control("R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
+                }
+                div class="ux-gamepad-left" {
+                    (gamepad_stick("Left stick", binding_for("Left stick X"), active.contains(&"Left stick X") || active.contains(&"Left stick Y")))
+                    (gamepad_dpad(active.contains(&"D-pad"), connected))
+                }
+                div class="ux-gamepad-center" {
+                    (gamepad_control("Select", "Select", binding_for("Select"), active.contains(&"Select"), "ux-gamepad-system"))
+                    div class="ux-gamepad-home" aria-hidden="true" { "⌂" }
+                    (gamepad_control("Start", "Start", binding_for("Start"), active.contains(&"Start"), "ux-gamepad-system"))
+                }
+                div class="ux-gamepad-right" {
+                    div class="ux-gamepad-face-diamond" aria-label="Face button mapping" {
+                        (gamepad_control("Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face ux-gamepad-face--y"))
+                        (gamepad_control("X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face ux-gamepad-face--x"))
+                        (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
+                        (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
+                    }
+                    (gamepad_stick("Right stick", binding_for("Right stick"), active.contains(&"Right stick")))
                 }
             }
-            div class="ux-controller-shoulders" aria-hidden="true" { span { "L1" } span { "R1" } }
-            div class="ux-controller-grip ux-controller-grip--right" aria-hidden="true" {}
         }
     }
 }
 
-fn controller_face_button(label: &str, active: bool) -> Markup {
-    html! { span class=(if active { "ux-controller-button is-active" } else { "ux-controller-button" }) data-controller-control=(label) { (label) } }
+fn gamepad_binding_label(binding: &str) -> String {
+    binding
+        .replace("button ", "B")
+        .replace("axis ", "AX")
+        .replace("hat 0", "Hat")
+}
+
+fn gamepad_control(
+    label: &str,
+    name: &str,
+    binding: &str,
+    active: bool,
+    class_name: &str,
+) -> Markup {
+    html! {
+        button class=(format!("ux-gamepad-control {}{}", class_name, if active { " is-active" } else { "" })) type="button" data-controller-control=(label) aria-label=(format!("{} mapped to {}", name, binding)) {
+            strong { (label) }
+            span { (gamepad_binding_label(binding)) }
+        }
+    }
+}
+
+fn gamepad_stick(label: &str, binding: &str, active: bool) -> Markup {
+    html! {
+        button class=(if active { "ux-gamepad-stick is-active" } else { "ux-gamepad-stick" }) type="button" data-controller-control=(label) aria-label=(format!("{} mapped to {}", label, binding)) {
+            span class="ux-gamepad-stick-cap" aria-hidden="true" {}
+            strong { (label) }
+            em { (gamepad_binding_label(binding)) }
+        }
+    }
+}
+
+fn gamepad_dpad(active: bool, connected: bool) -> Markup {
+    let binding = if connected { "hat 0" } else { "Waiting" };
+    html! {
+        div class=(if active { "ux-gamepad-dpad is-active" } else { "ux-gamepad-dpad" }) aria-label=(format!("D-pad mapped to {}", binding)) data-controller-control="D-pad" {
+            button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--up" data-controller-control="D-pad Up" { "▲" }
+            button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--left" data-controller-control="D-pad Left" { "◀" }
+            button type="button" class="ux-gamepad-dpad-center" tabindex="-1" { "D" }
+            button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--right" data-controller-control="D-pad Right" { "▶" }
+            button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--down" data-controller-control="D-pad Down" { "▼" }
+            span { (gamepad_binding_label(binding)) }
+        }
+    }
 }
 
 fn controller_recovery_card(recovery: &crate::ControllerRecoveryStatus) -> Markup {

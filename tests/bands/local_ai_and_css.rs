@@ -236,6 +236,12 @@
             "data-controller-live-input",
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
+            "data-controller-gamepad-programmer",
+            "ux-gamepad-body",
+            "ux-gamepad-stick",
+            "ux-gamepad-dpad",
+            "ux-gamepad-face-diamond",
+            "ux-gamepad-shoulder",
             "controller-profile-card",
             "controller-bind-flow",
             "Live input",
@@ -256,6 +262,8 @@
         assert!(APP_CSS.contains(".emulator-controller-grid"));
         assert!(APP_CSS.contains(".controller-button-dot--active"));
         assert!(UX_CSS.contains(".ux-controller-silhouette"));
+        assert!(UX_CSS.contains(".ux-gamepad-body"));
+        assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
         assert!(controller_backend.contains("/proc/bus/input/devices"));
         assert!(controller_backend.contains("Keyboard") || controller_backend.contains("keyboard"));
