@@ -75,6 +75,12 @@
             "Load",
             "load-orb",
             "load-spark-bank",
+            "data-load-card",
+            "data-load-poll-ms=\"5000\"",
+            "data-load-orb",
+            "data-load-headline",
+            "data-load-spark-value",
+            "data-load-chip-value",
             "CPU",
             "I/O",
             "storage-bar",
@@ -135,6 +141,14 @@
         assert!(APP_CSS.contains(".load-spark"));
         assert!(APP_CSS.contains(".load-telemetry-grid"));
         assert!(APP_CSS.contains("conic-gradient"));
+        assert!(APP_JS.contains("function bindHomeLoadPolling()"));
+        assert!(APP_JS.contains("/api/root"));
+        assert!(APP_JS.contains("arcadia:view-change"));
+        assert!(APP_JS.contains("document.visibilityState === 'visible'"));
+        assert!(APP_JS.contains("[data-view-panel=\"home\"].is-active"));
+        assert!(APP_JS.contains("setInterval(poll, pollMs)"));
+        assert!(APP_JS.contains("stop();"));
+        assert!(APP_JS.contains("bindHomeLoadPolling();"));
         assert!(APP_CSS.contains(".view[data-view-panel=\"home\"].is-active"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));

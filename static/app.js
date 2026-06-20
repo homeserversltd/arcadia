@@ -164,6 +164,7 @@ function bindNavigation() {
       if (active) panel.focus({ preventScroll: true });
     });
     try { localStorage.setItem('arcadia-active-view', next); } catch (_) {}
+    document.dispatchEvent(new CustomEvent('arcadia:view-change', { detail: { view: next } }));
   };
   window.activateArcadiaView = activate;
   buttons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.view)));
@@ -180,6 +181,84 @@ function bindNavigation() {
   let stored = 'home';
   try { stored = localStorage.getItem('arcadia-active-view') || 'home'; } catch (_) {}
   activate(stored);
+}
+
+function bindHomeLoadPolling() {
+  const card = document.querySelector('[data-load-card]');
+  if (!card) return;
+  const pollMs = Math.max(2000, Number(card.dataset.loadPollMs || 5000));
+  const state = { timer: null, inFlight: false, polls: 0 };
+  window.arcadiaHomeLoadPollState = state;
+  const homeIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
+  const setText = (selector, text) => { const node = card.querySelector(selector); if (node) node.textContent = text; };
+  const setChip = (key, text, stateName = 'idle') => {
+    setText(`[data-load-chip-value="${key}"]`, text);
+    const chip = card.querySelector(`[data-load-chip="${key}"]`);
+    if (chip) chip.className = `load-chip load-chip--${stateName}`;
+  };
+  const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+  const fmtLoad = (value) => value == null ? '—' : value.toFixed(2);
+  const fmtTemp = (value) => value == null ? '—' : `${value.toFixed(1)}°C`;
+  const fmtPressure = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
+  const updateSpark = (key, value, cores) => {
+    const pct = value == null ? 0 : Math.max(0, Math.min(100, Math.round((value / Math.max(1, cores)) * 100)));
+    setText(`[data-load-spark-value="${key}"]`, fmtLoad(value));
+    const bar = card.querySelector(`[data-load-spark-bar="${key}"]`);
+    if (bar) bar.style.width = `${pct}%`;
+  };
+  const apply = (root) => {
+    const telemetry = (root.children || []).find((node) => node.id === 'telemetry') || {};
+    const data = telemetry.data || {};
+    const load = data.load || {};
+    const io = data.io || {};
+    const disk = io.disk || {};
+    const one = number(load.oneMinute);
+    const five = number(load.fiveMinute);
+    const fifteen = number(load.fifteenMinute);
+    const cores = Number(navigator.hardwareConcurrency || 1);
+    const pct = one == null ? 0 : Math.max(0, Math.min(100, Math.round((one / Math.max(1, cores)) * 100)));
+    setText('[data-load-headline]', fmtLoad(one));
+    setText('[data-load-percent]', `${pct}%`);
+    const orb = card.querySelector('[data-load-orb]');
+    if (orb) {
+      orb.style.setProperty('--load-pct', pct);
+      orb.setAttribute('aria-label', `${pct} percent load`);
+      orb.classList.toggle('load-orb--warn', pct >= 90);
+      orb.classList.toggle('load-orb--ok', pct < 90 && one != null);
+      orb.classList.toggle('load-orb--idle', one == null);
+    }
+    updateSpark('oneMinute', one, cores);
+    updateSpark('fiveMinute', five, cores);
+    updateSpark('fifteenMinute', fifteen, cores);
+    const temp = number(data.cpu?.temperatureCelsius);
+    const pressure = number(io.pressureAvg10);
+    setChip('cpu', fmtTemp(temp), temp == null ? 'idle' : (temp >= 82 ? 'warn' : 'ok'));
+    setChip('io', fmtPressure(pressure), pressure == null ? 'idle' : (pressure >= 10 ? 'warn' : 'ok'));
+    setChip('read', disk.readBytesApprox == null ? '—' : formatBytes(Number(disk.readBytesApprox)), 'idle');
+    setChip('write', disk.writtenBytesApprox == null ? '—' : formatBytes(Number(disk.writtenBytesApprox)), 'idle');
+  };
+  const poll = async () => {
+    if (!homeIsActive() || state.inFlight) return;
+    state.inFlight = true;
+    try {
+      const res = await fetch('/api/root', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (res.ok) { apply(await res.json()); state.polls += 1; }
+    } catch (_) {
+      // Home load polling stays silent; the card keeps its last known values.
+    } finally {
+      state.inFlight = false;
+    }
+  };
+  const stop = () => { if (state.timer) clearInterval(state.timer); state.timer = null; };
+  const start = () => {
+    if (!homeIsActive()) return stop();
+    if (!state.timer) state.timer = setInterval(poll, pollMs);
+    poll();
+  };
+  window.arcadiaHomeLoadPolling = { start, stop, poll, homeIsActive };
+  document.addEventListener('arcadia:view-change', () => { if (homeIsActive()) start(); else stop(); });
+  document.addEventListener('visibilitychange', () => { if (homeIsActive()) start(); else stop(); });
+  start();
 }
 
 function bindGuiPinUnlock() {
@@ -1670,6 +1749,7 @@ function bindSystemTrustAndAccessForms() {
 
 initializeArcadiaTheme();
 bindNavigation();
+bindHomeLoadPolling();
 bindConsoleActions();
 bindControllerLiveInput();
 bindStorageModals();
