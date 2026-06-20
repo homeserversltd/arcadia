@@ -1161,6 +1161,8 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
 }
 
 fn system_view(status: &ConsoleStatus) -> Markup {
+    let ssh = &status.system.ssh;
+    let trust = &status.system.trust;
     view_shell(
         "system",
         "Machine status",
@@ -1168,30 +1170,58 @@ fn system_view(status: &ConsoleStatus) -> Markup {
         "",
         html! {
             (system_power_panel())
-            section class="system-grid" aria-label="System" {
+            section class="system-grid system-grid--admin" aria-label="System administration" {
                 article class="system-card system-card--ssh" {
+                    div class="system-card-band" { strong { "Remote Access" } b class=(status_class(&ssh.service_state)) { (title_case_state(&ssh.service_state)) } }
                     div class="system-field-grid" {
-                        (system_field("SSH status", "Disabled"))
-                        (system_field("Hostname", "console.home.arpa"))
-                        (system_field("LAN IP address", "DHCP assigned"))
-                        (system_field("Username", "console"))
+                        (system_field("SSH service", &title_case_state(&ssh.service_state)))
+                        (system_field("Password login", &title_case_state(&ssh.password_auth)))
+                        (system_field("Hostname", &ssh.hostname))
+                        (system_field("LAN IP address", &ssh.lan_ip))
+                        (system_field("Username", &ssh.username))
+                        (system_field("Authorized keys", &ssh.authorized_keys_path))
                     }
-                    (command_box("Example command", "ssh console@console.home.arpa"))
+                    (command_box("Example command", &ssh.command))
                     div class="inline-actions" {
-                        (modal_button(ButtonVariant::Secondary, "Enable SSH", "Enable SSH", "Confirm enabling SSH."))
-                        (modal_button(ButtonVariant::Secondary, "Disable SSH", "Disable SSH", "Confirm disabling SSH."))
-                        (copy_button("Copy SSH Command", "ssh console@console.home.arpa"))
+                        (action_button(ButtonVariant::Secondary, "Enable SSH", "enable-ssh", "/api/system/ssh/service"))
+                        (action_button(ButtonVariant::Danger, "Disable SSH", "disable-ssh", "/api/system/ssh/service"))
+                        (action_button(ButtonVariant::Secondary, "Enable SSH Password", "enable-ssh-password", "/api/system/ssh/password-auth"))
+                        (action_button(ButtonVariant::Danger, "Disable SSH Password", "disable-ssh-password", "/api/system/ssh/password-auth"))
+                        (copy_button("Copy SSH Command", &ssh.command))
+                    }
+                    form id="ssh-key-form" class="settings-form system-compact-form" autocomplete="off" {
+                        label { span { "Authorized public key" } textarea class="field field--textarea" name="public_key" rows="3" placeholder="ssh-ed25519 AAAA... homeconsole" {} }
+                        div class="inline-actions" { button class="btn btn--primary" type="submit" { "Install Public Key" } }
+                        div id="ssh-key-message" class="message" hidden {}
+                    }
+                }
+
+                article class="system-card system-card--trust" {
+                    div class="system-card-band" { strong { "Trust & HTTPS" } b class=(status_class(if trust.mode == "https" { "running" } else { "stopped" })) { @if trust.mode == "https" { "HTTPS" } @else { "HTTP" } } }
+                    div class="system-field-grid" {
+                        (system_field("Mode", if trust.mode == "https" { "HTTPS with Home Root CA" } else { "HTTP" }))
+                        (system_field("Root CA", if trust.ca_installed { "Installed" } else { "Not installed" }))
+                        (system_field("CA path", trust.ca_path))
+                        @if let Some(subject) = trust.ca_subject.as_deref() { (system_field("Subject", subject)) }
+                        @if let Some(issuer) = trust.ca_issuer.as_deref() { (system_field("Issuer", issuer)) }
+                        @if let Some(expiry) = trust.ca_not_after.as_deref() { (system_field("Expires", expiry)) }
+                    }
+                    form id="root-ca-form" class="settings-form system-compact-form" autocomplete="off" {
+                        label { span { "Root CA bundle" } textarea class="field field--textarea" name="ca_bundle" rows="5" placeholder="-----BEGIN CERTIFICATE-----" {} }
+                        div class="inline-actions" { button class="btn btn--primary" type="submit" { "Install Root CA" } }
+                        div id="root-ca-message" class="message" hidden {}
+                    }
+                    div class="inline-actions" {
+                        (action_button(ButtonVariant::Secondary, "HTTP Mode", "trust-mode-http", "/api/system/trust/mode"))
+                        (action_button(ButtonVariant::Primary, "HTTPS with Home Root CA", "trust-mode-https", "/api/system/trust/mode"))
                     }
                 }
 
                 article class="system-card system-card--services" {
                     div class="system-service-list" {
-                        (system_service_row("GameScope", "Running", "Not reported", Some(("restart-gamescope", "/api/actions/restart-gamescope"))))
-                        (system_service_row("Samba", "Running", "Not reported", None))
-                        (system_service_row("Game Sync", "Stopped", "Runs on demand", None))
-                        (system_service_row("Local AI", "Stopped", "Not reported", None))
-                        (system_service_row("Local AI Inference", "Stopped", "Not reported", None))
-                        (system_service_row("Web GUI", "Running", "Current", None))
+                        @for svc in &status.system.services {
+                            (system_service_row_dynamic(&svc.name, &svc.state, &svc.detail, svc.action.as_deref().zip(svc.endpoint.as_deref())))
+                        }
                     }
                 }
 
@@ -1201,28 +1231,6 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                     (system_log_group("Local AI Inference"))
                     (system_log_group("System"))
                     (system_log_group("Web GUI"))
-                }
-
-                article class="system-card system-card--networking system-card--desktop-detail" {
-                    div class="system-field-grid" {
-                        (system_field("Hostname", "console.home.arpa"))
-                        (system_field("Local domain/path", status.canonical_url.trim_end_matches('/')))
-                        (system_field("LAN IP address", "DHCP assigned"))
-                        (system_field("MAC address", "Not reported"))
-                        (system_field("Status", "Online"))
-                        (system_field("Active interface", "LAN"))
-                    }
-                    div class="system-endpoints" {
-                        (command_box("Web GUI", "http://console.home.arpa"))
-                        (command_box("Games Folder", "\\\\HOMECONSOLE"))
-                        (command_box("Local AI Inference", "http://console.home.arpa:7777"))
-                    }
-                    div class="system-port-list" {
-                        (system_field("80/443", "Web GUI"))
-                        (system_field("445", "Samba"))
-                        (system_field("7777", "Local AI Inference"))
-                        (system_field("22", "SSH"))
-                    }
                 }
             }
         },
@@ -1295,15 +1303,16 @@ fn command_box(label: &str, value: &str) -> Markup {
 
 fn system_power_panel() -> Markup {
     html! {
-        section class="system-power-panel" aria-label="Power" {
+        section class="system-power-panel" aria-label="Power and sessions" {
             div class="system-power-state" {
                 span class="system-power-icon" aria-hidden="true" { "⏻" }
-                span { "Power" }
-                strong { "Console controls" }
+                span { "Power & Sessions" }
+                strong { "Administration" }
             }
             div class="system-power-actions" {
-                (system_power_action("Restart", "Full system reboot", ButtonVariant::Danger, "reboot-console", "/api/actions/reboot-console"))
+                (system_power_action("Restart Console", "Full system reboot", ButtonVariant::Danger, "reboot-console", "/api/actions/reboot-console"))
                 (system_power_action("Shut Down", "Power off appliance", ButtonVariant::Danger, "shutdown-console", "/api/actions/shutdown-console"))
+                (system_power_action("Restart Arcadia", "Web GUI only", ButtonVariant::Secondary, "restart-arcadia", "/api/actions/restart-arcadia"))
                 (system_power_action("Restart GameScope", "Game session only", ButtonVariant::Secondary, "restart-gamescope", "/api/actions/restart-gamescope"))
             }
         }
@@ -1329,17 +1338,16 @@ fn copy_button(label: &str, value: &str) -> Markup {
     html! { button class="btn btn--secondary" type="button" data-copy-value=(value) { (label) } }
 }
 
-fn system_service_row(
+fn system_service_row_dynamic(
     name: &str,
     status: &str,
-    last_changed: &str,
+    detail: &str,
     restart: Option<(&str, &str)>,
 ) -> Markup {
     html! {
         div class="system-service-row" {
-            span class="system-service-main" { strong { (name) } }
-            b class=(format!("system-status system-status--{}", status.to_lowercase())) { (status) }
-            small { "Last changed: " (last_changed) }
+            span class="system-service-main" { strong { (name) } em { (detail) } }
+            b class=(status_class(status)) { (title_case_state(status)) }
             span class="system-row-actions" {
                 @if let Some((action, endpoint)) = restart {
                     (action_button(ButtonVariant::Secondary, "Restart", action, endpoint))
@@ -1347,6 +1355,16 @@ fn system_service_row(
             }
         }
     }
+}
+
+fn status_class(status: &str) -> String {
+    let class = match status {
+        "running" | "enabled" | "available" => "running",
+        "starting" => "starting",
+        "error" | "failed" => "error",
+        _ => "stopped",
+    };
+    format!("system-status system-status--{}", class)
 }
 
 fn system_log_group(name: &str) -> Markup {

@@ -247,13 +247,17 @@ button { -webkit-tap-highlight-color: transparent; }
 .system-power-icon { grid-row: 1 / span 2; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(145deg, var(--orange-strong), var(--theme-danger-strong)); color: var(--theme-fg-inverse); font-size: 22px; font-weight: 900; }
 .system-power-state span:not(.system-power-icon) { align-self: end; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
 .system-power-state strong { align-self: start; font-size: 18px; line-height: 1.12; }
-.system-power-actions { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.system-power-actions { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
 .system-power-action { display: grid; gap: 9px; align-content: center; min-height: 96px; padding: 11px; background: color-mix(in srgb, var(--theme-field-surface) 66%, transparent); }
 .system-power-action span { color: var(--muted); font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
 .system-power-action .btn { width: 100%; min-height: 38px; padding: 8px 11px; font-size: 13px; }
 .system-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .system-card { padding: 16px; }
 .system-card--services, .system-card--logs, .system-card--networking { grid-column: 1 / -1; }
+.system-card-band { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding-bottom: 7px; border-bottom: var(--ux-card-divider); }
+.system-card-band strong { font-size: 16px; }
+.system-compact-form { max-width: none; margin-top: 10px; }
+.field--textarea { min-height: 84px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.35; }
 .system-field-grid, .system-endpoints, .system-port-list { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin: 10px 0; }
 .system-field, .command-box { display: grid; gap: 4px; padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
 .system-field em, .command-box span { color: var(--muted); font-size: 12px; font-style: normal; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
@@ -659,7 +663,7 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .system-power-icon { width: 30px; height: 30px; font-size: 17px; }
 .system-power-state span:not(.system-power-icon) { font-size: 10px; }
 .system-power-state strong { font-size: 14px; }
-.system-power-actions { gap: 6px; }
+.system-power-actions { gap: 6px; grid-template-columns: repeat(4, minmax(0,1fr)); }
 .system-power-action { gap: 4px; min-height: 54px; padding: 6px; }
 .system-power-action span { font-size: 10px; }
 .system-power-action .btn { min-height: 30px; padding: 5px 8px; font-size: 11px; }

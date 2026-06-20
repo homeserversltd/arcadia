@@ -261,6 +261,13 @@ function confirmationFor(action) {
   if (action === 'reboot-console') return window.confirm('Restart this console now? Games and services will close.') ? { confirm: 'REBOOT' } : null;
   if (action === 'shutdown-console') return window.confirm('Shut down this console now? The appliance will power off.') ? { confirm: 'SHUTDOWN' } : null;
   if (action === 'restart-gamescope') return window.confirm('Restarting GameScope may close the active game session.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
+  if (action === 'restart-arcadia') return window.confirm('Restart Arcadia web GUI only? The page may reconnect.') ? { confirm: 'RESTART_ARCADIA' } : null;
+  if (action === 'enable-ssh') return { mode: 'enable' };
+  if (action === 'disable-ssh') return window.confirm('Disable SSH service? Current remote SSH access may disconnect.') ? { mode: 'disable', confirm: 'DISABLE_SSH' } : null;
+  if (action === 'enable-ssh-password') return window.confirm('Enable SSH password login? Key login remains available.') ? { mode: 'enable', confirm: 'ENABLE_SSH_PASSWORD' } : null;
+  if (action === 'disable-ssh-password') return window.confirm('Disable SSH password login? Key login remains available.') ? { mode: 'disable', confirm: 'DISABLE_SSH_PASSWORD' } : null;
+  if (action === 'trust-mode-http') return window.confirm('Switch Arcadia to HTTP mode? HTTPS can be re-enabled after Root CA validation.') ? { mode: 'http', confirm: 'ENABLE_HTTP' } : null;
+  if (action === 'trust-mode-https') return window.confirm('Switch Arcadia to HTTPS with Home Root CA? The current HTTP mode stays active if validation fails.') ? { mode: 'https', confirm: 'ENABLE_HTTPS' } : null;
   if (action === 'clear-artwork-cache') return window.confirm('Clear artwork cache? This does not delete games. Artwork can be downloaded again during Sync.') ? { confirm: 'CLEAR_ARTWORK' } : null;
   if (action === 'remove-ai-model') return window.confirm('Remove this local AI model file from console storage? This does not affect games.') ? { confirm: 'REMOVE_MODEL' } : null;
   if (action === 'clean-temporary-files') return window.confirm('Clean safe temporary files? This will not remove games, artwork intentionally kept, or installed AI models.') ? { confirm: 'CLEAN_TEMPORARY' } : null;
@@ -1302,6 +1309,59 @@ function bindProviderKeys() {
   loadProviderKeyStatus();
 }
 
+
+function bindSystemTrustAndAccessForms() {
+  const keyForm = document.getElementById('ssh-key-form');
+  if (keyForm) {
+    keyForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage('ssh-key-message');
+      const key = keyForm.querySelector('[name="public_key"]')?.value || '';
+      if (!/^\s*(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521))\s+[A-Za-z0-9+/=]+(\s+\S+)?\s*$/.test(key)) {
+        return setMessage('ssh-key-message', 'Enter one valid SSH public key.', 'error');
+      }
+      if (!window.confirm('Install this public key for console SSH login?')) return;
+      const button = keyForm.querySelector('button[type="submit"]');
+      const old = button.textContent;
+      button.disabled = true; button.textContent = 'Installing…';
+      try {
+        const data = await postJson('/api/system/ssh/authorized-key', { public_key: key });
+        if (data.ok) { keyForm.reset(); clearMessage('ssh-key-message'); }
+        else setMessage('ssh-key-message', data.message || 'Public key not installed.', 'error');
+        PopupManager.showToast(data.message || (data.ok ? 'Public key installed' : 'Public key not installed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        setMessage('ssh-key-message', 'Public key request failed.', 'error');
+        PopupManager.showToast('Public key request failed', 'error');
+      } finally { button.disabled = false; button.textContent = old; }
+    });
+  }
+
+  const caForm = document.getElementById('root-ca-form');
+  if (caForm) {
+    caForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      clearMessage('root-ca-message');
+      const ca = caForm.querySelector('[name="ca_bundle"]')?.value || '';
+      if (!ca.includes('-----BEGIN CERTIFICATE-----') || !ca.includes('-----END CERTIFICATE-----')) {
+        return setMessage('root-ca-message', 'Paste a PEM/CRT certificate bundle.', 'error');
+      }
+      if (!window.confirm('Install this Home Root CA into appliance trust?')) return;
+      const button = caForm.querySelector('button[type="submit"]');
+      const old = button.textContent;
+      button.disabled = true; button.textContent = 'Installing…';
+      try {
+        const data = await postJson('/api/system/trust/root-ca', { ca_bundle: ca, confirm: 'INSTALL_ROOT_CA' });
+        if (data.ok) { caForm.reset(); clearMessage('root-ca-message'); }
+        else setMessage('root-ca-message', data.message || 'Root CA not installed.', 'error');
+        PopupManager.showToast(data.message || (data.ok ? 'Root CA installed' : 'Root CA not installed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        setMessage('root-ca-message', 'Root CA request failed.', 'error');
+        PopupManager.showToast('Root CA request failed', 'error');
+      } finally { button.disabled = false; button.textContent = old; }
+    });
+  }
+}
+
 initializeArcadiaTheme();
 bindNavigation();
 bindConsoleActions();
@@ -1311,6 +1371,7 @@ bindGuiPinUnlock();
 bindGuiPinAccess();
 bindGuiPinChange();
 bindNetworkControls();
+bindSystemTrustAndAccessForms();
 initializeOnboarding();
 initializeGuiPinGate();
 

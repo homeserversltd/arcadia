@@ -67,6 +67,12 @@ const LLAMA_SERVER_BIN: &str = "/usr/local/bin/llama-server";
 const LLAMA_CPP_BIN: &str = "/usr/local/bin/llama-cli";
 const SAMBA_SERVICE_NAMES: [&str; 2] = ["smb.service", "smbd.service"];
 const NETWORK_MANAGER_BIN: &str = "/usr/bin/nmcli";
+const SSHD_CONFIG_MANAGED_PATH: &str = "/etc/ssh/sshd_config.d/90-homeconsole-password-auth.conf";
+const TRUST_MODE_PATH: &str = "/etc/arcadia/trust-mode.json";
+const HOMECONSOLE_CA_ANCHOR_PATH: &str =
+    "/etc/ca-certificates/trust-source/anchors/homeconsole-home-root-ca.crt";
+const UPDATE_CA_TRUST_BIN: &str = "/usr/bin/update-ca-trust";
+const HOME_ROOT_HTTPS_PROBE: &str = "https://home.arpa/";
 
 #[derive(Clone)]
 struct AppState {
@@ -100,6 +106,7 @@ pub struct ConsoleStatus {
     pub library: LibraryStatus,
     pub local_ai: LocalAiStatus,
     pub updates: UpdatesStatus,
+    pub system: SystemAdminStatus,
     pub ui_contract: UiContract,
 }
 
@@ -127,6 +134,48 @@ pub struct ArcadiaStatus {
     pub version: &'static str,
     pub mode: &'static str,
     pub ui: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemAdminStatus {
+    pub ssh: SshAccessStatus,
+    pub trust: TrustStatus,
+    pub services: Vec<SystemServiceStatus>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshAccessStatus {
+    pub service_state: String,
+    pub password_auth: String,
+    pub hostname: String,
+    pub username: String,
+    pub lan_ip: String,
+    pub command: String,
+    pub authorized_keys_path: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustStatus {
+    pub mode: String,
+    pub ca_installed: bool,
+    pub ca_subject: Option<String>,
+    pub ca_issuer: Option<String>,
+    pub ca_not_after: Option<String>,
+    pub ca_path: &'static str,
+    pub https_probe_url: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemServiceStatus {
+    pub name: String,
+    pub state: String,
+    pub detail: String,
+    pub action: Option<String>,
+    pub endpoint: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -958,6 +1007,23 @@ struct ConsoleActionRequest {
     confirm: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct SshKeyInstallRequest {
+    public_key: String,
+}
+
+#[derive(Deserialize)]
+struct TrustModeRequest {
+    mode: String,
+    confirm: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RootCaInstallRequest {
+    ca_bundle: String,
+    confirm: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ConsoleActionResponse {
     ok: bool,
@@ -999,8 +1065,13 @@ async fn main() -> anyhow_free::Result<()> {
     let started_unix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let state = Arc::new(AppState {
         started_unix,
-        canonical_url: env::var("ARCADIA_CANONICAL_URL")
-            .unwrap_or_else(|_| "http://console.home.arpa/".to_string()),
+        canonical_url: env::var("ARCADIA_CANONICAL_URL").unwrap_or_else(|_| {
+            if trust_status().mode == "https" {
+                "https://console.home.arpa/".to_string()
+            } else {
+                "http://console.home.arpa/".to_string()
+            }
+        }),
         product: "HomeConsole".to_string(),
     });
 
@@ -1080,6 +1151,19 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/network/ip/confirm", post(ip_confirm))
         .route("/api/network/ip/rollback", post(ip_rollback))
         .route("/api/network/diagnostics/run", post(diagnostics_run))
+        .route("/api/system/status", get(system_status_route))
+        .route("/api/system/ssh/service", post(action_ssh_service))
+        .route(
+            "/api/system/ssh/password-auth",
+            post(action_ssh_password_auth),
+        )
+        .route(
+            "/api/system/ssh/authorized-key",
+            post(action_install_authorized_key),
+        )
+        .route("/api/system/trust/root-ca", post(action_install_root_ca))
+        .route("/api/system/trust/mode", post(action_set_trust_mode))
+        .route("/api/actions/restart-arcadia", post(action_restart_arcadia))
         .route("/api/gui-pin/status", get(gui_pin_status_route))
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))
@@ -1842,6 +1926,129 @@ fn valid_hf_repo(repo: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.'))
 }
 
+async fn system_status_route(State(state): State<Arc<AppState>>) -> Json<SystemAdminStatus> {
+    let status = console_status(&state);
+    Json(status.system)
+}
+
+async fn action_restart_arcadia(
+    Json(body): Json<ConsoleActionRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("RESTART_ARCADIA") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "restart-arcadia",
+            SYSTEMCTL_BIN,
+            "Confirm Arcadia restart before restarting the web GUI.",
+        );
+    }
+    run_console_command(
+        "restart-arcadia",
+        SYSTEMCTL_BIN,
+        &["restart", "arcadia.service"],
+        "Arcadia restart requested.",
+        "Arcadia restart request failed.",
+    )
+}
+
+async fn action_ssh_service(
+    Json(body): Json<TrustModeRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    match body.mode.as_str() {
+        "enable" => run_console_command(
+            "enable-ssh",
+            SYSTEMCTL_BIN,
+            &["enable", "--now", "sshd.service"],
+            "SSH service enabled.",
+            "SSH service could not be enabled.",
+        ),
+        "disable" => {
+            if body.confirm.as_deref() != Some("DISABLE_SSH") {
+                return console_action_error(
+                    StatusCode::BAD_REQUEST,
+                    "disable-ssh",
+                    SYSTEMCTL_BIN,
+                    "Confirm before disabling SSH service.",
+                );
+            }
+            run_console_command(
+                "disable-ssh",
+                SYSTEMCTL_BIN,
+                &["disable", "--now", "sshd.service"],
+                "SSH service disabled.",
+                "SSH service could not be disabled.",
+            )
+        }
+        _ => console_action_error(
+            StatusCode::BAD_REQUEST,
+            "ssh-service",
+            SYSTEMCTL_BIN,
+            "SSH service mode must be enable or disable.",
+        ),
+    }
+}
+
+async fn action_ssh_password_auth(
+    Json(body): Json<TrustModeRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    match body.mode.as_str() {
+        "enable" => {
+            if body.confirm.as_deref() != Some("ENABLE_SSH_PASSWORD") {
+                return console_action_error(
+                    StatusCode::BAD_REQUEST,
+                    "enable-ssh-password",
+                    SSHD_CONFIG_MANAGED_PATH,
+                    "Confirm before enabling SSH password login.",
+                );
+            }
+            write_ssh_password_auth(true)
+        }
+        "disable" => {
+            if body.confirm.as_deref() != Some("DISABLE_SSH_PASSWORD") {
+                return console_action_error(
+                    StatusCode::BAD_REQUEST,
+                    "disable-ssh-password",
+                    SSHD_CONFIG_MANAGED_PATH,
+                    "Confirm before disabling SSH password login.",
+                );
+            }
+            write_ssh_password_auth(false)
+        }
+        _ => console_action_error(
+            StatusCode::BAD_REQUEST,
+            "ssh-password-auth",
+            SSHD_CONFIG_MANAGED_PATH,
+            "SSH password mode must be enable or disable.",
+        ),
+    }
+}
+
+async fn action_install_authorized_key(
+    Json(body): Json<SshKeyInstallRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    install_authorized_key(&body.public_key)
+}
+
+async fn action_install_root_ca(
+    Json(body): Json<RootCaInstallRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if body.confirm.as_deref() != Some("INSTALL_ROOT_CA") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "install-root-ca",
+            HOMECONSOLE_CA_ANCHOR_PATH,
+            "Confirm before installing the Home Root CA.",
+        );
+    }
+    install_root_ca(&body.ca_bundle)
+}
+
+async fn action_set_trust_mode(
+    Json(body): Json<TrustModeRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    set_trust_mode(&body.mode, body.confirm.as_deref())
+}
+
 async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_console_command(
         "update-gui",
@@ -2088,6 +2295,233 @@ async fn action_restart_gamescope(
         "GameScope restart requested.",
         "GameScope restart request failed.",
     )
+}
+
+fn write_ssh_password_auth(enabled: bool) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let value = if enabled { "yes" } else { "no" };
+    let content = format!("# Managed by Arcadia HomeConsole\nPasswordAuthentication {}\nKbdInteractiveAuthentication {}\n", value, value);
+    let result = Path::new(SSHD_CONFIG_MANAGED_PATH)
+        .parent()
+        .map(fs::create_dir_all)
+        .transpose()
+        .and_then(|_| fs::write(SSHD_CONFIG_MANAGED_PATH, content))
+        .and_then(|_| {
+            Command::new(SYSTEMCTL_BIN)
+                .args(["reload", "sshd.service"])
+                .output()
+                .map(|_| ())
+        })
+        .or_else(|_| {
+            Command::new(SYSTEMCTL_BIN)
+                .args(["restart", "sshd.service"])
+                .output()
+                .map(|_| ())
+        });
+    match result {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: if enabled {
+                    "enable-ssh-password"
+                } else {
+                    "disable-ssh-password"
+                },
+                command: SSHD_CONFIG_MANAGED_PATH,
+                exit_code: Some(0),
+                message: if enabled {
+                    "SSH password login enabled."
+                } else {
+                    "SSH password login disabled."
+                }
+                .to_string(),
+                stdout: String::new(),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            if enabled {
+                "enable-ssh-password"
+            } else {
+                "disable-ssh-password"
+            },
+            SSHD_CONFIG_MANAGED_PATH,
+            &format!("SSH password configuration failed: {err}"),
+        ),
+    }
+}
+
+fn install_authorized_key(raw: &str) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let Some(key) = normalize_public_key(raw) else {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "install-authorized-key",
+            "authorized_keys",
+            "Enter one valid SSH public key.",
+        );
+    };
+    let user = ssh_username();
+    let home = user_home(&user);
+    let ssh_dir = Path::new(&home).join(".ssh");
+    let auth = ssh_dir.join("authorized_keys");
+    let mut existing = fs::read_to_string(&auth).unwrap_or_default();
+    let already = existing
+        .lines()
+        .any(|line| normalize_public_key(line).as_deref() == Some(key.as_str()));
+    if !already {
+        if !existing.is_empty() && !existing.ends_with('\n') {
+            existing.push('\n');
+        }
+        existing.push_str(&key);
+        existing.push('\n');
+    }
+    let write = fs::create_dir_all(&ssh_dir)
+        .and_then(|_| fs::write(&auth, existing))
+        .and_then(|_| set_mode(&ssh_dir, 0o700))
+        .and_then(|_| set_mode(&auth, 0o600))
+        .and_then(|_| chown_path(&ssh_dir, &user))
+        .and_then(|_| chown_path(&auth, &user));
+    match write {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "install-authorized-key",
+                command: "authorized_keys",
+                exit_code: Some(0),
+                message: if already {
+                    "SSH public key already installed."
+                } else {
+                    "SSH public key installed."
+                }
+                .to_string(),
+                stdout: format!("{}\nmode .ssh=0700 authorized_keys=0600", auth.display()),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "install-authorized-key",
+            "authorized_keys",
+            &format!("SSH public key could not be installed: {err}"),
+        ),
+    }
+}
+
+fn install_root_ca(raw: &str) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let Some(pem) = normalize_ca_bundle(raw) else {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "install-root-ca",
+            HOMECONSOLE_CA_ANCHOR_PATH,
+            "Paste a PEM/CRT CA certificate bundle.",
+        );
+    };
+    let result = Path::new(HOMECONSOLE_CA_ANCHOR_PATH)
+        .parent()
+        .map(fs::create_dir_all)
+        .transpose()
+        .and_then(|_| fs::write(HOMECONSOLE_CA_ANCHOR_PATH, pem))
+        .and_then(|_| set_mode(Path::new(HOMECONSOLE_CA_ANCHOR_PATH), 0o644))
+        .and_then(|_| Command::new(UPDATE_CA_TRUST_BIN).output().map(|_| ()));
+    match result {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "install-root-ca",
+                command: UPDATE_CA_TRUST_BIN,
+                exit_code: Some(0),
+                message: "Home Root CA installed into appliance trust.".to_string(),
+                stdout: ca_metadata_text(),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "install-root-ca",
+            UPDATE_CA_TRUST_BIN,
+            &format!("Home Root CA install failed: {err}"),
+        ),
+    }
+}
+
+fn set_trust_mode(mode: &str, confirm: Option<&str>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    if !matches!(mode, "http" | "https") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "set-trust-mode",
+            TRUST_MODE_PATH,
+            "Mode must be http or https.",
+        );
+    }
+    if mode == "https" {
+        if confirm != Some("ENABLE_HTTPS") {
+            return console_action_error(
+                StatusCode::BAD_REQUEST,
+                "set-trust-mode",
+                TRUST_MODE_PATH,
+                "Confirm before switching to HTTPS mode.",
+            );
+        }
+        if !trust_status().ca_installed {
+            return console_action_error(
+                StatusCode::BAD_REQUEST,
+                "set-trust-mode",
+                TRUST_MODE_PATH,
+                "Install the Home Root CA before enabling HTTPS mode.",
+            );
+        }
+        if !https_probe_ok() {
+            return console_action_error(
+                StatusCode::BAD_REQUEST,
+                "set-trust-mode",
+                TRUST_MODE_PATH,
+                "HTTPS validation failed; HTTP mode remains active.",
+            );
+        }
+    }
+    if mode == "http" && confirm != Some("ENABLE_HTTP") {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "set-trust-mode",
+            TRUST_MODE_PATH,
+            "Confirm before switching to HTTP mode.",
+        );
+    }
+    let body = format!("{{\"mode\":\"{}\"}}\n", mode);
+    let result = Path::new(TRUST_MODE_PATH)
+        .parent()
+        .map(fs::create_dir_all)
+        .transpose()
+        .and_then(|_| fs::write(TRUST_MODE_PATH, body))
+        .and_then(|_| set_mode(Path::new(TRUST_MODE_PATH), 0o644));
+    match result {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "set-trust-mode",
+                command: TRUST_MODE_PATH,
+                exit_code: Some(0),
+                message: if mode == "https" {
+                    "HTTPS with Home Root CA enabled."
+                } else {
+                    "HTTP mode enabled."
+                }
+                .to_string(),
+                stdout: format!("active_mode={}", mode),
+                stderr: String::new(),
+            }),
+        ),
+        Err(err) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "set-trust-mode",
+            TRUST_MODE_PATH,
+            &format!("Mode could not be saved: {err}"),
+        ),
+    }
 }
 
 fn run_console_command(
@@ -3085,9 +3519,10 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         gui_pin: gui_pin_status(),
         surfaces,
         samba,
-        network,
+        network: network.clone(),
         local_ai: local_ai_status(),
         updates: updates_status(),
+        system: system_admin_status(&network, &hostname),
         library,
         storage,
         ui_contract: UiContract {
@@ -3561,6 +3996,253 @@ fn read_speed_mbps(name: &str) -> Option<u64> {
         .trim()
         .parse()
         .ok()
+}
+
+fn system_admin_status(network: &NetworkStatus, hostname: &str) -> SystemAdminStatus {
+    SystemAdminStatus {
+        ssh: ssh_access_status(network, hostname),
+        trust: trust_status(),
+        services: system_service_statuses(),
+    }
+}
+
+fn ssh_access_status(network: &NetworkStatus, hostname: &str) -> SshAccessStatus {
+    let username = ssh_username();
+    let host = if hostname.is_empty() {
+        "console"
+    } else {
+        hostname
+    };
+    let domain = format!("{}.home.arpa", host);
+    SshAccessStatus {
+        service_state: if service_state("sshd.service") == "running" || tcp_port_listening(22) {
+            "enabled"
+        } else {
+            "disabled"
+        }
+        .to_string(),
+        password_auth: ssh_password_auth_state(),
+        hostname: domain.clone(),
+        username: username.clone(),
+        lan_ip: network.ip_address.clone(),
+        command: format!("ssh {}@{}", username, domain),
+        authorized_keys_path: Path::new(&user_home(&username))
+            .join(".ssh/authorized_keys")
+            .display()
+            .to_string(),
+    }
+}
+
+fn ssh_username() -> String {
+    env::var("HOMECONSOLE_SSH_USER").unwrap_or_else(|_| "owner".to_string())
+}
+
+fn user_home(user: &str) -> String {
+    if user == "root" {
+        "/root".to_string()
+    } else {
+        format!("/home/{}", user)
+    }
+}
+
+fn ssh_password_auth_state() -> String {
+    let text = fs::read_to_string(SSHD_CONFIG_MANAGED_PATH)
+        .or_else(|_| fs::read_to_string("/etc/ssh/sshd_config"))
+        .unwrap_or_default();
+    for line in text.lines().rev() {
+        let clean = line.trim();
+        if clean.starts_with('#') {
+            continue;
+        }
+        let lower = clean.to_ascii_lowercase();
+        if lower.starts_with("passwordauthentication") {
+            return if lower.split_whitespace().nth(1) == Some("yes") {
+                "enabled"
+            } else {
+                "disabled"
+            }
+            .to_string();
+        }
+    }
+    "unknown".to_string()
+}
+
+fn trust_status() -> TrustStatus {
+    let mode = fs::read_to_string(TRUST_MODE_PATH)
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|v| v.get("mode").and_then(|m| m.as_str()).map(str::to_string))
+        .filter(|m| m == "http" || m == "https")
+        .unwrap_or_else(|| "http".to_string());
+    TrustStatus {
+        mode,
+        ca_installed: Path::new(HOMECONSOLE_CA_ANCHOR_PATH).exists(),
+        ca_subject: ca_metadata("subject"),
+        ca_issuer: ca_metadata("issuer"),
+        ca_not_after: ca_metadata("enddate"),
+        ca_path: HOMECONSOLE_CA_ANCHOR_PATH,
+        https_probe_url: HOME_ROOT_HTTPS_PROBE,
+    }
+}
+
+fn ca_metadata(field: &str) -> Option<String> {
+    if !Path::new(HOMECONSOLE_CA_ANCHOR_PATH).exists() {
+        return None;
+    }
+    let arg = match field {
+        "subject" => "-subject",
+        "issuer" => "-issuer",
+        "enddate" => "-enddate",
+        _ => return None,
+    };
+    command_stdout(
+        "openssl",
+        &["x509", "-in", HOMECONSOLE_CA_ANCHOR_PATH, "-noout", arg],
+    )
+    .map(|s| {
+        s.replace("subject=", "")
+            .replace("issuer=", "")
+            .replace("notAfter=", "")
+    })
+}
+
+fn ca_metadata_text() -> String {
+    let t = trust_status();
+    [
+        t.ca_subject.map(|v| format!("subject={v}")),
+        t.ca_issuer.map(|v| format!("issuer={v}")),
+        t.ca_not_after.map(|v| format!("not_after={v}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
+fn https_probe_ok() -> bool {
+    Command::new("curl")
+        .args(["-fsS", "--max-time", "5", HOME_ROOT_HTTPS_PROBE])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn system_service_statuses() -> Vec<SystemServiceStatus> {
+    vec![
+        system_service_status(
+            "GameScope",
+            "gamescope.service",
+            "Game session",
+            Some("restart-gamescope"),
+            Some("/api/actions/restart-gamescope"),
+        ),
+        system_service_status("Samba", "smb.service", "Game folders", None, None),
+        system_service_status(
+            "Game Sync",
+            "homeconsole-sync.service",
+            "Runs on demand",
+            None,
+            None,
+        ),
+        system_service_status(
+            "Local AI",
+            "llama-server.service",
+            "Model runtime",
+            None,
+            None,
+        ),
+        system_service_status(
+            "Local AI Inference",
+            "llama-server.service",
+            ":7777",
+            None,
+            None,
+        ),
+        system_service_status(
+            "Web GUI",
+            "arcadia.service",
+            "HomeConsole",
+            Some("restart-arcadia"),
+            Some("/api/actions/restart-arcadia"),
+        ),
+        system_service_status(
+            "Arcadia",
+            "arcadia.service",
+            "Web GUI runtime",
+            Some("restart-arcadia"),
+            Some("/api/actions/restart-arcadia"),
+        ),
+    ]
+}
+
+fn system_service_status(
+    name: &str,
+    unit: &'static str,
+    detail: &str,
+    action: Option<&str>,
+    endpoint: Option<&str>,
+) -> SystemServiceStatus {
+    SystemServiceStatus {
+        name: name.to_string(),
+        state: service_state(unit).to_string(),
+        detail: detail.to_string(),
+        action: action.map(str::to_string),
+        endpoint: endpoint.map(str::to_string),
+    }
+}
+
+fn normalize_public_key(raw: &str) -> Option<String> {
+    let line = raw.lines().find(|l| !l.trim().is_empty())?.trim();
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 2 || parts.len() > 3 {
+        return None;
+    }
+    if !matches!(
+        parts[0],
+        "ssh-ed25519"
+            | "ssh-rsa"
+            | "ecdsa-sha2-nistp256"
+            | "ecdsa-sha2-nistp384"
+            | "ecdsa-sha2-nistp521"
+    ) {
+        return None;
+    }
+    if parts[1].len() < 32
+        || parts[1]
+            .chars()
+            .any(|c| !(c.is_ascii_alphanumeric() || c == '+' || c == '/' || c == '='))
+    {
+        return None;
+    }
+    Some(parts.join(" "))
+}
+
+fn normalize_ca_bundle(raw: &str) -> Option<String> {
+    let text = raw.trim().replace("\r\n", "\n");
+    if text.contains("-----BEGIN CERTIFICATE-----") && text.contains("-----END CERTIFICATE-----") {
+        Some(format!("{}\n", text))
+    } else {
+        None
+    }
+}
+
+fn set_mode(path: &Path, mode: u32) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = mode;
+        let _ = path;
+        Ok(())
+    }
+}
+
+fn chown_path(path: &Path, user: &str) -> std::io::Result<()> {
+    let spec = format!("{}:{}", user, user);
+    let _ = Command::new("chown").arg(&spec).arg(path).output();
+    Ok(())
 }
 
 fn network_services(
@@ -6043,21 +6725,30 @@ mod tests {
         for required in [
             "System",
             "Power",
-            "Console controls",
+            "Power &amp; Sessions",
+            "Administration",
+            "Restart Arcadia",
             "Full system reboot",
             "Power off appliance",
             "Game session only",
             "reboot-console",
             "shutdown-console",
-            "SSH status",
-            "Disabled",
+            "Remote Access",
+            "SSH service",
             "Hostname",
             "LAN IP address",
             "Username",
-            "ssh console@console.home.arpa",
+            "ssh owner@",
             "Enable SSH",
             "Disable SSH",
             "Copy SSH Command",
+            "Authorized public key",
+            "Install Public Key",
+            "Trust &amp; HTTPS",
+            "Root CA bundle",
+            "Install Root CA",
+            "HTTP Mode",
+            "HTTPS with Home Root CA",
             "GameScope",
             "Samba",
             "Game Sync",
@@ -6069,19 +6760,9 @@ mod tests {
             "View",
             "Copy",
             "Download",
-            "Local domain/path",
-            "MAC address",
-            "Status",
-            "Active interface",
-            "Web GUI",
-            "http://console.home.arpa",
-            "Games Folder",
-            "\\\\HOMECONSOLE",
-            "http://console.home.arpa:7777",
-            "80/443",
-            "445",
-            "7777",
-            "22",
+            "Root CA",
+            "CA path",
+            "Arcadia",
         ] {
             assert!(system_html.contains(required), "missing {required}");
         }
@@ -6098,6 +6779,7 @@ mod tests {
         assert!(!rendered.contains("data-view=\"advanced\""));
         assert!(!rendered.contains(">Advanced<"));
         let forbidden = [
+            ["Power", &format!("{} controls", "Console")].join(" "),
             "Expert Mode".to_string(),
             "Developer".to_string(),
             ["View", "Logs"].join(" "),
@@ -6230,7 +6912,7 @@ mod tests {
         assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
         assert!(rendered.contains("\\\\HOMECONSOLE"));
-        assert!(rendered.contains("http://console.home.arpa:7777"));
+        assert!(rendered.contains("Trust &amp; HTTPS"));
         assert!(!rendered.contains(r#"data-view="lan-inference""#));
         assert!(!rendered.contains("view-lan-inference"));
         assert!(APP_JS.contains("view === 'ai-model' || view === 'lan-inference'"));
