@@ -84,6 +84,18 @@ async fn ai_settings_save(
         }
         cfg.request_limit = v;
     }
+    if let Some(v) = body.lan_port {
+        if !valid_lan_port(v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "LAN port must be 1024-65535 and cannot conflict with HomeConsole service ports.",
+            );
+        }
+        cfg.lan_port = v;
+    }
     if let Some(v) = body.lan_cidr {
         if !valid_lan_cidr(&v) {
             return ai_action(

@@ -648,7 +648,7 @@ function setSyncState(label, state = label) {
   const root = document.querySelector('[data-sync-root]');
   if (root) root.dataset.syncState = value;
   document.querySelectorAll('.status-badge').forEach((badge) => {
-    if (badge.dataset.chipKind !== 'sync') return;
+    if (badge.dataset.chipKind !== 'games') return;
     badge.setAttribute('aria-label', `Games: ${label}`);
     badge.title = `Games: ${label}`;
   });
@@ -667,8 +667,8 @@ function startSyncProgress() {
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
   if (panel) panel.hidden = false;
-  if (progress) progress.textContent = 'Scanning Samba ROM folders…';
-  if (log) log.textContent = 'Scanning Samba ROM folders…';
+  if (progress) progress.textContent = 'Scanning ROM folders…';
+  if (log) log.textContent = 'Scanning ROM folders…';
   setSyncReadback('running', 'Scanning ROM folders now.');
   return { stop() { if (panel) panel.hidden = true; } };
 }
@@ -681,9 +681,9 @@ function finishSyncProgress(ok, data = {}, progressHandle = null) {
   if (ok) {
     setSyncState('Completed', 'completed');
     if (button) button.textContent = 'Scan complete';
-    const message = data.message || 'Sync complete. Playable GameScope entries were updated from the ROM folders.';
+    const message = data.message || 'Scan complete. GameScope entries and artwork were updated from the ROM folders.';
     if (progress) progress.textContent = message;
-    setSyncReadback('success', 'Completed. Playable GameScope entries were updated from the ROM folders.');
+    setSyncReadback('success', 'Scan complete. Results now reflect the completed run.');
     if (log) log.textContent = formatActionResult(data);
     markOnboardingFirstSyncComplete(data);
   } else {
@@ -1095,10 +1095,11 @@ function bindLocalAIControls() {
           if (!window.confirm('Remove this model from console storage?\nGames and artwork are not affected.')) return;
           await postAI('/api/ai/models/remove', { modelId, filename, confirm: 'REMOVE_MODEL' }, 'Model removed');
         }
-        else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'Inference enabled');
-        else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'Inference disabled');
-        else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'Inference tested');
+        else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'API enabled');
+        else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'API disabled');
+        else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'API tested');
         else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
+        else if (action === 'lan-enable') await applyLocalAIPort(true);
         else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
         else if (action === 'token-generate') { if (window.confirm('Generate a new local client token? Existing client configs may need updating.')) await postAI('/api/ai/token/generate', { confirm: 'GENERATE_TOKEN' }, 'Token generated'); }
         else if (action === 'token-revoke') { if (window.confirm('Revoke the local client token?')) await postAI('/api/ai/token/revoke', { confirm: 'REVOKE_TOKEN' }, 'Token revoked'); }
@@ -1135,9 +1136,13 @@ function bindLocalAIControls() {
   const lanForm = document.getElementById('ai-lan-form');
   if (lanForm) lanForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const port = Number(lanForm.querySelector('input[name="port"]')?.value || 7777);
-    const lanCidr = lanForm.querySelector('input[name="lanCidr"]')?.value || '192.168.123.0/24';
-    await postAI('/api/ai/inference/set-lan-access', { enabled: true, port, lanCidr }, 'LAN access applied');
+    await saveLocalAIPort();
+  });
+  lanForm?.querySelector('[data-ai-port-revert]')?.addEventListener('click', () => {
+    const active = lanForm.dataset.activePort || '7777';
+    const input = lanForm.querySelector('input[name="port"]');
+    if (input) input.value = active;
+    setLocalAIPortState(`Active ${active}`, 'unknown');
   });
   const settingsForm = document.getElementById('ai-settings-form');
   if (settingsForm) settingsForm.addEventListener('submit', async (event) => {
@@ -1159,6 +1164,69 @@ function bindLocalAIControls() {
       PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.' });
     } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
   }));
+}
+
+function localAIPortPayload() {
+  const form = document.getElementById('ai-lan-form');
+  const rawPort = form?.querySelector('input[name="port"]')?.value.trim() || '';
+  const lanCidr = form?.querySelector('input[name="lanCidr"]')?.value.trim() || '192.168.123.0/24';
+  if (!/^\d+$/.test(rawPort)) throw new Error('Port must be a whole number.');
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be between 1024 and 65535.');
+  if ([22, 80, 443, 445, 8080].includes(port)) throw new Error('That port is reserved for HomeConsole services.');
+  if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(lanCidr)) throw new Error('LAN CIDR must look like 192.168.123.0/24.');
+  return { port, lanCidr };
+}
+
+function setLocalAIPortState(text, state = 'unknown') {
+  const node = document.getElementById('ai-port-state');
+  if (!node) return;
+  node.textContent = text;
+  node.className = `system-status system-status--${state}`;
+}
+
+function updateLocalAIPortReadback(data) {
+  const state = data?.state || data;
+  const port = state?.inference?.port;
+  const endpoints = state?.inference?.endpointUrls || [];
+  const endpoint = endpoints[0] || state?.clientHandoff?.endpoint || '';
+  const form = document.getElementById('ai-lan-form');
+  if (port && form) form.dataset.activePort = String(port);
+  if (port) setLocalAIPortState(`Active ${port}`, data?.ok === false ? 'error' : 'available');
+  const readback = document.getElementById('ai-endpoint-readback');
+  if (readback && endpoint) {
+    readback.textContent = endpoint;
+    readback.dataset.aiEndpoint = endpoint;
+  }
+}
+
+async function saveLocalAIPort() {
+  let payload;
+  try { payload = localAIPortPayload(); }
+  catch (error) {
+    setMessage('ai-message', error.message, 'error');
+    PopupManager.showToast(error.message, 'error');
+    setLocalAIPortState('Invalid port', 'error');
+    return null;
+  }
+  setLocalAIPortState(`Saving ${payload.port}`, 'unknown');
+  const data = await postAI('/api/ai/settings', { lanPort: payload.port, lanCidr: payload.lanCidr }, 'Local AI port saved');
+  updateLocalAIPortReadback(data);
+  return data;
+}
+
+async function applyLocalAIPort(enableLan) {
+  let payload;
+  try { payload = localAIPortPayload(); }
+  catch (error) {
+    setMessage('ai-message', error.message, 'error');
+    PopupManager.showToast(error.message, 'error');
+    setLocalAIPortState('Invalid port', 'error');
+    return null;
+  }
+  const data = await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port, lanCidr: payload.lanCidr }, 'LAN access applied');
+  updateLocalAIPortReadback(data);
+  return data;
 }
 
 function hfForm() { return document.querySelector('[data-hf-installer]'); }

@@ -56,11 +56,23 @@ fn header(status: &ConsoleStatus) -> Markup {
     let sync_delta = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let (games_label, games_class, games_tip) = if status.library.last_sync_state == "error" {
+    let (games_label, games_class, games_tip) = if status.library.last_sync_state == "running" {
+        (
+            "Scanning".to_string(),
+            "warn",
+            "ROM folders are being scanned now".to_string(),
+        )
+    } else if status.library.last_sync_state == "error" {
         (
             "Sync failed".to_string(),
             "bad",
             "Last game sync failed".to_string(),
+        )
+    } else if !sync_has_history(status) {
+        (
+            "Pending scan".to_string(),
+            "warn",
+            "No ROM scan has run yet".to_string(),
         )
     } else if status.library.sync_needed || sync_delta > 0 {
         (
@@ -70,15 +82,15 @@ fn header(status: &ConsoleStatus) -> Markup {
         )
     } else if status.library.sync_state == "unknown" {
         (
-            "Unknown".to_string(),
-            "idle",
-            "Game sync state unknown".to_string(),
+            "Pending scan".to_string(),
+            "warn",
+            "ROM files exist but no reliable sync history is available".to_string(),
         )
     } else {
         (
             "Synced".to_string(),
             "good",
-            "No game changes waiting for sync".to_string(),
+            "Last scan completed and no game changes are waiting".to_string(),
         )
     };
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
@@ -349,6 +361,14 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
             Some("sync"),
             None,
         )
+    } else if !sync_has_history(status) {
+        (
+            "Games pending scan".to_string(),
+            "No ROM scan has run yet.".to_string(),
+            Some("Scan ROMs"),
+            None,
+            Some("/api/actions/sync-games"),
+        )
     } else if status.library.sync_needed {
         let changes = status.library.unsynced_added
             + status.library.unsynced_changed
@@ -473,11 +493,11 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
 fn home_library_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class="operational-card library-home-card" {
-            div class="card-head" { h3 { "Game Library" } strong { (status.library.total_detected_games) " · " (if status.library.sync_needed { "changes" } else if status.library.sync_state == "unknown" { "unknown" } else { "synced" }) } }
+            div class="card-head" { h3 { "Game Library" } strong { (status.library.total_detected_games) " · " (library_home_state(status)) } }
             div class="state-rows state-rows--compact" {
                 (state_row("Detected", &status.library.total_detected_games.to_string()))
-                (state_row("Synced", &status.library.total_synced_entries.to_string()))
-                (state_row("Last sync", &status.library.last_sync))
+                (state_row("GameScope", &status.library.total_synced_entries.to_string()))
+                (state_row("Last scan", &status.library.last_sync))
                 (state_row("Artwork", &status.library.artwork_status))
             }
             div class="inline-actions inline-actions--compact" {
@@ -598,15 +618,19 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         html! {
             section class="sync-rom-panel" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-labelledby="sync-rom-title" {
                 div class="sync-rom-copy" {
-                    h2 id="sync-rom-title" { "Scan Samba ROM folders into GameScope" }
-                    p { "Copy ROM files into the network game folders. HomeConsole scans those folders, matches systems and artwork where possible, then adds or updates playable GameScope entries." }
+                    h2 id="sync-rom-title" { "Sync ROMs to GameScope" }
+                    p { "Put ROMs in the network game folders, scan them, sync artwork where available, and create or update playable GameScope entries." }
                     div class="sync-status-line" role="status" aria-live="polite" aria-atomic="true" {
                         span { "Status" }
                         strong id="sync-state" data-sync-state=(state_label.to_lowercase().replace(' ', "-")) { (state_label) }
                     }
                 }
                 div class="sync-rom-action" {
-                    (action_button(ButtonVariant::Primary, if storage_blocked { "Storage Full" } else { "Scan for ROMs" }, "sync-games", "/api/actions/sync-games"))
+                    @if storage_blocked || status.library.last_sync_state == "running" {
+                        button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Scan running" }) }
+                    } @else {
+                        (action_button(ButtonVariant::Primary, "Scan ROM folders", "sync-games", "/api/actions/sync-games"))
+                    }
                     p id="sync-progress-text" aria-live="polite" { (sync_ready_message(status, storage_blocked, pending_changes)) }
                 }
             }
@@ -641,7 +665,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section id="sync-running-panel" class="sync-running-panel" aria-label="Sync progress" hidden {
+            section id="sync-running-panel" class="sync-running-panel" aria-label="Sync progress" hidden[status.library.last_sync_state != "running"] {
                 div class="sync-scanner" aria-hidden="true" {
                     span class="sync-scanner-dot" {}
                     span class="sync-scanner-line" {}
@@ -655,7 +679,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
 
             section class="sync-result-card" aria-labelledby="sync-result-title" data-sync-result=(sync_result_kind(status)) {
                 div class="sync-result-head" {
-                    h3 id="sync-result-title" { "Last sync" }
+                    h3 id="sync-result-title" { (sync_result_title(status, pending_changes)) }
                     p id="sync-result-copy" { (sync_result_copy(status, pending_changes)) }
                 }
                 div class="sync-result-list" {
@@ -666,7 +690,8 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                     @if status.library.unsynced_changed > 0 { (sync_detail("Changed", &status.library.unsynced_changed.to_string())) }
                     @if status.library.unsynced_removed > 0 { (sync_detail("Removed", &status.library.unsynced_removed.to_string())) }
                     @if status.library.artwork_complete > 0 || status.library.artwork_missing > 0 { (sync_detail("Artwork", &status.library.artwork_status)) }
-                    @if status.library.total_detected_games == 0 && pending_changes == 0 && status.library.total_synced_entries == 0 { span class="sync-empty-readback" { "No ROMs have been detected yet." } }
+                    @if status.library.last_sync_state == "success" && status.library.total_detected_games == 0 { span class="sync-empty-readback" { "No playable ROM files were detected in the configured folders." } }
+                    @else if !sync_has_history(status) && status.library.total_detected_games == 0 && pending_changes == 0 && status.library.total_synced_entries == 0 { span class="sync-empty-readback" { "No scan has run yet." } }
                 }
             }
 
@@ -684,13 +709,36 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
+fn sync_has_history(status: &ConsoleStatus) -> bool {
+    matches!(
+        status.library.last_sync_state.as_str(),
+        "success" | "error" | "running"
+    ) || status.library.first_sync_completed
+}
+
+fn library_home_state(status: &ConsoleStatus) -> &'static str {
+    if status.library.last_sync_state == "running" {
+        "scanning"
+    } else if status.library.last_sync_state == "error" {
+        "failed"
+    } else if !sync_has_history(status) {
+        "pending scan"
+    } else if status.library.sync_needed {
+        "needs sync"
+    } else {
+        "synced"
+    }
+}
+
 fn sync_state_label(status: &ConsoleStatus) -> &'static str {
     match status.library.last_sync_state.as_str() {
         "running" => "Scanning",
+        "success" if status.library.total_detected_games == 0 => "Scan complete",
         "success" => "Completed",
         "error" => "Needs attention",
-        _ if status.library.sync_needed => "Ready",
-        _ => "Ready",
+        _ if !sync_has_history(status) => "Not scanned yet",
+        _ if status.library.sync_needed => "Ready to scan",
+        _ => "Ready to scan",
     }
 }
 
@@ -711,8 +759,24 @@ fn sync_ready_message(
             "Ready to scan {} detected ROM files again.",
             status.library.total_detected_games
         )
+    } else if !sync_has_history(status) {
+        "Add ROMs to the folders, then scan to create/update GameScope entries and sync artwork."
+            .to_string()
     } else {
         "Ready to scan the Samba game folders for ROM files.".to_string()
+    }
+}
+
+fn sync_result_title(status: &ConsoleStatus, pending_changes: u64) -> &'static str {
+    match status.library.last_sync_state.as_str() {
+        "success" if pending_changes > 0 => "Scan complete — new changes waiting",
+        "success" if status.library.total_detected_games == 0 => "Scan complete — no ROMs found",
+        "success" => "Scan complete",
+        "error" => "Scan failed",
+        "running" => "Scanning ROM folders…",
+        _ if pending_changes > 0 => "Ready to scan",
+        _ if !sync_has_history(status) => "No scan has run yet",
+        _ => "Ready to scan",
     }
 }
 
@@ -727,8 +791,15 @@ fn sync_result_kind(status: &ConsoleStatus) -> &'static str {
 
 fn sync_result_copy(status: &ConsoleStatus, pending_changes: u64) -> String {
     match status.library.last_sync_state.as_str() {
+        "success" if pending_changes > 0 => format!(
+            "Previous scan completed, and {} ROM file changes are ready for the next scan.",
+            pending_changes
+        ),
+        "success" if status.library.total_detected_games == 0 => {
+            "Scan complete. No playable ROM files were detected in the configured folders.".to_string()
+        }
         "success" => {
-            "Completed. Playable GameScope entries were updated from the ROM folders.".to_string()
+            "Scan complete. GameScope entries and artwork were updated from real scan results.".to_string()
         }
         "error" => {
             "Needs attention. Open Output for the last sync receipt and fix the reported issue."
@@ -742,7 +813,7 @@ fn sync_result_copy(status: &ConsoleStatus, pending_changes: u64) -> String {
         _ if status.library.total_synced_entries > 0 => {
             "No new ROM changes reported since the last sync.".to_string()
         }
-        _ => "No sync has run yet. Copy ROMs into the folders above, then scan.".to_string(),
+        _ => "No sync has run yet. Add ROMs to the games folder, then scan to create/update GameScope entries and sync artwork.".to_string(),
     }
 }
 
@@ -1017,45 +1088,121 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
         status.identity.web_origin.trim_end_matches('/'),
         port
     );
-    let inference_on = status.local_ai.lan_inference_enabled;
-    let handoff_url = format!("{}/v1", endpoint);
+    let base_url = format!("{}/v1", endpoint);
+    let api_ready = status.local_ai.lan_inference_enabled;
     let model_count = status.local_ai.available_models.len();
+    let selected_present = status.local_ai.selected_model_id.is_some();
+    let model_loaded = matches!(
+        status.local_ai.load_state.as_str(),
+        "hot" | "loaded" | "running"
+    ) || status.local_ai.loaded_model_id.is_some()
+        || status.local_ai.loaded_model_name.is_some();
+    let model_state =
+        local_ai_model_state_label(status, model_loaded, selected_present, model_count);
+    let model_state_class =
+        local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
+    let api_state = if api_ready {
+        "API reachable"
+    } else {
+        "API not listening"
+    };
+    let access_state = if api_ready {
+        "Trusted LAN enabled"
+    } else {
+        "Console only"
+    };
+    let next_action = if model_count == 0 {
+        "Import a GGUF model"
+    } else if !selected_present {
+        "Select a model"
+    } else if !model_loaded {
+        "Load the selected model"
+    } else if !api_ready {
+        "Test or enable API access"
+    } else {
+        "Copy the client endpoint"
+    };
     view_shell(
         "local-ai",
         "",
         "",
         "",
         html! {
-            section class="local-ai-section ai-manager-section local-ai-command" aria-label="llama.cpp appliance" data-ai-auto-refresh="true" {
-                div class="system-field-grid" {
-                    (system_field("llama.cpp", title_case_state_like(&status.local_ai.load_state)))
-                    (system_field("Installed version", "Read from /api/ai/state"))
-                    (system_field("Update check", "Auto on open"))
-                    (system_field("Binary/source", "Read from backend"))
+            section class=(format!("local-ai-hero local-ai-hero--{}", model_state_class)) aria-label="Local AI status" data-ai-auto-refresh="true" {
+                div class="local-ai-orb" aria-hidden="true" { "◉" }
+                div class="local-ai-hero-copy" {
+                    span { "Local AI" }
+                    strong data-ai-model-state="true" { (model_state) }
+                    p { (next_action) " · " (if api_ready { "OpenAI-compatible API is reachable on the trusted home LAN." } else { "No client endpoint is reachable until a model is serving." }) }
                 }
-                p class="local-ai-copy" { "llama.cpp runs local GGUF models and provides an OpenAI-compatible API from this HomeConsole only." }
-                div class="inline-actions inline-actions--compact" {
-                    button class="btn btn--secondary" type="button" data-ai-action="runtime-check-update" { "Check llama.cpp" }
-                    button class="btn btn--secondary" type="button" data-ai-action="runtime-update" { "Update llama.cpp" }
-                    button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart llama.cpp" }
+                div class="local-ai-hero-endpoint" {
+                    span { "Client endpoint" }
+                    code id="ai-endpoint-readback" data-ai-endpoint=(if api_ready { endpoint.as_str() } else { "" }) {
+                        (if api_ready { endpoint.as_str() } else { "No active endpoint" })
+                    }
+                    @if api_ready { (copy_button("Copy endpoint", &endpoint)) }
+                    @else { button class="btn btn--secondary" type="button" disabled title="Load a model and start the API before copying an endpoint." { "Copy endpoint" } }
                 }
             }
 
-            section class="local-ai-section ai-manager-section active-model" aria-label="Model control" {
-                span { "Model control" }
-                strong { (title_case_state_like(&status.local_ai.load_state)) " · " (loaded_name) }
-                div class="model-meta-row" {
-                    (model_meta("Selected", selected_name))
-                    (model_meta("GPU", status.local_ai.gpu_memory.as_deref().unwrap_or("Unknown")))
-                    (model_meta("API", if inference_on { "LAN" } else { "Internal/off" }))
-                    (model_meta("Models", &model_count.to_string()))
+            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--model" aria-label="Model control" {
+                div class="local-ai-card-head" {
+                    strong { "Model control" }
+                    span class=(format!("system-status system-status--{}", model_state_class)) { (model_state) }
                 }
-                div class="inline-actions" {
+                div class="local-ai-state-list" {
+                    (ai_state_tile("Selected", selected_name, if selected_present { "Ready to load" } else { "Choose or import a model" }, "selected"))
+                    (ai_state_tile("Serving now", loaded_name, if model_loaded { "Available for client calls" } else { "No model invoked" }, "loaded"))
+                    (ai_state_tile("Model library", &format!("{} installed", model_count), if model_count == 0 { "Empty" } else { "Available" }, "library"))
+                    (ai_state_tile("GPU", status.local_ai.gpu_memory.as_deref().unwrap_or("Signal unavailable"), "Read from backend telemetry", "gpu"))
+                }
+                div class="inline-actions inline-actions--compact" {
                     @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
-                    @else if status.local_ai.load_state != "hot" && status.local_ai.load_state != "loading" { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Cold load" } }
-                    @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
-                    button class="btn btn--secondary" type="button" disabled { "Hot load unavailable until backend reports safe swap support" }
+                    @else if !selected_present { (nav_focus_button("Choose model", "local-ai", "installed-models")) }
+                    @else if !model_loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load model" } }
+                    @if model_loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
                     button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open logs" }
+                }
+                @if model_count == 0 {
+                    div class="local-ai-empty" { strong { "No GGUF model installed" } p { "Import a model file or fetch a compatible Hugging Face GGUF before enabling client access." } }
+                }
+            }
+
+            section id="local-ai-inference" class="local-ai-section ai-manager-section local-ai-card local-ai-card--access" aria-label="API access" tabindex="-1" {
+                div class="local-ai-card-head" {
+                    strong { "API access" }
+                    span class=(format!("system-status system-status--{}", if api_ready { "available" } else { "disabled" })) { (api_state) }
+                }
+                div class="local-ai-access-grid" {
+                    (ai_state_tile("Internal API", if api_ready { "Listening" } else { "Off" }, if api_ready { "Health test can run now" } else { "Load a model before client calls" }, "api"))
+                    (ai_state_tile("LAN API", access_state, if api_ready { "Trusted LAN only" } else { "Disabled until explicitly enabled" }, "lan"))
+                    (ai_state_tile("Port", &port.to_string(), "Saved HomeConsole Local AI port", "port"))
+                    (ai_state_tile("OpenAI base URL", if api_ready { &base_url } else { "Unavailable" }, if api_ready { "Use this in clients" } else { "No base URL until API listens" }, "endpoint"))
+                }
+                div class="inline-actions inline-actions--compact" {
+                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" disabled[model_count == 0] title=(if model_count == 0 { "Install a GGUF model before enabling API access." } else { "Enable console-local API mode." }) { "API on" }
+                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
+                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
+                    @if api_ready { (copy_button("Copy base URL", &base_url)) } @else { button class="btn btn--secondary" type="button" disabled title="No API endpoint is reachable yet." { "Copy base URL" } }
+                }
+                p class="local-ai-help" { "Internal mode keeps the service on this console. LAN mode exposes only the saved port to trusted home-network clients." }
+            }
+
+            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--config" aria-label="Port management" {
+                div class="local-ai-card-head" {
+                    strong { "Port management" }
+                    span class="system-status system-status--unknown" id="ai-port-state" data-active-port=(port) { "Active " (port) }
+                }
+                form class="settings-form settings-form--inline local-ai-port-form" id="ai-lan-form" data-active-port=(port) {
+                    label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
+                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
+                    p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
+                    div class="inline-actions inline-actions--compact" {
+                        button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
+                        button class="btn btn--secondary" type="button" data-ai-port-revert="true" { "Revert" }
+                        button class="btn btn--secondary" type="button" data-ai-action="lan-enable" disabled[!model_loaded] title=(if model_loaded { "Expose Local AI on the trusted LAN." } else { "Load a model before exposing LAN access." }) { "Enable LAN" }
+                        button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" }
+                    }
                 }
             }
 
@@ -1090,29 +1237,9 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section id="local-ai-inference" class="local-ai-section ai-manager-section" aria-label="API access" tabindex="-1" {
-                div class="system-field-grid" {
-                    (system_field("API", if inference_on { "On" } else { "Off/internal" }))
-                    (system_field("Access", if inference_on { "Trusted LAN" } else { "Internal only" }))
-                    (system_field("Port", &port.to_string()))
-                    (system_field("Endpoint", if inference_on { &endpoint } else { "No LAN endpoint" }))
-                }
-                div class="inline-actions inline-actions--compact" {
-                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" { "API on" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
-                    @if inference_on { (copy_button("Copy endpoint", &endpoint)) } @else { button class="btn btn--secondary" type="button" disabled { "Copy endpoint" } }
-                }
-                form class="settings-form settings-form--inline" id="ai-lan-form" {
-                    label { span { "LAN port" } input class="field" name="port" type="number" min="1024" max="65535" value=(port); }
-                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off"; }
-                    div class="inline-actions" { button class="btn btn--primary" type="submit" data-enable="true" { "Enable LAN" } button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" } }
-                }
-            }
-
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Client handoff" {
                 div class="system-field-grid" {
-                    (system_field("Hermes/Pi base URL", if inference_on { &handoff_url } else { "Enable API first" }))
+                    (system_field("Hermes/Pi base URL", if api_ready { &base_url } else { "Enable API first" }))
                     (system_field("Token", "Configured/redacted by backend"))
                     (system_field("Secret receipts", "Redacted"))
                 }
@@ -1140,7 +1267,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             }
 
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Diagnostics" {
-                div id="ai-activity" class="system-field-grid" { (system_field("Operation", if inference_on { "serving inference" } else { "idle" })) (system_field("Last error", "Read from /api/ai/state")) }
+                div id="ai-activity" class="system-field-grid" { (system_field("Operation", if api_ready { "serving client calls" } else { "idle" })) (system_field("Last error", "Read from /api/ai/state")) }
                 details class="collapsible-log" { summary { "llama.cpp update" } pre { code { "Read from backend logs." } } }
                 details class="collapsible-log" { summary { "Model import/load" } pre { code { "Read from backend logs." } } }
                 details class="collapsible-log" { summary { "Nginx/firewall" } pre { code { "Read from backend receipts." } } }
@@ -1148,6 +1275,47 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             div id="ai-message" class="message" hidden {}
         },
     )
+}
+
+fn local_ai_model_state_label(
+    status: &ConsoleStatus,
+    model_loaded: bool,
+    selected_present: bool,
+    model_count: usize,
+) -> &'static str {
+    if status.local_ai.load_state == "error" {
+        "Backend error"
+    } else if model_loaded {
+        "Model loaded"
+    } else if selected_present {
+        "Model selected, not loaded"
+    } else if model_count > 0 {
+        "Models installed, none selected"
+    } else {
+        "No model loaded"
+    }
+}
+
+fn local_ai_state_class(load_state: &str, model_loaded: bool, model_count: usize) -> &'static str {
+    if load_state == "error" {
+        "error"
+    } else if model_loaded {
+        "available"
+    } else if model_count > 0 {
+        "partial"
+    } else {
+        "disabled"
+    }
+}
+
+fn ai_state_tile(label: &str, value: &str, detail: &str, kind: &str) -> Markup {
+    html! {
+        div class="local-ai-state-tile" data-ai-tile=(kind) {
+            span { (label) }
+            strong { (value) }
+            em { (detail) }
+        }
+    }
 }
 
 fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatus) -> Markup {

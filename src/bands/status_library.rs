@@ -73,11 +73,11 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         }
     });
     let last_sync = match last_sync_state.as_str() {
-        "success" => "Today".to_string(),
+        "success" => "Receipt found".to_string(),
         "error" => "Failed".to_string(),
         "running" => "Running".to_string(),
         "unknown" => "Unknown".to_string(),
-        _ if total_synced_entries > 0 => "Synced".to_string(),
+        _ if total_synced_entries > 0 => "Receipt absent".to_string(),
         _ => "Never".to_string(),
     };
     let artwork_status = if artwork_complete > 0 && artwork_missing > 0 {
@@ -98,7 +98,7 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         detected_games,
         detected_files: detected_games,
         gamescope_entries,
-        first_sync_completed: total_synced_entries > 0,
+        first_sync_completed: matches!(last_sync_state.as_str(), "success" | "error") || total_synced_entries > 0,
         last_sync,
         last_sync_at: None,
         last_sync_state,
