@@ -618,7 +618,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 div class="sync-rom-action sync-rom-action--solo" {
                     (action_button(ButtonVariant::Primary, if storage_blocked { "Storage Full" } else { "Scan for ROMs" }, "sync-games", "/api/actions/sync-games"))
                     span id="sync-state" data-sync-state="idle" hidden {}
-                    p id="sync-progress-text" class="sr-only" aria-live="polite" {}
+                    p id="sync-progress-text" aria-live="polite" hidden {}
                 }
             }
 

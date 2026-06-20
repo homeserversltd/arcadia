@@ -186,6 +186,7 @@
         assert!(VIEWPORT_CSS.contains("prefers-reduced-motion"));
         assert!(APP_CSS.contains("sync-button-sweep"));
         assert!(APP_CSS.contains("position: absolute !important"));
+        assert!(sync_html.contains(r#"id="sync-progress-text" aria-live="polite" hidden"#));
         assert!(APP_JS.contains("Scanning"));
         assert!(!APP_JS.contains("Scanning Samba ROM folders"));
         assert!(!APP_JS.contains("Sync complete. Playable GameScope entries were updated from the ROM folders."));
