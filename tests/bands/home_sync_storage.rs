@@ -71,12 +71,10 @@
             "priority-strip",
             "home-operational-grid",
             "home-operational-grid--dashboard",
-            "Storage",
-            "Load",
             "load-orb",
             "load-spark-bank",
             "data-load-card",
-            "data-load-poll-ms=\"5000\"",
+            r#"data-load-poll-ms="5000""#,
             "data-load-orb",
             "data-load-headline",
             "data-load-spark-value",
@@ -84,26 +82,26 @@
             "CPU",
             "I/O",
             "storage-bar",
-            "Artwork",
-            "AI Models",
-            "Other",
-            "Cleanup",
-            "Warnings",
-            "Network",
+            r#"aria-label="Storage""#,
+            r#"aria-label="Load""#,
+            r#"aria-label="Game library""#,
+            r#"aria-label="Network""#,
             "home-topology",
             "Console URL",
-            "Local AI",
-            "LAN",
-            "Sync",
-            "Available ROMs",
-            "0 playable ROMs",
-            "Last scan",
-            "Updates",
-            "System Health",
-            "Appliance",
+            r#"aria-label="Local AI""#,
+            r#"data-label="LAN""#,
+            r#"data-label="Available ROMs""#,
+            r#"aria-label="Updates""#,
+            r#"aria-label="System Health""#,
+            r#"aria-label="Appliance""#,
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
+
+        assert!(!home_html.contains("<h1"));
+        assert!(!home_html.contains("<h2"));
+        assert!(!home_html.contains("<h3"));
+        assert!(!home_html.contains("<p"));
 
         for forbidden in [
             "Console Home",
@@ -123,6 +121,12 @@
             "Open Storage",
             "Review Update",
             "<button",
+            ">Synced<",
+            ">Current<",
+            ">Hot<",
+            "playable ROMs ·",
+            "modules ·",
+            "Machine ",
         ] {
             assert!(
                 !home_html.contains(forbidden),
@@ -196,12 +200,12 @@
                 .expect("sync view follows home");
         let home_html = &rendered[home_start..home_end];
 
-        assert!(home_html.contains("Updates"));
+        assert!(home_html.contains("aria-label=\"Updates\""));
         assert!(home_html.contains(">Available<"));
         assert!(!home_html.contains(">Current<"));
-        assert!(home_html.contains(">Running<"));
-        assert!(home_html.contains("Game Session"));
-        assert!(home_html.contains(">Stopped<"));
+        assert!(home_html.contains(">✓<"));
+        assert!(home_html.contains("aria-label=\"Game Session\""));
+        assert!(home_html.contains(">!<"));
         assert!(!home_html.contains(">Unknown<"));
         assert!(!home_html.contains("GameScope"));
         assert!(!home_html.contains(">Arcadia<"));
@@ -653,7 +657,7 @@
         let sync_html = sync_slice(&rendered);
         assert!(rendered.contains("Games: 3 ROMs"));
         assert!(!sync_html.contains("Synced"));
-        assert!(rendered.contains("3 playable ROMs"));
+        assert!(rendered.contains("Games: 3 ROMs"));
         assert!(!sync_html.contains("Last sync complete"));
         assert!(sync_html.contains("games admitted"));
         assert!(sync_html.contains("Scanned"));
@@ -671,7 +675,7 @@
         let zero_sync = sync_slice(&zero);
         assert!(zero.contains("Games: 0 ROMs"));
         assert!(!zero_sync.contains("Synced"));
-        assert!(zero.contains("0 playable ROMs"));
+        assert!(zero.contains("Games: 0 ROMs"));
         assert!(zero_sync.contains("games admitted"));
         assert!(zero_sync.contains("sync-shelf-empty"));
         assert!(!zero_sync.contains("0 new · 0 failed"));
