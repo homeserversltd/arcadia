@@ -259,35 +259,14 @@ fn apply_lan_exposure(cfg: &LocalAiConfig) -> Result<(), String> {
     if !valid_lan_port(cfg.lan_port) || !valid_lan_cidr(&cfg.lan_cidr) {
         return Err("invalid LAN exposure config".into());
     }
-    let conf = format!("server {{\n    listen {};\n    allow {};\n    deny all;\n    location / {{ proxy_pass http://127.0.0.1:{}; proxy_http_version 1.1; proxy_set_header Host $host; }}\n}}\n", cfg.lan_port, cfg.lan_cidr, cfg.lan_port);
-    if let Some(parent) = Path::new(LOCAL_AI_NGINX_CONF).parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let prev = fs::read_to_string(LOCAL_AI_NGINX_CONF).ok();
-    fs::write(LOCAL_AI_NGINX_CONF, conf).map_err(|e| e.to_string())?;
-    let nginx_ok = Command::new("nginx")
-        .arg("-t")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(true);
-    if !nginx_ok {
-        if let Some(prev) = prev {
-            let _ = fs::write(LOCAL_AI_NGINX_CONF, prev);
-        } else {
-            let _ = fs::remove_file(LOCAL_AI_NGINX_CONF);
-        }
-        return Err("nginx validation failed".into());
-    }
-    let _ = Command::new(SYSTEMCTL_BIN)
-        .args(["reload", "nginx"])
-        .status();
+    let _ = fs::remove_file(LOCAL_AI_NGINX_CONF);
     if let Some(parent) = Path::new(LOCAL_AI_FIREWALL_RECEIPT).parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::write(
         LOCAL_AI_FIREWALL_RECEIPT,
         format!(
-            "lan_port={}\nlan_cidr={}\npublic_exposure=false\n",
+            "lan_port={}\nlan_cidr={}\npublic_exposure=false\nmode=direct-llama-server-lan-bind\n",
             cfg.lan_port, cfg.lan_cidr
         ),
     )
