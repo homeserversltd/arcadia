@@ -165,3 +165,12 @@
         assert!(runtime_routes.contains("llama.cpp is not installed. Run Update llama.cpp before enabling inference."));
         assert!(runtime_routes.contains("llama.cpp is not installed. Run Update llama.cpp before exposing Local AI on LAN."));
     }
+
+
+    #[test]
+    fn local_ai_version_readback_uses_stderr_aware_command() {
+        let runtime = include_str!("../../src/bands/local_ai_runtime.rs");
+        assert!(runtime.contains("command_combined_output(LLAMA_SERVER_BIN"));
+        assert!(runtime.contains("String::from_utf8_lossy(&output.stderr)"));
+        assert!(runtime.contains("(Some(_), None) => \"unknown\""));
+    }
