@@ -1,8 +1,7 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
-    human_size, platform_display_name, AiModelStorageStatus, ButtonVariant, ConsoleStatus,
-    StorageCategoryStatus, GAMES_ROOT, GAME_SYSTEMS,
+    human_size, AiModelStorageStatus, ButtonVariant, ConsoleStatus, StorageCategoryStatus,
 };
 
 const VIEWS: [(&str, &str, &str); 9] = [
@@ -709,13 +708,6 @@ fn reachability(label: &str, ok: bool) -> Markup {
 fn sync_view(status: &ConsoleStatus) -> Markup {
     let storage_blocked = status.storage.health == "Full";
     let storage_low = status.storage.percent_used >= 90;
-    let windows_root = r"\\console.home.arpa\games";
-    let smb_root = "smb://console.home.arpa/games";
-    let ip_value = if status.network.ip_address == "—" {
-        "IP unavailable"
-    } else {
-        status.network.ip_address.as_str()
-    };
     let pending_changes = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
@@ -738,8 +730,9 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                     @if storage_blocked || status.library.last_sync_state == "running" {
                         button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Sync running" }) }
                     } @else {
-                        (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync now" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
+                        (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync games" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
                     }
+                    button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
                 }
             }
 
@@ -755,23 +748,15 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section class="sync-folder-source" aria-label="Samba access" {
-                div class="sync-folder-source-main" {
-                    span { "Add games" }
-                    strong { (windows_root) }
-                    em { (GAMES_ROOT) }
+            section class="sync-intake-panel" aria-label="Add games" data-sync-add-games-panel="true" {
+                div class="sync-intake-drive" aria-hidden="true" { span { "▰" } }
+                div class="sync-intake-copy" {
+                    strong { (sync_detection_headline(status, pending_changes)) }
+                    p { "Drop games here or choose files from this computer." }
                 }
-                div class="inline-actions inline-actions--compact sync-copy-actions" aria-label="Sync copy buttons" {
-                    (copy_button("Samba for Windows", windows_root))
-                    (copy_button("Samba for Linux", smb_root))
-                    (copy_button("IP", ip_value))
-                }
-                div class="sync-folder-list" aria-label="Queued content folders" {
-                    span class="sync-folder-pill sync-folder-pill--queue" { "Queued" " · " code { (pending_changes) } }
-                    span class="sync-folder-pill" { "Folder" " · " code { (GAMES_ROOT) } }
-                    @for system in GAME_SYSTEMS {
-                        span class="sync-folder-pill" { (platform_display_name(system)) " · " code { (format!("games/{}", system)) } }
-                    }
+                div class="sync-intake-actions" {
+                    label class="btn btn--secondary sync-upload-label" for="sync-upload-input" { "Choose files" }
+                    input id="sync-upload-input" class="sync-upload-input" type="file" multiple data-sync-upload="true" data-endpoint="/api/actions/add-games" {}
                 }
             }
 
@@ -783,27 +768,30 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 }
                 div {
                     strong id="sync-running-title" { "Syncing" }
-                    p id="sync-running-copy" { "Reading the games folders and updating GameScope entries." }
+                    p id="sync-running-copy" { "Importing games into the console library." }
                 }
             }
 
-            section class="sync-result-card" aria-labelledby="sync-result-title" data-sync-result=(sync_result_kind(status)) {
+            section class="sync-result-card" aria-labelledby="sync-result-title" data-sync-result=(sync_result_kind(status)) data-sync-ledger="true" {
                 div class="sync-result-head" {
                     h3 id="sync-result-title" { (sync_result_title(status, pending_changes)) }
                     p id="sync-result-copy" { (sync_result_copy(status, pending_changes)) }
                 }
                 div class="sync-result-list" {
-                    (sync_detail("Queued", &pending_changes.to_string()))
-                    (sync_detail("Available ROMs", &status.library.total_detected_games.to_string()))
-                    (sync_detail("GameScope", &status.library.total_synced_entries.to_string()))
-                    @if status.library.unsynced_added > 0 { (sync_detail("New", &status.library.unsynced_added.to_string())) }
+                    (sync_detail("Detected", &status.library.total_detected_games.to_string()))
+                    (sync_detail("Admitted", &status.library.total_synced_entries.to_string()))
+                    @if status.library.unsynced_added > 0 { (sync_detail("New games", &status.library.unsynced_added.to_string())) }
                     @if status.library.unsynced_changed > 0 { (sync_detail("Changed", &status.library.unsynced_changed.to_string())) }
-                    @if status.library.unsynced_removed > 0 { (sync_detail("Removed", &status.library.unsynced_removed.to_string())) }
+                    @if status.library.unsynced_removed > 0 { (sync_detail("Ejected", &status.library.unsynced_removed.to_string())) }
+                    @if pending_changes == 0 { (sync_detail("Needs attention", "0")) }
                     @if status.library.artwork_complete > 0 || status.library.artwork_missing > 0 { (sync_detail("Artwork", &status.library.artwork_status)) }
                 }
+                div class="sync-proof-row" aria-label="Sync proof" {
+                    span { "Receipt ready" }
+                    span { "Ledger" }
+                    span { (status.library.last_sync) }
+                }
             }
-
-            div id="sync-output-panel" class="collapsible-log sync-output-store" hidden { pre { code id="sync-output" {} } }
             div id="console-action-message" class="message" hidden {}
         },
     )
@@ -832,6 +820,32 @@ fn sync_state_label(status: &ConsoleStatus) -> &'static str {
     }
 }
 
+fn sync_detection_headline(status: &ConsoleStatus, pending_changes: u64) -> String {
+    if status.library.unsynced_added > 0 {
+        plural_games(status.library.unsynced_added, "new game", "new games found")
+    } else if pending_changes > 0 {
+        plural_games(pending_changes, "game needs sync", "games need sync")
+    } else if !sync_has_history(status) {
+        "Add games to start the library.".to_string()
+    } else if status.library.total_detected_games > status.library.total_synced_entries {
+        plural_games(
+            status.library.total_detected_games - status.library.total_synced_entries,
+            "game waiting",
+            "games waiting",
+        )
+    } else {
+        "No new games found".to_string()
+    }
+}
+
+fn plural_games(count: u64, singular: &str, plural: &str) -> String {
+    if count == 1 {
+        format!("1 {singular}")
+    } else {
+        format!("{count} {plural}")
+    }
+}
+
 fn sync_ready_message(
     status: &ConsoleStatus,
     storage_blocked: bool,
@@ -839,34 +853,34 @@ fn sync_ready_message(
 ) -> String {
     if storage_blocked {
         "Storage is full. Free space before syncing.".to_string()
+    } else if status.library.unsynced_added > 0 {
+        plural_games(
+            status.library.unsynced_added,
+            "new game found",
+            "new games found",
+        )
     } else if pending_changes > 0 {
-        format!(
-            "Sync needed: {} queued change(s) in {}.",
-            pending_changes, GAMES_ROOT
-        )
+        plural_games(pending_changes, "game needs sync", "games need sync")
     } else if !sync_has_history(status) {
-        format!(
-            "Needs first sync: add ROMs under {}, then sync.",
-            GAMES_ROOT
-        )
+        "Drop games here or choose files from this computer.".to_string()
     } else if status.library.total_detected_games > status.library.total_synced_entries {
         format!(
-            "Sync recommended: {} detected, {} in GameScope.",
+            "{} detected · {} admitted",
             status.library.total_detected_games, status.library.total_synced_entries
         )
     } else {
-        format!("Synced: 0 queued changes in {}.", GAMES_ROOT)
+        "Games synced. No new games found.".to_string()
     }
 }
 
 fn sync_result_title(status: &ConsoleStatus, pending_changes: u64) -> &'static str {
     match status.library.last_sync_state.as_str() {
         "running" => "Sync in progress",
-        "error" => "Sync failed",
-        _ if pending_changes > 0 => "Queued for sync",
+        "error" => "Needs attention",
+        _ if pending_changes > 0 => "Sync needed",
         _ if !sync_has_history(status) => "First sync waiting",
         "success" => "Last sync complete",
-        _ => "Sync state",
+        _ => "Ledger ready",
     }
 }
 
@@ -881,23 +895,24 @@ fn sync_result_kind(status: &ConsoleStatus) -> &'static str {
 
 fn sync_result_copy(status: &ConsoleStatus, pending_changes: u64) -> String {
     match status.library.last_sync_state.as_str() {
-        "error" => "Read the hidden sync output panel for the last failure receipt.".to_string(),
-        "running" => format!("Sync is reading {} now.", GAMES_ROOT),
+        "error" => "The machine kicked out a game. Open the ledger for the reason and fix action."
+            .to_string(),
+        "running" => "The machine is importing games now.".to_string(),
+        _ if status.library.unsynced_removed > 0 => plural_games(
+            status.library.unsynced_removed,
+            "game was ejected and needs attention",
+            "games were ejected and need attention",
+        ),
         _ if pending_changes > 0 => format!(
-            "{} queued change(s): {} new, {} changed, {} removed under {}.",
-            pending_changes,
+            "{} new · {} changed · {} ejected",
             status.library.unsynced_added,
             status.library.unsynced_changed,
-            status.library.unsynced_removed,
-            GAMES_ROOT
+            status.library.unsynced_removed
         ),
         _ if !sync_has_history(status) => {
-            format!(
-                "No sync receipt yet. Put ROMs in {} and press Sync now.",
-                GAMES_ROOT
-            )
+            "No sync receipt yet. Add games, then press Sync games.".to_string()
         }
-        _ => format!("0 queued changes under {}.", GAMES_ROOT),
+        _ => "0 new · 0 failed".to_string(),
     }
 }
 
