@@ -1,0 +1,8 @@
+# Arcadia proofs are appliance UI/host-state tests. Keep local proof runs bounded so
+# `cargo test --tests -- --nocapture` does not fan out across the machine and amplify
+# storage, NetworkManager, systemd, and UI-render assertions in parallel.
+[build]
+jobs = 1
+
+[env]
+RUST_TEST_THREADS = "1"
