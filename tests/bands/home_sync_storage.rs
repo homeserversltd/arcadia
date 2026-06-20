@@ -72,6 +72,11 @@
             "home-operational-grid",
             "home-operational-grid--dashboard",
             "Storage",
+            "Load",
+            "load-orb",
+            "load-spark-bank",
+            "CPU",
+            "I/O",
             "storage-bar",
             "Artwork",
             "AI Models",
@@ -125,6 +130,11 @@
         );
         assert!(APP_CSS.contains(".priority-strip"));
         assert!(APP_CSS.contains(".home-operational-grid"));
+        assert!(APP_CSS.contains(".load-home-card"));
+        assert!(APP_CSS.contains(".load-orb"));
+        assert!(APP_CSS.contains(".load-spark"));
+        assert!(APP_CSS.contains(".load-telemetry-grid"));
+        assert!(APP_CSS.contains("conic-gradient"));
         assert!(APP_CSS.contains(".view[data-view-panel=\"home\"].is-active"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
@@ -590,11 +600,14 @@
         assert!(telemetry["data"].get("cpu").is_some());
         assert!(telemetry["data"].get("load").is_some());
         assert!(telemetry["data"].get("io").is_some());
-        assert!(telemetry["metrics"]
-            .as_array()
-            .expect("metrics")
+        assert!(telemetry["data"]["io"].get("pressureAvg10").is_some());
+        let telemetry_metrics = telemetry["metrics"].as_array().expect("metrics");
+        assert!(telemetry_metrics
             .iter()
             .any(|metric| metric["id"] == "cpuTemperatureCelsius"));
+        assert!(telemetry_metrics
+            .iter()
+            .any(|metric| metric["id"] == "ioPressureAvg10"));
     }
 
     #[test]

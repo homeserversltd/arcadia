@@ -202,6 +202,7 @@ fn api_telemetry_node() -> ApiObjectNode {
     let cpu_temp = cpu_temperature_celsius();
     let load = load_average();
     let disk_io = disk_io_counters();
+    let io_pressure = pressure_avg10_percent("/proc/pressure/io");
     ApiObjectNode {
         id: "telemetry".to_string(),
         kind: "object".to_string(),
@@ -212,17 +213,19 @@ fn api_telemetry_node() -> ApiObjectNode {
             "cpuTemperatureCelsius": cpu_temp,
             "loadAverage": load,
             "diskIo": disk_io,
+            "ioPressureAvg10": io_pressure,
         }),
         metrics: vec![
             api_metric_value("cpuTemperatureCelsius", "CPU temperature", serde_json::json!(cpu_temp), Some("celsius"), None),
             api_metric_value("load1", "Load average 1m", load.get("oneMinute").cloned().unwrap_or(serde_json::Value::Null), None, None),
             api_metric_value("diskReads", "Disk reads", disk_io.get("readsCompleted").cloned().unwrap_or(serde_json::Value::Null), Some("count"), None),
             api_metric_value("diskWrites", "Disk writes", disk_io.get("writesCompleted").cloned().unwrap_or(serde_json::Value::Null), Some("count"), None),
+            api_metric_value("ioPressureAvg10", "I/O pressure", serde_json::json!(io_pressure), Some("percent"), None),
         ],
         data: serde_json::json!({
             "cpu": { "temperatureCelsius": cpu_temp },
             "load": load,
-            "io": { "disk": disk_io },
+            "io": { "disk": disk_io, "pressureAvg10": io_pressure },
         }),
         children: vec![
             api_leaf("cpu", "CPU", "telemetry", "observed", "/api/root", serde_json::json!({"temperatureCelsius": cpu_temp})),
@@ -340,6 +343,19 @@ fn load_average() -> serde_json::Value {
         "fifteenMinute": parts.get(2).and_then(|v| v.parse::<f64>().ok()),
         "runningProcesses": parts.get(3).copied(),
         "lastPid": parts.get(4).and_then(|v| v.parse::<u64>().ok()),
+    })
+}
+
+fn pressure_avg10_percent(path: &str) -> Option<f64> {
+    let raw = fs::read_to_string(path).ok()?;
+    raw.lines().find_map(|line| {
+        if !line.starts_with("some ") {
+            return None;
+        }
+        line.split_whitespace().find_map(|part| {
+            part.strip_prefix("avg10=")
+                .and_then(|value| value.parse::<f64>().ok())
+        })
     })
 }
 
