@@ -152,6 +152,39 @@
 
 
     #[test]
+    fn local_ai_buttons_use_shared_consistent_sizing() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let local_ai_start = rendered
+            .find("id=\"view-local-ai\"")
+            .expect("local ai view starts");
+        let local_ai_end = rendered[local_ai_start..]
+            .find("id=\"view-network\"")
+            .map(|offset| local_ai_start + offset)
+            .expect("network view follows local ai");
+        let local_ai_html = &rendered[local_ai_start..local_ai_end];
+
+        assert!(
+            local_ai_html.contains("local-ai-actions"),
+            "Local AI action rows must opt into the shared equal button track"
+        );
+        assert!(APP_CSS.contains(".view[data-view-panel=\"local-ai\"] .btn { width: 128px; min-height: var(--ux-button-min-height);"));
+        assert!(APP_CSS.contains(".local-ai-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 128px));"));
+        assert!(APP_CSS.contains(".local-ai-actions .btn { width: 100%; }"));
+        assert!(APP_CSS.contains("padding: var(--ux-button-padding-block) var(--ux-button-padding-inline);"));
+        assert!(APP_CSS.contains("white-space: nowrap;"));
+        assert!(UX_CSS.contains("--ux-button-min-height: 34px;"));
+        assert!(UX_CSS.contains("--ux-button-padding-block: 7px;"));
+        assert!(UX_CSS.contains("--ux-button-padding-inline: 10px;"));
+    }
+
+
+    #[test]
     fn local_ai_runtime_actions_call_real_harmonia_and_reject_fake_green() {
         assert!(
             include_str!("../../src/bands/routes_ai_models.rs").contains("homeconsole-local-ai-update"),
