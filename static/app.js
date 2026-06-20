@@ -738,11 +738,12 @@ async function requestNetworkState() {
 }
 
 async function requestWifiScan(quiet = false) {
-  setMessage('wifi-message', 'Scanning…', 'info');
+  clearMessage('wifi-message');
   try {
     const data = await postJson('/api/network/wifi/scan', {});
     openWifiNetworkPicker(data.state, data.message || 'Wi-Fi scan complete.');
-    setMessage('wifi-message', data.message || 'Wi-Fi scan complete.', data.ok ? 'success' : 'error');
+    if (data.ok) clearMessage('wifi-message');
+    else setMessage('wifi-message', data.message || 'Wi-Fi scan failed.', 'error');
     if (!quiet) PopupManager.showToast(data.message || 'Wi-Fi scan complete.', data.ok ? 'success' : 'error');
   } catch (_) {
     setMessage('wifi-message', 'Wi-Fi scan failed.', 'error');
@@ -1018,7 +1019,8 @@ function openIpSettingsModal() {
 
 async function postNetworkAction(url, body, actionName) {
   const data = await postJson(url, body);
-  setMessage('wifi-message', data.message || 'Network action complete.', data.ok ? 'success' : 'error');
+  if (data.ok) clearMessage('wifi-message');
+  else setMessage('wifi-message', data.message || 'Network action failed.', 'error');
   PopupManager.showToast(data.message || 'Network action complete.', data.ok ? 'success' : 'error');
   return data;
 }
@@ -1060,7 +1062,8 @@ async function requestAIState() {
 
 async function postAI(endpoint, body = {}, label = 'Local AI action') {
   const data = await postJson(endpoint, body);
-  setMessage('ai-message', data.message || label, data.ok ? 'success' : 'error');
+  if (data.ok) clearMessage('ai-message');
+  else setMessage('ai-message', data.message || label, 'error');
   PopupManager.showToast(data.message || label, data.ok ? 'success' : 'error');
   return data;
 }
@@ -1185,7 +1188,8 @@ function bindGuiPinChange() {
     try {
       const data = await postJson('/api/gui-pin/change', { current_pin: current, new_pin: next });
       form.reset();
-      setMessage('gui-pin-change-message', data.message || 'GUI PIN change returned no message.', data.ok ? 'success' : 'error');
+      if (data.ok) clearMessage('gui-pin-change-message');
+      else setMessage('gui-pin-change-message', data.message || 'GUI PIN change failed.', 'error');
       PopupManager.showToast(data.ok ? 'GUI PIN changed' : 'GUI PIN change failed', data.ok ? 'success' : 'error');
     } catch (_) {
       form.reset();
@@ -1217,7 +1221,8 @@ function bindProviderKeys() {
     try {
       const data = await postJson('/api/provider-keys/save', body);
       form.reset();
-      setMessage('provider-keys-message', data.message || 'Provider key save returned no message.', data.ok ? 'success' : 'error');
+      if (data.ok) clearMessage('provider-keys-message');
+      else setMessage('provider-keys-message', data.message || 'Optional keys not saved.', 'error');
       PopupManager.showToast(data.ok ? 'Optional keys saved' : 'Optional keys not saved', data.ok ? 'success' : 'error');
     } catch (_) {
       setMessage('provider-keys-message', 'API key save request failed.', 'error');

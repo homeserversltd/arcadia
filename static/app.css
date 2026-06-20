@@ -458,7 +458,6 @@ h3 { margin: 0 0 8px; font-size: 18px; }
 .message { margin-top: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); color: var(--muted); white-space: pre-wrap; }
 .message[hidden] { display: none; }
 .message--error { color: var(--bad); border-color: color-mix(in srgb, var(--theme-bad) 45%, transparent); }
-.message--success { color: var(--good); border-color: color-mix(in srgb, var(--theme-good) 45%, transparent); }
 
 .pin-auth-container { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--theme-accent) 16%, transparent), transparent 20rem), var(--aubergine-0); }
 .pin-auth-container[data-required="false"], body.pin-open .pin-auth-container, body[data-gui-pin-required="false"] .pin-auth-container { opacity: 0; visibility: hidden; pointer-events: none; }
