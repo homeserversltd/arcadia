@@ -221,6 +221,8 @@
             "Default / reset PIN",
             "Reset PIN to default",
             "configured factory/default value",
+            "settings-action-row",
+            "settings-action-row--destructive",
             "data-pin-required-toggle",
             "role=\"switch\"",
         ] {

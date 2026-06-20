@@ -1171,6 +1171,33 @@ fn folder_copy_menu_button(label: &str, share: &crate::SambaShareStatus) -> Mark
     data-smb-ip=(share.smb_url_by_ip.as_deref().unwrap_or("")) { (label) } }
 }
 
+fn settings_action_row(
+    title: &str,
+    description: &str,
+    icon: Option<&str>,
+    status: Option<(&str, &str)>,
+    action: Markup,
+    destructive: bool,
+) -> Markup {
+    html! {
+        article class=(if destructive { "settings-action-row settings-action-row--destructive" } else { "settings-action-row" }) {
+            @if let Some(icon_text) = icon {
+                span class="settings-action-row__icon" aria-hidden="true" { (icon_text) }
+            }
+            div class="settings-action-row__copy" {
+                div class="settings-action-row__titleline" {
+                    h3 { (title) }
+                    @if let Some((label, class_name)) = status {
+                        span class=(format!("system-status {class_name}")) { (label) }
+                    }
+                }
+                p { (description) }
+            }
+            div class="settings-action-row__action" { (action) }
+        }
+    }
+}
+
 fn access_pin_view(status: &ConsoleStatus) -> Markup {
     view_shell(
         "access-pin",
@@ -1207,17 +1234,17 @@ fn access_pin_view(status: &ConsoleStatus) -> Markup {
                         button class="btn btn--primary" type="submit" { "Change access PIN" }
                     }
                 }
-                article class="access-pin-card access-pin-card--reset" {
-                    h3 { "Default / reset PIN" }
-                    p { "Reset restores the active access PIN to the configured factory/default value managed by the console. It does not reset games, settings, storage, or the operating system." }
-                    div class="access-pin-reset-row" {
-                        span class=(if status.gui_pin.default_reset_available { "system-status system-status--ok" } else { "system-status system-status--disabled" }) {
-                            (if status.gui_pin.default_reset_available { "Default reset available" } else { "Reset helper missing" })
-                        }
+                (settings_action_row(
+                    "Default / reset PIN",
+                    "Reset restores only the active access PIN to the configured factory/default value. Games, settings, storage, and the operating system stay unchanged.",
+                    Some("!"),
+                    Some(if status.gui_pin.default_reset_available { ("Default reset available", "system-status--ok") } else { ("Reset helper missing", "system-status--disabled") }),
+                    html! {
                         button class="btn btn--danger" type="button" data-gui-pin-reset-default="true" disabled[!status.gui_pin.default_reset_available] { "Reset PIN to default" }
-                    }
-                    div id="gui-pin-reset-message" class="message" hidden {}
-                }
+                        div id="gui-pin-reset-message" class="message" hidden {}
+                    },
+                    true,
+                ))
             }
         },
     )
