@@ -1426,3 +1426,127 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .emulator-controller-card .controllers-panel-head strong { font-size: 12px; }
 .view[data-view-panel="controllers"] .emulator-controller-meter { height: 3px; }
 .view[data-view-panel="controllers"] .emulator-controller-card .btn { min-height: 22px; padding: 3px 6px; font-size: 10px; }
+
+
+/* Literal gamepad Controls: make the physical controller the programming canvas. */
+.view[data-view-panel="controllers"] .controllers-command-deck {
+  grid-template-columns: minmax(190px, .45fr) minmax(620px, 1.35fr) minmax(180px, .42fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+}
+.view[data-view-panel="controllers"] .ux-gamepad-stage {
+  min-width: 0;
+  width: 100%;
+}
+.view[data-view-panel="controllers"] .controller-accessory-hero,
+.view[data-view-panel="controllers"] .controller-recovery-card {
+  min-height: 170px;
+  align-content: center;
+}
+.view[data-view-panel="controllers"] .controller-hero-copy span { font-size: 10px; }
+.view[data-view-panel="controllers"] .controller-hero-copy strong { font-size: 15px; line-height: 1.08; }
+.view[data-view-panel="controllers"] .controller-hero-copy em,
+.view[data-view-panel="controllers"] .controller-recovery-card span,
+.view[data-view-panel="controllers"] .controller-recovery-card em { font-size: 10px; line-height: 1.16; }
+.view[data-view-panel="controllers"] .controllers-hero-actions { grid-column: 1 / -1; }
+.view[data-view-panel="controllers"] .controller-workbench {
+  grid-template-columns: minmax(210px, .75fr) minmax(255px, .85fr) minmax(420px, 1.1fr);
+  margin-top: 5px;
+  gap: 5px;
+}
+.view[data-view-panel="controllers"] .controllers-panel--binding .controllers-panel-head strong::after {
+  content: " on gamepad";
+  color: var(--muted);
+  font-weight: 700;
+}
+.view[data-view-panel="controllers"] .controller-bind-flow {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 3px;
+}
+.view[data-view-panel="controllers"] .controller-bind-step {
+  min-height: 26px;
+  padding: 3px 4px;
+  text-align: center;
+  border-radius: 10px;
+}
+.view[data-view-panel="controllers"] .controller-bind-step strong { display: none; }
+.view[data-view-panel="controllers"] .controller-bind-step span { color: var(--cream); font-size: 10px; line-height: 1.05; }
+.view[data-view-panel="controllers"] .controllers-live-test { margin-top: 4px; padding: 4px 8px; }
+.view[data-view-panel="controllers"] .emulator-controller-grid { margin-top: 4px; }
+
+
+/* Literal gamepad fit correction: keep whole programmer visible. */
+.view[data-view-panel="controllers"] .ux-gamepad-stage { min-height: 188px; padding: 6px; }
+.view[data-view-panel="controllers"] .ux-gamepad-body { height: 174px; width: min(100%, 650px); }
+.view[data-view-panel="controllers"] .ux-gamepad-top-row { top: -10px; left: 36px; right: 36px; grid-template-columns: 58px 58px minmax(78px,1fr) 58px 58px; gap: 6px; }
+.view[data-view-panel="controllers"] .ux-gamepad-shoulder { height: 28px; padding: 2px 6px; }
+.view[data-view-panel="controllers"] .ux-gamepad-left,
+.view[data-view-panel="controllers"] .ux-gamepad-right { top: 39px; bottom: 17px; }
+.view[data-view-panel="controllers"] .ux-gamepad-left { left: 26px; grid-template-columns: 94px 94px; gap: 13px; width: 210px; }
+.view[data-view-panel="controllers"] .ux-gamepad-right { right: 26px; grid-template-columns: 112px 86px; gap: 12px; width: 210px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick { width: 82px; height: 82px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick-cap { inset: 17px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick strong { bottom: 17px; font-size: 9px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick em { bottom: 6px; font-size: 9px; }
+.view[data-view-panel="controllers"] .ux-gamepad-dpad { width: 88px; height: 88px; }
+.view[data-view-panel="controllers"] .ux-gamepad-center { top: 72px; grid-template-columns: 42px 34px 42px; gap: 6px; }
+.view[data-view-panel="controllers"] .ux-gamepad-home { width: 34px; height: 34px; }
+.view[data-view-panel="controllers"] .ux-gamepad-system { height: 27px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face-diamond { width: 104px; height: 104px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face { width: 40px; height: 40px; padding: 3px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--y { left: 32px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--x { top: 32px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--b { top: 32px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--a { left: 32px; }
+.view[data-view-panel="controllers"] .ux-gamepad-control strong { font-size: 11px; }
+.view[data-view-panel="controllers"] .ux-gamepad-control span { font-size: 8.5px; }
+.view[data-view-panel="controllers"] .controller-workbench { margin-top: 3px; }
+.view[data-view-panel="controllers"] .controller-profile-card,
+.view[data-view-panel="controllers"] .controller-bind-step { padding: 2px 4px; }
+.view[data-view-panel="controllers"] .controllers-live-test { margin-top: 3px; padding: 2px 8px; min-height: 24px; }
+.view[data-view-panel="controllers"] .emulator-controller-grid { margin-top: 3px; }
+.view[data-view-panel="controllers"] .emulator-controller-card { padding: 3px 5px; }
+
+
+/* Literal gamepad zero-clip compression for desktop shell. */
+.view[data-view-panel="controllers"] .ux-gamepad-stage { min-height: 158px; padding: 4px 6px; }
+.view[data-view-panel="controllers"] .ux-gamepad-body { height: 145px; width: min(100%, 610px); border-radius: 36px 36px 48px 48px; }
+.view[data-view-panel="controllers"] .controller-accessory-hero,
+.view[data-view-panel="controllers"] .controller-recovery-card { min-height: 142px; }
+.view[data-view-panel="controllers"] .ux-gamepad-top-row { top: -8px; left: 32px; right: 32px; grid-template-columns: 52px 52px minmax(70px,1fr) 52px 52px; gap: 5px; }
+.view[data-view-panel="controllers"] .ux-gamepad-shoulder { height: 24px; padding: 1px 5px; }
+.view[data-view-panel="controllers"] .ux-gamepad-left,
+.view[data-view-panel="controllers"] .ux-gamepad-right { top: 33px; bottom: 13px; }
+.view[data-view-panel="controllers"] .ux-gamepad-left { left: 22px; grid-template-columns: 76px 76px; gap: 11px; width: 168px; }
+.view[data-view-panel="controllers"] .ux-gamepad-right { right: 22px; grid-template-columns: 92px 70px; gap: 9px; width: 172px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick { width: 70px; height: 70px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick-cap { inset: 15px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick strong { bottom: 15px; font-size: 8.5px; }
+.view[data-view-panel="controllers"] .ux-gamepad-stick em { bottom: 5px; font-size: 8px; }
+.view[data-view-panel="controllers"] .ux-gamepad-dpad { width: 74px; height: 74px; }
+.view[data-view-panel="controllers"] .ux-gamepad-center { top: 58px; grid-template-columns: 36px 30px 36px; gap: 5px; }
+.view[data-view-panel="controllers"] .ux-gamepad-home { width: 30px; height: 30px; font-size: 13px; }
+.view[data-view-panel="controllers"] .ux-gamepad-system { height: 23px; padding: 1px 4px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face-diamond { width: 86px; height: 86px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face { width: 34px; height: 34px; padding: 2px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--y { left: 26px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--x { top: 26px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--b { top: 26px; }
+.view[data-view-panel="controllers"] .ux-gamepad-face--a { left: 26px; }
+.view[data-view-panel="controllers"] .ux-gamepad-control strong { font-size: 10px; }
+.view[data-view-panel="controllers"] .ux-gamepad-control span { font-size: 8px; margin-top: 1px; }
+.view[data-view-panel="controllers"] .controller-workbench { grid-template-columns: minmax(190px,.7fr) minmax(230px,.8fr) minmax(360px,1.05fr); }
+.view[data-view-panel="controllers"] .controllers-panel, .view[data-view-panel="controllers"] .emulator-controller-card { padding: 3px 5px; }
+.view[data-view-panel="controllers"] .controllers-panel-head { padding-bottom: 2px; }
+.view[data-view-panel="controllers"] .controller-profile-cards { gap: 2px; }
+.view[data-view-panel="controllers"] .controller-profile-card strong,
+.view[data-view-panel="controllers"] .controller-profile-card span,
+.view[data-view-panel="controllers"] .controller-profile-card em { font-size: 9px; line-height: 1.03; }
+.view[data-view-panel="controllers"] .controller-bind-flow { gap: 2px; }
+.view[data-view-panel="controllers"] .controller-bind-step { min-height: 20px; padding: 1px 3px; }
+.view[data-view-panel="controllers"] .controller-bind-step span { font-size: 8.5px; }
+.view[data-view-panel="controllers"] .emulator-controller-card { min-height: 42px; }
+.view[data-view-panel="controllers"] .emulator-controller-card .controllers-panel-head strong { font-size: 10.5px; }
+.view[data-view-panel="controllers"] .emulator-controller-card .btn { min-height: 18px; padding: 1px 5px; font-size: 9px; }
+.view[data-view-panel="controllers"] .emulator-controller-meter { height: 2px; }
