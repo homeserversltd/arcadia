@@ -45,7 +45,7 @@ fn runtime_update_state() -> String {
         (None, _) => "missing".into(),
         (Some(c), Some(l)) if c != l => "available".into(),
         (Some(_), Some(_)) => "current".into(),
-        _ => "unknown".into(),
+        (Some(_), None) => "unknown".into(),
     }
 }
 fn last_ai_check_time() -> Option<String> {
@@ -56,9 +56,20 @@ fn selected_model_id() -> Option<String> {
 }
 
 fn llama_version() -> Option<String> {
-    command_stdout(LLAMA_SERVER_BIN, &["--version"])
-        .or_else(|| command_stdout(LLAMA_CPP_BIN, &["--version"]))
-        .and_then(|text| text.lines().next().map(|v| v.trim().to_string()))
+    command_combined_output(LLAMA_SERVER_BIN, &["--version"])
+        .or_else(|| command_combined_output(LLAMA_CPP_BIN, &["--version"]))
+        .and_then(|text| text.lines().find(|line| !line.trim().is_empty()).map(|v| v.trim().to_string()))
+}
+
+fn command_combined_output(command: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(command).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let text = format!("{}{}", stdout, stderr).trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
 }
 
 fn recommended_ai_models(_installed: &[LocalAiModelStatus]) -> Vec<AIRecommendedModel> {
