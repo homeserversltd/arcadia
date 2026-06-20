@@ -1,9 +1,6 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
-use crate::{
-    AIModelStorage, ButtonVariant, ConsoleStatus, FolderRoot, FolderStorage, GameFolderStorage,
-    GameRoot,
-};
+use crate::{ButtonVariant, ConsoleStatus};
 
 const FOLDERS: [&str; 12] = [
     "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
@@ -819,42 +816,6 @@ fn storage_segment(class: &str, percent: u8, bytes: u64, size: &str) -> Markup {
     html! { span class=(format!("storage-segment storage-segment--{}", class)) style=(format!("width: {}%", width)) title=(size) {} }
 }
 
-fn game_folder_row(folder: &GameFolderStorage) -> Markup {
-    html! { details class="storage-table-row storage-folder-row" {
-        summary { span { (folder.platform) } span { (folder.display_name) } span { (folder.size) } span { (folder.file_count) } span { (folder.synced_entries.map(|v| v.to_string()).unwrap_or_else(|| "Unknown".to_string())) } span { (folder.unsynced_files.map(|v| v.to_string()).unwrap_or_else(|| "Unknown".to_string())) } span class="system-row-actions" { (folder_copy_button("Copy path", folder)) (nav_button("View in Sync", "sync")) } }
-        div class="folder-detail-grid" {
-            (system_field("Filesystem path", &folder.path))
-            (system_field("Share", &folder.samba_share_name))
-            @if folder.largest_files.is_empty() { (system_field("Largest files", "None")) }
-            @else { @for file in &folder.largest_files { (system_field(&file.name, &file.size)) } }
-        }
-    } }
-}
-
-fn folder_store_row(store: &FolderStorage) -> Markup {
-    html! { div class="network-row" { span { strong { (store.display_name) } em { (store.path) } } b class=(format!("system-status system-status--{}", store.state)) { (store.state) } span { (store.size) } span { (store.file_count) " files" } } }
-}
-fn ai_model_file_row(model: &AIModelStorage) -> Markup {
-    html! { details class="storage-model-row" { summary { span { strong { (model.name) } code { (model.filename) } } em { (model.size) } b { (if model.loaded { "Hot" } else if model.selected { "Selected" } else { "Installed" }) } @if model.removable { (action_button(ButtonVariant::Danger, "Remove Model", "remove-ai-model", &format!("/api/actions/remove-ai-model?name={}", model.filename))) } @else { button class="btn btn--secondary" type="button" disabled { "Unload first" } } } code { (model.path) } } }
-}
-fn cleanup_card(
-    label: &str,
-    bytes: u64,
-    action_label: &str,
-    action: &str,
-    endpoint: &str,
-) -> Markup {
-    html! { article class="cleanup-card" { span { (label) } strong { (human_or_zero(bytes)) } @if bytes > 0 { (action_button(ButtonVariant::Secondary, action_label, action, endpoint)) } @else { button class="btn btn--secondary" type="button" disabled { "—" } } } }
-}
-fn game_location_row(root: &GameRoot) -> Markup {
-    html! { div class="location-row" { span { strong { (root.display_name) } code { (root.path) } small { "Share: " (root.windows_unc.as_deref().unwrap_or(&root.samba_share_name)) } } (copy_button("Copy", &root.path)) } }
-}
-fn folder_location_row(root: &FolderRoot) -> Markup {
-    html! { div class="location-row" { span { strong { (root.display_name) } code { (root.path) } } (copy_button("Copy", &root.path)) } }
-}
-fn folder_copy_button(label: &str, folder: &GameFolderStorage) -> Markup {
-    html! { button class="btn btn--secondary" type="button" data-folder-copy="true" data-windows=(folder.windows_unc.as_deref().unwrap_or("")) data-windows-ip=(folder.windows_unc_by_ip.as_deref().unwrap_or("")) data-smb=(folder.smb_url.as_deref().unwrap_or("")) data-smb-ip=(folder.smb_url_by_ip.as_deref().unwrap_or("")) { (label) } }
-}
 fn human_or_zero(bytes: u64) -> String {
     if bytes == 0 {
         "0 B".to_string()
@@ -1332,10 +1293,6 @@ fn sync_detail(label: &str, value: &str) -> Markup {
 
 fn storage_stat(label: &str, value: &str) -> Markup {
     html! { div class="storage-stat" { span { (label) } strong { (value) } } }
-}
-
-fn storage_legend(label: &str, value: &str, class: &str) -> Markup {
-    html! { span class=(format!("storage-legend-item storage-legend-item--{}", class)) { em {} strong { (label) } small { (value) } } }
 }
 
 fn model_meta(label: &str, value: &str) -> Markup {
