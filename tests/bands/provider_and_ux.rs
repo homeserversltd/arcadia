@@ -173,6 +173,34 @@
     }
 
     #[test]
+    fn header_currentness_chips_have_lucide_icons_tooltips_and_theme_control() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+
+        for marker in [
+            "data-chip-kind=\"network\"",
+            "data-chip-kind=\"games\"",
+            "data-chip-kind=\"updates\"",
+            "data-chip-kind=\"uptime\"",
+            "data-chip-kind=\"local-ai\"",
+            "data-chip-kind=\"pin\"",
+        ] {
+            assert!(rendered.contains(marker), "missing header marker {marker}");
+        }
+        assert!(rendered.matches("class=\"chip-icon\"").count() >= 7);
+        assert!(rendered.contains("Toggle theme, current theme Ember Aubergine"));
+        assert!(rendered.contains("data-tooltip=\"Toggle theme"));
+        assert!(rendered.contains("<svg viewBox=\"0 0 24 24\""));
+        assert!(APP_CSS.contains(".status-badge[data-tooltip]::before"));
+        assert!(APP_CSS.contains(".status-badge--action:hover"));
+        assert!(APP_JS.contains("button.dataset.tooltip = `Toggle theme; current theme"));
+    }
+
+    #[test]
     fn toasts_are_clickable_dismiss_controls() {
         assert!(APP_JS.contains("document.createElement('button')"));
         assert!(APP_JS.contains("dismiss notification"));

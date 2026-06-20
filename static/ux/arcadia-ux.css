@@ -9,7 +9,7 @@
   --ux-header-padding-inline: 16px;
   --ux-header-radius: 24px;
 
-  --ux-lockup-min-width: 240px;
+  --ux-lockup-min-width: 190px;
   --ux-mark-size: 40px;
   --ux-mark-radius: 15px 15px 15px 5px;
 
@@ -38,8 +38,8 @@
   --ux-card-min-inline: 0;
   --ux-card-divider: 1px solid var(--line);
   --ux-card-header-gap: 8px;
-  --ux-chip-min-inline: 88px;
-  --ux-chip-max-inline: 132px;
+  --ux-chip-min-inline: 102px;
+  --ux-chip-max-inline: 156px;
   --ux-chip-dot-size: 7px;
   --ux-field-min-height: 42px;
   --ux-button-min-height: 34px;

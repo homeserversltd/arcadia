@@ -270,29 +270,41 @@
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
+        let storage_start = rendered
+            .find("<section id=\"view-storage\"")
+            .expect("storage view starts");
+        let storage_end = storage_start
+            + rendered[storage_start..]
+                .find("<section id=\"view-local-ai\"")
+                .expect("local ai follows storage");
+        let storage_html = &rendered[storage_start..storage_end];
 
         for required in [
-            "data-view=\"storage\"",
+            "data-view-panel=\"storage\"",
             "view-storage",
             "Storage",
-            "Storage OK",
+            "Mismatch detected",
             "free",
             "used",
             "storage-appliance",
+            "storage-appliance--one-pane",
+            "storage-dashboard",
+            "storage-command-center",
+            "storage-hero-metrics",
+            "storage-accounting-grid",
             "storage-category-list",
             "Games",
             "AI Models",
             "Temporary Files",
             "System",
-            "Review Cleanup",
-            "Managed Locations",
-            "data-storage-modal=\"games\"",
-            "data-storage-modal=\"cleanup-review\"",
+            "Rescan",
+            "Managed locations",
+            "Filesystem used",
+            "Category scan",
+            "Other / unclassified",
             "data-storage-modal=\"locations\"",
-            "data-storage-modal=\"diagnostics\"",
-            "data-nav-target=\"storage\"",
         ] {
-            assert!(rendered.contains(required), "missing {required}");
+            assert!(storage_html.contains(required), "missing {required}");
         }
         for forbidden in [
             "Artwork &amp; Metadata",
@@ -300,13 +312,13 @@
             "Copy path",
             "Clear Artwork Cache",
             "Clear Partial Downloads",
+            "Details",
             "Details / Diagnostics",
-            "/home/owner/Games",
             "storage-table--games",
             "cleanup-grid",
         ] {
             assert!(
-                !rendered.contains(forbidden),
+                !storage_html.contains(forbidden),
                 "main storage pane leaked {forbidden}"
             );
         }
