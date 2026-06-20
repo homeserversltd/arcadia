@@ -13,8 +13,8 @@
             .expect("home view starts");
         let home_end = home_start
             + rendered[home_start..]
-                .find("<section id=\"view-games\"")
-                .expect("games follows home");
+                .find("<section id=\"view-sync\"")
+                .expect("sync follows home");
         let home_html = &rendered[home_start..home_end];
         for required in [
             "priority-strip",
