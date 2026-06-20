@@ -343,3 +343,40 @@
         assert!(!updates_html.contains("Manual SCP bridge"));
         assert!(!updates_html.contains("Latest available</span><strong>Not checked"));
     }
+
+    #[test]
+    fn updates_view_exposes_paginated_harmonia_ledger() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let updates_start = rendered
+            .find("<section id=\"view-updates\"")
+            .expect("updates view starts");
+        let updates_end = updates_start
+            + rendered[updates_start..]
+                .find("<section id=\"view-system\"")
+                .expect("system follows updates");
+        let updates_html = &rendered[updates_start..updates_end];
+        for required in [
+            "data-harmonia-ledger-open=\"true\"",
+            "Ledger",
+            "data-harmonia-updates=\"true\"",
+        ] {
+            assert!(updates_html.contains(required), "updates view missing {required}");
+        }
+        for required in [
+            "/api/harmonia/ledger?page=",
+            "harmonia-ledger-list",
+            "harmonia-ledger-pager",
+            "Entry JSON",
+            "Previous",
+            "Next",
+        ] {
+            assert!(APP_JS.contains(required) || APP_CSS.contains(required), "ledger modal missing {required}");
+        }
+    }
+

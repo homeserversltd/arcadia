@@ -1241,6 +1241,7 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                         (action_button(ButtonVariant::Secondary, "Check state", "check-updates", "/api/actions/check-updates"))
                         (action_button(ButtonVariant::Primary, "Make harmonious", "update-gui", "/api/actions/update-gui"))
                         button class="btn btn--secondary" type="button" data-harmonia-module-menu="true" { "Modules" }
+                        button class="btn btn--secondary" type="button" data-harmonia-ledger-open="true" { "Ledger" }
                     }
                 }
                 div class="harmonia-metrics" {
