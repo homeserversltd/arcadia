@@ -32,6 +32,7 @@
     "storage-registry",
     "storage-diagnostics",
     "storage-cleanup",
+    "api-root",
     "anyhow-free"
   ]
 }
