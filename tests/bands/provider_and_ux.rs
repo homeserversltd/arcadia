@@ -183,7 +183,7 @@
 
         for marker in [
             "data-chip-kind=\"network\"",
-            "data-chip-kind=\"games\"",
+            "data-chip-kind=\"sync\"",
             "data-chip-kind=\"updates\"",
             "data-chip-kind=\"uptime\"",
             "data-chip-kind=\"local-ai\"",

@@ -333,39 +333,6 @@ function bindConsoleActions() {
       PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
     });
   });
-  document.querySelectorAll('.btn[data-folder-copy]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const choices = [
-        ['Copy Windows path', button.dataset.windows],
-        ['Copy Windows IP fallback', button.dataset.windowsIp],
-        ['Copy Linux/macOS path', button.dataset.smb],
-        ['Copy Linux/macOS IP fallback', button.dataset.smbIp],
-      ].filter(([, value]) => validCopyValue(value));
-      if (choices.length === 0) return PopupManager.showToast('Folder address unavailable', 'error');
-      if (choices.length === 1) {
-        const ok = await copyToClipboard(choices[0][1]);
-        return PopupManager.showToast(ok ? `Copied ${choices[0][1]}` : `Copy unavailable: ${choices[0][1]}`, ok ? 'success' : 'error');
-      }
-      const body = document.createElement('div');
-      body.className = 'copy-choice-list';
-      choices.forEach(([label, value]) => {
-        const choice = document.createElement('button');
-        choice.type = 'button';
-        choice.className = 'btn btn--secondary';
-        choice.textContent = label;
-        choice.addEventListener('click', async () => {
-          const ok = await copyToClipboard(value);
-          PopupManager.closeModal();
-          PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
-        });
-        body.appendChild(choice);
-      });
-      PopupManager.showModal({ title: 'Copy Game Folders', body: '' });
-      const contentNode = document.getElementById('modal-content');
-      if (contentNode) { contentNode.textContent = ''; contentNode.appendChild(body); }
-    });
-  });
   document.querySelectorAll('[data-create-managed-folder]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
