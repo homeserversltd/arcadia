@@ -905,7 +905,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                         (model_meta("State", title_case_state_like(&status.local_ai.load_state)))
                     }
                     div class="inline-actions" {
-                        @if status.local_ai.available_models.is_empty() { button class="btn btn--primary" type="button" data-ai-action="install-recommended" data-model-id="inharmonia" { "Install Inharmonia" } }
+                        @if status.local_ai.available_models.is_empty() { (nav_focus_button("Download a model", "local-ai", "get-models")) }
                         @else if status.local_ai.load_state != "hot" && status.local_ai.load_state != "loading" { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load" } }
                         @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
                         @if status.local_ai.load_state == "hot" || inference_on { button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart" } }
@@ -918,7 +918,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 div class="network-section-head" { h3 { "Installed Models" } }
                 div class="model-grid" {
                     @if status.local_ai.available_models.is_empty() {
-                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Install Inharmonia or download a compatible model from Hugging Face." } div class="inline-actions" { (nav_focus_button("Install Inharmonia", "local-ai", "get-models")) } }
+                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Download a compatible .gguf model from Hugging Face." } div class="inline-actions" { (nav_focus_button("Download a model", "local-ai", "get-models")) } }
                     } @else {
                         @for model in &status.local_ai.available_models {
                             (installed_model_card(model, status))
@@ -931,11 +931,9 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 div class="network-section-head" { h3 { "Get Models" } }
                 div class="model-grid" {
                     article class="model-card model-card--recommended" {
-                        strong class="model-name" { "Inharmonia" }
-                        span class="model-filename" { "Recommended · Balanced local assistant for Arcadia." }
-                        div class="model-meta-row" { (model_meta("Use", "Balanced")) (model_meta("Source", "Product catalog")) }
-                        @if status.local_ai.available_models.iter().any(|model| model.is_inharmonia) { b class="model-status" { "Installed" } }
-                        @else { button class="btn btn--primary" type="button" data-ai-action="install-recommended" data-model-id="inharmonia" { "Install Inharmonia" } }
+                        strong class="model-name" { "Hugging Face GGUF" }
+                        span class="model-filename" { "Download a compatible local model." }
+                        div class="model-meta-row" { (model_meta("Format", ".gguf")) (model_meta("Source", "Hugging Face")) }
                     }
                 }
                 article class="form-card" data-hf-installer="true" {
@@ -992,7 +990,7 @@ fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatu
     let selected = status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str());
     let hot = status.local_ai.loaded_model_id.as_deref() == Some(model.id.as_str());
     html! { article id="installed-models" class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
-        strong class="model-name" { (model.name) @if model.is_inharmonia { " · Recommended" } }
+        strong class="model-name" { (model.name) @if model.is_recommended { " · Recommended" } }
         span class="model-filename" { (model.filename) }
         div class="model-meta-row" {
             (model_meta("Size", &model.size))
