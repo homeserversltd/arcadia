@@ -119,7 +119,7 @@ fn current_game_files() -> Vec<GameFileState> {
     let mut files = Vec::new();
     for system in GAME_SYSTEMS {
         collect_game_files(
-            Path::new(GAMES_ROOT).join(system).as_path(),
+            game_system_storage_path(system).as_path(),
             system,
             &mut files,
             0,

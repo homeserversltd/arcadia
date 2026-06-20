@@ -31,6 +31,17 @@ const GAME_SYSTEMS: [&str; 12] = [
     "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
     "dos",
 ];
+
+fn game_system_storage_path(system: &str) -> PathBuf {
+    let subpath = match system {
+        "gba" | "genesis" | "snes" | "nes" | "ps1" | "n64" => ["roms", system],
+        "ps2" | "sega-cd" | "psp" | "gamecube" | "wii" => ["isos", system],
+        "dos" => ["pc", "dos"],
+        _ => ["roms", system],
+    };
+    Path::new(GAMES_ROOT).join(subpath[0]).join(subpath[1])
+}
+
 const SYNC_MANIFEST_PATHS: [&str; 3] = [
     "/var/lib/homeconsole-sync/manifest.json",
     "/var/lib/arch-game-sync/manifest.json",
