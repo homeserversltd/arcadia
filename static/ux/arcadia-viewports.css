@@ -18,6 +18,7 @@
   .settings-action-row { grid-template-columns: auto minmax(0, 1fr); }
   .settings-action-row__action { grid-column: 2; justify-items: start; }
   .priority-strip { grid-template-columns: 1fr; align-items: start; }
+  .load-home-card { grid-column: auto; }
   .system-power-panel, .system-power-actions, .sync-rom-panel { grid-template-columns: 1fr; }
   .storage-hero { grid-template-columns: 1fr; }
   .section-heading { align-items: start; flex-direction: column; }

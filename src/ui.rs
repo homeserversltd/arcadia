@@ -1,7 +1,8 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
-    human_size, AiModelStorageStatus, ButtonVariant, ConsoleStatus, StorageCategoryStatus,
+    cpu_temperature_celsius, disk_io_counters, human_size, load_average, pressure_avg10_percent,
+    AiModelStorageStatus, ButtonVariant, ConsoleStatus, StorageCategoryStatus,
 };
 
 const VIEWS: [(&str, &str, &str); 9] = [
@@ -319,6 +320,7 @@ fn home_view(status: &ConsoleStatus) -> Markup {
             (priority_strip(status))
             div class="home-operational-grid home-operational-grid--dashboard" {
                 (home_storage_card(status))
+                (home_load_card())
                 (home_sync_card(status))
                 (home_network_card(status))
                 (home_updates_card(status))
@@ -457,6 +459,105 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
             }
         }
     }
+}
+
+fn home_load_card() -> Markup {
+    let load = load_average();
+    let one = json_number(&load, "oneMinute");
+    let five = json_number(&load, "fiveMinute");
+    let fifteen = json_number(&load, "fifteenMinute");
+    let cores = std::thread::available_parallelism()
+        .map(|count| count.get() as f64)
+        .unwrap_or(1.0)
+        .max(1.0);
+    let load_percent = one
+        .map(|value| ((value / cores) * 100.0).clamp(0.0, 100.0).round() as u8)
+        .unwrap_or(0);
+    let load_state = if load_percent >= 90 {
+        "warn"
+    } else if one.is_some() {
+        "ok"
+    } else {
+        "idle"
+    };
+    let temp = cpu_temperature_celsius();
+    let temp_label = temp
+        .map(|value| format!("{value:.1}°C"))
+        .unwrap_or_else(|| "—".to_string());
+    let temp_state = match temp {
+        Some(value) if value >= 82.0 => "warn",
+        Some(_) => "ok",
+        None => "idle",
+    };
+    let io_pressure = pressure_avg10_percent("/proc/pressure/io");
+    let io_label = io_pressure
+        .map(|value| format!("{value:.1}%"))
+        .unwrap_or_else(|| "—".to_string());
+    let io_state = match io_pressure {
+        Some(value) if value >= 10.0 => "warn",
+        Some(_) => "ok",
+        None => "idle",
+    };
+    let disk = disk_io_counters();
+    let read_bytes = json_u64(&disk, "readBytesApprox");
+    let written_bytes = json_u64(&disk, "writtenBytesApprox");
+    let load_headline = one
+        .map(|value| format!("{value:.2}"))
+        .unwrap_or_else(|| "—".to_string());
+    html! {
+        article class="operational-card load-home-card" aria-label="Load dashboard" {
+            div class="card-head" { h3 { "Load" } strong { (load_headline) } }
+            div class="load-orb-row" {
+                div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) {
+                    span { (load_percent) "%" }
+                }
+                div class="load-spark-bank" aria-label="Load average" {
+                    (load_spark("1m", one, cores))
+                    (load_spark("5m", five, cores))
+                    (load_spark("15m", fifteen, cores))
+                }
+            }
+            div class="load-telemetry-grid" aria-label="Telemetry" {
+                (load_chip("CPU", &temp_label, temp_state))
+                (load_chip("I/O", &io_label, io_state))
+                (load_chip("Read", &read_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
+                (load_chip("Write", &written_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
+            }
+        }
+    }
+}
+
+fn load_spark(label: &str, value: Option<f64>, cores: f64) -> Markup {
+    let width = value
+        .map(|number| ((number / cores) * 100.0).clamp(0.0, 100.0).round() as u8)
+        .unwrap_or(0);
+    let display = value
+        .map(|number| format!("{number:.2}"))
+        .unwrap_or_else(|| "—".to_string());
+    html! {
+        div class="load-spark" {
+            span { (label) }
+            i { em style=(format!("width:{}%;", width)) {} }
+            strong { (display) }
+        }
+    }
+}
+
+fn load_chip(label: &str, value: &str, state: &str) -> Markup {
+    html! {
+        div class=(format!("load-chip load-chip--{}", state)) {
+            em { (label) }
+            strong { (value) }
+        }
+    }
+}
+
+fn json_number(value: &serde_json::Value, key: &str) -> Option<f64> {
+    value.get(key).and_then(serde_json::Value::as_f64)
+}
+
+fn json_u64(value: &serde_json::Value, key: &str) -> Option<u64> {
+    value.get(key).and_then(serde_json::Value::as_u64)
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {
