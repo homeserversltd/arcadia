@@ -15,3 +15,26 @@ cargo test --tests -- --nocapture
 ```
 
 Focused work should still run the narrow named test first, then the bounded suite once.
+
+## Home telemetry broadcast tests
+
+The Home load broadcast contract is pinned in `tests/bands/home_sync_storage.rs`.
+
+The focused tests are:
+
+```bash
+cargo test api_root_events -- --nocapture
+cargo test home_view_is_operational_surface_without_duplicate_navigation -- --nocapture
+cargo test api_root_routes_are_registered -- --nocapture
+```
+
+They guard:
+
+- `/api/root/events` route registration.
+- SSE source dependencies and `api_root_events_route` shape.
+- `snapshot`, `lease`, `root`, and `heartbeat` event families.
+- Browser `EventSource('/api/root/events')` lifecycle.
+- fallback `/api/root` polling as compatibility only.
+- Home-active and document-visible guards for any telemetry transport.
+- source closure on `arcadia:view-change` and `visibilitychange`.
+- zero Home buttons and no duplicate navigation controls.
