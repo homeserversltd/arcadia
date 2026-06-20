@@ -208,8 +208,8 @@ fn df_row(path: &str) -> Option<(Option<String>, u64, u64, u64, String)> {
 }
 
 fn game_folder_storage(root: &GameRoot) -> GameFolderStorage {
-    let usage = path_usage(Path::new(&root.path));
-    let largest_files = largest_files(Path::new(&root.path), 3);
+    let usage = game_path_usage(Path::new(&root.path), &root.id, 0);
+    let largest_files = largest_game_files(Path::new(&root.path), &root.id, 3);
     let synced = load_sync_manifest().map(|entries| {
         entries
             .iter()

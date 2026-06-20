@@ -402,6 +402,37 @@
     }
 
     #[test]
+    fn storage_game_scan_counts_playable_rom_not_extracted_archive_duplicate() {
+        let root = std::env::temp_dir().join(format!(
+            "arcadia-storage-game-filter-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("temp game root created");
+        fs::write(root.join("Driven (USA) (En,Fr,De,Es,It).gba"), [1u8; 4])
+            .expect("gba written");
+        fs::write(root.join("Driven (USA) (En,Fr,De,Es,It).zip"), [1u8; 3])
+            .expect("zip written");
+
+        let usage = game_path_usage(&root, "gba", 0);
+        let largest = largest_game_files(&root, "gba", 3);
+        assert_eq!(usage.files, 1);
+        assert_eq!(usage.bytes, 4);
+        assert_eq!(largest.len(), 1);
+        assert_eq!(largest[0].name, "Driven (USA) (En,Fr,De,Es,It).gba");
+        assert!(is_playable_game_file(
+            &root.join("Driven (USA) (En,Fr,De,Es,It).gba"),
+            "gba"
+        ));
+        assert!(!is_playable_game_file(
+            &root.join("Driven (USA) (En,Fr,De,Es,It).zip"),
+            "gba"
+        ));
+
+        fs::remove_dir_all(&root).expect("temp game root removed");
+    }
+
+    #[test]
     fn storage_view_answers_where_disk_space_went_safely() {
         let state = AppState {
             started_unix: 0,

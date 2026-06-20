@@ -81,9 +81,9 @@ fn state_for_roots(roots: &[FolderStorage]) -> &str {
     }
 }
 
-fn largest_files(path: &Path, limit: usize) -> Vec<LargestFile> {
+fn largest_game_files(path: &Path, platform: &str, limit: usize) -> Vec<LargestFile> {
     let mut files = Vec::new();
-    collect_largest_files(path, &mut files, 0);
+    collect_largest_game_files(path, platform, &mut files, 0);
     files.sort_by(|a, b| b.0.cmp(&a.0));
     files
         .into_iter()
@@ -100,7 +100,12 @@ fn largest_files(path: &Path, limit: usize) -> Vec<LargestFile> {
         })
         .collect()
 }
-fn collect_largest_files(path: &Path, out: &mut Vec<(u64, PathBuf)>, depth: usize) {
+fn collect_largest_game_files(
+    path: &Path,
+    platform: &str,
+    out: &mut Vec<(u64, PathBuf)>,
+    depth: usize,
+) {
     if depth > 8 {
         return;
     }
@@ -113,11 +118,70 @@ fn collect_largest_files(path: &Path, out: &mut Vec<(u64, PathBuf)>, depth: usiz
             continue;
         };
         if m.is_dir() {
-            collect_largest_files(&p, out, depth + 1);
-        } else if m.is_file() {
+            collect_largest_game_files(&p, platform, out, depth + 1);
+        } else if m.is_file() && is_playable_game_file(&p, platform) {
             out.push((m.len(), p));
         }
     }
+}
+
+fn game_path_usage(path: &Path, platform: &str, depth: usize) -> Usage {
+    if depth > 8 {
+        return Usage::default();
+    }
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return Usage::default();
+    };
+    if metadata.file_type().is_symlink() {
+        return Usage::default();
+    }
+    if metadata.is_file() {
+        return if is_playable_game_file(path, platform) {
+            Usage {
+                bytes: metadata.len(),
+                files: 1,
+            }
+        } else {
+            Usage::default()
+        };
+    }
+    if !metadata.is_dir() {
+        return Usage::default();
+    }
+    let mut usage = Usage::default();
+    let Ok(entries) = fs::read_dir(path) else {
+        return usage;
+    };
+    for entry in entries.flatten() {
+        let child = game_path_usage(&entry.path(), platform, depth + 1);
+        usage.bytes = usage.bytes.saturating_add(child.bytes);
+        usage.files = usage.files.saturating_add(child.files);
+    }
+    usage
+}
+
+fn is_playable_game_file(path: &Path, platform: &str) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|v| v.to_str())
+        .map(|v| v.to_ascii_lowercase())
+        .unwrap_or_default();
+    let allowed: &[&str] = match platform {
+        "gba" => &["gba"],
+        "genesis" => &["md", "gen", "smd", "bin"],
+        "snes" => &["sfc", "smc"],
+        "nes" => &["nes"],
+        "ps1" => &["cue", "chd", "iso", "pbp"],
+        "n64" => &["z64", "n64", "v64"],
+        "ps2" => &["iso", "chd", "cso", "bin"],
+        "sega-cd" => &["cue", "chd", "iso"],
+        "psp" => &["iso", "cso", "pbp"],
+        "gamecube" => &["iso", "gcm", "rvz", "ciso"],
+        "wii" => &["iso", "wbfs", "rvz"],
+        "dos" => &["conf", "bat", "exe"],
+        _ => &[],
+    };
+    allowed.iter().any(|candidate| *candidate == ext)
 }
 
 fn storage_diagnostics(
