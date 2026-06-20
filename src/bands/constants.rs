@@ -27,9 +27,9 @@ const ARTWORK_ROOT: &str = "/home/owner/Games/artwork";
 const TEMP_CLEAN_ROOTS: [&str; 2] = ["/tmp", "/var/tmp"];
 const MODEL_SCAN_ROOTS: [&str; 3] = ["/home/owner", "/opt", "/var/lib"];
 const MODEL_EXTENSIONS: [&str; 3] = ["gguf", "safetensors", "onnx"];
-const GAME_SYSTEMS: [&str; 12] = [
+const GAME_SYSTEMS: [&str; 13] = [
     "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
-    "dos",
+    "dos", "arcade",
 ];
 const STEAM_USERDATA_ROOTS: [&str; 2] = [
     "/home/steam/.local/share/Steam/userdata",
