@@ -2,7 +2,7 @@ use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
     cpu_temperature_celsius, disk_io_counters, human_size, load_average, pressure_avg10_percent,
-    AiModelStorageStatus, ButtonVariant, ConsoleStatus, StorageCategoryStatus,
+    AiModelStorageStatus, ButtonVariant, ConsoleStatus, GameSystemTally, StorageCategoryStatus,
 };
 
 const VIEWS: [(&str, &str, &str); 9] = [
@@ -815,92 +815,164 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
     let pending_changes = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let state_label = sync_state_label(status);
+    let admitted = status.library.total_synced_entries;
+    let artwork_paired = status.library.artwork_paired_total;
+    let artwork_missing = status.library.artwork_missing;
+    let rejected = status.library.failed_games + status.library.skipped_games;
     view_shell(
         "sync",
         "",
         "",
         "",
         html! {
-            section class="sync-rom-panel sync-rom-panel--decision" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync" {
-                div class="sync-rom-copy" {
-                    div class="sync-status-line" role="status" aria-live="polite" aria-atomic="true" {
-                        span { "Sync" }
-                        strong id="sync-state" data-sync-state=(state_label.to_lowercase().replace(' ', "-")) { (state_label) }
+            section class="sync-admission-board" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Library admission board" {
+                div class="sync-marquee" data-sync-result=(sync_result_kind(status)) {
+                    div class="sync-marquee-orb" aria-hidden="true" {
+                        span class="sync-marquee-orb-core" { (admitted) }
                     }
-                    p id="sync-progress-text" aria-live="polite" { (sync_ready_message(status, storage_blocked, pending_changes)) }
-                }
-                div class="sync-rom-action" {
-                    @if storage_blocked || status.library.last_sync_state == "running" {
-                        button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Sync running" }) }
-                    } @else {
-                        (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync games" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
+                    div class="sync-marquee-copy" {
+                        strong class="sync-marquee-verdict" { (admitted) " games admitted" }
+                        span class="sync-marquee-subline" { (artwork_paired) " artwork paired · " (artwork_missing) " need covers · " (rejected) " rejected" }
+                        div class="sync-marquee-chips" aria-label="Admission totals" {
+                            (sync_metric_chip("Scanned", status.library.total_detected_games, "neutral"))
+                            (sync_metric_chip("Admitted", admitted, "good"))
+                            (sync_metric_chip("Artwork", artwork_paired, if artwork_missing == 0 { "good" } else { "warn" }))
+                            (sync_metric_chip("Rejected", rejected, if rejected == 0 { "neutral" } else { "bad" }))
+                        }
                     }
-                    button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
-                }
-            }
-
-            @if storage_blocked {
-                div class="warning sync-storage-warning" {
-                    strong { "Storage is full. Free space before syncing." }
-                    (nav_button("Storage", "storage"))
-                }
-            } @else if storage_low {
-                div class="warning sync-storage-warning" {
-                    strong { "Storage is low. Large syncs may fail." }
-                    (nav_button("Storage", "storage"))
-                }
-            }
-
-            section class="sync-intake-panel" aria-label="Add games" data-sync-add-games-panel="true" {
-                div class="sync-intake-drive" aria-hidden="true" { span { "▰" } }
-                div class="sync-intake-copy" {
-                    strong { (sync_detection_headline(status, pending_changes)) }
-                    p { "Choose the game kind first, then add files." }
-                }
-                div class="sync-intake-actions" {
-                    button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
-                }
-            }
-
-            section id="sync-running-panel" class="sync-running-panel" aria-label="Sync progress" hidden[status.library.last_sync_state != "running"] {
-                div class="sync-scanner" aria-hidden="true" {
-                    span class="sync-scanner-dot" {}
-                    span class="sync-scanner-line" {}
-                    span class="sync-scanner-file" {}
-                }
-                div {
-                    strong id="sync-running-title" { "Syncing" }
-                    p id="sync-running-copy" { "Importing games into the console library." }
-                }
-            }
-
-            section class="sync-tally-card" aria-labelledby="sync-tally-title" data-sync-result=(sync_result_kind(status)) data-sync-ledger="true" {
-                div class="sync-tally-head" {
-                    div {
-                        h3 id="sync-tally-title" { "Admitted games tally" }
-                        p id="sync-result-copy" { (sync_result_copy(status, pending_changes)) }
+                    div class="sync-marquee-actions" aria-label="Library admission actions" {
+                        @if storage_blocked || status.library.last_sync_state == "running" {
+                            button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Sync running" }) }
+                        } @else {
+                            (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync games" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
+                        }
+                        button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
+                        label class="btn btn--secondary sync-upload-label" for="sync-upload-input" { "Choose files" }
+                        input id="sync-upload-input" class="sync-upload-input" type="file" multiple data-sync-upload="true" data-endpoint="/api/actions/add-games" {}
                     }
-                    strong class="sync-tally-score" { (status.library.total_synced_entries) " games" }
                 }
-                div class="sync-tally-meters" aria-label="Game sync tally totals" {
-                    (sync_detail("Scanned", &status.library.total_detected_games.to_string()))
-                    (sync_detail("Admitted", &status.library.total_synced_entries.to_string()))
-                    (sync_detail("Skipped", &status.library.skipped_games.to_string()))
-                    (sync_detail("Failed", &status.library.failed_games.to_string()))
-                    (sync_detail("Artwork paired", &status.library.artwork_paired_total.to_string()))
-                    (sync_detail("Artwork missing", &status.library.artwork_missing.to_string()))
+
+                @if storage_blocked {
+                    div class="warning sync-storage-warning" {
+                        strong { "Storage is full. Free space before admitting more games." }
+                        (nav_button("Storage", "storage"))
+                    }
+                } @else if storage_low {
+                    div class="warning sync-storage-warning" {
+                        strong { "Storage is low. Large admissions may fail." }
+                        (nav_button("Storage", "storage"))
+                    }
                 }
-                (sync_system_tally(status))
-                (sync_game_tally(status))
-                div class="sync-tally-proof" aria-label="Sync proof" {
-                    span { "receipt" }
-                    strong { (status.library.last_sync) }
+
+                section id="sync-running-panel" class="sync-running-panel sync-running-panel--admission" aria-label="Admission in progress" hidden[status.library.last_sync_state != "running"] {
+                    div class="sync-scanner" aria-hidden="true" {
+                        span class="sync-scanner-dot" {}
+                        span class="sync-scanner-line" {}
+                        span class="sync-scanner-file" {}
+                    }
+                    div class="sync-admission-phase" aria-hidden="true" {
+                        span class="sync-phase-pill" { "classify" }
+                        span class="sync-phase-pill" { "artwork" }
+                        span class="sync-phase-pill" { "steam" }
+                    }
                 }
+
+                (sync_system_blades(status))
+                (sync_admitted_shelf(status))
+                div class="sync-board-proof" aria-label="Latest sync receipt" data-last-sync=(status.library.last_sync) {}
             }
             div id="console-action-message" class="message" hidden {}
         },
     )
+}
+
+fn sync_metric_chip(label: &str, value: u64, tone: &str) -> Markup {
+    html! { span class=(format!("sync-metric-chip sync-metric-chip--{}", tone)) { em { (label) } strong { (value) } } }
+}
+
+fn sync_system_blades(status: &ConsoleStatus) -> Markup {
+    html! {
+        div class="sync-system-blades" aria-label="Game systems admitted" {
+            @if status.library.game_system_tally.is_empty() {
+                article class="sync-system-blade sync-system-blade--empty" {
+                    strong { "No systems yet" }
+                    span { "0 admitted" }
+                    div class="sync-blade-meter" style="--sync-meter:0%" {}
+                }
+            } @else {
+                @for row in status.library.game_system_tally.iter() {
+                    @let paired_percent = if row.admitted == 0 { 0 } else { ((row.artwork_paired * 100) / row.admitted).min(100) };
+                    article class=(sync_system_blade_class(row)) data-system=(&row.system) {
+                        div class="sync-blade-icon" aria-hidden="true" { (system_monogram(&row.system)) }
+                        div class="sync-blade-copy" {
+                            strong { (&row.system) }
+                            span { (row.admitted) " admitted" }
+                        }
+                        div class="sync-blade-art" {
+                            span { (row.artwork_paired) " art" }
+                            @if row.artwork_missing > 0 { em { (row.artwork_missing) " missing" } }
+                        }
+                        div class="sync-blade-meter" style=(format!("--sync-meter:{}%", paired_percent)) {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn sync_system_blade_class(row: &GameSystemTally) -> &'static str {
+    if row.artwork_missing > 0 {
+        "sync-system-blade sync-system-blade--warn"
+    } else {
+        "sync-system-blade sync-system-blade--complete"
+    }
+}
+
+fn system_monogram(system: &str) -> String {
+    system
+        .split_whitespace()
+        .filter_map(|part| part.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
+}
+
+fn sync_admitted_shelf(status: &ConsoleStatus) -> Markup {
+    html! {
+        div class="sync-admitted-shelf" aria-label="Admitted game shelf" {
+            @if status.library.admitted_games.is_empty() {
+                div class="sync-shelf-empty" {
+                    div class="sync-cover-frame sync-cover-frame--empty" aria-hidden="true" { span { "＋" } }
+                    strong { "No games admitted yet" }
+                    span { "Add games, then admit them into the console library." }
+                }
+            } @else {
+                @for game in status.library.admitted_games.iter().take(10) {
+                    article class="sync-game-card" data-artwork-paired=(game.artwork_paired) {
+                        div class=(if game.artwork_paired { "sync-cover-frame sync-cover-frame--paired" } else { "sync-cover-frame sync-cover-frame--missing" }) aria-hidden="true" {
+                            span { (system_monogram(&game.system)) }
+                        }
+                        div class="sync-game-card-main" {
+                            strong { (&game.title) }
+                            div class="sync-game-badges" {
+                                span class="sync-game-badge sync-game-badge--system" { (&game.system) }
+                                span class="sync-game-badge" { (&game.runner) }
+                            }
+                        }
+                        div class="sync-game-state" {
+                            span class="sync-game-admitted" { "✓ admitted" }
+                            span class=(if game.artwork_paired { "sync-art sync-art--paired" } else { "sync-art sync-art--missing" }) {
+                                @if game.artwork_paired { "art paired" } @else { "needs cover" }
+                            }
+                        }
+                    }
+                }
+                @if status.library.admitted_games.len() > 10 {
+                    div class="sync-game-more" { "+" (status.library.admitted_games.len() - 10) " more admitted games" }
+                }
+            }
+        }
+    }
 }
 
 fn sync_has_history(status: &ConsoleStatus) -> bool {
@@ -910,159 +982,12 @@ fn sync_has_history(status: &ConsoleStatus) -> bool {
     ) || status.library.first_sync_completed
 }
 
-fn sync_state_label(status: &ConsoleStatus) -> &'static str {
-    let pending_changes = status.library.unsynced_added
-        + status.library.unsynced_changed
-        + status.library.unsynced_removed;
-    match status.library.last_sync_state.as_str() {
-        "running" => "Syncing",
-        "error" => "Sync failed",
-        _ if pending_changes > 0 || status.library.sync_needed => "Sync needed",
-        _ if !sync_has_history(status) => "Needs first sync",
-        _ if status.library.total_detected_games > status.library.total_synced_entries => {
-            "Sync recommended"
-        }
-        _ => "Synced",
-    }
-}
-
-fn sync_detection_headline(status: &ConsoleStatus, pending_changes: u64) -> String {
-    if status.library.unsynced_added > 0 {
-        plural_games(status.library.unsynced_added, "new game", "new games found")
-    } else if pending_changes > 0 {
-        plural_games(pending_changes, "game needs sync", "games need sync")
-    } else if !sync_has_history(status) {
-        "Add games to start the library.".to_string()
-    } else if status.library.total_detected_games > status.library.total_synced_entries {
-        plural_games(
-            status.library.total_detected_games - status.library.total_synced_entries,
-            "game waiting",
-            "games waiting",
-        )
-    } else {
-        "No new games found".to_string()
-    }
-}
-
-fn plural_games(count: u64, singular: &str, plural: &str) -> String {
-    if count == 1 {
-        format!("1 {singular}")
-    } else {
-        format!("{count} {plural}")
-    }
-}
-
-fn sync_ready_message(
-    status: &ConsoleStatus,
-    storage_blocked: bool,
-    pending_changes: u64,
-) -> String {
-    if storage_blocked {
-        "Storage is full. Free space before syncing.".to_string()
-    } else if status.library.unsynced_added > 0 {
-        plural_games(
-            status.library.unsynced_added,
-            "new game found",
-            "new games found",
-        )
-    } else if pending_changes > 0 {
-        plural_games(pending_changes, "game needs sync", "games need sync")
-    } else if !sync_has_history(status) {
-        "Choose the game kind first, then add files.".to_string()
-    } else if status.library.total_detected_games > status.library.total_synced_entries {
-        format!(
-            "{} detected · {} admitted",
-            status.library.total_detected_games, status.library.total_synced_entries
-        )
-    } else {
-        "No new games found.".to_string()
-    }
-}
-
 fn sync_result_kind(status: &ConsoleStatus) -> &'static str {
     match status.library.last_sync_state.as_str() {
         "success" => "success",
         "error" => "error",
         "running" => "running",
         _ => "idle",
-    }
-}
-
-fn sync_result_copy(status: &ConsoleStatus, pending_changes: u64) -> String {
-    match status.library.last_sync_state.as_str() {
-        "error" => "The machine kicked out a game. Open the ledger for the reason and fix action."
-            .to_string(),
-        "running" => "The machine is importing games now.".to_string(),
-        _ if status.library.unsynced_removed > 0 => plural_games(
-            status.library.unsynced_removed,
-            "game was ejected and needs attention",
-            "games were ejected and need attention",
-        ),
-        _ if pending_changes > 0 => format!(
-            "{} new · {} changed · {} ejected",
-            status.library.unsynced_added,
-            status.library.unsynced_changed,
-            status.library.unsynced_removed
-        ),
-        _ if !sync_has_history(status) => {
-            "No sync receipt yet. Add games, then press Sync games.".to_string()
-        }
-        _ if status.library.total_synced_entries > 0 => format!(
-            "{} admitted · {} with artwork · {} missing artwork",
-            status.library.total_synced_entries,
-            status.library.artwork_paired_total,
-            status.library.artwork_missing
-        ),
-        _ => "No admitted games yet".to_string(),
-    }
-}
-
-fn sync_system_tally(status: &ConsoleStatus) -> Markup {
-    html! {
-        div class="sync-system-tally" aria-label="Admitted games by system" {
-            @if status.library.game_system_tally.is_empty() {
-                div class="sync-system-empty" { "No admitted systems yet" }
-            } @else {
-                @for row in status.library.game_system_tally.iter() {
-                    div class="sync-system-row" {
-                        strong { (&row.system) }
-                        span { (row.admitted) " admitted" }
-                        span { (row.artwork_paired) " art paired" }
-                        span { (row.artwork_missing) " missing" }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn sync_game_tally(status: &ConsoleStatus) -> Markup {
-    html! {
-        div class="sync-game-tally" aria-label="Admitted game tally sheet" {
-            div class="sync-game-row sync-game-row--head" {
-                span { "Game" }
-                span { "System" }
-                span { "Runner" }
-                span { "Artwork" }
-            }
-            @if status.library.admitted_games.is_empty() {
-                div class="sync-game-empty" { "No games admitted yet" }
-            } @else {
-                @for game in status.library.admitted_games.iter().take(12) {
-                    div class="sync-game-row" data-artwork-paired=(game.artwork_paired) {
-                        strong { (&game.title) }
-                        span { (&game.system) }
-                        span { (&game.runner) }
-                        span class=(if game.artwork_paired { "sync-art sync-art--paired" } else { "sync-art sync-art--missing" }) {
-                            @if game.artwork_paired { "paired" } @else { "missing" }
-                        }
-                    }
-                }
-                @if status.library.admitted_games.len() > 12 {
-                    div class="sync-game-more" { "+" (status.library.admitted_games.len() - 12) " more admitted games" }
-                }
-            }
-        }
     }
 }
 
@@ -2177,10 +2102,6 @@ fn system_view(status: &ConsoleStatus) -> Markup {
 
 fn status_card(title: &str, value: &str, help: &str) -> Markup {
     html! { article class="status-card" { span { (title) } strong { (value) } p { (help) } } }
-}
-
-fn sync_detail(label: &str, value: &str) -> Markup {
-    html! { span class="sync-detail" { em { (label) } strong { (value) } } }
 }
 
 fn storage_stat(label: &str, value: &str) -> Markup {
