@@ -120,3 +120,9 @@ struct WifiForgetRequest {
     ssid: String,
 }
 
+
+#[derive(Deserialize)]
+struct HarmoniaModuleToggleRequest {
+    module_id: String,
+    enabled: bool,
+}

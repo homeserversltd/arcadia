@@ -46,6 +46,38 @@ pub struct UpdatesStatus {
     pub state: String,
     pub current_version: String,
     pub available_version: Option<String>,
+    pub profile_id: String,
+    pub identity: String,
+    pub suite_ok: bool,
+    pub first_missing_signal: String,
+    pub module_count: usize,
+    pub operation_count: usize,
+    pub latest_receipt: String,
+    pub latest_check_receipt: String,
+    pub module_root: String,
+    pub modules: Vec<HarmoniaModuleStatus>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HarmoniaModuleStatus {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+    pub present: bool,
+    pub state: String,
+    pub receipt_path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HarmoniaModuleToggleResponse {
+    ok: bool,
+    action: &'static str,
+    module_id: String,
+    enabled: bool,
+    profile_path: &'static str,
+    message: String,
 }
 
 #[derive(Clone, Serialize)]

@@ -206,6 +206,8 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/ai/token/generate", post(ai_token_generate))
         .route("/api/ai/token/revoke", post(ai_token_revoke))
         .route("/api/actions/update-gui", post(action_update_gui))
+        .route("/api/actions/check-updates", post(action_check_updates))
+        .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))
         .route(
             "/api/actions/clear-artwork-cache",

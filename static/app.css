@@ -603,6 +603,34 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
 .provider-status strong[data-configured="false"], .provider-status [data-configured="false"] { color: var(--warn); }
 .sync-output-store { display: none; }
 
+
+.harmonia-panel { display: grid; gap: 9px; max-width: 1060px; }
+.harmonia-currentness { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, color-mix(in srgb, var(--theme-accent) 12%, transparent), color-mix(in srgb, var(--theme-bg-raised) 72%, transparent)); box-shadow: 0 15px 36px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass); }
+.harmonia-currentness--current { border-color: color-mix(in srgb, var(--theme-good) 42%, transparent); }
+.harmonia-currentness--repair_pending, .harmonia-currentness--available { border-color: color-mix(in srgb, var(--theme-warn) 48%, transparent); }
+.harmonia-orb { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 16px; background: linear-gradient(145deg, var(--orange), var(--theme-danger-strong)); color: var(--theme-fg-inverse); font-weight: 950; }
+.harmonia-currentness-copy { min-width: 0; display: grid; gap: 3px; }
+.harmonia-currentness-copy strong { font-size: 18px; line-height: 1.1; }
+.harmonia-currentness-copy span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.harmonia-currentness-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.harmonia-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.harmonia-module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.harmonia-module { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); }
+.harmonia-module strong { display: block; color: var(--cream); font-size: 13px; }
+.harmonia-module span { display: block; color: var(--muted); font-size: 11px; }
+.harmonia-module .btn { min-height: 28px; padding: 4px 8px; font-size: 11px; }
+.harmonia-module--disabled { opacity: .72; }
+.harmonia-receipts { margin: 0; }
+.harmonia-module-menu { display: grid; gap: 8px; min-width: min(520px, 82vw); }
+.harmonia-module-choice { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 10px; align-items: center; padding: 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); cursor: pointer; }
+.harmonia-module-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.harmonia-module-choice input:checked + .pin-toggle-track { border-color: color-mix(in srgb, var(--theme-accent) 68%, transparent); background: linear-gradient(90deg, var(--orange), var(--orange-strong)); }
+.harmonia-module-choice input:checked + .pin-toggle-track .pin-toggle-thumb { transform: translateX(22px); }
+.harmonia-module-choice:focus-within { outline: 2px solid var(--orange-strong); outline-offset: 2px; }
+.harmonia-module-choice-copy { display: grid; gap: 2px; }
+.harmonia-module-choice-copy strong { color: var(--cream); font-size: 13px; }
+.harmonia-module-choice-copy em { color: var(--muted); font-style: normal; font-size: 11px; }
+
 /* Desktop appliance fit: selected launcher panes fit the visible shell; phone/tablet scroll lives in arcadia-viewports.css. */
 .priority-strip { margin-bottom: 8px; min-height: 42px; padding: 8px 10px; gap: 10px; }
 .priority-strip strong, .status-card strong, .active-model strong { font-size: 16px; }
