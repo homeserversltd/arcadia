@@ -31,7 +31,7 @@ async fn ai_settings_save(
                 &state,
                 false,
                 "settings-save",
-                "GPU layers must be -1 or a non-negative supported count.",
+                "Accelerator layers must be -1 or a non-negative supported count.",
             );
         }
         cfg.gpu_layers = v;

@@ -72,19 +72,18 @@
             "home-operational-grid",
             "Storage",
             "storage-bar",
-            "Games",
             "Artwork",
             "AI Models",
             "Other",
-            "Console",
+            "Network",
+            "Manage Network",
             "Local AI",
             "Model",
-            "GPU",
             "LAN",
-            "Game Library",
-            "Detected",
-            "GameScope",
+            "Sync",
             "Last scan",
+            "Manage Storage",
+            "Browse Folders",
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
@@ -112,6 +111,9 @@
         assert!(APP_CSS.contains(".home-operational-grid"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
+        for forbidden in ["Game Library", "Detected", ">Synced<", "GPU", "Folders unavailable"] {
+            assert!(!home_html.contains(forbidden), "unbacked home claim survived: {forbidden}");
+        }
     }
 
     #[test]
@@ -153,6 +155,9 @@
             "Runtime",
             "Loaded Model",
             "Inference",
+            "GPU",
+            "Estimated VRAM",
+            "GPU layers",
             concat!("In", "harmonia"),
             concat!("in", "harmonia"),
         ] {
@@ -278,13 +283,14 @@
         let sync_end = sync_start + rendered[sync_start..].find("<section id=\"view-storage\"").expect("storage follows sync");
         let sync_html = &rendered[sync_start..sync_end];
 
-        assert!(rendered.contains("Games: Pending scan"));
+        assert!(rendered.contains("Sync: Not scanned"));
         assert!(sync_html.contains("Not scanned yet"));
         assert!(sync_html.contains("No scan has run yet"));
         assert!(sync_html.contains("No sync has run yet."));
         assert!(!sync_html.contains("Completed"));
         assert!(!sync_html.contains("Scan complete"));
         assert!(!rendered.contains("Games: Synced"));
+        assert!(!rendered.contains(r#"data-chip-kind="games""#));
     }
 
     #[test]
@@ -307,7 +313,8 @@
         status.library.artwork_status = "2 complete · 1 missing".to_string();
 
         let rendered = ui::layout(&status).into_string();
-        assert!(rendered.contains("Games: Synced"));
+        assert!(rendered.contains("Sync: Idle"));
+        assert!(!rendered.contains("Games: Synced"));
         assert!(rendered.contains("Completed"));
         assert!(rendered.contains("ROMs detected"));
         assert!(rendered.contains("GameScope entries"));

@@ -56,7 +56,7 @@ fn header(status: &ConsoleStatus) -> Markup {
     let sync_delta = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let (games_label, games_class, games_tip) = if status.library.last_sync_state == "running" {
+    let (sync_label, sync_class, sync_tip) = if status.library.last_sync_state == "running" {
         (
             "Scanning".to_string(),
             "warn",
@@ -64,33 +64,33 @@ fn header(status: &ConsoleStatus) -> Markup {
         )
     } else if status.library.last_sync_state == "error" {
         (
-            "Sync failed".to_string(),
+            "Needs attention".to_string(),
             "bad",
-            "Last game sync failed".to_string(),
+            "Last ROM scan failed".to_string(),
         )
     } else if !sync_has_history(status) {
         (
-            "Pending scan".to_string(),
-            "warn",
-            "No ROM scan has run yet".to_string(),
+            "Not scanned".to_string(),
+            "idle",
+            "No verified ROM scan history is available".to_string(),
         )
     } else if status.library.sync_needed || sync_delta > 0 {
         (
-            "Needs sync".to_string(),
+            "Scan ready".to_string(),
             "warn",
-            format!("{} game changes waiting for sync", sync_delta),
+            "ROM folder changes are ready to scan".to_string(),
         )
     } else if status.library.sync_state == "unknown" {
         (
-            "Pending scan".to_string(),
-            "warn",
-            "ROM files exist but no reliable sync history is available".to_string(),
+            "Unknown".to_string(),
+            "idle",
+            "ROM scan state is unavailable".to_string(),
         )
     } else {
         (
-            "Synced".to_string(),
-            "good",
-            "Last scan completed and no game changes are waiting".to_string(),
+            "Idle".to_string(),
+            "idle",
+            "No pending ROM folder scan reported".to_string(),
         )
     };
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
@@ -151,7 +151,7 @@ fn header(status: &ConsoleStatus) -> Markup {
             }
             div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
                 (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
-                (currentness_status_chip("games", "Games", &games_label, games_class, &games_tip, "sync"))
+                (currentness_status_chip("sync", "Sync", &sync_label, sync_class, &sync_tip, "sync"))
                 (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
                 (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
                 (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
@@ -308,7 +308,7 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                 (home_storage_card(status))
                 (home_network_card(status))
                 (home_local_ai_card(status))
-                (home_library_card(status))
+                (home_sync_card(status))
                 @if status.arcadia.service != "running" {
                     (home_gamescope_card(status))
                 }
@@ -340,8 +340,8 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
     ) = if !status.network.online {
         (
             "Network offline".to_string(),
-            "Console and game folders are unreachable.".to_string(),
-            Some("Connect Wi-Fi"),
+            "Console network is unavailable.".to_string(),
+            Some("Manage Network"),
             Some("network"),
             None,
         )
@@ -363,7 +363,7 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
         )
     } else if !sync_has_history(status) {
         (
-            "Games pending scan".to_string(),
+            "Sync pending scan".to_string(),
             "No ROM scan has run yet.".to_string(),
             Some("Scan ROMs"),
             None,
@@ -375,10 +375,7 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
             + status.library.unsynced_removed;
         (
             format!("{} changes waiting for sync", changes),
-            format!(
-                "{} detected · {} synced",
-                status.library.total_detected_games, status.library.total_synced_entries
-            ),
+            "ROM folder changes are ready to scan.".to_string(),
             Some("Start Sync"),
             None,
             Some("/api/actions/sync-games"),
@@ -450,7 +447,8 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total, status.storage.other.bytes))
             }
             div class="inline-actions inline-actions--compact" {
-                (nav_button("Open", "storage"))
+                (nav_button("Manage Storage", "storage"))
+                (nav_button("Browse Folders", "storage"))
                 @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clean Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
                 @if status.storage.ai_models.bytes > 0 { (nav_button("Manage Models", "local-ai")) }
             }
@@ -471,37 +469,49 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                     p class="card-line" { (status.network.ip_address) }
                 }
                 div class="reachability-row reachability-row--topology" {
-                    (reachability("Console", status.network.console_reachable))
-                    (reachability("Folders", status.network.samba_reachable))
+                    (reachability("Link", status.network.online))
                     @if let Some(internet) = status.network.internet_reachable { (reachability("Internet", internet)) }
-                    (reachability("LAN AI", status.network.lan_ai_reachable))
                 }
                 div class="inline-actions inline-actions--compact" {
-                    (nav_focus_button("Wi-Fi", "network", "wifi-management"))
-                    @if let Some(path) = status.surfaces.windows_unc.as_deref().or(status.surfaces.smb_url.as_deref()) { (copy_button("Folders", path)) } @else { button class="btn btn--secondary" type="button" disabled { "Folders unavailable" } }
+                    (nav_button("Manage Network", "network"))
                     (copy_button("Console URL", status.identity.web_origin.as_str()))
                 }
             } @else {
                 h3 { "Network offline" }
-                p class="card-line" { "Console and game folders are unreachable." }
-                (nav_button("Connect Wi-Fi", "network"))
+                p class="card-line" { "Console network is unavailable." }
+                (nav_button("Manage Network", "network"))
             }
         }
     }
 }
 
-fn home_library_card(status: &ConsoleStatus) -> Markup {
+fn home_sync_card(status: &ConsoleStatus) -> Markup {
+    let pending_changes = status.library.unsynced_added
+        + status.library.unsynced_changed
+        + status.library.unsynced_removed;
+    let state = if status.library.last_sync_state == "error" {
+        "Needs attention"
+    } else if status.library.last_sync_state == "running" {
+        "Scanning"
+    } else if pending_changes > 0 || status.library.sync_needed {
+        "Scan ready"
+    } else if !sync_has_history(status) {
+        "Not scanned"
+    } else {
+        "Idle"
+    };
     html! {
-        article class="operational-card library-home-card" {
-            div class="card-head" { h3 { "Game Library" } strong { (status.library.total_detected_games) " · " (library_home_state(status)) } }
+        article class="operational-card sync-home-card" {
+            div class="card-head" { h3 { "Sync" } strong { (state) } }
+            p class="card-line" { "ROM folder scan and artwork workflow." }
             div class="state-rows state-rows--compact" {
-                (state_row("Detected", &status.library.total_detected_games.to_string()))
-                (state_row("GameScope", &status.library.total_synced_entries.to_string()))
                 (state_row("Last scan", &status.library.last_sync))
+                @if pending_changes > 0 { (state_row("Folder changes", &pending_changes.to_string())) }
                 (state_row("Artwork", &status.library.artwork_status))
             }
             div class="inline-actions inline-actions--compact" {
-                (nav_button("Details", "sync"))
+                (nav_button("Open Sync", "sync"))
+                (action_button(ButtonVariant::Secondary, "Scan ROM folders", "sync-games", "/api/actions/sync-games"))
             }
         }
     }
@@ -519,7 +529,7 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
         } else {
             "No model loaded"
         });
-    let gpu = status.local_ai.gpu_memory.as_deref().unwrap_or("—");
+    let accelerator = status.local_ai.gpu_memory.as_deref();
     let lan = if let Some(port) = status.local_ai.lan_inference_port {
         format!("On · :{}", port)
     } else {
@@ -535,11 +545,12 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
                 } }
             }
             div class="state-rows state-rows--compact" {
-                (state_row("GPU", gpu))
+                @if let Some(accelerator) = accelerator { (state_row("Accelerator", accelerator)) }
                 (state_row("LAN", &lan))
+                @if status.local_ai.available_models.is_empty() { (state_row("Models", "Not configured")) }
             }
             @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
-                div class="gpu-bar" aria-label="GPU memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
+                div class="gpu-bar" aria-label="Accelerator memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
             }
             div class="inline-actions inline-actions--compact" {
                 @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
@@ -714,20 +725,6 @@ fn sync_has_history(status: &ConsoleStatus) -> bool {
         status.library.last_sync_state.as_str(),
         "success" | "error" | "running"
     ) || status.library.first_sync_completed
-}
-
-fn library_home_state(status: &ConsoleStatus) -> &'static str {
-    if status.library.last_sync_state == "running" {
-        "scanning"
-    } else if status.library.last_sync_state == "error" {
-        "failed"
-    } else if !sync_has_history(status) {
-        "pending scan"
-    } else if status.library.sync_needed {
-        "needs sync"
-    } else {
-        "synced"
-    }
 }
 
 fn sync_state_label(status: &ConsoleStatus) -> &'static str {
@@ -1154,7 +1151,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (ai_state_tile("Selected", selected_name, if selected_present { "Ready to load" } else { "Choose or import a model" }, "selected"))
                     (ai_state_tile("Serving now", loaded_name, if model_loaded { "Available for client calls" } else { "No model invoked" }, "loaded"))
                     (ai_state_tile("Model library", &format!("{} installed", model_count), if model_count == 0 { "Empty" } else { "Available" }, "library"))
-                    (ai_state_tile("GPU", status.local_ai.gpu_memory.as_deref().unwrap_or("Signal unavailable"), "Read from backend telemetry", "gpu"))
+                    @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
                 }
                 div class="inline-actions inline-actions--compact" {
                     @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
@@ -1249,7 +1246,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Settings" {
                 form class="settings-form settings-form--inline" id="ai-settings-form" {
                     label { span { "Context" } input class="field" name="contextSize" type="number" value="4096" min="512" max="262144"; }
-                    label { span { "GPU layers" } input class="field" name="gpuLayers" type="number" value="-1" min="-1" max="999"; }
+                    @if status.local_ai.gpu_memory.is_some() { label { span { "Accelerator layers" } input class="field" name="gpuLayers" type="number" value="-1" min="-1" max="999"; } }
                     label { span { "Threads" } input class="field" name="threads" type="number" value="0" min="0" max="256"; }
                     label { span { "Batch" } input class="field" name="batch" type="number" value="512" min="1" max="8192"; }
                     label class="model-choice" { input type="checkbox" name="startApiOnBoot"; span { "Start API on boot" } }
@@ -1260,8 +1257,8 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
 
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Hardware and storage" {
                 @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
-                    (meter_block("GPU", &human_bytes(used), &human_bytes(total), used, total))
-                } @else { div class="empty-state" { strong { "GPU telemetry unknown" } } }
+                    (meter_block("Accelerator", &human_bytes(used), &human_bytes(total), used, total))
+                } @else { div class="empty-state" { strong { "No accelerator telemetry source reported" } } }
                 (meter_block("AI model storage", &status.storage.ai_models.size, &status.storage.free, status.storage.ai_models.bytes, status.storage.total_bytes.max(1)))
                 div class="inline-actions" { (nav_button("Open Storage", "storage")) }
             }
@@ -1327,7 +1324,6 @@ fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatu
         div class="model-meta-row" {
             (model_meta("Size", &model.size))
             (model_meta("Quantization", model.quantization.as_deref().unwrap_or("Unknown")))
-            (model_meta("Estimated VRAM", &model.estimated_vram_bytes.map(human_bytes).unwrap_or_else(|| "Unknown".to_string())))
             (model_meta("Use", model.recommended_use.unwrap_or("Balanced")))
             (model_meta("State", if hot { "Hot" } else if selected { "Cold" } else { "Installed" }))
         }
@@ -1355,11 +1351,6 @@ fn human_bytes(bytes: u64) -> String {
 
 fn network_view(status: &ConsoleStatus) -> Markup {
     let console_url = status.identity.web_origin.as_str();
-    let folders = status
-        .samba
-        .shares
-        .iter()
-        .find(|share| share.purpose == "games");
     view_shell(
         "network",
         "",
@@ -1388,29 +1379,27 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
-                article id="wifi-management" class="network-section network-card" tabindex="-1" aria-label="Wi-Fi" {
-                    div class="network-section-head" {
-                        strong { "Wi-Fi" }
-                        span class=(format!("system-status system-status--{}", if status.network.wifi_adapter_available { "available" } else { "disabled" })) {
-                            (wifi_status_label(status))
+                @if status.network.wifi_adapter_available {
+                    article id="wifi-management" class="network-section network-card" tabindex="-1" aria-label="Wi-Fi" {
+                        div class="network-section-head" {
+                            strong { "Wi-Fi" }
+                            span class="system-status system-status--available" { (wifi_status_label(status)) }
                         }
-                    }
-                    div class="network-summary-lines" {
-                        @if status.network.active_type == "wifi" {
-                            span { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}% signal", v)).unwrap_or_else(|| "Signal unavailable".to_string())) }
-                        } @else if status.network.wifi_adapter_available {
-                            span { "Available for wireless setup." }
-                        } @else {
-                            span { "No Wi-Fi adapter was detected." }
+                        div class="network-summary-lines" {
+                            @if status.network.active_type == "wifi" {
+                                span { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}% signal", v)).unwrap_or_else(|| "Signal unavailable".to_string())) }
+                            } @else {
+                                span { "Available for wireless setup." }
+                            }
                         }
+                        div class="inline-actions inline-actions--compact" {
+                            button class="btn btn--primary" type="button" data-network-action="choose-wifi" { "Choose Network" }
+                            button class="btn btn--secondary" type="button" data-network-action="scan-wifi" { "Scan" }
+                            button class="btn btn--secondary" type="button" data-open-hidden-wifi="true" { "Join Hidden Network" }
+                            button class="btn btn--secondary" type="button" data-network-action="wifi-toggle" data-enabled=(if status.network.active_type == "wifi" { "false" } else { "true" }) { (if status.network.active_type == "wifi" { "Turn Off" } else { "Turn On" }) }
+                        }
+                        div id="wifi-message" class="message" hidden {}
                     }
-                    div class="inline-actions inline-actions--compact" {
-                        button class="btn btn--primary" type="button" data-network-action="choose-wifi" disabled[!status.network.wifi_adapter_available] { "Choose Network" }
-                        button class="btn btn--secondary" type="button" data-network-action="scan-wifi" disabled[!status.network.wifi_adapter_available] { "Scan" }
-                        button class="btn btn--secondary" type="button" data-open-hidden-wifi="true" disabled[!status.network.wifi_adapter_available] { "Join Hidden Network" }
-                        button class="btn btn--secondary" type="button" data-network-action="wifi-toggle" data-enabled=(if status.network.active_type == "wifi" { "false" } else { "true" }) disabled[!status.network.wifi_adapter_available] { (if status.network.active_type == "wifi" { "Turn Off" } else { "Turn On" }) }
-                    }
-                    div id="wifi-message" class="message" hidden {}
                 }
 
                 article class="network-section network-card" aria-label="Wired LAN" {
@@ -1442,8 +1431,6 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     div class="network-section-head" { strong { "Services" } }
                     div class="network-service-list" {
                         (network_service_row("Web Console", "Available", console_url, html! { (copy_button("Copy URL", console_url)) }))
-                        @if let Some(share) = folders { (network_service_row("Game Folders", "Available", share.windows_unc.as_deref().or(share.smb_url.as_deref()).unwrap_or("Folder address unavailable"), html! { (folder_copy_menu_button("Copy address", share)) })) }
-                        @else { (network_service_row("Game Folders", "Disabled", "Folder address unavailable", html! { (nav_button("Open System", "system")) })) }
                         (network_service_row("LAN AI", if status.network.lan_ai_reachable { "Available" } else { "Disabled" }, if status.network.lan_ai_reachable { ":7777" } else { "" }, html! { (nav_focus_button("Open Local AI", "local-ai", "local-ai-inference")) }))
                         (network_service_row("SSH", "Disabled", "", html! { (nav_button("Open System", "system")) }))
                     }
@@ -1455,7 +1442,6 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     button class="btn btn--secondary" type="button" data-diagnostic="gateway" { "Test Gateway" }
                     button class="btn btn--secondary" type="button" data-diagnostic="dns" { "Test DNS" }
                     button class="btn btn--secondary" type="button" data-diagnostic="internet" { "Test Internet" }
-                    button class="btn btn--secondary" type="button" data-diagnostic="game-folders" { "Test Game Folders" }
                     button class="btn btn--secondary" type="button" data-diagnostic="lan-ai" { "Test LAN AI" }
                 }
                 div id="diagnostics-results" class="diagnostics-results" {}
@@ -1495,14 +1481,6 @@ fn internet_label(value: Option<bool>) -> &'static str {
 
 fn network_service_row(name: &str, state: &str, route: &str, action: Markup) -> Markup {
     html! { div class="network-service-row" { span { strong { (name) } em { (route) } } b class=(format!("system-status system-status--{}", state.to_lowercase())) { (state) } span class="system-row-actions" { (action) } } }
-}
-
-fn folder_copy_menu_button(label: &str, share: &crate::SambaShareStatus) -> Markup {
-    html! { button class="btn btn--secondary" type="button" data-folder-copy="true"
-    data-windows=(share.windows_unc.as_deref().unwrap_or(""))
-    data-windows-ip=(share.windows_unc_by_ip.as_deref().unwrap_or(""))
-    data-smb=(share.smb_url.as_deref().unwrap_or(""))
-    data-smb-ip=(share.smb_url_by_ip.as_deref().unwrap_or("")) { (label) } }
 }
 
 fn settings_action_row(
@@ -1854,10 +1832,6 @@ fn system_log_group(name: &str) -> Markup {
             pre { code {} }
         }
     }
-}
-
-fn collapsible_log(title: &str, text: &str) -> Markup {
-    html! { details class="collapsible-log" { summary { (title) } pre { code { (text) } } } }
 }
 
 fn nav_focus_button(label: &str, target: &str, focus: &str) -> Markup {

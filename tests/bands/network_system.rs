@@ -19,8 +19,9 @@
         for required in [
             "priority-strip",
             "Storage",
-            "Game Library",
+            "Network",
             "Local AI",
+            "Sync",
             "storage-bar",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
@@ -57,7 +58,6 @@
             "DNS",
             "LAN",
             "Internet",
-            "Wi-Fi",
             "Wired LAN",
             "Details",
             "IP Settings",
@@ -79,11 +79,17 @@
         assert!(!network_html.contains("wifi-network-list"));
         assert!(!network_html.contains("data-network-connect-form"));
         assert!(!network_html.contains("Advanced IP Settings"));
+        assert!(!network_html.contains("Folders"));
+        assert!(!network_html.contains("Game Folders"));
+        assert!(!network_html.contains("Test Game Folders"));
         assert!(APP_JS.contains("function openWifiNetworkPicker"));
         assert!(APP_JS.contains("function normalizeWifiNetworks"));
         assert!(APP_JS.contains("input.type = event.target.checked ? 'text' : 'password'"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
+        assert!(!home_html.contains("Game Library"));
+        assert!(!rendered.contains(r#"data-chip-kind="games""#));
+        assert!(rendered.contains(r#"data-chip-kind="sync""#));
     }
 
     #[test]
