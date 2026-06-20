@@ -49,7 +49,11 @@
   --ux-compact-button-min-height: 34px;
   --ux-compact-button-padding-block: 7px;
   --ux-compact-button-padding-inline: 10px;
-  --ux-modal-max-width: 620px;
+  --ux-modal-max-width: 720px;
+  --ux-modal-padding: 18px;
+  --ux-modal-viewport-gap: 18px;
+  --ux-modal-radius: 24px;
+  --ux-modal-header-action-size: 34px;
 
   --ux-text-xs: 11px;
   --ux-text-sm: 12px;

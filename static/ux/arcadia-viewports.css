@@ -54,7 +54,13 @@
   .view[data-view-panel="access-pin"] .settings-action-row__icon { display: none; }
   .task-hero { align-items: stretch; flex-direction: column; }
   .btn { width: 100%; }
-  .modal-close { position: static; transform: none; float: right; }
+  .modal-overlay { align-items: stretch; justify-items: stretch; padding: 8px; }
+  .modal-card { inline-size: 100%; max-block-size: calc(100vh - 16px); max-block-size: calc(100dvh - 16px); border-radius: 18px; }
+  .modal-content { max-block-size: none; }
+  .modal-actions { justify-content: stretch; }
+  .modal-actions .btn { width: 100%; }
+  .sync-add-games-modal { inline-size: 100%; }
+  .sync-kind-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 

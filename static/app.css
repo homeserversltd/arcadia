@@ -476,7 +476,7 @@ h3 { margin: 0 0 8px; font-size: 18px; }
 .sync-intake-copy strong { color: var(--cream); font-size: 18px; }
 .sync-intake-copy p { margin: 0; color: var(--muted); }
 .sync-intake-actions { display: grid; justify-items: end; }
-.sync-add-games-modal { display: grid; gap: 14px; min-width: min(640px, 80vw); }
+.sync-add-games-modal { display: grid; gap: 14px; inline-size: min(100%, 640px); min-inline-size: 0; }
 .sync-kind-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
 .sync-kind-option { min-height: 42px; border: 1px solid var(--line); border-radius: 14px; color: var(--cream); background: color-mix(in srgb, var(--theme-field-surface) 76%, transparent); font-weight: 900; cursor: pointer; }
 .sync-kind-option[data-selected="true"] { border-color: color-mix(in srgb, var(--theme-good) 62%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-good) 16%, transparent); }
@@ -846,13 +846,37 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
 .modal-actions[hidden] { display: none; }
 
 [data-popup-root] { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
-.modal-overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 18px; background: var(--theme-modal-backdrop); pointer-events: auto; backdrop-filter: blur(10px); }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--ux-modal-viewport-gap);
+  overflow: hidden;
+  background: var(--theme-modal-backdrop);
+  pointer-events: auto;
+  backdrop-filter: blur(10px);
+}
 .modal-overlay[hidden] { display: none; }
-.modal-card { width: min(96vw, 620px); max-height: 90vh; overflow: auto; padding: 22px; border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent); border-radius: 24px; background: var(--aubergine-1); box-shadow: 0 25px 90px var(--theme-shadow-strong); }
-.modal-title { margin: 0 38px 12px 0; font-size: 20px; }
-.modal-content { color: var(--muted); white-space: pre-wrap; line-height: 1.5; }
-.modal-close { position: absolute; transform: translate(550px, -8px); width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line); background: var(--theme-glass); color: var(--cream); font-size: 22px; cursor: pointer; }
-.modal-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+.modal-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  inline-size: min(calc(100vw - (var(--ux-modal-viewport-gap) * 2)), var(--ux-modal-max-width));
+  max-block-size: calc(100vh - (var(--ux-modal-viewport-gap) * 2));
+  max-block-size: calc(100dvh - (var(--ux-modal-viewport-gap) * 2));
+  overflow: hidden;
+  padding: var(--ux-modal-padding);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  border-radius: var(--ux-modal-radius);
+  background: var(--aubergine-1);
+  box-shadow: 0 25px 90px var(--theme-shadow-strong);
+}
+.modal-title { min-width: 0; margin: 0; padding-inline-end: calc(var(--ux-modal-header-action-size) + 8px); font-size: var(--ux-text-xl); line-height: 1.15; }
+.modal-content { min-height: 0; overflow: auto; color: var(--muted); white-space: pre-wrap; line-height: 1.5; overscroll-behavior: contain; }
+.modal-close { position: absolute; inset-block-start: var(--ux-modal-padding); inset-inline-end: var(--ux-modal-padding); width: var(--ux-modal-header-action-size); height: var(--ux-modal-header-action-size); border-radius: 999px; border: 1px solid var(--line); background: var(--theme-glass); color: var(--cream); font-size: 22px; cursor: pointer; }
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--ux-control-gap); margin-top: 0; }
 .toast-container { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; width: min(400px, calc(100vw - 36px)); max-width: min(400px, calc(100vw - 36px)); pointer-events: none; }
 .toast { width: 100%; padding: 12px 12px 12px 15px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left; color: var(--cream); font: inherit; border-radius: 16px; background: var(--aubergine-1); border: 1px solid var(--line); border-left: 5px solid var(--orange); box-shadow: 0 14px 35px var(--theme-shadow); cursor: pointer; pointer-events: auto; }
 .toast:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent); }

@@ -152,6 +152,23 @@
 
 
     #[test]
+    fn modal_presenter_uses_responsive_viewport_grid() {
+        assert!(UX_CSS.contains("--ux-modal-max-width: 720px;"));
+        assert!(UX_CSS.contains("--ux-modal-viewport-gap: 18px;"));
+        assert!(APP_CSS.contains(".modal-overlay {"));
+        assert!(APP_CSS.contains("overflow: hidden;"));
+        assert!(APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
+        assert!(APP_CSS.contains("inline-size: min(calc(100vw - (var(--ux-modal-viewport-gap) * 2)), var(--ux-modal-max-width));"));
+        assert!(APP_CSS.contains("max-block-size: calc(100dvh - (var(--ux-modal-viewport-gap) * 2));"));
+        assert!(APP_CSS.contains(".modal-content { min-height: 0; overflow: auto;"));
+        assert!(APP_CSS.contains("overscroll-behavior: contain;"));
+        assert!(!APP_CSS.contains("transform: translate(550px, -8px)"));
+        assert!(VIEWPORT_CSS.contains(".modal-overlay { align-items: stretch; justify-items: stretch; padding: 8px; }"));
+        assert!(VIEWPORT_CSS.contains("max-block-size: calc(100dvh - 16px);"));
+        assert!(VIEWPORT_CSS.contains(".sync-kind-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }"));
+    }
+
+    #[test]
     fn local_ai_buttons_use_shared_consistent_sizing() {
         let state = AppState {
             started_unix: 0,
