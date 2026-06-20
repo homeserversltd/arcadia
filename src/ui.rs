@@ -1134,8 +1134,10 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     code id="ai-endpoint-readback" data-ai-endpoint=(if api_ready { endpoint.as_str() } else { "" }) {
                         (if api_ready { endpoint.as_str() } else { "No active endpoint" })
                     }
-                    @if api_ready { (copy_button("Copy endpoint", &endpoint)) }
-                    @else { button class="btn btn--secondary" type="button" disabled title="Load a model and start the API before copying an endpoint." { "Copy endpoint" } }
+                    div class="local-ai-actions" {
+                        @if api_ready { (copy_button("Copy endpoint", &endpoint)) }
+                        @else { button class="btn btn--secondary" type="button" disabled title="Load a model and start the API before copying an endpoint." { "Copy endpoint" } }
+                    }
                 }
             }
 
@@ -1150,7 +1152,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (ai_state_tile("Model library", &format!("{} installed", model_count), if model_count == 0 { "Empty" } else { "Available" }, "library"))
                     @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
                 }
-                div class="inline-actions inline-actions--compact" {
+                div class="inline-actions inline-actions--compact local-ai-actions" {
                     @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
                     @else if !selected_present { (nav_focus_button("Choose model", "local-ai", "installed-models")) }
                     @else if !model_loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load model" } }
@@ -1173,7 +1175,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (ai_state_tile("Port", &port.to_string(), "Saved HomeConsole Local AI port", "port"))
                     (ai_state_tile("OpenAI base URL", if api_ready { &base_url } else { "Unavailable" }, if api_ready { "Use this in clients" } else { "No base URL until API listens" }, "endpoint"))
                 }
-                div class="inline-actions inline-actions--compact" {
+                div class="inline-actions inline-actions--compact local-ai-actions" {
                     button class="btn btn--primary" type="button" data-ai-action="inference-enable" disabled[model_count == 0] title=(if model_count == 0 { "Install a GGUF model before enabling API access." } else { "Enable console-local API mode." }) { "API on" }
                     button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
                     button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
@@ -1191,7 +1193,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
                     label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
                     p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
-                    div class="inline-actions inline-actions--compact" {
+                    div class="inline-actions inline-actions--compact local-ai-actions" {
                         button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
                         button class="btn btn--secondary" type="button" data-ai-port-revert="true" { "Revert" }
                         button class="btn btn--secondary" type="button" data-ai-action="lan-enable" disabled[!model_loaded] title=(if model_loaded { "Expose Local AI on the trusted LAN." } else { "Load a model before exposing LAN access." }) { "Enable LAN" }
@@ -1203,7 +1205,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             section id="local-ai-import" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model import" tabindex="-1" {
                 form class="settings-form" id="ai-import-form" enctype="multipart/form-data" {
                     label { span { "Import GGUF model" } input class="field" type="file" name="model" accept=".gguf"; }
-                    div class="inline-actions" { button class="btn btn--primary" type="submit" { "Import model" } button class="btn btn--secondary" type="button" data-ai-action="models-rescan" { "Rescan storage" } }
+                    div class="inline-actions local-ai-actions" { button class="btn btn--primary" type="submit" { "Import model" } button class="btn btn--secondary" type="button" data-ai-action="models-rescan" { "Rescan storage" } }
                     progress id="ai-import-progress" max="100" value="0" hidden {}
                 }
             }
@@ -1211,7 +1213,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model library" {
                 div class="model-grid" {
                     @if status.local_ai.available_models.is_empty() {
-                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Import a local .gguf file or download a compatible Hugging Face file." } div class="inline-actions" { (nav_focus_button("Import model", "local-ai", "local-ai-import")) (nav_focus_button("Get GGUF", "local-ai", "get-models")) } }
+                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Import a local .gguf file or download a compatible Hugging Face file." } div class="inline-actions local-ai-actions" { (nav_focus_button("Import model", "local-ai", "local-ai-import")) (nav_focus_button("Get GGUF", "local-ai", "get-models")) } }
                     } @else {
                         @for model in &status.local_ai.available_models {
                             (installed_model_card(model, status))
@@ -1226,7 +1228,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     label { span { "Repository" } input class="field" name="repoId" placeholder="TheBloke/example-GGUF" autocomplete="off"; }
                     label { span { "File" } input class="field" name="filename" placeholder="example.Q4_K_M.gguf" autocomplete="off"; }
                     label { span { "Revision" } input class="field" name="revision" placeholder="main" autocomplete="off"; }
-                    div class="inline-actions" { button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch files" } button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" } }
+                    div class="inline-actions local-ai-actions" { button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch files" } button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" } }
                     div id="hf-file-results" class="diagnostics-results" {}
                 }
             }
@@ -1237,7 +1239,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (system_field("Token", "Configured/redacted by backend"))
                     (system_field("Secret receipts", "Redacted"))
                 }
-                div class="inline-actions" { button class="btn btn--secondary" type="button" data-ai-action="token-generate" { "Generate token" } button class="btn btn--danger" type="button" data-ai-action="token-revoke" { "Revoke token" } }
+                div class="inline-actions local-ai-actions" { button class="btn btn--secondary" type="button" data-ai-action="token-generate" { "Generate token" } button class="btn btn--danger" type="button" data-ai-action="token-revoke" { "Revoke token" } }
             }
 
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Settings" {
@@ -1257,7 +1259,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (meter_block("Accelerator", &human_bytes(used), &human_bytes(total), used, total))
                 } @else { div class="empty-state" { strong { "No accelerator telemetry source reported" } } }
                 (meter_block("AI model storage", &status.storage.ai_models.size, &status.storage.free, status.storage.ai_models.bytes, status.storage.total_bytes.max(1)))
-                div class="inline-actions" { (nav_button("Open Storage", "storage")) }
+                div class="inline-actions local-ai-actions" { (nav_button("Open Storage", "storage")) }
             }
 
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Diagnostics" {
@@ -1324,7 +1326,7 @@ fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatu
             (model_meta("Use", model.recommended_use.unwrap_or("Balanced")))
             (model_meta("State", if hot { "Hot" } else if selected { "Cold" } else { "Installed" }))
         }
-        div class="inline-actions inline-actions--compact" {
+        div class="inline-actions inline-actions--compact local-ai-actions" {
             @if !selected { button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" } }
             @if !hot { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(model.id) { "Load" } }
             @if hot { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } span class="model-status" { "Unload before removing this model." } }
