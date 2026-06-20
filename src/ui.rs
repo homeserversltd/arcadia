@@ -698,9 +698,8 @@ fn home_system_health_card(status: &ConsoleStatus) -> Markup {
             div class="card-head" aria-label="System Health" { strong { (running) "/" (service_total) } }
             div class="home-service-list" aria-label="Appliance services" {
                 @for svc in status.system.services.iter().take(2) {
-                    div class="home-service-row" {
-                        span { (&svc.name) }
-                        b class=(status_class(&svc.state)) data-state=(&svc.state) aria-label=(format!("{} {}", svc.name, title_case_state_like(&svc.state))) { (if matches!(svc.state.as_str(), "running" | "available" | "enabled") { "✓" } else { "!" }) }
+                    div class="home-service-row" data-label=(&svc.name) aria-label=(format!("{} {}", svc.name, title_case_state_like(&svc.state))) {
+                        b class=(status_class(&svc.state)) data-state=(&svc.state) { (if matches!(svc.state.as_str(), "running" | "available" | "enabled") { "✓" } else { "!" }) }
                     }
                 }
             }
