@@ -719,7 +719,6 @@ pub struct LocalAiModelStatus {
     pub recommended_use: Option<&'static str>,
     pub installed_at: Option<String>,
     pub is_recommended: bool,
-    pub is_inharmonia: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -770,7 +769,6 @@ pub struct AIRecommendedModel {
     pub size_bytes: Option<u64>,
     pub estimated_vram_bytes: Option<u64>,
     pub recommended_use: Option<String>,
-    pub is_inharmonia: bool,
     pub install_state: String,
 }
 
@@ -831,9 +829,7 @@ struct AIModelIdRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct AIRecommendedInstallRequest {
-    id: String,
-}
+struct AIRecommendedInstallRequest {}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1451,32 +1447,14 @@ async fn ai_runtime_restart(
 }
 async fn ai_install_recommended(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<AIRecommendedInstallRequest>,
+    Json(_body): Json<AIRecommendedInstallRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    if body.id != "inharmonia" {
-        return ai_action(
-            StatusCode::BAD_REQUEST,
-            &state,
-            false,
-            "install-recommended",
-            "Unknown recommended model.",
-        );
-    }
-    if local_ai_available_models().iter().any(|m| m.is_inharmonia) {
-        return ai_action(
-            StatusCode::OK,
-            &state,
-            true,
-            "install-recommended",
-            "Inharmonia is already installed.",
-        );
-    }
     ai_action(
-        StatusCode::FAILED_DEPENDENCY,
+        StatusCode::BAD_REQUEST,
         &state,
         false,
         "install-recommended",
-        "Inharmonia catalog source is not configured on this console yet.",
+        "Recommended catalog install is not configured. Use Hugging Face .gguf downloads.",
     )
 }
 async fn ai_hf_list_files(
@@ -3962,26 +3940,8 @@ fn llama_version() -> Option<String> {
         .and_then(|text| text.lines().next().map(|v| v.trim().to_string()))
 }
 
-fn recommended_ai_models(installed: &[LocalAiModelStatus]) -> Vec<AIRecommendedModel> {
-    let inharmonia_installed = installed.iter().any(|m| m.is_inharmonia);
-    vec![AIRecommendedModel {
-        id: "inharmonia".to_string(),
-        name: "Inharmonia".to_string(),
-        description: "Balanced local assistant for Arcadia.".to_string(),
-        source: "catalog".to_string(),
-        repo_id: None,
-        filename: None,
-        size_bytes: None,
-        estimated_vram_bytes: None,
-        recommended_use: Some("balanced".to_string()),
-        is_inharmonia: true,
-        install_state: if inharmonia_installed {
-            "installed"
-        } else {
-            "available"
-        }
-        .to_string(),
-    }]
+fn recommended_ai_models(_installed: &[LocalAiModelStatus]) -> Vec<AIRecommendedModel> {
+    Vec::new()
 }
 
 fn active_ai_downloads() -> Vec<AIDownloadState> {
@@ -4020,10 +3980,8 @@ fn quantization_from_filename(filename: &str) -> Option<String> {
     .map(|q| q.to_string())
 }
 
-fn model_source_from_path(filename: &str, path: &Path) -> String {
-    if filename.to_ascii_lowercase().contains("inharmonia") {
-        "bundled".to_string()
-    } else if path.to_string_lossy().contains("huggingface") {
+fn model_source_from_path(_filename: &str, path: &Path) -> String {
+    if path.to_string_lossy().contains("huggingface") {
         "huggingface".to_string()
     } else {
         "manual".to_string()
@@ -4078,8 +4036,7 @@ fn local_ai_status() -> LocalAiStatus {
                     estimated_vram_bytes: None,
                     recommended_use: None,
                     installed_at: None,
-                    is_recommended: loaded.to_ascii_lowercase().contains("inharmonia"),
-                    is_inharmonia: loaded.to_ascii_lowercase().contains("inharmonia"),
+                    is_recommended: false,
                 },
             );
         }
@@ -4150,8 +4107,7 @@ fn local_ai_available_models() -> Vec<LocalAiModelStatus> {
                     "quality"
                 }),
                 installed_at: None,
-                is_recommended: filename.to_ascii_lowercase().contains("inharmonia"),
-                is_inharmonia: filename.to_ascii_lowercase().contains("inharmonia"),
+                is_recommended: false,
             });
         }
     }
@@ -5658,17 +5614,27 @@ mod tests {
             "Inference",
             "GPU &amp; Storage",
             "Activity",
-            "Install Inharmonia",
+            "Hugging Face GGUF",
             "Hugging Face model",
             "Copy Endpoint",
         ] {
             assert!(rendered.contains(required), "missing {required}");
         }
 
-        for forbidden in ["Load AI Model", "Model Manager", "LLM"] {
+        for forbidden in [
+            "Load AI Model",
+            "Model Manager",
+            "LLM",
+            concat!("In", "harmonia"),
+            concat!("in", "harmonia"),
+        ] {
             assert!(
                 !rendered.contains(forbidden),
                 "forbidden visible term survived: {forbidden}"
+            );
+            assert!(
+                !APP_JS.contains(forbidden),
+                "forbidden script term survived: {forbidden}"
             );
         }
     }
@@ -6069,7 +6035,6 @@ mod tests {
             "downloads",
             "inference",
             "hardware",
-            "Inharmonia",
         ] {
             assert!(json.contains(required), "missing local ai field {required}");
         }

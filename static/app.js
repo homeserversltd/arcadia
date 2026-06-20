@@ -1081,7 +1081,7 @@ function bindLocalAIControls() {
         if (action === 'runtime-check-update') await postAI('/api/ai/runtime/check-update', {}, 'Runtime check complete');
         else if (action === 'runtime-update') await postAI('/api/ai/runtime/update', {}, 'Runtime update started');
         else if (action === 'runtime-restart') await postAI('/api/ai/runtime/restart', {}, 'Runtime restart complete');
-        else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'inharmonia' }, 'Recommended model install');
+        else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'recommended' }, 'Recommended model install');
         else if (action === 'model-select') await postAI('/api/ai/model/select', { modelId }, 'Model selected');
         else if (action === 'model-load') await postAI('/api/ai/model/load', { modelId }, 'Model load requested');
         else if (action === 'model-unload') await postAI('/api/ai/model/unload', {}, 'Model unloaded');
