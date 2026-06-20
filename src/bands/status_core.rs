@@ -28,6 +28,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         samba,
         network: network.clone(),
         local_ai: local_ai_status(),
+        controllers: controller_status(),
         updates: updates_status(),
         system: system_admin_status(&network, &hostname),
         library,

@@ -24,6 +24,7 @@
     "status-network",
     "status-system",
     "status-library",
+    "status-controllers",
     "local-ai-config",
     "local-ai-runtime",
     "surface",

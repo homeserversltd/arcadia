@@ -29,6 +29,7 @@ pub struct ConsoleStatus {
     pub network: NetworkStatus,
     pub library: LibraryStatus,
     pub local_ai: LocalAiStatus,
+    pub controllers: ControllerStatus,
     pub updates: UpdatesStatus,
     pub system: SystemAdminStatus,
     pub ui_contract: UiContract,
@@ -100,6 +101,38 @@ pub struct SystemServiceStatus {
     pub detail: String,
     pub action: Option<String>,
     pub endpoint: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerStatus {
+    pub state: String,
+    pub detected_count: usize,
+    pub primary_device: String,
+    pub last_scan: String,
+    pub devices: Vec<ControllerDeviceStatus>,
+    pub emulators: Vec<EmulatorControllerStatus>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerDeviceStatus {
+    pub name: String,
+    pub handler: String,
+    pub kind: String,
+    pub path: String,
+    pub state: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmulatorControllerStatus {
+    pub emulator: String,
+    pub command: String,
+    pub state: String,
+    pub config_path: String,
+    pub mapping_path: String,
+    pub profile: String,
 }
 
 #[derive(Clone, Serialize)]

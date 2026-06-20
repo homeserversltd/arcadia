@@ -37,6 +37,7 @@
             "view-sync",
             "view-storage",
             "view-local-ai",
+            "view-controllers",
             "view-network",
             "view-access-pin",
             "view-updates",
@@ -49,6 +50,7 @@
             "Storage",
             "Sync",
             "Local AI",
+            "Controls",
             "Updates",
             "Access\nPIN",
         ] {
@@ -164,9 +166,9 @@
             .find("id=\"view-local-ai\"")
             .expect("local ai view starts");
         let local_ai_end = rendered[local_ai_start..]
-            .find("id=\"view-network\"")
+            .find("id=\"view-controllers\"")
             .map(|offset| local_ai_start + offset)
-            .expect("network view follows local ai");
+            .expect("controllers view follows local ai");
         let local_ai_html = &rendered[local_ai_start..local_ai_end];
 
         assert!(
@@ -181,6 +183,56 @@
         assert!(UX_CSS.contains("--ux-button-min-height: 34px;"));
         assert!(UX_CSS.contains("--ux-button-padding-block: 7px;"));
         assert!(UX_CSS.contains("--ux-button-padding-inline: 10px;"));
+    }
+
+
+    #[test]
+    fn controllers_view_is_single_pane_for_controller_mapping() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let controllers_start = rendered
+            .find("id=\"view-controllers\"")
+            .expect("controllers view starts");
+        let controllers_end = rendered[controllers_start..]
+            .find("id=\"view-network\"")
+            .map(|offset| controllers_start + offset)
+            .expect("network follows controllers");
+        let controllers_html = &rendered[controllers_start..controllers_end];
+
+        for required in [
+            "data-view=\"controllers\"",
+            "data-view-panel=\"controllers\"",
+            "Controller manager",
+            "Detected devices",
+            "Default profile",
+            "RetroArch",
+            "Dolphin",
+            "DuckStation",
+            "PCSX2",
+            "PPSSPP",
+            "data-action=\"controllers-rescan\"",
+            "data-action=\"controllers-test\"",
+            "Controller mapping",
+        ] {
+            assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
+        }
+        for forbidden in [
+            "Controller tutorial",
+            "Developer",
+            "Debug",
+            "Arcadia scaffold",
+        ] {
+            assert!(!controllers_html.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
+        }
+        assert!(APP_JS.contains("action === 'controllers-rescan' || action === 'controllers-test'"));
+        assert!(APP_CSS.contains(".controllers-hero"));
+        assert!(APP_CSS.contains(".emulator-controller-grid"));
+        assert!(include_str!("../../src/bands/status_controllers.rs").contains("/proc/bus/input/devices"));
     }
 
 

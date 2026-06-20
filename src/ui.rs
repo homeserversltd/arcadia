@@ -5,11 +5,12 @@ use crate::{
     StorageCategoryStatus, GAMES_ROOT, GAME_SYSTEMS,
 };
 
-const VIEWS: [(&str, &str, &str); 8] = [
+const VIEWS: [(&str, &str, &str); 9] = [
     ("home", "⌂", "Home"),
     ("sync", "↻", "Sync"),
     ("storage", "▰", "Storage"),
     ("local-ai", "◉", "Local AI"),
+    ("controllers", "◈", "Controls"),
     ("network", "◌", "Network"),
     ("access-pin", "●", "Access\nPIN"),
     ("updates", "⬆", "Updates"),
@@ -38,6 +39,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (sync_view(status))
                             (storage_view(status))
                             (ai_model_view(status))
+                            (controllers_view(status))
                             (network_view(status))
                             (access_pin_view(status))
                             (updates_view(status))
@@ -1345,6 +1347,111 @@ fn human_bytes(bytes: u64) -> String {
         format!("{:.1} GB", gib)
     } else {
         format!("{} MB", bytes / 1024 / 1024)
+    }
+}
+
+fn controllers_view(status: &ConsoleStatus) -> Markup {
+    let connected = status.controllers.detected_count > 0;
+    let hero_class = if connected { "available" } else { "disabled" };
+    view_shell(
+        "controllers",
+        "",
+        "",
+        "",
+        html! {
+            section class=(format!("controllers-hero controllers-hero--{}", hero_class)) aria-label="Controller manager" data-controller-state=(status.controllers.state) {
+                div class="controllers-symbol" aria-hidden="true" { "◈" }
+                div class="controllers-hero-copy" {
+                    span { "Controllers" }
+                    strong { (if connected { status.controllers.primary_device.as_str() } else { "Pair or plug in a controller" }) }
+                    p { (status.controllers.detected_count) " device(s) · scan " (status.controllers.last_scan) }
+                }
+                div class="controllers-hero-actions" {
+                    (action_button(ButtonVariant::Primary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
+                    @if connected { (action_button(ButtonVariant::Secondary, "Test input", "controllers-test", "/api/actions/controllers-test")) }
+                    @else { button class="btn btn--secondary" type="button" disabled title="A controller must be detected before the input test can run." { "Test input" } }
+                }
+            }
+
+            section class="controllers-grid" aria-label="Detected controllers and emulator mappings" {
+                article class="controllers-panel controllers-panel--devices" {
+                    div class="controllers-panel-head" {
+                        strong { "Detected devices" }
+                        span class=(format!("system-status system-status--{}", if connected { "available" } else { "disabled" })) { (if connected { "Ready" } else { "Waiting" }) }
+                    }
+                    @if status.controllers.devices.is_empty() {
+                        div class="empty-state empty-state--compact" { strong { "No gamepad detected" } span { "USB, Bluetooth, SDL, and evdev devices appear here after scan." } }
+                    } @else {
+                        div class="controller-device-list" {
+                            @for device in &status.controllers.devices {
+                                article class="controller-device-card" data-controller-device=(device.handler) {
+                                    div { strong { (device.name) } span { (device.kind) " · " (device.state) } }
+                                    code { (device.path) }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                article class="controllers-panel controllers-panel--profile" {
+                    div class="controllers-panel-head" {
+                        strong { "Default profile" }
+                        span class="system-status system-status--unknown" { "Shared" }
+                    }
+                    div class="controller-profile-stack" {
+                        (controller_profile_row("South / Confirm", "A / Cross", connected))
+                        (controller_profile_row("East / Back", "B / Circle", connected))
+                        (controller_profile_row("Start / Menu", "Start / Options", connected))
+                        (controller_profile_row("Guide", "Home / PS / Xbox", connected))
+                    }
+                    div class="inline-actions inline-actions--compact controllers-actions" {
+                        @if connected { (modal_button(ButtonVariant::Primary, "Map buttons", "Controller mapping", "Mapping editor backend is the next controller module: scan and test are live now; saved per-emulator profiles will write to the listed config paths.")) }
+                        @else { button class="btn btn--primary" type="button" disabled title="Connect a controller before mapping buttons." { "Map buttons" } }
+                        (modal_button(ButtonVariant::Secondary, "Calibrate", "Controller calibration", "Calibration will bind to evdev/SDL once the controller module is connected."))
+                    }
+                }
+            }
+
+            section class="emulator-controller-grid" aria-label="Emulator controller profiles" {
+                @for emulator in &status.controllers.emulators {
+                    (emulator_controller_card(emulator, connected))
+                }
+            }
+        },
+    )
+}
+
+fn controller_profile_row(action: &str, binding: &str, enabled: bool) -> Markup {
+    html! {
+        div class=(if enabled { "controller-profile-row" } else { "controller-profile-row controller-profile-row--disabled" }) {
+            span { (action) }
+            strong { (if enabled { binding } else { "Waiting for device" }) }
+        }
+    }
+}
+
+fn emulator_controller_card(emulator: &crate::EmulatorControllerStatus, connected: bool) -> Markup {
+    let state_class = match emulator.state.as_str() {
+        "configured" => "available",
+        "installed" => "starting",
+        _ => "disabled",
+    };
+    html! {
+        article class="emulator-controller-card" data-emulator=(emulator.command) data-state=(emulator.state) {
+            div class="controllers-panel-head" {
+                strong { (emulator.emulator) }
+                span class=(format!("system-status system-status--{}", state_class)) { (title_case_state_like(&emulator.state)) }
+            }
+            p class="emulator-profile-line" title=(format!("Config: {} · Mapping: {}", emulator.config_path, emulator.mapping_path)) { (emulator.profile) }
+            div class="inline-actions inline-actions--compact controllers-actions" {
+                @if connected && emulator.state != "unavailable" {
+                    (modal_button(ButtonVariant::Primary, "Assign", &format!("{} mapping", emulator.emulator), "Select the detected controller, then write this emulator profile when the controller module is connected."))
+                } @else {
+                    button class="btn btn--primary" type="button" disabled title=(if !connected { "Connect a controller before assigning emulator mappings." } else { "Install this emulator before assigning a profile." }) { "Assign" }
+                }
+                (modal_button(ButtonVariant::Secondary, "Details", &format!("{} controller paths", emulator.emulator), &format!("Command: {}\nConfig: {}\nMapping: {}", emulator.command, emulator.config_path, emulator.mapping_path)))
+            }
+        }
     }
 }
 
