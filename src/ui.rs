@@ -1574,8 +1574,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         }
                     }
                     div class="inline-actions inline-actions--compact controllers-actions" {
-                        @if connected { (action_button(ButtonVariant::Primary, "Save profile", "controllers-save-profile", "/api/actions/controllers-save-profile")) }
-                        @else { button class="btn btn--primary" type="button" disabled title="Connect a controller before saving a profile." { "Save profile" } }
+                        (action_button(ButtonVariant::Primary, "Save profile", "controllers-save-profile", "/api/actions/controllers-save-profile"))
                         (modal_button(ButtonVariant::Secondary, "Calibrate", "Calibration", "Rotate sticks and squeeze triggers; active axes light on the controller face."))
                     }
                 }
@@ -1754,6 +1753,21 @@ fn controller_bind_step_card(step: &crate::ControllerBindStepStatus, enabled: bo
     }
 }
 
+fn emulator_action_slug(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string()
+}
+
 fn emulator_controller_card(emulator: &crate::EmulatorControllerStatus, connected: bool) -> Markup {
     let state_class = match emulator.state.as_str() {
         "configured" => "available",
@@ -1770,13 +1784,9 @@ fn emulator_controller_card(emulator: &crate::EmulatorControllerStatus, connecte
             div class="emulator-controller-meter" aria-hidden="true" { span class=(format!("emulator-controller-meter-fill emulator-controller-meter-fill--{}", state_class)) {} }
             p class="emulator-profile-line" title=(format!("Config: {} · Mapping: {}", emulator.config_path, emulator.mapping_path)) { (emulator.profile) }
             div class="inline-actions inline-actions--compact controllers-actions" {
-                @if connected && emulator.emulator == "RetroArch" && emulator.state != "not installed" {
-                    (action_button(ButtonVariant::Primary, "Assign", "controllers-assign-retroarch", "/api/actions/controllers-assign-retroarch"))
-                } @else if connected && emulator.state != "not installed" {
-                    button class="btn btn--primary" type="button" disabled title="This emulator assignment follows after its backend writer lands." { "Assign" }
-                } @else {
-                    button class="btn btn--primary" type="button" disabled title=(if !connected { "Connect a controller before assigning emulator mappings." } else { "Install this emulator before assigning a profile." }) { "Assign" }
-                }
+                @let action = format!("controllers-assign-{}", emulator_action_slug(&emulator.emulator));
+                @let endpoint = format!("/api/actions/{}", action);
+                (action_button(ButtonVariant::Primary, if connected { "Assign" } else { "Stage" }, &action, &endpoint))
                 (modal_button(ButtonVariant::Secondary, "Details", &format!("{} controller paths", emulator.emulator), &format!("Command: {}\nConfig: {}\nMapping: {}", emulator.command, emulator.config_path, emulator.mapping_path)))
             }
         }

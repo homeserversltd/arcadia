@@ -243,8 +243,28 @@ async fn main() -> anyhow_free::Result<()> {
             post(action_controllers_save_profile),
         )
         .route(
+            "/api/actions/controllers-bind",
+            post(action_controllers_bind),
+        )
+        .route(
             "/api/actions/controllers-assign-retroarch",
             post(action_controllers_assign_retroarch),
+        )
+        .route(
+            "/api/actions/controllers-assign-dolphin",
+            post(action_controllers_assign_dolphin),
+        )
+        .route(
+            "/api/actions/controllers-assign-duckstation",
+            post(action_controllers_assign_duckstation),
+        )
+        .route(
+            "/api/actions/controllers-assign-pcsx2",
+            post(action_controllers_assign_pcsx2),
+        )
+        .route(
+            "/api/actions/controllers-assign-ppsspp",
+            post(action_controllers_assign_ppsspp),
         )
         .route(
             "/api/actions/clear-artwork-cache",

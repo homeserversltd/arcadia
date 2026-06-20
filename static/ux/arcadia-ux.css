@@ -164,3 +164,12 @@
 .ux-gamepad-face--x { left: 0; top: 38px; }
 .ux-gamepad-face--b { right: 0; top: 38px; }
 .ux-gamepad-face--a { left: 38px; bottom: 0; background: color-mix(in srgb, var(--orange-strong) 18%, var(--theme-button-surface)); }
+
+/* Controller programmer selected target. */
+.ux-gamepad-control.is-selected,
+.ux-gamepad-stick.is-selected,
+.ux-gamepad-dpad-arm.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-2);
+}

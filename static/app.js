@@ -710,11 +710,39 @@ function updateControllerLiveInput(data) {
   }
 }
 
+function bindControllerProgramming() {
+  const panel = document.querySelector('[data-view-panel="controllers"]');
+  if (!panel) return;
+  let selected = null;
+  panel.querySelectorAll('button[data-controller-control]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const control = button.dataset.controllerControl || '';
+      if (!control || control === 'D-pad') return;
+      selected = control;
+      panel.querySelectorAll('[data-controller-control]').forEach((node) => node.classList.toggle('is-selected', node === button));
+      button.disabled = true;
+      try {
+        const data = await postJson('/api/actions/controllers-bind', { control });
+        PopupManager.showToast(data.message || `${control} mapped`, data.ok ? 'success' : 'error');
+        const label = button.querySelector('span, em');
+        if (label && data.stdout) label.textContent = data.stdout.replace('button ', 'B').replace('axis ', 'AX').replace('hat 0', 'Hat');
+      } catch (_) {
+        PopupManager.showToast(`${control} mapping failed`, 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+  window.arcadiaControllerProgramming = { selectedControl: () => selected };
+}
+
 function bindControllerLiveInput() {
   const root = document.querySelector('[data-controller-live-input]');
   if (!root) return;
+  bindControllerProgramming();
   const poll = async () => {
-    const active = document.querySelector('[data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
+    const active = document.querySelector('[data-view-panel="controllers"].is-active, [data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
     if (!active) return;
     try { updateControllerLiveInput(await getJson('/api/controllers/input')); } catch (_) {}
   };

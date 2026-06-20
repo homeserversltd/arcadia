@@ -233,6 +233,12 @@
             "PPSSPP",
             "data-action=\"controllers-rescan\"",
             "data-action=\"controllers-test\"",
+            "data-action=\"controllers-save-profile\"",
+            "data-action=\"controllers-assign-retroarch\"",
+            "data-action=\"controllers-assign-dolphin\"",
+            "data-action=\"controllers-assign-duckstation\"",
+            "data-action=\"controllers-assign-pcsx2\"",
+            "data-action=\"controllers-assign-ppsspp\"",
             "data-controller-live-input",
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
@@ -268,7 +274,40 @@
         assert!(controller_backend.contains("/proc/bus/input/devices"));
         assert!(controller_backend.contains("Keyboard") || controller_backend.contains("keyboard"));
         assert!(controller_backend.contains("event-joystick"));
-        assert!(controller_backend.contains("controllers-assign-retroarch"));
+        assert!(controller_backend.contains("action_controllers_assign_retroarch"));
+        assert!(controller_backend.contains("action_controllers_assign_dolphin"));
+        assert!(controller_backend.contains("action_controllers_assign_duckstation"));
+        assert!(controller_backend.contains("action_controllers_assign_pcsx2"));
+        assert!(controller_backend.contains("action_controllers_assign_ppsspp"));
+        assert!(controller_backend.contains("write_emulator_profile"));
+        assert!(controller_backend.contains("ControllerBindRequest"));
+        assert!(APP_JS.contains("bindControllerProgramming"));
+        assert!(APP_JS.contains("/api/actions/controllers-bind"));
+    }
+
+
+    #[test]
+    fn controller_profile_writers_stage_every_known_emulator() {
+        let root = std::env::temp_dir().join(format!("arcadia-controller-writer-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut bindings = default_controller_bindings();
+        upsert_binding(&mut bindings, "A", "button 9");
+        let profile = root.join("default.json");
+        write_controller_profile(&profile, "Virtual Arcadia Gamepad", "virtual0", &bindings)
+            .expect("profile writes");
+        let profile_text = std::fs::read_to_string(&profile).expect("profile text");
+        assert!(profile_text.contains("arcadia.controller_profile.v1"));
+        assert!(profile_text.contains("button 9"));
+
+        for emulator in ["RetroArch", "Dolphin", "DuckStation", "PCSX2", "PPSSPP"] {
+            let path = write_emulator_profile(emulator, "Virtual Arcadia Gamepad", "virtual0", &bindings, false, &root)
+                .unwrap_or_else(|error| panic!("{emulator} writer failed: {error}"));
+            let body = std::fs::read_to_string(&path).expect("emulator profile text");
+            assert!(body.contains("Virtual Arcadia Gamepad"));
+            assert!(body.contains("mode=staged-for-install"));
+            assert!(body.contains("button_9") || body.contains("button 9") || body.contains("9"));
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
 
