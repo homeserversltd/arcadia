@@ -151,7 +151,17 @@ fn header(status: &ConsoleStatus) -> Markup {
                 (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
                 (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
                 (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin"))
+                (theme_cycle_button())
             }
+        }
+    }
+}
+
+fn theme_cycle_button() -> Markup {
+    html! {
+        button class="status-badge status-badge--theme" type="button" data-theme-cycle="true" data-theme-current="ember-aubergine" title="Theme Ember Aubergine" aria-label="Theme Ember Aubergine" {
+            span { "THEME" }
+            strong class="theme-name" { "ember aubergine" }
         }
     }
 }
