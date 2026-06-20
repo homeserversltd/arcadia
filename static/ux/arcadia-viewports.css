@@ -25,6 +25,8 @@
   .local-ai-hero { grid-template-columns: auto minmax(0, 1fr); }
   .local-ai-hero-endpoint { grid-column: 1 / -1; }
   .local-ai-state-list, .local-ai-access-grid { grid-template-columns: 1fr; }
+  .sync-orb-stage { grid-template-columns: auto minmax(0, 1fr); }
+  .sync-orb-actions { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   html, body { height: auto; overflow-y: auto; }
@@ -61,6 +63,12 @@
   .modal-actions .btn { width: 100%; }
   .sync-add-games-modal { inline-size: 100%; }
   .sync-kind-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sync-orb-stage { grid-template-columns: 1fr; justify-items: center; text-align: center; }
+  .sync-orb-copy { justify-items: center; }
+  .sync-orb-lanes { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); text-align: left; }
+  .sync-orb-actions { width: 100%; grid-template-columns: 1fr; }
+  .sync-game-card { grid-template-columns: auto minmax(0, 1fr); }
+  .sync-game-state { grid-column: 1 / -1; justify-items: start; grid-template-columns: repeat(2, max-content); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 

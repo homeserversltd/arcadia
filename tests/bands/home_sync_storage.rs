@@ -334,10 +334,15 @@
             "Add games",
             "sync-running-panel",
             "sync-admission-board",
-            "sync-marquee",
+            "sync-orb-board",
+            "sync-orb-stage",
+            "ux-sync-orb",
+            "sync-orb-lanes",
+            r#"data-sync-debt="none""#,
+            r#"data-beauty-debt="none""#,
             "sync-system-blades",
             "sync-admitted-shelf",
-            "Library admission board",
+            "Sync orb",
         ] {
             assert!(sync_html.contains(required), "missing appliance sync marker: {required}");
         }
@@ -385,7 +390,8 @@
         assert!(sync_html.contains("data-storage-health=\"OK\""));
         assert!(VIEWPORT_CSS.contains("prefers-reduced-motion"));
         assert!(APP_CSS.contains("sync-scan-dot"));
-        assert!(APP_CSS.contains("sync-intake-panel"));
+        assert!(APP_CSS.contains("sync-orb-stage"));
+        assert!(UX_CSS.contains("ux-sync-orb"));
         assert!(!sync_html.contains("provider-keys-form"));
         assert!(!sync_html.contains("screenscraper_api_key"));
         assert!(APP_JS.contains("openSyncAddGamesModal"));
@@ -437,9 +443,10 @@
 
         let before_rendered = ui::layout(&status).into_string();
         let before = sync_slice(&before_rendered);
-        assert!(before.contains("0 games admitted"));
+        assert!(before.contains("Add games"));
         assert!(before.contains("No games admitted yet"));
-        assert!(before.contains("Library admission board"));
+        assert!(before.contains("Sync orb"));
+        assert!(before.contains(r#"data-sync-debt="none""#));
         assert!(before.contains("Add games"));
         assert!(before.contains("Sync games"));
         assert!(!before.contains("/home/owner/Games"));
@@ -455,9 +462,10 @@
         status.library.unsynced_removed = 0;
         let during_rendered = ui::layout(&status).into_string();
         let during = sync_slice(&during_rendered);
-        assert!(during.contains("Library admission board"));
+        assert!(during.contains("Sync orb"));
         assert!(during.contains("classify"));
-        assert!(during.contains("Sync running"));
+        assert!(during.contains("Syncing"));
+        assert!(during.contains(r#"data-sync-orb-state="syncing""#));
         assert!(during.contains("sync-running-panel"));
         assert!(during.contains("disabled"));
         assert!(!during.contains("GameScope"));
@@ -474,11 +482,11 @@
         status.library.unsynced_removed = 0;
         let after_rendered = ui::layout(&status).into_string();
         let after = sync_slice(&after_rendered);
-        assert!(after.contains("games admitted"));
-        assert!(after.contains("Library admission board"));
-        assert!(after.contains("3 games"));
+        assert!(after.contains("Games current"));
+        assert!(after.contains("Sync orb"));
+        assert!(after.contains("3 admitted"));
         assert!(after.contains("Check again"));
-        assert!(after.contains("artwork paired"));
+        assert!(after.contains(r#"data-sync-debt="none""#));
         assert!(!after.contains("Games synced. No new games found."));
         assert!(!after.contains("0 new · 0 failed"));
         assert!(!after.contains("Receipt ready"));
@@ -502,7 +510,7 @@
         status.library.total_synced_entries = 3;
         status.library.artwork_paired_total = 2;
         status.library.artwork_missing = 1;
-        status.library.failed_games = 1;
+        status.library.failed_games = 0;
         status.library.skipped_games = 0;
         status.library.game_system_tally = vec![
             GameSystemTally { system: "GBA".to_string(), admitted: 2, artwork_paired: 2, artwork_missing: 0 },
@@ -535,10 +543,14 @@
         let sync_html = sync_slice(&rendered);
         for required in [
             "sync-admission-board",
-            "sync-marquee",
-            "sync-marquee-orb",
-            "3 games admitted",
-            "2 artwork paired · 1 need covers · 1 rejected",
+            "sync-orb-board",
+            "sync-orb-stage",
+            "ux-sync-orb",
+            "Games current",
+            "3 admitted · 1 missing artwork",
+            "Artwork missing",
+            r#"data-sync-debt="none""#,
+            r#"data-beauty-debt="caveat""#,
             "sync-system-blades",
             "sync-system-blade",
             "sync-admitted-shelf",
@@ -558,7 +570,7 @@
         }
         for required_css in [
             ".sync-admission-board",
-            ".sync-marquee",
+            ".sync-orb-stage",
             "conic-gradient",
             ".sync-system-blade",
             ".sync-admitted-shelf",
@@ -567,6 +579,61 @@
         ] {
             assert!(APP_CSS.contains(required_css), "missing admission board CSS: {required_css}");
         }
+    }
+
+    #[test]
+    fn sync_orb_waiting_number_is_actual_admission_debt() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "success".to_string();
+        status.library.sync_state = "idle".to_string();
+        status.library.total_detected_games = 100;
+        status.library.total_synced_entries = 99;
+        status.library.unsynced_added = 1;
+        status.library.unsynced_changed = 0;
+        status.library.unsynced_removed = 0;
+        let rendered = ui::layout(&status).into_string();
+        let sync_html = sync_slice(&rendered);
+        assert!(sync_html.contains("1 games waiting"));
+        assert!(sync_html.contains(r#"data-sync-orb-state="waiting""#));
+        assert!(sync_html.contains(r#"data-sync-debt="admission""#));
+        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">1</span>"#));
+        assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">100</span>"#));
+    }
+
+    #[test]
+    fn sync_orb_separates_admission_debt_from_artwork_caveat() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "success".to_string();
+        status.library.sync_state = "idle".to_string();
+        status.library.sync_needed = false;
+        status.library.total_synced_entries = 12;
+        status.library.artwork_paired_total = 8;
+        status.library.artwork_missing = 4;
+        status.library.unsynced_added = 0;
+        status.library.unsynced_changed = 0;
+        status.library.unsynced_removed = 0;
+        let rendered = ui::layout(&status).into_string();
+        let sync_html = sync_slice(&rendered);
+        assert!(sync_html.contains("Games current"));
+        assert!(sync_html.contains("12 admitted · 4 missing artwork"));
+        assert!(sync_html.contains(r#"data-sync-debt="none""#));
+        assert!(sync_html.contains(r#"data-beauty-debt="caveat""#));
+        assert!(sync_html.contains(r#"data-sync-orb-state="caveat""#));
+        assert!(sync_html.contains("Check again"));
+        assert!(!sync_html.contains("Needs sync"));
+        assert!(!sync_html.contains("Sync needed"));
     }
 
     #[test]
@@ -588,7 +655,8 @@
         let complaint = sync_slice(&complaint_rendered);
         assert!(complaint.contains(r#"data-sync-state="error""#));
         assert!(complaint.contains(r#"data-sync-result="error""#));
-        assert!(complaint.contains("Rejected"));
+        assert!(complaint.contains("1 games waiting"));
+        assert!(complaint.contains("Attention"));
         assert!(!complaint.contains("Sync failed"));
         assert!(!complaint.contains("Needs attention"));
         assert!(!complaint.contains(">Ledger<"));
@@ -604,7 +672,8 @@
         status.library.unsynced_removed = 2;
         let eject_rendered = ui::layout(&status).into_string();
         let eject = sync_slice(&eject_rendered);
-        assert!(eject.contains("Rejected"));
+        assert!(eject.contains("games waiting"));
+        assert!(eject.contains("Ejected"));
         assert!(!eject.contains("Sync needed"));
         assert!(!eject.contains("2 games were ejected and need attention"));
         assert!(!eject.contains("/home/owner/Games"));
@@ -659,10 +728,10 @@
         assert!(!sync_html.contains("Synced"));
         assert!(rendered.contains("Games: 3 ROMs"));
         assert!(!sync_html.contains("Last sync complete"));
-        assert!(sync_html.contains("games admitted"));
-        assert!(sync_html.contains("Scanned"));
+        assert!(sync_html.contains("Games current"));
+        assert!(sync_html.contains("3 admitted"));
         assert!(sync_html.contains("Admitted"));
-        assert!(sync_html.contains("need covers"));
+        assert!(sync_html.contains("Artwork missing"));
 
         status.library.total_detected_games = 0;
         status.library.total_synced_entries = 0;
@@ -675,8 +744,7 @@
         let zero_sync = sync_slice(&zero);
         assert!(zero.contains("Games: 0 ROMs"));
         assert!(!zero_sync.contains("Synced"));
-        assert!(zero.contains("Games: 0 ROMs"));
-        assert!(zero_sync.contains("games admitted"));
+        assert!(zero_sync.contains("Add games"));
         assert!(zero_sync.contains("sync-shelf-empty"));
         assert!(!zero_sync.contains("0 new · 0 failed"));
         assert!(!zero_sync.contains("/home/owner/Games"));

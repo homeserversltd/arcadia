@@ -802,35 +802,55 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
     let admitted = status.library.total_synced_entries;
-    let artwork_paired = status.library.artwork_paired_total;
     let artwork_missing = status.library.artwork_missing;
     let rejected = status.library.failed_games + status.library.skipped_games;
+    let orb_state = sync_orb_state(status, pending_changes, rejected);
+    let orb_label = sync_orb_label(status, orb_state, pending_changes, rejected);
+    let orb_number = sync_orb_number(status, pending_changes, rejected);
+    let orb_subline = sync_orb_subline(status, pending_changes, rejected);
+    let primary_label = sync_primary_action_label(status, pending_changes, rejected);
+    let primary_disabled = storage_blocked || status.library.last_sync_state == "running";
+    let sync_debt = if pending_changes > 0 {
+        "admission"
+    } else {
+        "none"
+    };
+    let beauty_debt = if artwork_missing > 0 {
+        "caveat"
+    } else {
+        "none"
+    };
     view_shell(
         "sync",
         "",
         "",
         "",
         html! {
-            section class="sync-admission-board" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Library admission board" {
-                div class="sync-marquee" data-sync-result=(sync_result_kind(status)) {
-                    div class="sync-marquee-orb" aria-hidden="true" {
-                        span class="sync-marquee-orb-core" { (admitted) }
+            section class="sync-admission-board sync-orb-board" data-sync-root="true" data-sync-orb-state=(orb_state) data-sync-debt=(sync_debt) data-beauty-debt=(beauty_debt) data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync orb" {
+                div class="sync-orb-stage ux-sync-orb-stage" data-sync-result=(sync_result_kind(status)) {
+                    div class=(format!("ux-sync-orb ux-sync-orb--{}", orb_state)) aria-hidden="true" {
+                        span class="ux-sync-orb-ring" {}
+                        span class="ux-sync-orb-core" { (orb_number) }
+                        span class="ux-sync-orb-glint" {}
                     }
-                    div class="sync-marquee-copy" {
-                        strong class="sync-marquee-verdict" { (admitted) " games admitted" }
-                        span class="sync-marquee-subline" { (artwork_paired) " artwork paired · " (artwork_missing) " need covers · " (rejected) " rejected" }
-                        div class="sync-marquee-chips" aria-label="Admission totals" {
-                            (sync_metric_chip("Scanned", status.library.total_detected_games, "neutral"))
-                            (sync_metric_chip("Admitted", admitted, "good"))
-                            (sync_metric_chip("Artwork", artwork_paired, if artwork_missing == 0 { "good" } else { "warn" }))
-                            (sync_metric_chip("Rejected", rejected, if rejected == 0 { "neutral" } else { "bad" }))
+                    div class="sync-orb-copy" {
+                        strong class="sync-orb-verdict" { (orb_label) }
+                        span class="sync-orb-subline" { (orb_subline) }
+                        div class="sync-orb-lanes" aria-label="Sync debt lanes" {
+                            (sync_lane_chip("Waiting", pending_changes, if pending_changes > 0 { "warn" } else { "quiet" }))
+                            (sync_lane_chip("New", status.library.unsynced_added, if status.library.unsynced_added > 0 { "warn" } else { "quiet" }))
+                            (sync_lane_chip("Changed", status.library.unsynced_changed, if status.library.unsynced_changed > 0 { "warn" } else { "quiet" }))
+                            (sync_lane_chip("Ejected", status.library.unsynced_removed, if status.library.unsynced_removed > 0 { "bad" } else { "quiet" }))
+                            (sync_lane_chip("Admitted", admitted, "good"))
+                            (sync_lane_chip("Artwork missing", artwork_missing, if artwork_missing > 0 { "caveat" } else { "good" }))
+                            (sync_lane_chip("Attention", rejected, if rejected > 0 { "bad" } else { "quiet" }))
                         }
                     }
-                    div class="sync-marquee-actions" aria-label="Library admission actions" {
-                        @if storage_blocked || status.library.last_sync_state == "running" {
-                            button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Sync running" }) }
+                    div class="sync-orb-actions" aria-label="Sync actions" {
+                        @if primary_disabled {
+                            button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Syncing" }) }
                         } @else {
-                            (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync games" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
+                            (action_button(ButtonVariant::Primary, primary_label, "sync-games", "/api/actions/sync-games"))
                         }
                         button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
                     }
@@ -856,8 +876,8 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                     }
                     div class="sync-admission-phase" aria-hidden="true" {
                         span class="sync-phase-pill" { "classify" }
-                        span class="sync-phase-pill" { "artwork" }
-                        span class="sync-phase-pill" { "steam" }
+                        span class="sync-phase-pill" { "admit" }
+                        span class="sync-phase-pill" { "beautify" }
                     }
                 }
 
@@ -870,8 +890,99 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn sync_metric_chip(label: &str, value: u64, tone: &str) -> Markup {
-    html! { span class=(format!("sync-metric-chip sync-metric-chip--{}", tone)) { em { (label) } strong { (value) } } }
+fn sync_orb_state(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> &'static str {
+    if status.library.last_sync_state == "running" {
+        "syncing"
+    } else if pending_changes > 0 {
+        "waiting"
+    } else if rejected > 0 {
+        "attention"
+    } else if status.library.artwork_missing > 0 && status.library.total_synced_entries > 0 {
+        "caveat"
+    } else {
+        "current"
+    }
+}
+
+fn sync_orb_label(
+    status: &ConsoleStatus,
+    orb_state: &str,
+    pending_changes: u64,
+    rejected: u64,
+) -> String {
+    match orb_state {
+        "syncing" => format!(
+            "Syncing {} games",
+            pending_changes
+                .max(status.library.total_detected_games)
+                .max(1)
+        ),
+        "waiting" => format!("{} games waiting", pending_changes),
+        "attention" => format!("{} need attention", rejected),
+        "caveat" | "current" if status.library.total_synced_entries == 0 => "Add games".to_string(),
+        "caveat" | "current" => "Games current".to_string(),
+        _ => "Games current".to_string(),
+    }
+}
+
+fn sync_orb_number(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> String {
+    if status.library.last_sync_state == "running" {
+        pending_changes
+            .max(status.library.total_detected_games)
+            .max(1)
+            .to_string()
+    } else if pending_changes > 0 {
+        pending_changes.to_string()
+    } else if rejected > 0 {
+        rejected.to_string()
+    } else {
+        status.library.total_synced_entries.to_string()
+    }
+}
+
+fn sync_orb_subline(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> String {
+    if status.library.last_sync_state == "running" {
+        "Admitting games into the console library".to_string()
+    } else if pending_changes > 0 {
+        format!(
+            "{} new · {} changed · {} ejected",
+            status.library.unsynced_added,
+            status.library.unsynced_changed,
+            status.library.unsynced_removed
+        )
+    } else if rejected > 0 {
+        format!("{} rejected candidates need a fix", rejected)
+    } else if status.library.artwork_missing > 0 && status.library.total_synced_entries > 0 {
+        format!(
+            "{} admitted · {} missing artwork",
+            status.library.total_synced_entries, status.library.artwork_missing
+        )
+    } else if status.library.total_synced_entries > 0 {
+        format!(
+            "{} admitted · artwork complete",
+            status.library.total_synced_entries
+        )
+    } else {
+        "No games admitted yet".to_string()
+    }
+}
+
+fn sync_primary_action_label(
+    status: &ConsoleStatus,
+    pending_changes: u64,
+    rejected: u64,
+) -> &'static str {
+    if pending_changes > 0 || !sync_has_history(status) {
+        "Sync games"
+    } else if rejected > 0 {
+        "Review"
+    } else {
+        "Check again"
+    }
+}
+
+fn sync_lane_chip(label: &str, value: u64, tone: &str) -> Markup {
+    html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong { (value) } } }
 }
 
 fn sync_system_blades(status: &ConsoleStatus) -> Markup {

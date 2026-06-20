@@ -173,3 +173,62 @@
   outline-offset: 3px;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent), var(--shadow-2);
 }
+
+/* Sync Orb primitive: currentness, admission debt, beauty caveat, and attention in one appliance indicator. */
+.ux-sync-orb-stage { min-width: 0; }
+.ux-sync-orb {
+  --sync-orb-a: var(--theme-accent);
+  --sync-orb-b: var(--orange-strong);
+  position: relative;
+  width: clamp(104px, 13vw, 146px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  isolation: isolate;
+}
+.ux-sync-orb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(from -90deg, var(--sync-orb-a), var(--sync-orb-b), color-mix(in srgb, var(--sync-orb-a) 72%, var(--cream)), var(--sync-orb-a));
+  filter: drop-shadow(0 18px 34px color-mix(in srgb, var(--sync-orb-a) 28%, transparent));
+}
+.ux-sync-orb-ring {
+  position: absolute;
+  inset: 10px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in srgb, var(--cream) 22%, transparent);
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--theme-bg) 84%, #000), color-mix(in srgb, var(--theme-panel) 70%, #000));
+  z-index: 1;
+}
+.ux-sync-orb-core {
+  position: relative;
+  z-index: 2;
+  min-width: 72px;
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  color: var(--cream);
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 950;
+  letter-spacing: -.06em;
+}
+.ux-sync-orb-glint {
+  position: absolute;
+  z-index: 3;
+  top: 18%;
+  left: 26%;
+  width: 16%;
+  height: 16%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cream) 64%, transparent);
+  filter: blur(.3px);
+}
+.ux-sync-orb--current { --sync-orb-a: var(--theme-good); --sync-orb-b: var(--theme-accent); }
+.ux-sync-orb--waiting { --sync-orb-a: var(--theme-warning); --sync-orb-b: var(--orange-strong); }
+.ux-sync-orb--syncing { --sync-orb-a: var(--theme-accent); --sync-orb-b: var(--orange-strong); }
+.ux-sync-orb--attention { --sync-orb-a: var(--theme-bad); --sync-orb-b: var(--theme-warning); }
+.ux-sync-orb--caveat { --sync-orb-a: var(--theme-good); --sync-orb-b: var(--theme-warning); }
+
