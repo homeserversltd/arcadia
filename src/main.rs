@@ -6943,6 +6943,54 @@ mod tests {
     }
 
     #[test]
+    fn access_pin_view_is_router_style_single_toggle_panel() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+        let access_start = rendered
+            .find("<section id=\"view-access-pin\"")
+            .expect("access pin view starts");
+        let access_end = rendered[access_start..]
+            .find("<section id=\"view-updates\"")
+            .map(|offset| access_start + offset)
+            .expect("updates view follows access pin");
+        let access_html = &rendered[access_start..access_end];
+
+        for required in [
+            "Access mode",
+            "Require PIN for console access",
+            "Change access PIN",
+            "Default / reset PIN",
+            "Reset PIN to default",
+            "configured factory/default value",
+            "data-pin-required-toggle",
+            "role=\"switch\"",
+        ] {
+            assert!(access_html.contains(required), "missing {required}");
+        }
+        assert!(!access_html.contains("Require GUI PIN"));
+        assert!(!access_html.contains("Open Without PIN"));
+        assert_eq!(access_html.matches("data-pin-required-toggle").count(), 1);
+    }
+
+    #[test]
+    fn access_pin_script_persists_toggle_validates_change_and_confirms_reset() {
+        assert!(APP_JS.contains("postJson('/api/gui-pin/access', { pin_required: nextRequired })"));
+        assert!(APP_JS.contains("renderGuiPinMode(Boolean(data.pin_required))"));
+        assert!(APP_JS.contains("New PIN confirmation does not match."));
+        assert!(APP_JS.contains("New PIN must be at least 4 characters."));
+        assert!(APP_JS
+            .contains("postJson('/api/gui-pin/change', { current_pin: current, new_pin: next })"));
+        assert!(APP_JS.contains(
+            "window.confirm('Reset the access PIN to the console factory/default value?"
+        ));
+        assert!(APP_JS.contains("postJson('/api/gui-pin/reset-default', { confirm: 'RESET' })"));
+    }
+
+    #[test]
     fn transient_success_feedback_uses_toasts_not_message_divs() {
         assert!(!APP_CSS.contains(".message--success"));
         for line in APP_JS.lines().filter(|line| line.contains("setMessage(")) {
@@ -6955,7 +7003,12 @@ mod tests {
 
     #[test]
     fn human_text_font_sizes_stay_inside_ordinary_bounds() {
-        let allowed_large_icon_selectors = [".product-mark", ".launcher-icon", ".home-action-icon"];
+        let allowed_large_icon_selectors = [
+            ".product-mark",
+            ".launcher-icon",
+            ".home-action-icon",
+            ".access-pin-icon",
+        ];
 
         for (index, line) in APP_CSS.lines().enumerate() {
             if !line.contains("font-size:") {

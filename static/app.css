@@ -463,6 +463,29 @@ h3 { margin: 0 0 8px; font-size: 18px; }
 .message[hidden] { display: none; }
 .message--error { color: var(--bad); border-color: color-mix(in srgb, var(--theme-bad) 45%, transparent); }
 
+.access-pin-panel { display: grid; grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr); gap: 12px; max-width: 980px; }
+.access-pin-card { display: grid; gap: 12px; min-height: 0; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 52%, transparent)); box-shadow: 0 15px 36px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass); }
+.access-pin-card--mode { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-color: color-mix(in srgb, var(--theme-accent) 42%, transparent); background: linear-gradient(145deg, color-mix(in srgb, var(--theme-accent) 14%, transparent), color-mix(in srgb, var(--theme-bg-raised) 72%, transparent)); }
+.access-pin-card--change, .access-pin-card--reset { align-content: start; }
+.access-pin-card h3 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
+.access-pin-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.access-pin-state { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.access-pin-state strong { display: block; margin: 3px 0; color: var(--cream); font-size: 20px; line-height: 1.1; }
+.access-pin-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 16px; background: linear-gradient(145deg, var(--orange), var(--theme-danger-strong)); color: var(--theme-fg-inverse); font-size: 18px; box-shadow: 0 10px 24px color-mix(in srgb, var(--theme-accent) 24%, transparent); }
+.pin-toggle { display: inline-grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center; min-width: 260px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--theme-field-surface) 76%, transparent); color: var(--cream); font-weight: 900; cursor: pointer; }
+.pin-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.pin-toggle-track { position: relative; width: 50px; height: 28px; border-radius: 999px; border: 1px solid var(--theme-line-strong); background: color-mix(in srgb, var(--theme-idle) 40%, var(--theme-field-surface)); transition: background .16s ease, border-color .16s ease; }
+.pin-toggle-thumb { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px; background: var(--cream); box-shadow: 0 4px 12px var(--shadow); transition: transform .16s ease; }
+.pin-toggle input:checked + .pin-toggle-track { border-color: color-mix(in srgb, var(--theme-accent) 68%, transparent); background: linear-gradient(90deg, var(--orange), var(--orange-strong)); }
+.pin-toggle input:checked + .pin-toggle-track .pin-toggle-thumb { transform: translateX(22px); }
+.pin-toggle:focus-within { outline: 2px solid var(--orange-strong); outline-offset: 3px; }
+.pin-toggle-label { font-size: 13px; line-height: 1.2; }
+.pin-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.settings-form--pin { max-width: none; }
+.access-pin-reset-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 2px; }
+.access-pin-reset-row .btn { margin-left: auto; }
+.system-status--ok { color: var(--good); border-color: color-mix(in srgb, var(--theme-good) 42%, transparent); }
+
 .pin-auth-container { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--theme-accent) 16%, transparent), transparent 20rem), var(--aubergine-0); }
 .pin-auth-container[data-required="false"], body.pin-open .pin-auth-container, body[data-gui-pin-required="false"] .pin-auth-container { opacity: 0; visibility: hidden; pointer-events: none; }
 body[data-gui-pin-required="true"] .app-shell { opacity: 0; visibility: hidden; pointer-events: none; }
@@ -597,10 +620,10 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
 .active-warning-strip { margin-top: 8px; padding: 8px 10px; }
 .status-card-grid, .model-grid, .path-grid { gap: 8px; margin: 8px 0; }
 .status-card { min-height: 78px; padding: 9px; }
-.instruction-card, .folder-card, .settings-panel, .form-card, .active-model, .collapsible-log, .service-list, .storage-summary, .network-section, .network-summary-card, .network-card, .system-card { padding: 9px; margin: 7px 0; }
+.instruction-card, .folder-card, .settings-panel, .form-card, .active-model, .collapsible-log, .service-list, .storage-summary, .network-section, .network-summary-card, .network-card, .system-card, .access-pin-card { padding: 9px; margin: 7px 0; }
 h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-size: 16px; margin-bottom: 5px; }
 .section-heading { margin-bottom: 7px; }
-.section-heading p, .status-card p, .instruction-card p, .form-card p, .active-model p { line-height: 1.25; font-size: 12px; }
+.section-heading p, .status-card p, .instruction-card p, .form-card p, .active-model p, .access-pin-card p { line-height: 1.25; font-size: 12px; }
 .path-card { padding: 9px; }
 .path-card code { font-size: 15px; }
 .folder-list { gap: 6px; }
@@ -713,5 +736,15 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="network"] .network-service-row .system-row-actions { justify-content: flex-start; }
 .view[data-view-panel="network"] .network-service-row em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .view[data-view-panel="network"] .inline-actions--compact .btn:nth-child(n+3) { display: none; }
+.view[data-view-panel="access-pin"].is-active { display: grid; align-content: start; }
+.view[data-view-panel="access-pin"] .access-pin-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.view[data-view-panel="access-pin"] .access-pin-card--mode { grid-template-columns: minmax(0, 1fr) auto; }
+.view[data-view-panel="access-pin"] .access-pin-state strong { font-size: 16px; }
+.view[data-view-panel="access-pin"] .access-pin-icon { width: 30px; height: 30px; font-size: 13px; }
+.view[data-view-panel="access-pin"] .pin-toggle { min-width: 218px; padding: 7px 9px; }
+.view[data-view-panel="access-pin"] .pin-toggle-track { width: 44px; height: 24px; }
+.view[data-view-panel="access-pin"] .pin-toggle-thumb { width: 16px; height: 16px; }
+.view[data-view-panel="access-pin"] .pin-toggle input:checked + .pin-toggle-track .pin-toggle-thumb { transform: translateX(20px); }
+.view[data-view-panel="access-pin"] .pin-form-row { gap: 7px; }
 .view[data-view-panel="access-pin"] .instruction-card { display: none; }
 .view[data-view-panel="access-pin"] .form-card p { display: none; }

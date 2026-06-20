@@ -209,26 +209,30 @@ function bindGuiPinUnlock() {
   });
 }
 
+function renderGuiPinMode(required) {
+  document.body.dataset.guiPinRequired = String(required);
+  setPinIndicator(Boolean(required));
+  document.querySelectorAll('[data-pin-required-toggle]').forEach((toggle) => { toggle.checked = Boolean(required); });
+  document.querySelectorAll('[data-pin-mode-label]').forEach((node) => { node.textContent = required ? 'PIN required' : 'Open without PIN'; });
+  document.querySelectorAll('[data-pin-mode-copy]').forEach((node) => { node.textContent = required ? 'PIN required before accessing HomeConsole.' : 'HomeConsole opens without a PIN.'; });
+}
+
 function bindGuiPinAccess() {
-  document.querySelectorAll('[data-module="gui-pin-access"] .btn[data-pin-required]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const pinRequired = button.dataset.pinRequired === 'true';
-      const original = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Saving...';
+  document.querySelectorAll('[data-pin-required-toggle]').forEach((toggle) => {
+    toggle.addEventListener('change', async () => {
+      const nextRequired = Boolean(toggle.checked);
+      const previousRequired = !nextRequired;
+      toggle.disabled = true;
       try {
-        const data = await postJson('/api/gui-pin/access', { pin_required: pinRequired });
+        const data = await postJson('/api/gui-pin/access', { pin_required: nextRequired });
         PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved'), data.ok ? 'success' : 'error');
-        if (data.ok) {
-          document.body.dataset.guiPinRequired = String(data.pin_required);
-          setPinIndicator(Boolean(data.pin_required));
-        }
+        if (data.ok) renderGuiPinMode(Boolean(data.pin_required));
+        else renderGuiPinMode(previousRequired);
       } catch (_) {
+        renderGuiPinMode(previousRequired);
         PopupManager.showToast('GUI PIN access request failed.', 'error');
       } finally {
-        button.disabled = false;
-        button.textContent = original;
+        toggle.disabled = false;
       }
     });
   });
@@ -1243,6 +1247,7 @@ function bindGuiPinChange() {
     const button = form.querySelector('button[type="submit"]');
 
     if (!current || !next) return setMessage('gui-pin-change-message', 'Current PIN and new PIN are required.', 'error');
+    if (next.length < 4) return setMessage('gui-pin-change-message', 'New PIN must be at least 4 characters.', 'error');
     if (next !== confirm) return setMessage('gui-pin-change-message', 'New PIN confirmation does not match.', 'error');
 
     button.disabled = true;
@@ -1252,13 +1257,38 @@ function bindGuiPinChange() {
       form.reset();
       if (data.ok) clearMessage('gui-pin-change-message');
       else setMessage('gui-pin-change-message', data.message || 'GUI PIN change failed.', 'error');
-      PopupManager.showToast(data.ok ? 'GUI PIN changed' : 'GUI PIN change failed', data.ok ? 'success' : 'error');
+      PopupManager.showToast(data.ok ? 'Access PIN changed' : 'Access PIN change failed', data.ok ? 'success' : 'error');
     } catch (_) {
       form.reset();
       setMessage('gui-pin-change-message', 'GUI PIN change request failed.', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Change PIN';
+      button.textContent = 'Change access PIN';
+    }
+  });
+}
+
+function bindGuiPinResetDefault() {
+  const button = document.querySelector('[data-gui-pin-reset-default]');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    clearMessage('gui-pin-reset-message');
+    if (!window.confirm('Reset the access PIN to the console factory/default value? Games, settings, storage, and the operating system are not reset.')) return;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Resetting...';
+    try {
+      const data = await postJson('/api/gui-pin/reset-default', { confirm: 'RESET' });
+      if (data.ok) clearMessage('gui-pin-reset-message');
+      else setMessage('gui-pin-reset-message', data.message || 'PIN reset failed.', 'error');
+      PopupManager.showToast(data.message || (data.ok ? 'PIN reset to default' : 'PIN reset failed'), data.ok ? 'success' : 'error');
+      if (data.ok) renderGuiPinMode(Boolean(data.pin_required));
+    } catch (_) {
+      setMessage('gui-pin-reset-message', 'PIN reset request failed.', 'error');
+      PopupManager.showToast('PIN reset request failed', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
     }
   });
 }
@@ -1413,6 +1443,7 @@ bindProviderKeys();
 bindGuiPinUnlock();
 bindGuiPinAccess();
 bindGuiPinChange();
+bindGuiPinResetDefault();
 bindNetworkControls();
 bindSystemTrustAndAccessForms();
 bindLocalAIControls();

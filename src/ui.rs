@@ -1143,27 +1143,55 @@ fn folder_copy_menu_button(label: &str, share: &crate::SambaShareStatus) -> Mark
 }
 
 fn access_pin_view(status: &ConsoleStatus) -> Markup {
-    view_shell("access-pin", "Router-style access", "Access & PIN", "The GUI PIN protects this management console. The initial PIN is printed on the device setup card.", html! {
-        div class="task-hero" {
-            div { strong { "Current mode" } span { (if status.gui_pin.pin_required { "PIN Required" } else { "Open Without PIN" }) } }
-            div class="inline-actions" data-module="gui-pin-access" {
-                button class="btn btn--secondary" type="button" data-action="gui-pin-enable" data-endpoint="/api/gui-pin/access" data-pin-required="true" { "Require GUI PIN" }
-                button class="btn btn--secondary" type="button" data-action="gui-pin-disable" data-endpoint="/api/gui-pin/access" data-pin-required="false" { "Open Without PIN" }
+    view_shell(
+        "access-pin",
+        "Router-style access",
+        "Access & PIN",
+        "Router-style PIN management for the HomeConsole access gate.",
+        html! {
+            div class="access-pin-panel" {
+                article class="access-pin-card access-pin-card--mode" data-module="gui-pin-access" {
+                    div class="access-pin-state" {
+                        span class="access-pin-icon" aria-hidden="true" { "●" }
+                        div {
+                            h3 { "Access mode" }
+                            strong data-pin-mode-label="true" { (if status.gui_pin.pin_required { "PIN required" } else { "Open without PIN" }) }
+                            p data-pin-mode-copy="true" { (if status.gui_pin.pin_required { "PIN required before accessing HomeConsole." } else { "HomeConsole opens without a PIN." }) }
+                        }
+                    }
+                    label class="pin-toggle" {
+                        input type="checkbox" role="switch" name="pin_required" data-pin-required-toggle="true" checked[status.gui_pin.pin_required];
+                        span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
+                        span class="pin-toggle-label" { "Require PIN for console access" }
+                    }
+                }
+                article class="access-pin-card access-pin-card--change" {
+                    h3 { "Change access PIN" }
+                    p { "Enter the current PIN and choose the new access PIN. Saved PIN values are never shown." }
+                    form id="gui-pin-change-form" class="settings-form settings-form--pin" autocomplete="off" {
+                        label { span { "Current PIN" } input class="field" type="password" name="current_pin" autocomplete="current-password" required; }
+                        div class="pin-form-row" {
+                            label { span { "New PIN" } input class="field" type="password" name="new_pin" autocomplete="new-password" required minlength="4"; }
+                            label { span { "Confirm new PIN" } input class="field" type="password" name="confirm_pin" autocomplete="new-password" required minlength="4"; }
+                        }
+                        div id="gui-pin-change-message" class="message" hidden {}
+                        button class="btn btn--primary" type="submit" { "Change access PIN" }
+                    }
+                }
+                article class="access-pin-card access-pin-card--reset" {
+                    h3 { "Default / reset PIN" }
+                    p { "Reset restores the active access PIN to the configured factory/default value managed by the console. It does not reset games, settings, storage, or the operating system." }
+                    div class="access-pin-reset-row" {
+                        span class=(if status.gui_pin.default_reset_available { "system-status system-status--ok" } else { "system-status system-status--disabled" }) {
+                            (if status.gui_pin.default_reset_available { "Default reset available" } else { "Reset helper missing" })
+                        }
+                        button class="btn btn--danger" type="button" data-gui-pin-reset-default="true" disabled[!status.gui_pin.default_reset_available] { "Reset PIN to default" }
+                    }
+                    div id="gui-pin-reset-message" class="message" hidden {}
+                }
             }
-        }
-        article class="form-card" {
-            h3 { "Change PIN" }
-            p { "Enter the current PIN, then choose a new PIN. Arcadia never displays saved PIN values." }
-            form id="gui-pin-change-form" class="settings-form" autocomplete="off" {
-                label { span { "Current PIN" } input class="field" type="password" name="current_pin" autocomplete="current-password" required; }
-                label { span { "New PIN" } input class="field" type="password" name="new_pin" autocomplete="new-password" required minlength="4"; }
-                label { span { "Confirm New PIN" } input class="field" type="password" name="confirm_pin" autocomplete="new-password" required minlength="4"; }
-                div id="gui-pin-change-message" class="message" hidden {}
-                button class="btn btn--primary" type="submit" { "Change PIN" }
-            }
-        }
-        (instruction_card("If the PIN is lost", "Use the physical recovery/reset procedure documented with the console. The saved PIN is never shown here."))
-    })
+        },
+    )
 }
 
 fn updates_view(status: &ConsoleStatus) -> Markup {
@@ -1266,10 +1294,6 @@ fn system_view(status: &ConsoleStatus) -> Markup {
 
 fn status_card(title: &str, value: &str, help: &str) -> Markup {
     html! { article class="status-card" { span { (title) } strong { (value) } p { (help) } } }
-}
-
-fn instruction_card(title: &str, text: &str) -> Markup {
-    html! { article class="instruction-card" { h3 { (title) } p { (text) } } }
 }
 
 fn path_card(title: &str, path: &str) -> Markup {
