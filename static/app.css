@@ -1064,3 +1064,85 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .controller-device-card strong { font-size: 13px; }
 .view[data-view-panel="controllers"] .emulator-controller-card { gap: 5px; }
 .view[data-view-panel="controllers"] .emulator-profile-line { min-height: 14px; -webkit-line-clamp: 1; }
+
+.controllers-live-test {
+  border: 1px solid rgba(79, 124, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(16, 24, 44, 0.42);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.controller-live-device {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.controller-button-strip, .controller-axis-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.controller-button-dot, .controller-axis-pill {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 999px;
+  padding: 3px 7px;
+  min-height: 22px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.controller-button-dot--active, .controller-axis-pill {
+  color: #07111f;
+  background: linear-gradient(135deg, #86efac, #67e8f9);
+  border-color: rgba(103, 232, 249, 0.68);
+  box-shadow: 0 0 0 2px rgba(103, 232, 249, 0.12);
+}
+
+.view[data-view-panel="controllers"] .controller-profile-stack[data-controller-mapping-editor="default"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+}
+.view[data-view-panel="controllers"] .controller-profile-stack[data-controller-mapping-editor="default"] .controller-profile-row {
+  grid-template-columns: minmax(58px, .46fr) minmax(0, .54fr);
+  min-height: 20px;
+  padding: 1px 0;
+}
+.view[data-view-panel="controllers"] .controllers-live-test {
+  margin-top: 6px;
+  padding: 6px 8px;
+  gap: 4px;
+}
+.view[data-view-panel="controllers"] .controller-button-dot,
+.view[data-view-panel="controllers"] .controller-axis-pill {
+  min-height: 18px;
+  padding: 2px 6px;
+  font-size: 10.5px;
+}
+.view[data-view-panel="controllers"] .emulator-controller-card .controllers-actions {
+  gap: 4px;
+}
+.view[data-view-panel="controllers"] .emulator-controller-card .btn {
+  min-height: 24px;
+  padding: 4px 7px;
+}
+
+.view[data-view-panel="controllers"] .controllers-hero { min-height: 54px; padding: 6px 8px; }
+.view[data-view-panel="controllers"] .controllers-symbol { width: 26px; height: 26px; font-size: 15px; }
+.view[data-view-panel="controllers"] .controllers-hero-copy strong { font-size: 15px; }
+.view[data-view-panel="controllers"] .controllers-hero-copy p { margin: 1px 0 0; }
+.view[data-view-panel="controllers"] .controller-profile-stack[data-controller-mapping-editor="default"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.view[data-view-panel="controllers"] .controller-profile-stack[data-controller-mapping-editor="default"] .controller-profile-row { grid-template-columns: minmax(48px, .44fr) minmax(0, .56fr); }
+.view[data-view-panel="controllers"] .emulator-profile-line { display: none; }
+.view[data-view-panel="controllers"] .emulator-controller-card { gap: 3px; padding: 5px 6px; }
+.view[data-view-panel="controllers"] .controllers-grid,
+.view[data-view-panel="controllers"] .emulator-controller-grid { gap: 4px; margin-top: 4px; }
+.view[data-view-panel="controllers"] .controllers-live-test { margin-top: 4px; }

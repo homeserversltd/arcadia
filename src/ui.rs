@@ -672,6 +672,16 @@ fn title_case_state_like(state: &str) -> &'static str {
         "success" => "Success",
         "current" => "Current",
         "repair_pending" => "Repair pending",
+        "ready to save" => "Ready to save",
+        "saved" => "Saved",
+        "waiting for controller" => "Waiting",
+        "waiting" => "Waiting",
+        "ready" => "Ready",
+        "listening" => "Listening",
+        "active" => "Active",
+        "configured" => "Configured",
+        "needs setup" => "Needs setup",
+        "not installed" => "Not installed",
         _ => "Unknown",
     }
 }
@@ -1442,7 +1452,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                 div class="controllers-hero-copy" {
                     span { "Controllers" }
                     strong { (if connected { status.controllers.primary_device.as_str() } else { "Pair or plug in a controller" }) }
-                    p { (status.controllers.detected_count) " device(s) · scan " (status.controllers.last_scan) }
+                    p { (status.controllers.detected_count) " gamepad(s) · scan " (status.controllers.last_scan) }
                 }
                 div class="controllers-hero-actions" {
                     (action_button(ButtonVariant::Primary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
@@ -1458,7 +1468,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         span class=(format!("system-status system-status--{}", if connected { "available" } else { "disabled" })) { (if connected { "Ready" } else { "Waiting" }) }
                     }
                     @if status.controllers.devices.is_empty() {
-                        div class="empty-state empty-state--compact" { strong { "No gamepad detected" } span { "USB, Bluetooth, SDL, and evdev devices appear here after scan." } }
+                        div class="empty-state empty-state--compact" { strong { "No gamepad detected" } span { "Keyboard, mouse, LED, and HID noise stay hidden." } }
                     } @else {
                         div class="controller-device-list" {
                             @for device in &status.controllers.devices {
@@ -1474,19 +1484,35 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                 article class="controllers-panel controllers-panel--profile" {
                     div class="controllers-panel-head" {
                         strong { "Default profile" }
-                        span class="system-status system-status--unknown" { "Shared" }
+                        span class="system-status system-status--available" { (title_case_state_like(&status.controllers.profile.state)) }
                     }
-                    div class="controller-profile-stack" {
-                        (controller_profile_row("South / Confirm", "A / Cross", connected))
-                        (controller_profile_row("East / Back", "B / Circle", connected))
-                        (controller_profile_row("Start / Menu", "Start / Options", connected))
-                        (controller_profile_row("Guide", "Home / PS / Xbox", connected))
+                    div class="controller-profile-stack" data-controller-mapping-editor="default" {
+                        @for binding in &status.controllers.profile.bindings {
+                            (controller_profile_row(&binding.control, &binding.binding, connected))
+                        }
                     }
                     div class="inline-actions inline-actions--compact controllers-actions" {
-                        @if connected { (modal_button(ButtonVariant::Primary, "Map buttons", "Controller mapping", "Mapping editor backend is the next controller module: scan and test are live now; saved per-emulator profiles will write to the listed config paths.")) }
-                        @else { button class="btn btn--primary" type="button" disabled title="Connect a controller before mapping buttons." { "Map buttons" } }
-                        (modal_button(ButtonVariant::Secondary, "Calibrate", "Controller calibration", "Calibration will bind to evdev/SDL once the controller module is connected."))
+                        @if connected { (action_button(ButtonVariant::Primary, "Save mapping", "controllers-save-profile", "/api/actions/controllers-save-profile")) }
+                        @else { button class="btn btn--primary" type="button" disabled title="Connect a controller before saving a mapping." { "Save mapping" } }
+                        (modal_button(ButtonVariant::Secondary, "Calibrate", "Controller calibration", "Move each stick through its full range; the live input panel reports active axes now."))
                     }
+                }
+            }
+
+            section class="controllers-live-test" aria-label="Live controller input" data-controller-live-input {
+                div class="controllers-panel-head" {
+                    strong { "Live input" }
+                    span class=(format!("system-status system-status--{}", if status.controllers.live_input.state == "active" { "available" } else { "starting" })) data-controller-input-state { (title_case_state_like(&status.controllers.live_input.state)) }
+                }
+                div class="controller-live-device" data-controller-input-device=(status.controllers.live_input.device) { (status.controllers.live_input.device) }
+                div class="controller-button-strip" data-controller-buttons {
+                    @for binding in &status.controllers.profile.bindings {
+                        span class=(if binding.pressed { "controller-button-dot controller-button-dot--active" } else { "controller-button-dot" }) data-controller-control=(binding.control) { (binding.control) }
+                    }
+                }
+                div class="controller-axis-strip" data-controller-axes {
+                    @if status.controllers.live_input.axes.is_empty() { span { "Move a stick or hold a button to light this pane." } }
+                    @else { @for axis in &status.controllers.live_input.axes { span class="controller-axis-pill" { (axis.control) " " (axis.binding) } } }
                 }
             }
 
@@ -1511,7 +1537,8 @@ fn controller_profile_row(action: &str, binding: &str, enabled: bool) -> Markup 
 fn emulator_controller_card(emulator: &crate::EmulatorControllerStatus, connected: bool) -> Markup {
     let state_class = match emulator.state.as_str() {
         "configured" => "available",
-        "installed" => "starting",
+        "needs setup" => "starting",
+        "not installed" => "disabled",
         _ => "disabled",
     };
     html! {
@@ -1522,8 +1549,10 @@ fn emulator_controller_card(emulator: &crate::EmulatorControllerStatus, connecte
             }
             p class="emulator-profile-line" title=(format!("Config: {} · Mapping: {}", emulator.config_path, emulator.mapping_path)) { (emulator.profile) }
             div class="inline-actions inline-actions--compact controllers-actions" {
-                @if connected && emulator.state != "unavailable" {
-                    (modal_button(ButtonVariant::Primary, "Assign", &format!("{} mapping", emulator.emulator), "Select the detected controller, then write this emulator profile when the controller module is connected."))
+                @if connected && emulator.emulator == "RetroArch" && emulator.state != "not installed" {
+                    (action_button(ButtonVariant::Primary, "Assign", "controllers-assign-retroarch", "/api/actions/controllers-assign-retroarch"))
+                } @else if connected && emulator.state != "not installed" {
+                    button class="btn btn--primary" type="button" disabled title="RetroArch assignment is live first; this emulator mapping follows after backend support." { "Assign" }
                 } @else {
                     button class="btn btn--primary" type="button" disabled title=(if !connected { "Connect a controller before assigning emulator mappings." } else { "Install this emulator before assigning a profile." }) { "Assign" }
                 }

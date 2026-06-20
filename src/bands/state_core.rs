@@ -111,6 +111,8 @@ pub struct ControllerStatus {
     pub primary_device: String,
     pub last_scan: String,
     pub devices: Vec<ControllerDeviceStatus>,
+    pub profile: ControllerProfileStatus,
+    pub live_input: ControllerInputStatus,
     pub emulators: Vec<EmulatorControllerStatus>,
 }
 
@@ -122,6 +124,33 @@ pub struct ControllerDeviceStatus {
     pub kind: String,
     pub path: String,
     pub state: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerBindingStatus {
+    pub control: String,
+    pub binding: String,
+    pub pressed: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerInputStatus {
+    pub state: String,
+    pub device: String,
+    pub sample_path: String,
+    pub pressed: Vec<ControllerBindingStatus>,
+    pub axes: Vec<ControllerBindingStatus>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerProfileStatus {
+    pub state: String,
+    pub name: String,
+    pub path: String,
+    pub bindings: Vec<ControllerBindingStatus>,
 }
 
 #[derive(Clone, Serialize)]
