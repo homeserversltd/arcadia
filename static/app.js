@@ -309,11 +309,11 @@ function bindConsoleActions() {
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
-        if (action === 'sync-games') finishSyncProgress(Boolean(data.ok), data);
+        if (action === 'sync-games') finishSyncProgress(Boolean(data.ok), data, syncProgress);
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
-        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Fix the issue shown below and try again.' });
+        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Open Output for the receipt and fix the reported issue.' }, syncProgress);
       } finally {
         button.disabled = false;
         button.textContent = original;
@@ -619,97 +619,78 @@ async function copyToClipboard(value) {
 
 function prepareSyncStart() {
   const root = document.querySelector('[data-sync-root]');
+  const stateNode = document.getElementById('sync-state');
+  if (stateNode?.dataset.syncState === 'scanning' || root?.dataset.syncState === 'running') {
+    PopupManager.showToast('ROM scan is already running.', 'error');
+    return false;
+  }
   if (root?.dataset.storageBlocked === 'true' || root?.dataset.storageHealth === 'Full') {
-    const message = 'Storage is full. Free space before syncing games.';
+    const message = 'Storage is full. Free space before scanning ROMs.';
     setMessage('console-action-message', message, 'error');
     PopupManager.showToast(message, 'error');
     document.querySelector('[data-nav-target="storage"]')?.focus();
     return false;
   }
   if (root?.dataset.storageLow === 'true') {
-    PopupManager.showToast('Storage is low. Sync may fail if there is not enough space for artwork or library entries.', 'error');
+    PopupManager.showToast('Storage is low. Artwork or library updates may need more room.', 'error');
   }
   return true;
 }
 
-function setSyncState(state) {
+function setSyncState(label, state = label) {
+  const value = String(state || label).toLowerCase().replace(/\s+/g, '-');
   const node = document.getElementById('sync-state');
   if (node) {
-    node.textContent = state;
-    node.dataset.syncState = state.toLowerCase().replace(/\s+/g, '-');
+    node.textContent = label;
+    node.dataset.syncState = value;
   }
+  const root = document.querySelector('[data-sync-root]');
+  if (root) root.dataset.syncState = value;
   document.querySelectorAll('.status-badge').forEach((badge) => {
     if (badge.dataset.chipKind !== 'sync') return;
-    badge.setAttribute('aria-label', state);
-    badge.title = state;
+    badge.setAttribute('aria-label', `Games: ${label}`);
+    badge.title = `Games: ${label}`;
   });
 }
 
-const syncSteps = [
-  { n: '1', running: 'Checking copied game folders…', complete: 'Complete' },
-  { n: '2', running: 'Scanning game folders…', complete: 'Complete' },
-  { n: '3', running: 'Fetching artwork…', complete: 'Complete' },
-  { n: '4', running: 'Creating GameScope entries…', complete: 'Complete' },
-  { n: '5', running: 'Finishing GameScope library…', complete: 'Complete' },
-];
-
-function setWorkflowStep(activeIndex, failed = false) {
-  document.querySelectorAll('.sync-step').forEach((step, index) => {
-    let state = 'waiting';
-    if (index < activeIndex) state = 'complete';
-    if (index === activeIndex) state = failed ? 'error' : 'running';
-    step.dataset.stepState = state;
-    const badge = step.querySelector('.sync-step-badge');
-    if (badge) badge.textContent = state === 'running' ? 'Running' : state === 'complete' ? 'Complete' : state === 'error' ? 'Error' : 'Waiting';
-  });
+function setSyncReadback(kind, message) {
+  const result = document.querySelector('[data-sync-result]');
+  const resultCopy = document.getElementById('sync-result-copy');
+  if (result) result.dataset.syncResult = kind;
+  if (resultCopy) resultCopy.textContent = message;
 }
 
 function startSyncProgress() {
-  setSyncState('Sync Running');
-  const button = document.querySelector('[data-action="sync-games"]');
-  if (button) button.textContent = 'Sync Running';
+  setSyncState('Scanning', 'scanning');
+  const panel = document.getElementById('sync-running-panel');
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
-  let index = 0;
-  const tick = () => {
-    const step = syncSteps[Math.min(index, syncSteps.length - 1)];
-    setWorkflowStep(Math.min(index, syncSteps.length - 1));
-    if (progress) progress.textContent = step.running;
-    if (log) log.textContent = step.running;
-    index = Math.min(index + 1, syncSteps.length - 1);
-  };
-  tick();
-  return setInterval(tick, 1100);
+  if (panel) panel.hidden = false;
+  if (progress) progress.textContent = 'Scanning Samba ROM folders…';
+  if (log) log.textContent = 'Scanning Samba ROM folders…';
+  setSyncReadback('running', 'Scanning ROM folders now.');
+  return { stop() { if (panel) panel.hidden = true; } };
 }
 
-function finishSyncProgress(ok, data = {}) {
+function finishSyncProgress(ok, data = {}, progressHandle = null) {
+  if (progressHandle && typeof progressHandle.stop === 'function') progressHandle.stop();
   const button = document.querySelector('[data-action="sync-games"]');
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
-  const result = document.querySelector('[data-sync-result]');
-  const resultCopy = document.getElementById('sync-result-copy');
   if (ok) {
-    document.querySelectorAll('.sync-step').forEach((step) => {
-      step.dataset.stepState = 'complete';
-      const badge = step.querySelector('.sync-step-badge');
-      if (badge) badge.textContent = 'Complete';
-    });
-    setSyncState('Sync Complete');
-    if (button) button.textContent = 'Sync Complete';
-    const message = data.message || 'Sync complete. Your games are ready in GameScope.';
+    setSyncState('Completed', 'completed');
+    if (button) button.textContent = 'Scan complete';
+    const message = data.message || 'Sync complete. Playable GameScope entries were updated from the ROM folders.';
     if (progress) progress.textContent = message;
-    if (result) result.dataset.syncResult = 'success';
-    if (resultCopy) resultCopy.textContent = 'Sync complete. Your games are ready in GameScope.';
+    setSyncReadback('success', 'Completed. Playable GameScope entries were updated from the ROM folders.');
     if (log) log.textContent = formatActionResult(data);
     markOnboardingFirstSyncComplete(data);
   } else {
-    setWorkflowStep(Math.max(0, Array.from(document.querySelectorAll('.sync-step')).findIndex((step) => step.dataset.stepState === 'running')), true);
-    setSyncState('Sync Failed');
-    if (button) button.textContent = 'Sync Failed';
-    const message = data.message || 'Sync could not complete. Fix the issue shown below and try again.';
+    setSyncState('Needs attention', 'needs-attention');
+    if (button) button.textContent = 'Scan failed';
+    const message = data.message || 'Sync could not complete. Open Output for the receipt and fix the reported issue.';
     if (progress) progress.textContent = message;
-    if (result) result.dataset.syncResult = 'error';
-    if (resultCopy) resultCopy.textContent = 'Sync could not complete. Fix the issue shown below and try again.';
+    setSyncReadback('error', 'Needs attention. Open Output for the last sync receipt and fix the reported issue.');
     if (log) log.textContent = formatActionResult(data);
   }
 }

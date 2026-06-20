@@ -13,11 +13,9 @@
   .sidebar-launcher { padding: 8px; }
   .launcher-button { min-height: 72px; }
   .launcher-label { font-size: 11px; }
-  .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid, .access-pin-panel, .pin-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid, .access-pin-panel, .pin-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .priority-strip { grid-template-columns: 1fr; align-items: start; }
-  .system-power-panel, .system-power-actions { grid-template-columns: 1fr; }
-.sync-command-center { grid-template-columns: 1fr; }
-  .sync-step:not(:last-child)::after { content: "↓"; right: auto; left: 22px; top: auto; bottom: -19px; }
+  .system-power-panel, .system-power-actions, .sync-rom-panel { grid-template-columns: 1fr; }
   .storage-hero { grid-template-columns: 1fr; }
   .section-heading { align-items: start; flex-direction: column; }
 }
@@ -34,7 +32,7 @@
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
   .view { padding: 20px; }
-  .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid, .access-pin-panel, .pin-form-row { grid-template-columns: 1fr; }
+  .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid, .access-pin-panel, .pin-form-row, .sync-rom-panel, .sync-running-panel { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }
