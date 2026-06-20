@@ -298,11 +298,11 @@
             "Add games",
             "Drop games here or choose files from this computer.",
             "sync-running-panel",
-            "sync-result-card",
+            "sync-tally-card",
             "sync-progress-text",
             "sync-state",
-            "Receipt ready",
-            "Ledger",
+            "Admitted games tally",
+            "Artwork paired",
         ] {
             assert!(sync_html.contains(required), "missing appliance sync marker: {required}");
         }
@@ -389,7 +389,7 @@
         let before_rendered = ui::layout(&status).into_string();
         let before = sync_slice(&before_rendered);
         assert!(before.contains("Needs first sync"));
-        assert!(before.contains("First sync waiting"));
+        assert!(before.contains("Admitted games tally"));
         assert!(before.contains("No sync receipt yet."));
         assert!(before.contains("Add games"));
         assert!(before.contains("Sync games"));
@@ -407,7 +407,7 @@
         let during_rendered = ui::layout(&status).into_string();
         let during = sync_slice(&during_rendered);
         assert!(during.contains("Syncing"));
-        assert!(during.contains("Sync in progress"));
+        assert!(during.contains("Admitted games tally"));
         assert!(during.contains("Sync running"));
         assert!(during.contains("sync-running-panel"));
         assert!(during.contains("Importing games into the console library."));
@@ -427,14 +427,88 @@
         let after_rendered = ui::layout(&status).into_string();
         let after = sync_slice(&after_rendered);
         assert!(after.contains("Synced"));
-        assert!(after.contains("Last sync complete"));
-        assert!(after.contains("0 new · 0 failed"));
+        assert!(after.contains("Admitted games tally"));
+        assert!(after.contains("3 games"));
         assert!(after.contains("Check again"));
-        assert!(after.contains("Receipt ready"));
-        assert!(after.contains("Ledger"));
+        assert!(after.contains("Artwork paired"));
+        assert!(!after.contains("0 new · 0 failed"));
+        assert!(!after.contains("Receipt ready"));
         assert!(!after.contains("Needs first sync"));
         assert!(!after.contains("Sync failed"));
         assert!(!after.contains("/home/owner/Games"));
+    }
+
+    #[test]
+    fn sync_view_renders_literal_admitted_game_tally_with_artwork_pairing() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "success".to_string();
+        status.library.last_sync = "Receipt found".to_string();
+        status.library.total_detected_games = 2;
+        status.library.total_synced_entries = 2;
+        status.library.artwork_paired_total = 1;
+        status.library.artwork_missing = 1;
+        status.library.game_system_tally = vec![
+            GameSystemTally { system: "GBA".to_string(), admitted: 1, artwork_paired: 1, artwork_missing: 0 },
+            GameSystemTally { system: "Arcade".to_string(), admitted: 1, artwork_paired: 0, artwork_missing: 1 },
+        ];
+        status.library.admitted_games = vec![
+            AdmittedGameTally {
+                title: "Driven".to_string(),
+                system: "GBA".to_string(),
+                source_file: "/hidden/diagnostic/path/driven.gba".to_string(),
+                game_id: "driven".to_string(),
+                runner: "RetroArch mGBA".to_string(),
+                steam_entry: "Driven (GBA)".to_string(),
+                artwork_paired: true,
+                artwork_source: "SteamGridDB".to_string(),
+            },
+            AdmittedGameTally {
+                title: "Metal Slug".to_string(),
+                system: "Arcade".to_string(),
+                source_file: "/hidden/diagnostic/path/mslug.zip".to_string(),
+                game_id: "metal-slug".to_string(),
+                runner: "MAME / FinalBurn".to_string(),
+                steam_entry: "Metal Slug".to_string(),
+                artwork_paired: false,
+                artwork_source: "missing".to_string(),
+            },
+        ];
+
+        let rendered = ui::layout(&status).into_string();
+        let sync_html = sync_slice(&rendered);
+        for required in [
+            "Admitted games tally",
+            "Scanned",
+            "Admitted",
+            "Skipped",
+            "Failed",
+            "Artwork paired",
+            "Artwork missing",
+            "GBA",
+            "Arcade",
+            "Driven",
+            "Metal Slug",
+            "RetroArch mGBA",
+            "MAME / FinalBurn",
+            "paired",
+            "missing",
+            "2 admitted",
+            "1 art paired",
+        ] {
+            assert!(sync_html.contains(required), "missing tally marker: {required}");
+        }
+        for forbidden in ["0 new · 0 failed", "Receipt ready", "Last sync complete", "/hidden/diagnostic/path"] {
+            assert!(!sync_html.contains(forbidden), "old/non-appliance tally residue survived: {forbidden}");
+        }
+        assert!(APP_CSS.contains(".sync-tally-card"));
+        assert!(APP_CSS.contains(".sync-game-row"));
+        assert!(APP_CSS.contains(".sync-art--paired"));
     }
 
     #[test]
@@ -455,8 +529,8 @@
         let complaint_rendered = ui::layout(&status).into_string();
         let complaint = sync_slice(&complaint_rendered);
         assert!(complaint.contains("Sync failed"));
-        assert!(complaint.contains("Needs attention"));
-        assert!(complaint.contains("Ledger"));
+        assert!(complaint.contains("Admitted games tally"));
+        assert!(complaint.contains("Admitted games tally"));
         assert!(complaint.contains("kicked out"));
         assert!(!complaint.contains("Open Output"));
         assert!(!complaint.contains("hidden sync output panel"));
@@ -470,7 +544,7 @@
         let eject_rendered = ui::layout(&status).into_string();
         let eject = sync_slice(&eject_rendered);
         assert!(eject.contains("Sync needed"));
-        assert!(eject.contains("Ejected"));
+        assert!(eject.contains("Skipped"));
         assert!(eject.contains("2 games were ejected and need attention"));
         assert!(!eject.contains("/home/owner/Games"));
         assert!(!eject.contains("Folder"));
@@ -520,10 +594,10 @@
         assert!(rendered.contains("Games: 3 ROMs"));
         assert!(sync_html.contains("Synced"));
         assert!(rendered.contains("3 playable ROMs"));
-        assert!(sync_html.contains("Last sync complete"));
-        assert!(sync_html.contains("Detected"));
+        assert!(sync_html.contains("Admitted games tally"));
+        assert!(sync_html.contains("Scanned"));
         assert!(sync_html.contains("Admitted"));
-        assert!(sync_html.contains("2 complete · 1 missing"));
+        assert!(sync_html.contains("Artwork paired"));
 
         status.library.total_detected_games = 0;
         status.library.total_synced_entries = 0;
@@ -535,8 +609,9 @@
         assert!(zero.contains("Games: 0 ROMs"));
         assert!(zero_sync.contains("Synced"));
         assert!(zero.contains("0 playable ROMs"));
-        assert!(zero_sync.contains("Last sync complete"));
-        assert!(zero_sync.contains("0 new · 0 failed"));
+        assert!(zero_sync.contains("Admitted games tally"));
+        assert!(zero_sync.contains("No admitted games yet"));
+        assert!(!zero_sync.contains("0 new · 0 failed"));
         assert!(!zero_sync.contains("/home/owner/Games"));
         assert!(!zero_sync.contains("No ROMs"));
         assert!(!zero_sync.contains("No scan has run yet"));

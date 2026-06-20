@@ -6,6 +6,8 @@ pub struct LibraryStatus {
     pub gamescope_entries: u64,
     pub gamescope_profiles: Vec<GameScopeProfileInventory>,
     pub gamescope_installed_games: Vec<GameScopeInstalledGame>,
+    pub game_system_tally: Vec<GameSystemTally>,
+    pub admitted_games: Vec<AdmittedGameTally>,
     pub first_sync_completed: bool,
     pub last_sync: String,
     pub last_sync_at: Option<String>,
@@ -20,6 +22,31 @@ pub struct LibraryStatus {
     pub unsynced_removed: u64,
     pub total_detected_games: u64,
     pub total_synced_entries: u64,
+    pub skipped_games: u64,
+    pub failed_games: u64,
+    pub artwork_paired_total: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameSystemTally {
+    pub system: String,
+    pub admitted: u64,
+    pub artwork_paired: u64,
+    pub artwork_missing: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdmittedGameTally {
+    pub title: String,
+    pub system: String,
+    pub source_file: String,
+    pub game_id: String,
+    pub runner: String,
+    pub steam_entry: String,
+    pub artwork_paired: bool,
+    pub artwork_source: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -54,6 +81,8 @@ struct GameScopeInventory {
 #[derive(Clone)]
 struct GameFileState {
     normalized_rom_path: String,
+    system: String,
+    title: String,
     size_bytes: u64,
     mtime_ms: u64,
 }
@@ -64,7 +93,7 @@ struct SyncManifestDoc {
     entries: Vec<SyncManifestEntry>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct SyncManifestEntry {
     #[serde(rename = "romPath")]
     rom_path: Option<String>,
@@ -80,6 +109,16 @@ struct SyncManifestEntry {
     last_synced_at: Option<String>,
     #[serde(rename = "artworkStatus")]
     artwork_status: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    system: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
+    #[serde(default)]
+    runner: Option<String>,
+    #[serde(default, rename = "artworkSource")]
+    artwork_source: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

@@ -11,9 +11,11 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
     let mut artwork_complete = 0u64;
     let mut artwork_missing = 0u64;
     let sync_state;
+    let mut admitted_games = Vec::new();
+
     if let Some(entries) = manifest {
         let mut by_path = HashMap::new();
-        for entry in entries {
+        for entry in entries.iter() {
             let key = entry
                 .normalized_rom_path
                 .clone()
@@ -22,15 +24,17 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
             if key.is_empty() {
                 continue;
             }
-            if entry.last_synced_at.is_some() || entry.gamescope_entry_id.is_some() {
+            let admitted = entry.last_synced_at.is_some() || entry.gamescope_entry_id.is_some();
+            if admitted {
                 total_synced_entries += 1;
+                admitted_games.push(admitted_game_from_manifest(entry, &key));
             }
             match entry.artwork_status.as_deref() {
                 Some("complete") => artwork_complete += 1,
                 Some("missing") => artwork_missing += 1,
                 _ => {}
             }
-            by_path.insert(normalize_path(&key), entry);
+            by_path.insert(normalize_path(&key), entry.clone());
         }
         for file in &game_files {
             match by_path.remove(&file.normalized_rom_path) {
@@ -45,15 +49,17 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
             }
         }
         unsynced_removed = by_path.len() as u64;
-        sync_state = if unsynced_added + unsynced_changed + unsynced_removed > 0 {
-            "idle"
-        } else {
-            "idle"
-        }
-        .to_string();
+        sync_state = "idle".to_string();
     } else {
         total_synced_entries = gamescope_entries.min(detected_games);
-        artwork_complete = storage.artwork.files.min(detected_games);
+        admitted_games = admitted_games_from_live_files(&game_files, &gamescope_inventory.entries);
+        artwork_complete = admitted_games
+            .iter()
+            .filter(|game| game.artwork_paired)
+            .count() as u64;
+        if artwork_complete == 0 && storage.artwork.files > 0 {
+            artwork_complete = storage.artwork.files.min(detected_games);
+        }
         artwork_missing = detected_games.saturating_sub(artwork_complete);
         sync_state = if detected_games == 0 {
             "idle"
@@ -62,6 +68,20 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         }
         .to_string();
     }
+
+    if admitted_games.len() as u64 > total_synced_entries {
+        total_synced_entries = admitted_games.len() as u64;
+    }
+    let game_system_tally = tally_by_system(&admitted_games);
+    let artwork_paired_total = admitted_games
+        .iter()
+        .filter(|game| game.artwork_paired)
+        .count() as u64;
+    if artwork_paired_total > 0 {
+        artwork_complete = artwork_paired_total;
+        artwork_missing = total_synced_entries.saturating_sub(artwork_complete);
+    }
+
     let sync_needed =
         sync_state != "unknown" && unsynced_added + unsynced_changed + unsynced_removed > 0;
     let last_sync_state = latest_sync_summary().unwrap_or_else(|| {
@@ -83,15 +103,15 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
     };
     let artwork_status = if artwork_complete > 0 && artwork_missing > 0 {
         format!(
-            "{} complete · {} missing",
+            "{} paired · {} missing",
             artwork_complete, artwork_missing
         )
     } else if artwork_complete > 0 {
-        format!("{} complete", artwork_complete)
+        format!("{} paired", artwork_complete)
     } else if sync_state == "unknown" {
         "Unknown".to_string()
     } else if detected_games > 0 {
-        "0 complete".to_string()
+        "0 paired".to_string()
     } else {
         "No artwork".to_string()
     };
@@ -101,6 +121,8 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         gamescope_entries,
         gamescope_profiles: gamescope_inventory.profiles,
         gamescope_installed_games: gamescope_inventory.entries,
+        game_system_tally,
+        admitted_games,
         first_sync_completed: matches!(last_sync_state.as_str(), "success" | "error") || total_synced_entries > 0,
         last_sync,
         last_sync_at: None,
@@ -115,6 +137,9 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         unsynced_removed,
         total_detected_games: detected_games,
         total_synced_entries,
+        skipped_games: unsynced_removed,
+        failed_games: if matches!(latest_sync_summary().as_deref(), Some("error")) { 1 } else { 0 },
+        artwork_paired_total,
     }
 }
 
@@ -155,10 +180,180 @@ fn collect_game_files(path: &Path, _platform: &str, files: &mut Vec<GameFileStat
                 .unwrap_or(0);
             files.push(GameFileState {
                 normalized_rom_path,
+                system: _platform.to_string(),
+                title: title_from_path(&p),
                 size_bytes: metadata.len(),
                 mtime_ms,
             });
         }
+    }
+}
+
+fn admitted_games_from_live_files(
+    files: &[GameFileState],
+    gamescope_entries: &[GameScopeInstalledGame],
+) -> Vec<AdmittedGameTally> {
+    files
+        .iter()
+        .enumerate()
+        .map(|(index, file)| {
+            let steam_entry = gamescope_entries
+                .get(index)
+                .map(|entry| entry.name.clone())
+                .unwrap_or_else(|| "Pending Steam entry".to_string());
+            let game_id = slugify(&file.title);
+            let artwork_paired = artwork_exists(&file.system, &game_id);
+            AdmittedGameTally {
+                title: file.title.clone(),
+                system: display_system(&file.system).to_string(),
+                source_file: file.normalized_rom_path.clone(),
+                game_id,
+                runner: runner_for_system(&file.system).to_string(),
+                steam_entry,
+                artwork_paired,
+                artwork_source: if artwork_paired { "paired" } else { "missing" }.to_string(),
+            }
+        })
+        .collect()
+}
+
+fn admitted_game_from_manifest(entry: &SyncManifestEntry, key: &str) -> AdmittedGameTally {
+    let system = entry
+        .system
+        .clone()
+        .or_else(|| system_from_path(key))
+        .unwrap_or_else(|| "game".to_string());
+    let title = entry
+        .title
+        .clone()
+        .unwrap_or_else(|| title_from_path(Path::new(key)));
+    let game_id = entry.slug.clone().unwrap_or_else(|| slugify(&title));
+    let artwork_paired = matches!(entry.artwork_status.as_deref(), Some("complete"))
+        || artwork_exists(&system, &game_id);
+    AdmittedGameTally {
+        title,
+        system: display_system(&system).to_string(),
+        source_file: key.to_string(),
+        game_id,
+        runner: entry
+            .runner
+            .clone()
+            .unwrap_or_else(|| runner_for_system(&system).to_string()),
+        steam_entry: entry
+            .gamescope_entry_id
+            .clone()
+            .unwrap_or_else(|| "Steam entry pending".to_string()),
+        artwork_paired,
+        artwork_source: entry
+            .artwork_source
+            .clone()
+            .unwrap_or_else(|| if artwork_paired { "paired" } else { "missing" }.to_string()),
+    }
+}
+
+fn tally_by_system(admitted_games: &[AdmittedGameTally]) -> Vec<GameSystemTally> {
+    GAME_SYSTEMS
+        .iter()
+        .filter_map(|system| {
+            let display = display_system(system);
+            let admitted = admitted_games
+                .iter()
+                .filter(|game| game.system == display)
+                .count() as u64;
+            if admitted == 0 {
+                return None;
+            }
+            let artwork_paired = admitted_games
+                .iter()
+                .filter(|game| game.system == display && game.artwork_paired)
+                .count() as u64;
+            Some(GameSystemTally {
+                system: display.to_string(),
+                admitted,
+                artwork_paired,
+                artwork_missing: admitted.saturating_sub(artwork_paired),
+            })
+        })
+        .collect()
+}
+
+fn title_from_path(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Unknown game")
+        .replace(['_', '-'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn system_from_path(path: &str) -> Option<String> {
+    let normalized = path.replace('\\', "/").to_ascii_lowercase();
+    GAME_SYSTEMS
+        .iter()
+        .find(|system| normalized.contains(&format!("/{system}/")))
+        .map(|system| (*system).to_string())
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::new();
+    let mut last_dash = false;
+    for ch in value.chars().flat_map(|ch| ch.to_lowercase()) {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            last_dash = false;
+        } else if !last_dash && !slug.is_empty() {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
+fn artwork_exists(system: &str, slug: &str) -> bool {
+    if slug.is_empty() {
+        return false;
+    }
+    let candidates = [
+        Path::new(ARTWORK_ROOT).join(system).join(slug),
+        Path::new(ARTWORK_ROOT).join(display_system(system).to_ascii_lowercase()).join(slug),
+    ];
+    candidates.iter().any(|path| path.exists())
+}
+
+fn display_system(system: &str) -> &str {
+    match system {
+        "gba" => "GBA",
+        "genesis" => "Genesis",
+        "snes" => "SNES",
+        "nes" => "NES",
+        "ps1" => "PS1",
+        "n64" => "N64",
+        "ps2" => "PS2",
+        "sega-cd" => "Sega CD",
+        "psp" => "PSP",
+        "gamecube" => "GameCube",
+        "wii" => "Wii",
+        "dos" => "DOS",
+        "arcade" => "Arcade",
+        _ => "Game",
+    }
+}
+
+fn runner_for_system(system: &str) -> &str {
+    match system {
+        "gba" => "RetroArch mGBA",
+        "genesis" | "sega-cd" => "RetroArch Genesis Plus GX",
+        "snes" => "RetroArch Snes9x",
+        "nes" => "RetroArch Nestopia",
+        "ps1" => "RetroArch Beetle PSX HW",
+        "n64" => "RetroArch Mupen64Plus Next",
+        "ps2" => "RetroArch Play!",
+        "psp" => "RetroArch PPSSPP",
+        "gamecube" | "wii" => "RetroArch Dolphin",
+        "dos" => "DOSBox",
+        "arcade" => "MAME / FinalBurn",
+        _ => "Console runner",
     }
 }
 
