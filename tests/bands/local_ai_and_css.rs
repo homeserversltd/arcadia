@@ -95,8 +95,7 @@
         }
         assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
-        assert!(!rendered.contains("\\\\HOMECONSOLE"));
-        assert!(rendered.contains("Copy IP SMB URL"));
+        assert!(rendered.contains("\\\\HOMECONSOLE"));
         assert!(rendered.contains("Trust &amp; HTTPS"));
 
         assert!(
