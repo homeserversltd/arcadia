@@ -13,7 +13,7 @@
   .sidebar-launcher { padding: 8px; }
   .launcher-button { min-height: 72px; }
   .launcher-label { font-size: 11px; }
-  .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .sync-workflow, .sync-result-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid, .access-pin-panel, .pin-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .priority-strip { grid-template-columns: 1fr; align-items: start; }
   .system-power-panel, .system-power-actions { grid-template-columns: 1fr; }
 .sync-command-center { grid-template-columns: 1fr; }
@@ -34,12 +34,12 @@
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
   .view { padding: 20px; }
-  .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid { grid-template-columns: 1fr; }
+  .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .sync-workflow, .sync-result-grid, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid, .access-pin-panel, .pin-form-row { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }
   .storage-model-row, .storage-table-row > summary, .storage-table-row.storage-table-head, .location-row { grid-template-columns: 1fr; align-items: start; }
-  .view[data-view-panel="home"].is-active, .view[data-view-panel="storage"].is-active, .view[data-view-panel="local-ai"].is-active, .view[data-view-panel="network"].is-active { display: block; }
+  .view[data-view-panel="home"].is-active, .view[data-view-panel="storage"].is-active, .view[data-view-panel="local-ai"].is-active, .view[data-view-panel="network"].is-active, .view[data-view-panel="access-pin"].is-active { display: block; }
   .view[data-view-panel="home"] .home-operational-grid, .view[data-view-panel="storage"] .storage-category-list, .view[data-view-panel="network"] .network-dashboard { grid-template-columns: 1fr; }
   .view[data-view-panel="home"] .storage-mini-rows, .view[data-view-panel="home"] .compact-select-label, .view[data-view-panel="home"] .state-row:nth-child(n+3), .view[data-view-panel="home"] .reachability:nth-child(n+3), .view[data-view-panel="home"] .inline-actions--compact .btn:nth-child(n+3), .view[data-view-panel="storage"] .storage-compact-entry, .view[data-view-panel="storage"] .storage-category-row em, .view[data-view-panel="storage"] .storage-category-mini, .view[data-view-panel="storage"] .storage-category-row .btn:nth-of-type(n+2), .view[data-view-panel="network"] .network-compact-grid .system-field:nth-child(n+4), .view[data-view-panel="network"] .network-service-row:nth-child(n+3) { display: revert; }
   .view[data-view-panel="storage"] .storage-category-row, .view[data-view-panel="network"] .network-service-row { grid-template-columns: 1fr; }
