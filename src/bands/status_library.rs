@@ -142,7 +142,7 @@ fn collect_game_files(path: &Path, _platform: &str, files: &mut Vec<GameFileStat
         };
         if metadata.is_dir() {
             collect_game_files(&p, _platform, files, depth + 1);
-        } else if metadata.is_file() {
+        } else if metadata.is_file() && is_playable_game_file(&p, _platform) {
             let normalized_rom_path = normalize_path(&p.to_string_lossy());
             let mtime_ms = metadata
                 .modified()
