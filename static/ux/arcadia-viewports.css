@@ -22,8 +22,14 @@
   .section-heading { align-items: start; flex-direction: column; }
 }
 @media (max-width: 720px) {
+  html, body { height: auto; overflow-y: auto; }
+  .app-shell { height: auto; min-height: 100vh; }
+  .view { height: auto; overflow: visible; }
+  .ai-manager-section--desktop-detail, .system-card--desktop-detail, .sync-desktop-detail { display: block; }
+  .sync-step-details { display: grid; }
+  .viewport { overflow: visible; }
   .network-row { grid-template-columns: 1fr; align-items: start; }
-  .workspace { grid-template-columns: 1fr; }
+  .workspace { grid-template-columns: 1fr; padding-bottom: var(--ux-shell-padding); }
   .sidebar-launcher { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .launcher-button { min-height: 62px; }
   .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
@@ -33,6 +39,11 @@
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }
   .storage-model-row, .storage-table-row > summary, .storage-table-row.storage-table-head, .location-row { grid-template-columns: 1fr; align-items: start; }
+  .view[data-view-panel="home"].is-active, .view[data-view-panel="storage"].is-active, .view[data-view-panel="local-ai"].is-active, .view[data-view-panel="network"].is-active { display: block; }
+  .view[data-view-panel="home"] .home-operational-grid, .view[data-view-panel="storage"] .storage-category-list, .view[data-view-panel="network"] .network-dashboard { grid-template-columns: 1fr; }
+  .view[data-view-panel="home"] .storage-mini-rows, .view[data-view-panel="home"] .compact-select-label, .view[data-view-panel="home"] .state-row:nth-child(n+3), .view[data-view-panel="home"] .reachability:nth-child(n+3), .view[data-view-panel="home"] .inline-actions--compact .btn:nth-child(n+3), .view[data-view-panel="storage"] .storage-compact-entry, .view[data-view-panel="storage"] .storage-category-row em, .view[data-view-panel="storage"] .storage-category-mini, .view[data-view-panel="storage"] .storage-category-row .btn:nth-of-type(n+2), .view[data-view-panel="network"] .network-compact-grid .system-field:nth-child(n+4), .view[data-view-panel="network"] .network-service-row:nth-child(n+3) { display: revert; }
+  .view[data-view-panel="storage"] .storage-category-row, .view[data-view-panel="network"] .network-service-row { grid-template-columns: 1fr; }
+  .view[data-view-panel="access-pin"] .instruction-card, .view[data-view-panel="access-pin"] .form-card p { display: revert; }
   .task-hero { align-items: stretch; flex-direction: column; }
   .btn { width: 100%; }
   .modal-close { position: static; transform: none; float: right; }
