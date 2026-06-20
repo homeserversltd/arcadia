@@ -267,6 +267,7 @@ function confirmationFor(action) {
   if (action === 'shutdown-console') return window.confirm('Shut down this console now? The appliance will power off.') ? { confirm: 'SHUTDOWN' } : null;
   if (action === 'restart-gamescope') return window.confirm('Restarting GameScope may close the active game session.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
   if (action === 'restart-arcadia') return window.confirm('Restart Arcadia web GUI only? The page may reconnect.') ? { confirm: 'RESTART_ARCADIA' } : null;
+  if (action === 'controllers-rescan' || action === 'controllers-test') return {};
   if (action === 'enable-ssh') return { mode: 'enable' };
   if (action === 'disable-ssh') return window.confirm('Disable SSH service? Current remote SSH access may disconnect.') ? { mode: 'disable', confirm: 'DISABLE_SSH' } : null;
   if (action === 'enable-ssh-password') return window.confirm('Enable SSH password login? Key login remains available.') ? { mode: 'enable', confirm: 'ENABLE_SSH_PASSWORD' } : null;

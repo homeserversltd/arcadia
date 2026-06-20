@@ -969,3 +969,79 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="system"] .system-service-row .system-row-actions {
   display: none;
 }
+
+
+.controllers-hero {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--theme-accent-soft) 65%, transparent), color-mix(in srgb, var(--theme-bg-raised) 72%, transparent));
+  box-shadow: 0 15px 36px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass);
+}
+.controllers-hero--available { border-color: color-mix(in srgb, var(--good) 42%, var(--line)); }
+.controllers-hero--disabled { border-color: color-mix(in srgb, var(--idle) 42%, var(--line)); }
+.controllers-symbol { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 16px; background: var(--theme-button-surface); color: var(--orange-strong); font-size: 22px; font-weight: 900; }
+.controllers-hero-copy { min-width: 0; display: grid; gap: 4px; }
+.controllers-hero-copy span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
+.controllers-hero-copy strong { color: var(--cream); font-size: 20px; line-height: 1.1; overflow-wrap: anywhere; }
+.controllers-hero-copy p { margin: 0; color: var(--muted); font-size: 13px; }
+.controllers-hero-actions, .controllers-actions { display: flex; flex-wrap: wrap; gap: var(--ux-control-gap); }
+.controllers-hero-actions .btn, .controllers-actions .btn { min-height: var(--ux-button-min-height); padding: var(--ux-button-padding-block) var(--ux-button-padding-inline); white-space: nowrap; }
+.controllers-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(240px, .85fr); gap: var(--ux-grid-gap); margin-top: var(--ux-grid-gap); }
+.controllers-panel, .emulator-controller-card {
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 50%, transparent));
+  box-shadow: 0 15px 36px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass);
+}
+.controllers-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: var(--ux-card-divider); }
+.controllers-panel-head strong { font-size: 15px; color: var(--cream); }
+.controller-device-list, .controller-profile-stack { display: grid; gap: 5px; margin-top: 7px; }
+.controller-device-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, .7fr); gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); }
+.controller-device-card strong { display: block; color: var(--cream); font-size: 14px; overflow-wrap: anywhere; }
+.controller-device-card span, .controller-device-card code { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.controller-profile-row { display: grid; grid-template-columns: minmax(104px, .55fr) minmax(0, 1fr); gap: 8px; align-items: center; padding: 5px 0; border-bottom: var(--ux-card-divider); }
+.controller-profile-row span { color: var(--muted); font-size: 12px; }
+.controller-profile-row strong { color: var(--cream); font-size: 14px; }
+.controller-profile-row--disabled strong { color: var(--idle); }
+.emulator-controller-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--ux-grid-gap); margin-top: var(--ux-grid-gap); }
+.emulator-profile-line { margin: 0; min-height: 30px; color: var(--muted); font-size: 12px; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.emulator-controller-card { display: grid; gap: 7px; }
+.emulator-controller-card .state-row { grid-template-columns: minmax(58px, .32fr) minmax(0, 1fr); }
+.emulator-controller-card .state-row strong { font-size: 12px; }
+.empty-state--compact { margin-top: 10px; padding: 14px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
+.empty-state--compact strong { display: block; color: var(--cream); font-size: 15px; margin-bottom: 4px; }
+
+
+.view[data-view-panel="controllers"] { padding: 7px 9px; }
+.view[data-view-panel="controllers"] .controllers-hero { min-height: 70px; padding: 8px 10px; gap: 9px; }
+.view[data-view-panel="controllers"] .controllers-symbol { width: 32px; height: 32px; border-radius: 12px; font-size: 18px; }
+.view[data-view-panel="controllers"] .controllers-hero-copy strong { font-size: 18px; }
+.view[data-view-panel="controllers"] .controllers-hero-copy p { font-size: 12px; }
+.view[data-view-panel="controllers"] .controllers-hero-actions .btn,
+.view[data-view-panel="controllers"] .controllers-actions .btn { min-height: 28px; padding: 5px 8px; font-size: 12px; }
+.view[data-view-panel="controllers"] .controllers-grid,
+.view[data-view-panel="controllers"] .emulator-controller-grid { gap: 6px; margin-top: 6px; }
+.view[data-view-panel="controllers"] .controllers-panel,
+.view[data-view-panel="controllers"] .emulator-controller-card { padding: 7px 8px; }
+.view[data-view-panel="controllers"] .controllers-panel-head { padding-bottom: 5px; }
+.view[data-view-panel="controllers"] .controllers-panel-head strong { font-size: 14px; }
+.view[data-view-panel="controllers"] .controller-device-list,
+.view[data-view-panel="controllers"] .controller-profile-stack { gap: 3px; margin-top: 5px; }
+.view[data-view-panel="controllers"] .controller-device-card { padding: 5px 7px; }
+.view[data-view-panel="controllers"] .controller-profile-row { padding: 3px 0; }
+.view[data-view-panel="controllers"] .controller-profile-row span,
+.view[data-view-panel="controllers"] .controller-device-card span,
+.view[data-view-panel="controllers"] .controller-device-card code,
+.view[data-view-panel="controllers"] .emulator-profile-line { font-size: 11px; }
+.view[data-view-panel="controllers"] .controller-profile-row strong,
+.view[data-view-panel="controllers"] .controller-device-card strong { font-size: 13px; }
+.view[data-view-panel="controllers"] .emulator-controller-card { gap: 5px; }
+.view[data-view-panel="controllers"] .emulator-profile-line { min-height: 14px; -webkit-line-clamp: 1; }

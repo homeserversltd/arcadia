@@ -45,6 +45,7 @@ include!("bands/status_core.rs");
 include!("bands/status_network.rs");
 include!("bands/status_system.rs");
 include!("bands/status_library.rs");
+include!("bands/status_controllers.rs");
 include!("bands/local_ai_config.rs");
 include!("bands/local_ai_runtime.rs");
 include!("bands/surface.rs");
@@ -137,6 +138,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/storage/diagnostics", get(storage_diagnostics_route))
         .route("/api/network/state", get(network_state_route))
         .route("/api/ai/state", get(ai_state_route))
+        .route("/api/controllers/state", get(controllers_state_route))
         .route("/api/network/wifi/status", get(wifi_status))
         .route("/api/network/wifi/scan", post(wifi_scan))
         .route("/api/network/wifi/connect", post(wifi_connect))
@@ -210,6 +212,14 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/harmonia/ledger", get(harmonia_ledger_route))
         .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))
+        .route(
+            "/api/actions/controllers-rescan",
+            post(action_controllers_rescan),
+        )
+        .route(
+            "/api/actions/controllers-test",
+            post(action_controllers_test),
+        )
         .route(
             "/api/actions/clear-artwork-cache",
             post(action_clear_artwork_cache),
