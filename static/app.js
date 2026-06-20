@@ -1383,6 +1383,65 @@ function bindProviderKeys() {
 }
 
 
+
+function moduleLabelFromId(id) {
+  return String(id || '').split('-').filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+}
+
+async function toggleHarmoniaModule(moduleId, enabled, sourceButton = null) {
+  const label = moduleLabelFromId(moduleId);
+  const old = sourceButton?.textContent;
+  if (sourceButton) { sourceButton.disabled = true; sourceButton.textContent = enabled ? 'Turning on…' : 'Turning off…'; }
+  try {
+    const data = await postJson('/api/harmonia/module', { module_id: moduleId, enabled });
+    PopupManager.showToast(data.message || (data.ok ? `${label} updated` : `${label} not updated`), data.ok ? 'success' : 'error');
+    if (data.ok) window.location.reload();
+  } catch (_) {
+    PopupManager.showToast(`${label} request failed`, 'error');
+  } finally {
+    if (sourceButton) { sourceButton.disabled = false; sourceButton.textContent = old; }
+  }
+}
+
+function openHarmoniaModuleMenu() {
+  const body = document.createElement('div');
+  body.className = 'harmonia-module-menu';
+  const modules = Array.from(document.querySelectorAll('[data-harmonia-module]'));
+  if (!modules.length) {
+    body.innerHTML = '<div class="empty-state"><strong>No Harmonia modules reported.</strong></div>';
+    return PopupManager.showModal({ title: 'Harmonia Modules', body, hideDefaultAction: true });
+  }
+  modules.forEach((module) => {
+    const moduleId = module.dataset.harmoniaModule;
+    const enabled = module.dataset.moduleEnabled === 'true';
+    const row = document.createElement('label');
+    row.className = 'harmonia-module-choice';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = enabled;
+    const track = document.createElement('span');
+    track.className = 'pin-toggle-track';
+    const thumb = document.createElement('span');
+    thumb.className = 'pin-toggle-thumb';
+    track.appendChild(thumb);
+    const copy = document.createElement('span');
+    copy.className = 'harmonia-module-choice-copy';
+    copy.innerHTML = `<strong>${escapeHtml(moduleLabelFromId(moduleId))}</strong><em>${escapeHtml(moduleId)}</em>`;
+    input.addEventListener('change', () => toggleHarmoniaModule(moduleId, input.checked, null));
+    row.append(input, track, copy);
+    body.appendChild(row);
+  });
+  PopupManager.showModal({ title: 'Harmonia Modules', body, hideDefaultAction: true });
+}
+
+function bindHarmoniaModules() {
+  document.querySelectorAll('[data-harmonia-module-menu]').forEach((button) => button.addEventListener('click', openHarmoniaModuleMenu));
+  document.querySelectorAll('[data-harmonia-module-toggle]').forEach((button) => button.addEventListener('click', () => {
+    const enabled = button.dataset.enabled === 'true';
+    toggleHarmoniaModule(button.dataset.harmoniaModuleToggle, !enabled, button);
+  }));
+}
+
 function bindSystemTrustAndAccessForms() {
   const keyForm = document.getElementById('ssh-key-form');
   if (keyForm) {
@@ -1440,6 +1499,7 @@ bindNavigation();
 bindConsoleActions();
 bindStorageModals();
 bindProviderKeys();
+bindHarmoniaModules();
 bindGuiPinUnlock();
 bindGuiPinAccess();
 bindGuiPinChange();

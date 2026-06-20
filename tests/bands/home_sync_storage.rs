@@ -319,3 +319,38 @@
         assert!(!rendered.contains("<details class=\"storage-section"));
     }
 
+
+    #[test]
+    fn updates_view_is_harmonia_integration_with_module_controls() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let updates_start = rendered
+            .find("<section id=\"view-updates\"")
+            .expect("updates view starts");
+        let updates_end = updates_start
+            + rendered[updates_start..]
+                .find("<section id=\"view-system\"")
+                .expect("system follows updates");
+        let updates_html = &rendered[updates_start..updates_end];
+
+        for required in [
+            "data-harmonia-updates=\"true\"",
+            "Check state",
+            "Make harmonious",
+            "data-harmonia-module-menu=\"true\"",
+            "data-harmonia-module-grid=\"true\"",
+            "data-harmonia-module=\"identity\"",
+            "/var/lib/harmonia/receipts/homeconsole-latest/run.json",
+            "/api/actions/check-updates",
+            "/api/actions/update-gui",
+        ] {
+            assert!(updates_html.contains(required), "updates view missing {required}");
+        }
+        assert!(!updates_html.contains("Manual SCP bridge"));
+        assert!(!updates_html.contains("Latest available</span><strong>Not checked"));
+    }
