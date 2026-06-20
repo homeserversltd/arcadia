@@ -282,6 +282,100 @@ fn harmonia_module_toggle_response(
     )
 }
 
+
+async fn harmonia_ledger_route(
+    Query(query): Query<HarmoniaLedgerQuery>,
+) -> (StatusCode, Json<HarmoniaLedgerResponse>) {
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(10).clamp(1, 25);
+    let text = fs::read_to_string(HARMONIA_HOMECONSOLE_LEDGER).unwrap_or_default();
+    let mut parsed = Vec::new();
+    for (idx, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            redact_json_value(&mut value);
+            parsed.push(harmonia_ledger_entry(idx + 1, value));
+        }
+    }
+    parsed.reverse();
+    let total_entries = parsed.len();
+    let total_pages = total_entries.div_ceil(per_page).max(1);
+    let bounded_page = page.min(total_pages);
+    let start = (bounded_page - 1) * per_page;
+    let entries = parsed.into_iter().skip(start).take(per_page).collect::<Vec<_>>();
+    let message = if total_entries == 0 {
+        "No Harmonia ledger entries found.".to_string()
+    } else {
+        format!("Showing ledger page {} of {}.", bounded_page, total_pages)
+    };
+    (
+        StatusCode::OK,
+        Json(HarmoniaLedgerResponse {
+            ok: true,
+            action: "harmonia-ledger-page",
+            profile_id: "homeconsole",
+            ledger_path: HARMONIA_HOMECONSOLE_LEDGER,
+            page: bounded_page,
+            per_page,
+            total_entries,
+            total_pages,
+            entries,
+            message,
+        }),
+    )
+}
+
+fn harmonia_ledger_entry(ordinal: usize, entry: serde_json::Value) -> HarmoniaLedgerEntry {
+    HarmoniaLedgerEntry {
+        ordinal,
+        stamp: json_string_any(&entry, &["stamp", "timestamp", "completed_at", "started_at", "created_at"])
+            .unwrap_or_else(|| format!("entry-{ordinal}")),
+        schema: json_string_any(&entry, &["schema"]).unwrap_or_else(|| "harmonia.ledger.entry".to_string()),
+        profile_id: json_string_any(&entry, &["profile_id", "profileId", "profile"]).unwrap_or_else(|| "homeconsole".to_string()),
+        module_id: json_string_any(&entry, &["module_id", "moduleId", "module"]).unwrap_or_else(|| "suite".to_string()),
+        ok: entry.get("ok").and_then(|v| v.as_bool()),
+        changed: entry.get("changed").and_then(|v| v.as_bool()),
+        first_missing_signal: json_string_any(&entry, &["first_missing_signal", "firstMissingSignal"])
+            .unwrap_or_else(|| "none".to_string()),
+        receipt_dir: json_string_any(&entry, &["receipt_dir", "receiptDir"]).unwrap_or_default(),
+        entry,
+    }
+}
+
+fn json_string_any(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| value.get(*key).and_then(|v| v.as_str()).map(str::to_string))
+}
+
+fn redact_json_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, value) in map.iter_mut() {
+                let key_lc = key.to_ascii_lowercase();
+                if key_lc.contains("secret")
+                    || key_lc.contains("token")
+                    || key_lc.contains("password")
+                    || key_lc.contains("private")
+                    || key_lc.ends_with("key")
+                {
+                    *value = serde_json::Value::String("redacted".to_string());
+                } else {
+                    redact_json_value(value);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                redact_json_value(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_console_command(
         "sync-games",

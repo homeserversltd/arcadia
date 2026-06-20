@@ -1415,8 +1415,82 @@ function openHarmoniaModuleMenu() {
   PopupManager.showModal({ title: 'Harmonia Modules', body, hideDefaultAction: true });
 }
 
+
+function ledgerValue(value) {
+  if (value === undefined || value === null || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'yes' : 'no';
+  return String(value);
+}
+
+function renderHarmoniaLedgerPage(content, data) {
+  content.textContent = '';
+  const page = data.page || 1;
+  const totalPages = data.totalPages || 1;
+  const entries = data.entries || [];
+  const meta = document.createElement('div');
+  meta.className = 'harmonia-ledger-meta';
+  meta.innerHTML = `<strong>${escapeHtml(data.message || 'Harmonia ledger')}</strong><span>${escapeHtml(data.ledgerPath || '')}</span>`;
+  content.appendChild(meta);
+  const list = document.createElement('div');
+  list.className = 'harmonia-ledger-list';
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty-state"><strong>No ledger entries found.</strong></div>';
+  }
+  entries.forEach((entry) => {
+    const row = document.createElement('article');
+    row.className = 'harmonia-ledger-row';
+    row.innerHTML = `
+      <div><strong>${escapeHtml(entry.stamp || `entry-${entry.ordinal}`)}</strong><span>${escapeHtml(entry.schema || 'ledger')}</span></div>
+      <b class="system-status system-status--${entry.ok === false ? 'error' : 'available'}">${entry.ok === false ? 'Failed' : 'OK'}</b>
+      <div class="harmonia-ledger-fields">
+        <span><em>Profile</em><strong>${escapeHtml(ledgerValue(entry.profileId))}</strong></span>
+        <span><em>Module</em><strong>${escapeHtml(ledgerValue(entry.moduleId))}</strong></span>
+        <span><em>Changed</em><strong>${escapeHtml(ledgerValue(entry.changed))}</strong></span>
+        <span><em>Signal</em><strong>${escapeHtml(ledgerValue(entry.firstMissingSignal))}</strong></span>
+      </div>`;
+    const details = document.createElement('details');
+    details.className = 'harmonia-ledger-json';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Entry JSON';
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(entry.entry || {}, null, 2);
+    details.append(summary, pre);
+    row.appendChild(details);
+    list.appendChild(row);
+  });
+  content.appendChild(list);
+  const pager = document.createElement('div');
+  pager.className = 'harmonia-ledger-pager';
+  const prev = buttonNode('Previous');
+  const count = document.createElement('span');
+  count.textContent = `${page} / ${totalPages}`;
+  const next = buttonNode('Next');
+  prev.disabled = page <= 1;
+  next.disabled = page >= totalPages;
+  prev.addEventListener('click', () => loadHarmoniaLedgerPage(page - 1, content));
+  next.addEventListener('click', () => loadHarmoniaLedgerPage(page + 1, content));
+  pager.append(prev, count, next);
+  content.appendChild(pager);
+}
+
+async function loadHarmoniaLedgerPage(page, content) {
+  storageLoading(content, 'Loading Harmonia ledger…');
+  try {
+    const data = await getJson(`/api/harmonia/ledger?page=${encodeURIComponent(page)}&per_page=8`);
+    renderHarmoniaLedgerPage(content, data);
+  } catch (_) {
+    content.innerHTML = '<div class="empty-state"><strong>Could not load Harmonia ledger.</strong></div>';
+  }
+}
+
+function openHarmoniaLedger() {
+  const content = storageModalShell('Harmonia Ledger', ['Updates', 'Ledger']);
+  loadHarmoniaLedgerPage(1, content);
+}
+
 function bindHarmoniaModules() {
   document.querySelectorAll('[data-harmonia-module-menu]').forEach((button) => button.addEventListener('click', openHarmoniaModuleMenu));
+  document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
   document.querySelectorAll('[data-harmonia-module-toggle]').forEach((button) => button.addEventListener('click', () => {
     const enabled = button.dataset.enabled === 'true';
     toggleHarmoniaModule(button.dataset.harmoniaModuleToggle, !enabled, button);

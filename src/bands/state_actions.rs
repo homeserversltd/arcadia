@@ -126,3 +126,40 @@ struct HarmoniaModuleToggleRequest {
     module_id: String,
     enabled: bool,
 }
+
+
+#[derive(Deserialize)]
+struct HarmoniaLedgerQuery {
+    page: Option<usize>,
+    per_page: Option<usize>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HarmoniaLedgerEntry {
+    ordinal: usize,
+    stamp: String,
+    schema: String,
+    profile_id: String,
+    module_id: String,
+    ok: Option<bool>,
+    changed: Option<bool>,
+    first_missing_signal: String,
+    receipt_dir: String,
+    entry: serde_json::Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HarmoniaLedgerResponse {
+    ok: bool,
+    action: &'static str,
+    profile_id: &'static str,
+    ledger_path: &'static str,
+    page: usize,
+    per_page: usize,
+    total_entries: usize,
+    total_pages: usize,
+    entries: Vec<HarmoniaLedgerEntry>,
+    message: String,
+}
