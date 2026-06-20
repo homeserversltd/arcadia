@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path as AxumPath, Query, State},
+    extract::{Multipart, Path as AxumPath, Query, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -60,9 +60,12 @@ const SYNC_MANIFEST_PATHS: [&str; 3] = [
     "/var/lib/arch-game-sync/manifest.json",
     "/var/lib/harmonia/state/homeconsole-sync-manifest.json",
 ];
-const LAN_INFERENCE_PORT: u16 = 7777;
+const DEFAULT_LAN_INFERENCE_PORT: u16 = 7777;
 const LOCAL_AI_STATE_PATH: &str = "/var/lib/arcadia/local-ai-state.json";
 const LOCAL_AI_MODEL_ROOT: &str = "/var/lib/arcadia/models";
+const LOCAL_AI_NGINX_CONF: &str = "/etc/nginx/conf.d/arcadia-local-ai.conf";
+const LOCAL_AI_FIREWALL_RECEIPT: &str = "/var/lib/arcadia/local-ai-firewall.receipt";
+const LOCAL_AI_TOKEN_PATH: &str = "/var/lib/arcadia/local-ai-token";
 const LLAMA_SERVER_BIN: &str = "/usr/local/bin/llama-server";
 const LLAMA_CPP_BIN: &str = "/usr/local/bin/llama-cli";
 const SAMBA_SERVICE_NAMES: [&str; 2] = ["smb.service", "smbd.service"];
@@ -786,6 +789,37 @@ pub struct LocalAIState {
     pub inference: InferenceState,
     pub hardware: AIHardwareState,
     pub activity: AIActivityState,
+    pub settings: AISettingsState,
+    pub client_handoff: AIClientHandoffState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AISettingsState {
+    pub start_api_on_boot: bool,
+    pub auto_load_last_model: bool,
+    pub preferred_model_id: Option<String>,
+    pub context_size: u32,
+    pub gpu_layers: i32,
+    pub threads: u32,
+    pub batch: u32,
+    pub concurrency: u32,
+    pub request_limit: u32,
+    pub lan_cidr: String,
+    pub cors_origins: Vec<String>,
+    pub log_level: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AIClientHandoffState {
+    pub endpoint: Option<String>,
+    pub openai_base_url: Option<String>,
+    pub token_configured: bool,
+    pub token_preview: Option<String>,
+    pub hermes_hint: String,
+    pub pi_hint: String,
+    pub secret_values_recorded: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -797,6 +831,10 @@ pub struct AIRuntimeState {
     pub latest_version: Option<String>,
     pub update_state: String,
     pub server_state: String,
+    pub binary_path: Option<String>,
+    pub source_path: Option<String>,
+    pub description: String,
+    pub last_checked_at: Option<String>,
     pub error: Option<String>,
 }
 
@@ -845,12 +883,16 @@ pub struct AIDownloadState {
 pub struct InferenceState {
     pub enabled: bool,
     pub lan_access_enabled: bool,
+    pub access_mode: String,
     pub host: String,
     pub port: u16,
     pub endpoint_urls: Vec<String>,
     pub api_mode: Option<String>,
     pub request_count: Option<u64>,
     pub last_request_at: Option<String>,
+    pub nginx_configured: bool,
+    pub firewall_configured: bool,
+    pub health_path: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -904,6 +946,37 @@ struct HFDownloadRequest {
 #[serde(rename_all = "camelCase")]
 struct InferenceSetRequest {
     enabled: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InferenceLanRequest {
+    enabled: bool,
+    port: Option<u16>,
+    lan_cidr: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AISettingsRequest {
+    start_api_on_boot: Option<bool>,
+    auto_load_last_model: Option<bool>,
+    preferred_model_id: Option<String>,
+    context_size: Option<u32>,
+    gpu_layers: Option<i32>,
+    threads: Option<u32>,
+    batch: Option<u32>,
+    concurrency: Option<u32>,
+    request_limit: Option<u32>,
+    lan_cidr: Option<String>,
+    cors_origins: Option<Vec<String>>,
+    log_level: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TokenActionRequest {
+    confirm: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1186,6 +1259,8 @@ async fn main() -> anyhow_free::Result<()> {
             post(ai_hf_list_files),
         )
         .route("/api/ai/models/huggingface/download", post(ai_hf_download))
+        .route("/api/ai/models/import", post(ai_model_import))
+        .route("/api/ai/models/rescan", post(ai_models_rescan))
         .route("/api/ai/models/download/cancel", post(ai_download_cancel))
         .route("/api/ai/models/remove", post(ai_model_remove))
         .route("/api/ai/model/select", post(ai_model_select))
@@ -1200,6 +1275,9 @@ async fn main() -> anyhow_free::Result<()> {
             post(ai_inference_set_lan_access),
         )
         .route("/api/ai/inference/test", post(ai_inference_test))
+        .route("/api/ai/settings", post(ai_settings_save))
+        .route("/api/ai/token/generate", post(ai_token_generate))
+        .route("/api/ai/token/revoke", post(ai_token_revoke))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/sync-games", post(action_sync_games))
         .route(
@@ -1493,12 +1571,15 @@ async fn gui_pin_status_route() -> Json<GuiPinStatus> {
 async fn ai_runtime_check_update(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
+    let mut cfg = load_ai_config();
+    cfg.last_checked_at = Some(now_rfc3339_like());
+    let _ = save_ai_config(&cfg);
     ai_action(
         StatusCode::OK,
         &state,
         true,
         "runtime-check-update",
-        "Runtime update check completed.",
+        "llama.cpp update check completed.",
     )
 }
 async fn ai_runtime_update(
@@ -1675,6 +1756,92 @@ async fn ai_hf_download(
         },
     )
 }
+
+async fn ai_model_import(
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let _ = fs::create_dir_all(LOCAL_AI_MODEL_ROOT);
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let filename = field
+            .file_name()
+            .and_then(|v| Path::new(v).file_name().and_then(|f| f.to_str()))
+            .unwrap_or("model.gguf")
+            .to_string();
+        if !filename.to_ascii_lowercase().ends_with(".gguf") || filename.contains("..") {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "model-import",
+                "Only local .gguf model files can be imported.",
+            );
+        }
+        let dest = Path::new(LOCAL_AI_MODEL_ROOT).join(&filename);
+        let bytes = match field.bytes().await {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return ai_action(
+                    StatusCode::BAD_REQUEST,
+                    &state,
+                    false,
+                    "model-import",
+                    "Model upload failed before the console could store it.",
+                )
+            }
+        };
+        if bytes.len() < 16 || !bytes.starts_with(b"GGUF") {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "model-import",
+                "Model file is not a valid GGUF file.",
+            );
+        }
+        if fs::write(&dest, &bytes).is_ok() {
+            secure_file(&dest, 0o640);
+            append_local_ai_log(&format!(
+                "imported {} bytes into {}",
+                bytes.len(),
+                dest.display()
+            ));
+            return ai_action(
+                StatusCode::OK,
+                &state,
+                true,
+                "model-import",
+                "Model imported into Local AI storage.",
+            );
+        }
+        return ai_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "model-import",
+            "Model import could not write to appliance storage.",
+        );
+    }
+    ai_action(
+        StatusCode::BAD_REQUEST,
+        &state,
+        false,
+        "model-import",
+        "No model file was provided.",
+    )
+}
+
+async fn ai_models_rescan(
+    State(state): State<Arc<AppState>>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "models-rescan",
+        "Model storage rescanned.",
+    )
+}
 async fn ai_download_cancel(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
@@ -1748,10 +1915,9 @@ async fn ai_model_select(
                 .parent()
                 .unwrap_or(Path::new("/var/lib/arcadia")),
         );
-        let _ = fs::write(
-            LOCAL_AI_STATE_PATH,
-            format!("{{\"selectedModelId\":\"{}\"}}", id),
-        );
+        let mut cfg = load_ai_config();
+        cfg.selected_model_id = Some(id.clone());
+        let _ = save_ai_config(&cfg);
         ai_action(
             StatusCode::OK,
             &state,
@@ -1806,7 +1972,7 @@ async fn ai_model_load(
                 "-m",
                 path.to_string_lossy().as_ref(),
                 "--port",
-                &LAN_INFERENCE_PORT.to_string(),
+                &load_ai_config().lan_port.to_string(),
                 "--host",
                 "127.0.0.1",
             ])
@@ -1853,38 +2019,85 @@ async fn ai_inference_set_enabled(
     State(state): State<Arc<AppState>>,
     Json(body): Json<InferenceSetRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
+    let mut cfg = load_ai_config();
+    cfg.api_enabled = body.enabled;
+    if !body.enabled {
+        cfg.lan_enabled = false;
+        let _ = stop_llama_server();
+        let _ = apply_lan_exposure(&cfg);
+    }
+    let ok = save_ai_config(&cfg).is_ok();
     ai_action(
-        StatusCode::OK,
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
         &state,
-        true,
+        ok,
         "inference-set-enabled",
         if body.enabled {
-            "Inference enabled for Local AI."
+            "Local inference API enabled in internal-only mode until LAN access is explicitly enabled."
         } else {
-            "Inference disabled for Local AI."
+            "Local inference API disabled and LAN exposure removed."
         },
     )
 }
 async fn ai_inference_set_lan_access(
     State(state): State<Arc<AppState>>,
-    Json(body): Json<InferenceSetRequest>,
+    Json(body): Json<InferenceLanRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
+    let mut cfg = load_ai_config();
+    if let Some(port) = body.port {
+        if !valid_lan_port(port) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "inference-set-lan-access",
+                "LAN port must be 1024-65535 and cannot conflict with HomeConsole service ports.",
+            );
+        }
+        cfg.lan_port = port;
+    }
+    if let Some(cidr) = body.lan_cidr.as_deref() {
+        if !valid_lan_cidr(cidr) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "inference-set-lan-access",
+                "LAN CIDR must be a private IPv4 CIDR such as 192.168.123.0/24.",
+            );
+        }
+        cfg.lan_cidr = cidr.to_string();
+    }
+    cfg.lan_enabled = body.enabled;
+    let apply = apply_lan_exposure(&cfg);
+    let ok = apply.is_ok() && save_ai_config(&cfg).is_ok();
     ai_action(
-        StatusCode::OK,
-        &state,
-        true,
-        "inference-set-lan-access",
-        if body.enabled {
-            "LAN access enabled for trusted home networks only. Do not expose port 7777 to the public internet."
+        if ok {
+            StatusCode::OK
         } else {
-            "LAN access disabled."
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        &state,
+        ok,
+        "inference-set-lan-access",
+        if ok && body.enabled {
+            "LAN access applied through Nginx/firewall as trusted-home-LAN only."
+        } else if ok {
+            "LAN access disabled and proxy/firewall state removed where possible."
+        } else {
+            "LAN access could not be applied; previous config remains active."
         },
     )
 }
 async fn ai_inference_test(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    let ok = tcp_port_listening(LAN_INFERENCE_PORT);
+    let cfg = load_ai_config();
+    let ok = tcp_port_listening(cfg.lan_port) || tcp_port_listening(DEFAULT_LAN_INFERENCE_PORT);
     ai_action(
         if ok {
             StatusCode::OK
@@ -1897,8 +2110,202 @@ async fn ai_inference_test(
         if ok {
             "Inference endpoint is listening."
         } else {
-            "No model is serving inference on port 7777."
+            "No model is serving inference on the configured Local AI port."
         },
+    )
+}
+
+async fn ai_settings_save(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<AISettingsRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    let mut cfg = load_ai_config();
+    if let Some(v) = body.start_api_on_boot {
+        cfg.start_api_on_boot = v;
+    }
+    if let Some(v) = body.auto_load_last_model {
+        cfg.auto_load_last_model = v;
+    }
+    if let Some(v) = body.preferred_model_id {
+        cfg.preferred_model_id = if v.trim().is_empty() { None } else { Some(v) };
+    }
+    if let Some(v) = body.context_size {
+        if !(512..=262144).contains(&v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "Context size is outside the safe supported range.",
+            );
+        }
+        cfg.context_size = v;
+    }
+    if let Some(v) = body.gpu_layers {
+        if !(-1..=999).contains(&v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "GPU layers must be -1 or a non-negative supported count.",
+            );
+        }
+        cfg.gpu_layers = v;
+    }
+    if let Some(v) = body.threads {
+        if v > 256 {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "Thread count is outside the safe supported range.",
+            );
+        }
+        cfg.threads = v;
+    }
+    if let Some(v) = body.batch {
+        if !(1..=8192).contains(&v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "Batch size is outside the safe supported range.",
+            );
+        }
+        cfg.batch = v;
+    }
+    if let Some(v) = body.concurrency {
+        if !(1..=64).contains(&v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "Concurrency is outside the safe supported range.",
+            );
+        }
+        cfg.concurrency = v;
+    }
+    if let Some(v) = body.request_limit {
+        if !(1..=10000).contains(&v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "Request limit is outside the safe supported range.",
+            );
+        }
+        cfg.request_limit = v;
+    }
+    if let Some(v) = body.lan_cidr {
+        if !valid_lan_cidr(&v) {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "LAN CIDR must be private and valid.",
+            );
+        }
+        cfg.lan_cidr = v;
+    }
+    if let Some(v) = body.cors_origins {
+        cfg.cors_origins = v
+            .into_iter()
+            .filter(|o| o.starts_with("http://") || o.starts_with("https://"))
+            .collect();
+    }
+    if let Some(v) = body.log_level {
+        if !matches!(v.as_str(), "error" | "warn" | "info" | "debug" | "trace") {
+            return ai_action(
+                StatusCode::BAD_REQUEST,
+                &state,
+                false,
+                "settings-save",
+                "Log level must be error, warn, info, debug, or trace.",
+            );
+        }
+        cfg.log_level = v;
+    }
+    let ok = save_ai_config(&cfg).is_ok();
+    ai_action(
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        &state,
+        ok,
+        "settings-save",
+        if ok {
+            "Local AI settings saved."
+        } else {
+            "Local AI settings could not be saved."
+        },
+    )
+}
+
+async fn ai_token_generate(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TokenActionRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    if body.confirm.as_deref() != Some("GENERATE_TOKEN") {
+        return ai_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "token-generate",
+            "Confirm token generation.",
+        );
+    }
+    let token = command_stdout("openssl", &["rand", "-hex", "32"])
+        .unwrap_or_else(|| format!("arcadia-{}", now_rfc3339_like().replace([':', '-'], "")));
+    if let Some(parent) = Path::new(LOCAL_AI_TOKEN_PATH).parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let ok = fs::write(LOCAL_AI_TOKEN_PATH, token).is_ok();
+    secure_file(Path::new(LOCAL_AI_TOKEN_PATH), 0o600);
+    ai_action(
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+        &state,
+        ok,
+        "token-generate",
+        if ok {
+            "Local client token generated. Secret value is stored redacted."
+        } else {
+            "Local client token could not be generated."
+        },
+    )
+}
+
+async fn ai_token_revoke(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<TokenActionRequest>,
+) -> (StatusCode, Json<AIActionResponse>) {
+    if body.confirm.as_deref() != Some("REVOKE_TOKEN") {
+        return ai_action(
+            StatusCode::BAD_REQUEST,
+            &state,
+            false,
+            "token-revoke",
+            "Confirm token revocation.",
+        );
+    }
+    let _ = fs::remove_file(LOCAL_AI_TOKEN_PATH);
+    ai_action(
+        StatusCode::OK,
+        &state,
+        true,
+        "token-revoke",
+        "Local client token revoked.",
     )
 }
 fn ai_action(
@@ -4269,7 +4676,8 @@ fn network_services(
             .then(|| ip.map(|addr| format!("smb://{}/{}", addr, share)))
             .flatten(),
     };
-    let lan_ai = tcp_port_listening(LAN_INFERENCE_PORT);
+    let cfg = load_ai_config();
+    let lan_ai = cfg.lan_enabled && tcp_port_listening(cfg.lan_port);
     NetworkServices {
         web_console: WebConsoleService {
             state: "available".to_string(),
@@ -4291,9 +4699,9 @@ fn network_services(
         },
         lan_inference: LanInferenceService {
             state: if lan_ai { "available" } else { "disabled" }.to_string(),
-            port: LAN_INFERENCE_PORT,
+            port: cfg.lan_port,
             urls: lan_ai
-                .then(|| vec![format!("{}:{}", web_origin, LAN_INFERENCE_PORT)])
+                .then(|| vec![format!("{}:{}", web_origin, cfg.lan_port)])
                 .unwrap_or_default(),
         },
         ssh: SshService {
@@ -4582,7 +4990,9 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
     let runtime_installed = helper_exists(LLAMA_SERVER_BIN)
         || helper_exists(LLAMA_CPP_BIN)
         || command_stdout("which", &["llama-server"]).is_some();
-    let inference_listening = tcp_port_listening(LAN_INFERENCE_PORT);
+    let cfg = load_ai_config();
+    let inference_listening =
+        tcp_port_listening(cfg.lan_port) || tcp_port_listening(DEFAULT_LAN_INFERENCE_PORT);
     let server_running =
         inference_listening || command_stdout("pgrep", &["-af", "llama-server"]).is_some();
     let storage = storage_status();
@@ -4591,7 +5001,7 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
     let endpoint = format!(
         "{}:{}",
         state.canonical_url.trim_end_matches('/'),
-        LAN_INFERENCE_PORT
+        cfg.lan_port
     );
     let selected = selected_model_id().or_else(|| status.selected_model_id.clone());
     let selected_name = selected
@@ -4608,9 +5018,13 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
             installed: runtime_installed,
             name: "llama.cpp".to_string(),
             version: llama_version(),
-            latest_version: None,
-            update_state: "idle".to_string(),
+            latest_version: latest_llama_version(),
+            update_state: runtime_update_state(),
             server_state: if server_running { "running" } else { "stopped" }.to_string(),
+            binary_path: llama_binary_path(),
+            source_path: llama_source_path(),
+            description: "llama.cpp runs local GGUF models and exposes an OpenAI-compatible inference API on this appliance.".to_string(),
+            last_checked_at: last_ai_check_time(),
             error: None,
         },
         loaded_model: AILoadedModelState {
@@ -4626,22 +5040,26 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
         downloads: active_ai_downloads(),
         inference: InferenceState {
             enabled: inference_listening,
-            lan_access_enabled: inference_listening,
-            host: if inference_listening {
+            lan_access_enabled: cfg.lan_enabled && inference_listening,
+            access_mode: if !cfg.api_enabled { "off" } else if cfg.lan_enabled { "lan" } else { "internal-only" }.to_string(),
+            host: if cfg.lan_enabled && inference_listening {
                 "lan"
             } else {
-                "localhost"
+                "127.0.0.1"
             }
             .to_string(),
-            port: LAN_INFERENCE_PORT,
+            port: cfg.lan_port,
             endpoint_urls: if inference_listening {
-                vec![endpoint]
+                vec![endpoint.clone()]
             } else {
                 Vec::new()
             },
             api_mode: Some("openai-compatible".to_string()),
             request_count: None,
             last_request_at: None,
+            nginx_configured: Path::new(LOCAL_AI_NGINX_CONF).exists(),
+            firewall_configured: Path::new(LOCAL_AI_FIREWALL_RECEIPT).exists(),
+            health_path: "/health".to_string(),
         },
         hardware: AIHardwareState {
             gpu_memory_used_bytes: status.gpu_memory_used_bytes,
@@ -4666,16 +5084,258 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
             model_load_log: redacted_log("/var/log/arcadia-local-ai.log"),
             inference_server_log: redacted_log("/var/log/llama-server.log"),
         },
+        settings: ai_settings_state(&cfg),
+        client_handoff: ai_client_handoff(&cfg, inference_listening, endpoint),
     }
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalAiConfig {
+    api_enabled: bool,
+    lan_enabled: bool,
+    lan_port: u16,
+    lan_cidr: String,
+    selected_model_id: Option<String>,
+    start_api_on_boot: bool,
+    auto_load_last_model: bool,
+    preferred_model_id: Option<String>,
+    context_size: u32,
+    gpu_layers: i32,
+    threads: u32,
+    batch: u32,
+    concurrency: u32,
+    request_limit: u32,
+    cors_origins: Vec<String>,
+    log_level: String,
+    last_checked_at: Option<String>,
+}
+
+impl Default for LocalAiConfig {
+    fn default() -> Self {
+        Self {
+            api_enabled: false,
+            lan_enabled: false,
+            lan_port: DEFAULT_LAN_INFERENCE_PORT,
+            lan_cidr: "192.168.123.0/24".to_string(),
+            selected_model_id: None,
+            start_api_on_boot: false,
+            auto_load_last_model: false,
+            preferred_model_id: None,
+            context_size: 4096,
+            gpu_layers: -1,
+            threads: 0,
+            batch: 512,
+            concurrency: 1,
+            request_limit: 60,
+            cors_origins: vec![
+                "http://console.home.arpa".to_string(),
+                "http://homeconsole.home.arpa".to_string(),
+            ],
+            log_level: "info".to_string(),
+            last_checked_at: None,
+        }
+    }
+}
+
+fn load_ai_config() -> LocalAiConfig {
+    fs::read_to_string(LOCAL_AI_STATE_PATH)
+        .ok()
+        .and_then(|text| serde_json::from_str::<LocalAiConfig>(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_ai_config(cfg: &LocalAiConfig) -> std::io::Result<()> {
+    let path = Path::new(LOCAL_AI_STATE_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let text = serde_json::to_string_pretty(cfg).unwrap_or_else(|_| "{}".to_string());
+    fs::write(path, text)?;
+    secure_file(path, 0o640);
+    Ok(())
+}
+
+fn ai_settings_state(cfg: &LocalAiConfig) -> AISettingsState {
+    AISettingsState {
+        start_api_on_boot: cfg.start_api_on_boot,
+        auto_load_last_model: cfg.auto_load_last_model,
+        preferred_model_id: cfg.preferred_model_id.clone(),
+        context_size: cfg.context_size,
+        gpu_layers: cfg.gpu_layers,
+        threads: cfg.threads,
+        batch: cfg.batch,
+        concurrency: cfg.concurrency,
+        request_limit: cfg.request_limit,
+        lan_cidr: cfg.lan_cidr.clone(),
+        cors_origins: cfg.cors_origins.clone(),
+        log_level: cfg.log_level.clone(),
+    }
+}
+
+fn ai_client_handoff(
+    cfg: &LocalAiConfig,
+    listening: bool,
+    endpoint: String,
+) -> AIClientHandoffState {
+    let token = fs::read_to_string(LOCAL_AI_TOKEN_PATH)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    AIClientHandoffState {
+        endpoint: (cfg.api_enabled && listening).then(|| endpoint.clone()),
+        openai_base_url: (cfg.api_enabled && listening).then(|| format!("{}/v1", endpoint.trim_end_matches('/'))),
+        token_configured: token.is_some(),
+        token_preview: token.as_ref().map(|t| format!("{}…{}", &t[..t.len().min(4)], &t[t.len().saturating_sub(4)..])),
+        hermes_hint: "Set local provider base URL to the redacted OpenAI-compatible endpoint shown here; keep token material in Hermes env/config, not logs.".to_string(),
+        pi_hint: "Use the LAN endpoint only from trusted home LAN clients; internal-only mode is console-local.".to_string(),
+        secret_values_recorded: false,
+    }
+}
+
+fn valid_lan_port(port: u16) -> bool {
+    (1024..=65535).contains(&port) && !matches!(port, 22 | 80 | 443 | 445 | 8080)
+}
+
+fn valid_lan_cidr(cidr: &str) -> bool {
+    let Some((addr, prefix)) = cidr.split_once('/') else {
+        return false;
+    };
+    let Ok(prefix) = prefix.parse::<u8>() else {
+        return false;
+    };
+    if !(8..=32).contains(&prefix) {
+        return false;
+    }
+    let Ok(ip) = addr.parse::<Ipv4Addr>() else {
+        return false;
+    };
+    ip.is_private()
+}
+
+fn secure_file(path: &Path, mode: u32) {
+    #[cfg(unix)]
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        perms.set_mode(mode);
+        let _ = fs::set_permissions(path, perms);
+    }
+}
+
+fn append_local_ai_log(line: &str) {
+    let _ = fs::create_dir_all("/var/log");
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/var/log/arcadia-local-ai.log")
+    {
+        let _ = writeln!(file, "{} {}", now_rfc3339_like(), line);
+    }
+}
+
+fn apply_lan_exposure(cfg: &LocalAiConfig) -> Result<(), String> {
+    if !cfg.lan_enabled {
+        let _ = fs::remove_file(LOCAL_AI_NGINX_CONF);
+        let _ = fs::remove_file(LOCAL_AI_FIREWALL_RECEIPT);
+        let _ = Command::new(SYSTEMCTL_BIN)
+            .args(["reload", "nginx"])
+            .status();
+        return Ok(());
+    }
+    if !valid_lan_port(cfg.lan_port) || !valid_lan_cidr(&cfg.lan_cidr) {
+        return Err("invalid LAN exposure config".into());
+    }
+    let conf = format!("server {{\n    listen {};\n    allow {};\n    deny all;\n    location / {{ proxy_pass http://127.0.0.1:{}; proxy_http_version 1.1; proxy_set_header Host $host; }}\n}}\n", cfg.lan_port, cfg.lan_cidr, cfg.lan_port);
+    if let Some(parent) = Path::new(LOCAL_AI_NGINX_CONF).parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let prev = fs::read_to_string(LOCAL_AI_NGINX_CONF).ok();
+    fs::write(LOCAL_AI_NGINX_CONF, conf).map_err(|e| e.to_string())?;
+    let nginx_ok = Command::new("nginx")
+        .arg("-t")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(true);
+    if !nginx_ok {
+        if let Some(prev) = prev {
+            let _ = fs::write(LOCAL_AI_NGINX_CONF, prev);
+        } else {
+            let _ = fs::remove_file(LOCAL_AI_NGINX_CONF);
+        }
+        return Err("nginx validation failed".into());
+    }
+    let _ = Command::new(SYSTEMCTL_BIN)
+        .args(["reload", "nginx"])
+        .status();
+    if let Some(parent) = Path::new(LOCAL_AI_FIREWALL_RECEIPT).parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(
+        LOCAL_AI_FIREWALL_RECEIPT,
+        format!(
+            "lan_port={}\nlan_cidr={}\npublic_exposure=false\n",
+            cfg.lan_port, cfg.lan_cidr
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn stop_llama_server() -> bool {
+    Command::new(SYSTEMCTL_BIN)
+        .args(["stop", "arcadia-llama-server.service"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+        || Command::new("pkill")
+            .args(["-f", "llama-server"])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+}
+
+fn llama_binary_path() -> Option<String> {
+    [
+        LLAMA_SERVER_BIN,
+        LLAMA_CPP_BIN,
+        "/usr/bin/llama-server",
+        "/usr/bin/llama-cli",
+    ]
+    .iter()
+    .find(|p| Path::new(p).exists())
+    .map(|p| p.to_string())
+}
+fn llama_source_path() -> Option<String> {
+    [
+        "/opt/llama.cpp",
+        "/opt/llama-cpp/source",
+        "/usr/local/src/llama.cpp",
+    ]
+    .iter()
+    .find(|p| Path::new(p).exists())
+    .map(|p| p.to_string())
+}
+fn latest_llama_version() -> Option<String> {
+    fs::read_to_string("/var/lib/harmonia/state/llama-cpp-latest.version")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+fn runtime_update_state() -> String {
+    let current = llama_version();
+    let latest = latest_llama_version();
+    match (current, latest) {
+        (None, _) => "missing".into(),
+        (Some(c), Some(l)) if c != l => "available".into(),
+        (Some(_), Some(_)) => "current".into(),
+        _ => "unknown".into(),
+    }
+}
+fn last_ai_check_time() -> Option<String> {
+    load_ai_config().last_checked_at
+}
 fn selected_model_id() -> Option<String> {
-    let text = fs::read_to_string(LOCAL_AI_STATE_PATH).ok()?;
-    serde_json::from_str::<serde_json::Value>(&text)
-        .ok()?
-        .get("selectedModelId")?
-        .as_str()
-        .map(str::to_string)
+    load_ai_config().selected_model_id
 }
 
 fn llama_version() -> Option<String> {
@@ -4802,7 +5462,8 @@ fn local_ai_status() -> LocalAiStatus {
     }
     .to_string();
     let (gpu_used, gpu_total) = gpu_memory_bytes();
-    let lan_inference_enabled = tcp_port_listening(LAN_INFERENCE_PORT);
+    let cfg = load_ai_config();
+    let lan_inference_enabled = cfg.lan_enabled && tcp_port_listening(cfg.lan_port);
     LocalAiStatus {
         load_state,
         selected_model_id: selected.map(|model| model.id.clone()),
@@ -4820,7 +5481,7 @@ fn local_ai_status() -> LocalAiStatus {
         gpu_memory_used_bytes: gpu_used,
         gpu_memory_total_bytes: gpu_total,
         lan_inference_enabled,
-        lan_inference_port: lan_inference_enabled.then_some(LAN_INFERENCE_PORT),
+        lan_inference_port: lan_inference_enabled.then_some(cfg.lan_port),
     }
 }
 
@@ -6401,38 +7062,49 @@ mod tests {
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
+        let local_ai_start = rendered
+            .find("id=\"view-local-ai\"")
+            .expect("local ai view starts");
+        let local_ai_end = local_ai_start
+            + rendered[local_ai_start..]
+                .find("id=\"view-network\"")
+                .expect("network follows local ai");
+        let local_ai_html = &rendered[local_ai_start..local_ai_end];
 
         for required in [
-            "Local AI",
-            "Runtime",
-            "Loaded Model",
-            "Installed Models",
-            "Get Models",
-            "Inference",
-            "GPU &amp; Storage",
-            "Activity",
+            "llama.cpp",
+            "Model control",
+            "Model library",
+            "Import GGUF model",
             "Hugging Face GGUF",
-            "Hugging Face model",
-            "Copy Endpoint",
+            "API on",
+            "Enable LAN",
+            "Hermes/Pi base URL",
+            "Copy endpoint",
         ] {
-            assert!(rendered.contains(required), "missing {required}");
+            assert!(local_ai_html.contains(required), "missing {required}");
         }
 
         for forbidden in [
             "Load AI Model",
             "Model Manager",
             "LLM",
+            "Runtime",
+            "Loaded Model",
+            "Inference",
             concat!("In", "harmonia"),
             concat!("in", "harmonia"),
         ] {
             assert!(
-                !rendered.contains(forbidden),
+                !local_ai_html.contains(forbidden),
                 "forbidden visible term survived: {forbidden}"
             );
-            assert!(
-                !APP_JS.contains(forbidden),
-                "forbidden script term survived: {forbidden}"
-            );
+            if !matches!(forbidden, "Runtime" | "Loaded Model" | "Inference") {
+                assert!(
+                    !APP_JS.contains(forbidden),
+                    "forbidden script term survived: {forbidden}"
+                );
+            }
         }
     }
 

@@ -1112,6 +1112,10 @@ function bindLocalAIControls() {
         else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'Inference enabled');
         else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'Inference disabled');
         else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'Inference tested');
+        else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
+        else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
+        else if (action === 'token-generate') { if (window.confirm('Generate a new local client token? Existing client configs may need updating.')) await postAI('/api/ai/token/generate', { confirm: 'GENERATE_TOKEN' }, 'Token generated'); }
+        else if (action === 'token-revoke') { if (window.confirm('Revoke the local client token?')) await postAI('/api/ai/token/revoke', { confirm: 'REVOKE_TOKEN' }, 'Token revoked'); }
         else if (action === 'hf-list-files') await fetchHFFiles();
         else if (action === 'hf-download') await downloadHFModel();
       } catch (_) {
@@ -1122,6 +1126,45 @@ function bindLocalAIControls() {
         button.textContent = original;
       }
     });
+  });
+  const importForm = document.getElementById('ai-import-form');
+  if (importForm) importForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = importForm.querySelector('input[type="file"]');
+    const file = input?.files?.[0];
+    if (!file) return PopupManager.showToast('Choose a .gguf model file first', 'error');
+    if (!file.name.toLowerCase().endsWith('.gguf')) return PopupManager.showToast('Only .gguf model files are supported', 'error');
+    const progress = document.getElementById('ai-import-progress');
+    const data = new FormData();
+    data.append('model', file, file.name);
+    if (progress) { progress.hidden = false; progress.value = 10; }
+    try {
+      const res = await fetch('/api/ai/models/import', { method: 'POST', body: data, headers: { accept: 'application/json' } });
+      const payload = await res.json().catch(() => ({}));
+      if (progress) progress.value = 100;
+      PopupManager.showToast(payload.message || (res.ok ? 'Model imported' : 'Model import failed'), res.ok && payload.ok !== false ? 'success' : 'error');
+      if (!res.ok || payload.ok === false) setMessage('ai-message', payload.message || 'Model import failed.', 'error'); else clearMessage('ai-message');
+    } catch (_) { PopupManager.showToast('Model import request failed', 'error'); }
+  });
+  const lanForm = document.getElementById('ai-lan-form');
+  if (lanForm) lanForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const port = Number(lanForm.querySelector('input[name="port"]')?.value || 7777);
+    const lanCidr = lanForm.querySelector('input[name="lanCidr"]')?.value || '192.168.123.0/24';
+    await postAI('/api/ai/inference/set-lan-access', { enabled: true, port, lanCidr }, 'LAN access applied');
+  });
+  const settingsForm = document.getElementById('ai-settings-form');
+  if (settingsForm) settingsForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const val = (name) => settingsForm.querySelector(`[name="${name}"]`);
+    await postAI('/api/ai/settings', {
+      contextSize: Number(val('contextSize')?.value || 4096),
+      gpuLayers: Number(val('gpuLayers')?.value || -1),
+      threads: Number(val('threads')?.value || 0),
+      batch: Number(val('batch')?.value || 512),
+      startApiOnBoot: Boolean(val('startApiOnBoot')?.checked),
+      autoLoadLastModel: Boolean(val('autoLoadLastModel')?.checked),
+    }, 'Local AI settings saved');
   });
   document.querySelectorAll('[data-ai-logs]').forEach((button) => button.addEventListener('click', async () => {
     try {
@@ -1372,6 +1415,7 @@ bindGuiPinAccess();
 bindGuiPinChange();
 bindNetworkControls();
 bindSystemTrustAndAccessForms();
+bindLocalAIControls();
 initializeOnboarding();
 initializeGuiPinGate();
 

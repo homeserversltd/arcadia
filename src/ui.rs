@@ -806,61 +806,76 @@ fn human_or_zero(bytes: u64) -> String {
 }
 
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
+    let selected_name = status
+        .local_ai
+        .selected_model_name
+        .as_deref()
+        .unwrap_or("No model selected");
     let loaded_name = status
         .local_ai
         .loaded_model_name
         .as_deref()
-        .or(status.local_ai.selected_model_name.as_deref())
         .unwrap_or("No model loaded");
-    let endpoint = format!("{}:{}", status.identity.web_origin, 7777);
+    let port = status.local_ai.lan_inference_port.unwrap_or(7777);
+    let endpoint = format!(
+        "{}:{}",
+        status.identity.web_origin.trim_end_matches('/'),
+        port
+    );
     let inference_on = status.local_ai.lan_inference_enabled;
+    let handoff_url = format!("{}/v1", endpoint);
+    let model_count = status.local_ai.available_models.len();
     view_shell(
         "local-ai",
         "",
         "",
         "",
         html! {
-            section class="local-ai-section ai-manager-section" aria-label="Runtime" {
-                div class="network-section-head" { h3 { "Runtime" } }
+            section class="local-ai-section ai-manager-section local-ai-command" aria-label="llama.cpp appliance" data-ai-auto-refresh="true" {
                 div class="system-field-grid" {
-                    (system_field("Runtime", "llama.cpp"))
-                    (system_field("Installed version", "Detected when installed"))
-                    (system_field("Status", if status.local_ai.load_state == "error" { "Error" } else { "Ready" }))
-                    (system_field("Server", if inference_on { "Running" } else { "Stopped" }))
+                    (system_field("llama.cpp", title_case_state_like(&status.local_ai.load_state)))
+                    (system_field("Installed version", "Read from /api/ai/state"))
+                    (system_field("Update check", "Auto on open"))
+                    (system_field("Binary/source", "Read from backend"))
                 }
+                p class="local-ai-copy" { "llama.cpp runs local GGUF models and provides an OpenAI-compatible API from this HomeConsole only." }
                 div class="inline-actions inline-actions--compact" {
-                    button class="btn btn--secondary" type="button" data-ai-action="runtime-check-update" { "Check for Runtime Update" }
+                    button class="btn btn--secondary" type="button" data-ai-action="runtime-check-update" { "Check llama.cpp" }
                     button class="btn btn--secondary" type="button" data-ai-action="runtime-update" { "Update llama.cpp" }
-                    button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart Runtime" }
+                    button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart llama.cpp" }
                 }
             }
 
-            section class="local-ai-section ai-manager-section" aria-label="Loaded Model" {
-                div class="network-section-head" { h3 { "Loaded Model" } }
-                div class=(if status.local_ai.load_state == "hot" { "active-model active-model--hot" } else { "active-model" }) {
-                    span { "Loaded Model" }
-                    strong { (title_case_state_like(&status.local_ai.load_state)) " · " (loaded_name) }
-                    @if status.local_ai.load_state == "unloaded" { p { "Select an installed model to load." } }
-                    div class="model-meta-row" {
-                        (model_meta("GPU", status.local_ai.gpu_memory.as_deref().unwrap_or("GPU telemetry unavailable")))
-                        (model_meta("Inference", if inference_on { "On · :7777" } else { "Off" }))
-                        (model_meta("State", title_case_state_like(&status.local_ai.load_state)))
-                    }
-                    div class="inline-actions" {
-                        @if status.local_ai.available_models.is_empty() { (nav_focus_button("Download a model", "local-ai", "get-models")) }
-                        @else if status.local_ai.load_state != "hot" && status.local_ai.load_state != "loading" { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load" } }
-                        @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
-                        @if status.local_ai.load_state == "hot" || inference_on { button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart" } }
-                        button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open Logs" }
-                    }
+            section class="local-ai-section ai-manager-section active-model" aria-label="Model control" {
+                span { "Model control" }
+                strong { (title_case_state_like(&status.local_ai.load_state)) " · " (loaded_name) }
+                div class="model-meta-row" {
+                    (model_meta("Selected", selected_name))
+                    (model_meta("GPU", status.local_ai.gpu_memory.as_deref().unwrap_or("Unknown")))
+                    (model_meta("API", if inference_on { "LAN" } else { "Internal/off" }))
+                    (model_meta("Models", &model_count.to_string()))
+                }
+                div class="inline-actions" {
+                    @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
+                    @else if status.local_ai.load_state != "hot" && status.local_ai.load_state != "loading" { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Cold load" } }
+                    @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
+                    button class="btn btn--secondary" type="button" disabled { "Hot load unavailable until backend reports safe swap support" }
+                    button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open logs" }
                 }
             }
 
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Installed Models" {
-                div class="network-section-head" { h3 { "Installed Models" } }
+            section id="local-ai-import" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model import" tabindex="-1" {
+                form class="settings-form" id="ai-import-form" enctype="multipart/form-data" {
+                    label { span { "Import GGUF model" } input class="field" type="file" name="model" accept=".gguf"; }
+                    div class="inline-actions" { button class="btn btn--primary" type="submit" { "Import model" } button class="btn btn--secondary" type="button" data-ai-action="models-rescan" { "Rescan storage" } }
+                    progress id="ai-import-progress" max="100" value="0" hidden {}
+                }
+            }
+
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model library" {
                 div class="model-grid" {
                     @if status.local_ai.available_models.is_empty() {
-                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Download a compatible .gguf model from Hugging Face." } div class="inline-actions" { (nav_focus_button("Download a model", "local-ai", "get-models")) } }
+                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Import a local .gguf file or download a compatible Hugging Face file." } div class="inline-actions" { (nav_focus_button("Import model", "local-ai", "local-ai-import")) (nav_focus_button("Get GGUF", "local-ai", "get-models")) } }
                     } @else {
                         @for model in &status.local_ai.available_models {
                             (installed_model_card(model, status))
@@ -869,59 +884,71 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section id="get-models" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Get Models" tabindex="-1" {
-                div class="network-section-head" { h3 { "Get Models" } }
-                div class="model-grid" {
-                    article class="model-card model-card--recommended" {
-                        strong class="model-name" { "Hugging Face GGUF" }
-                        span class="model-filename" { "Download a compatible local model." }
-                        div class="model-meta-row" { (model_meta("Format", ".gguf")) (model_meta("Source", "Hugging Face")) }
-                    }
-                }
+            section id="get-models" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Get GGUF" tabindex="-1" {
                 article class="form-card" data-hf-installer="true" {
-                    h3 { "Hugging Face model" }
+                    h3 { "Hugging Face GGUF" }
                     label { span { "Repository" } input class="field" name="repoId" placeholder="TheBloke/example-GGUF" autocomplete="off"; }
                     label { span { "File" } input class="field" name="filename" placeholder="example.Q4_K_M.gguf" autocomplete="off"; }
                     label { span { "Revision" } input class="field" name="revision" placeholder="main" autocomplete="off"; }
-                    div class="inline-actions" { button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch Files" } button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" } }
+                    div class="inline-actions" { button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch files" } button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" } }
                     div id="hf-file-results" class="diagnostics-results" {}
                 }
             }
 
-            section id="local-ai-inference" class="local-ai-section ai-manager-section" aria-label="Inference" tabindex="-1" {
-                div class="network-section-head" { h3 { "Inference" } }
+            section id="local-ai-inference" class="local-ai-section ai-manager-section" aria-label="API access" tabindex="-1" {
                 div class="system-field-grid" {
-                    (system_field("Local API", if inference_on { "On" } else { "Off" }))
-                    (system_field("LAN Access", if inference_on { "On" } else { "Off" }))
-                    (system_field("Port", "7777"))
-                    (system_field("Endpoint", if inference_on { &endpoint } else { "No model loaded" }))
+                    (system_field("API", if inference_on { "On" } else { "Off/internal" }))
+                    (system_field("Access", if inference_on { "Trusted LAN" } else { "Internal only" }))
+                    (system_field("Port", &port.to_string()))
+                    (system_field("Endpoint", if inference_on { &endpoint } else { "No LAN endpoint" }))
                 }
-                p class="warning" { "LAN access is for trusted home networks only. Do not expose port 7777 to the public internet." }
                 div class="inline-actions inline-actions--compact" {
-                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" { "Enable Inference" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "Disable Inference" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Open API Test" }
-                    @if inference_on { (copy_button("Copy Endpoint", &endpoint)) } @else { button class="btn btn--secondary" type="button" disabled { "Copy Endpoint" } }
+                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" { "API on" }
+                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
+                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
+                    @if inference_on { (copy_button("Copy endpoint", &endpoint)) } @else { button class="btn btn--secondary" type="button" disabled { "Copy endpoint" } }
+                }
+                form class="settings-form settings-form--inline" id="ai-lan-form" {
+                    label { span { "LAN port" } input class="field" name="port" type="number" min="1024" max="65535" value=(port); }
+                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off"; }
+                    div class="inline-actions" { button class="btn btn--primary" type="submit" data-enable="true" { "Enable LAN" } button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" } }
                 }
             }
 
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="GPU & Storage" {
-                div class="network-section-head" { h3 { "GPU & Storage" } }
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Client handoff" {
+                div class="system-field-grid" {
+                    (system_field("Hermes/Pi base URL", if inference_on { &handoff_url } else { "Enable API first" }))
+                    (system_field("Token", "Configured/redacted by backend"))
+                    (system_field("Secret receipts", "Redacted"))
+                }
+                div class="inline-actions" { button class="btn btn--secondary" type="button" data-ai-action="token-generate" { "Generate token" } button class="btn btn--danger" type="button" data-ai-action="token-revoke" { "Revoke token" } }
+            }
+
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Settings" {
+                form class="settings-form settings-form--inline" id="ai-settings-form" {
+                    label { span { "Context" } input class="field" name="contextSize" type="number" value="4096" min="512" max="262144"; }
+                    label { span { "GPU layers" } input class="field" name="gpuLayers" type="number" value="-1" min="-1" max="999"; }
+                    label { span { "Threads" } input class="field" name="threads" type="number" value="0" min="0" max="256"; }
+                    label { span { "Batch" } input class="field" name="batch" type="number" value="512" min="1" max="8192"; }
+                    label class="model-choice" { input type="checkbox" name="startApiOnBoot"; span { "Start API on boot" } }
+                    label class="model-choice" { input type="checkbox" name="autoLoadLastModel"; span { "Auto-load last model" } }
+                    button class="btn btn--primary" type="submit" { "Save settings" }
+                }
+            }
+
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Hardware and storage" {
                 @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
                     (meter_block("GPU", &human_bytes(used), &human_bytes(total), used, total))
-                } @else { div class="empty-state" { strong { "GPU telemetry unavailable" } } }
-                (meter_block("AI Model Storage", &status.storage.ai_models.size, &status.storage.free, status.storage.ai_models.bytes, status.storage.total_bytes.max(1)))
-                p class="warning" { "Games and Local AI share GPU resources." }
-                div class="inline-actions" { (nav_button("Open Storage", "storage")) @if status.storage.ai_models.bytes > 0 { (nav_focus_button("Remove Unused Models", "local-ai", "installed-models")) } }
+                } @else { div class="empty-state" { strong { "GPU telemetry unknown" } } }
+                (meter_block("AI model storage", &status.storage.ai_models.size, &status.storage.free, status.storage.ai_models.bytes, status.storage.total_bytes.max(1)))
+                div class="inline-actions" { (nav_button("Open Storage", "storage")) }
             }
 
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Activity" {
-                div class="network-section-head" { h3 { "Activity" } }
-                div id="ai-activity" class="system-field-grid" { (system_field("Current operation", if inference_on { "serving inference" } else { "idle" })) (system_field("Last error", "None")) }
-                details class="collapsible-log" { summary { "Runtime update log" } pre { code { "No runtime update log reported." } } }
-                details class="collapsible-log" { summary { "Model download log" } pre { code { "No model download log reported." } } }
-                details class="collapsible-log" { summary { "Model load log" } pre { code { "No model load log reported." } } }
-                details class="collapsible-log" { summary { "Inference server log" } pre { code { "No inference server log reported." } } }
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Diagnostics" {
+                div id="ai-activity" class="system-field-grid" { (system_field("Operation", if inference_on { "serving inference" } else { "idle" })) (system_field("Last error", "Read from /api/ai/state")) }
+                details class="collapsible-log" { summary { "llama.cpp update" } pre { code { "Read from backend logs." } } }
+                details class="collapsible-log" { summary { "Model import/load" } pre { code { "Read from backend logs." } } }
+                details class="collapsible-log" { summary { "Nginx/firewall" } pre { code { "Read from backend receipts." } } }
             }
             div id="ai-message" class="message" hidden {}
         },
