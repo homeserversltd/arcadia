@@ -174,3 +174,13 @@
         assert!(runtime.contains("String::from_utf8_lossy(&output.stderr)"));
         assert!(runtime.contains("(Some(_), None) => \"unknown\""));
     }
+
+
+    #[test]
+    fn local_ai_inference_controls_require_model_and_listener_before_green() {
+        let runtime_routes = include_str!("../../src/bands/routes_ai_runtime.rs");
+        assert!(runtime_routes.contains("No GGUF model is installed. Import or download a model before enabling inference."));
+        assert!(runtime_routes.contains("Local inference server is not running. Load a model before exposing Local AI on LAN."));
+        assert!(runtime_routes.contains("ai.installed_models.is_empty()"));
+        assert!(runtime_routes.contains("tcp_port_listening(cfg_now.lan_port)"));
+    }

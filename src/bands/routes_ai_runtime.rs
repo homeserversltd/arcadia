@@ -175,14 +175,26 @@ async fn ai_inference_set_enabled(
     State(state): State<Arc<AppState>>,
     Json(body): Json<InferenceSetRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    if body.enabled && !local_ai_state(&state).runtime.installed {
-        return ai_action(
-            StatusCode::FAILED_DEPENDENCY,
-            &state,
-            false,
-            "inference-set-enabled",
-            "llama.cpp is not installed. Run Update llama.cpp before enabling inference.",
-        );
+    if body.enabled {
+        let ai = local_ai_state(&state);
+        if !ai.runtime.installed {
+            return ai_action(
+                StatusCode::FAILED_DEPENDENCY,
+                &state,
+                false,
+                "inference-set-enabled",
+                "llama.cpp is not installed. Run Update llama.cpp before enabling inference.",
+            );
+        }
+        if ai.installed_models.is_empty() {
+            return ai_action(
+                StatusCode::FAILED_DEPENDENCY,
+                &state,
+                false,
+                "inference-set-enabled",
+                "No GGUF model is installed. Import or download a model before enabling inference.",
+            );
+        }
     }
     let mut cfg = load_ai_config();
     cfg.api_enabled = body.enabled;
@@ -212,14 +224,27 @@ async fn ai_inference_set_lan_access(
     State(state): State<Arc<AppState>>,
     Json(body): Json<InferenceLanRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    if body.enabled && !local_ai_state(&state).runtime.installed {
-        return ai_action(
-            StatusCode::FAILED_DEPENDENCY,
-            &state,
-            false,
-            "inference-set-lan-access",
-            "llama.cpp is not installed. Run Update llama.cpp before exposing Local AI on LAN.",
-        );
+    if body.enabled {
+        let ai = local_ai_state(&state);
+        if !ai.runtime.installed {
+            return ai_action(
+                StatusCode::FAILED_DEPENDENCY,
+                &state,
+                false,
+                "inference-set-lan-access",
+                "llama.cpp is not installed. Run Update llama.cpp before exposing Local AI on LAN.",
+            );
+        }
+        let cfg_now = load_ai_config();
+        if !tcp_port_listening(cfg_now.lan_port) && !tcp_port_listening(DEFAULT_LAN_INFERENCE_PORT) {
+            return ai_action(
+                StatusCode::FAILED_DEPENDENCY,
+                &state,
+                false,
+                "inference-set-lan-access",
+                "Local inference server is not running. Load a model before exposing Local AI on LAN.",
+            );
+        }
     }
     let mut cfg = load_ai_config();
     if let Some(port) = body.port {
