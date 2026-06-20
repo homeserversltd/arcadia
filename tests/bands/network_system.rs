@@ -34,6 +34,10 @@
             "Add Games",
             "Console Status",
             "Recent Activity",
+            "data-nav-target=",
+            "Manage Network",
+            "Manage Storage",
+            "Open Sync",
         ] {
             assert!(
                 !home_html.contains(forbidden),
