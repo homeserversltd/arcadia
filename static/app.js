@@ -556,6 +556,49 @@ async function runStorageCleanup(action, endpoint) {
   if (data.ok) openStorageModal('cleanup-review');
 }
 
+function updateControllerLiveInput(data) {
+  const root = document.querySelector('[data-controller-live-input]');
+  if (!root || !data) return;
+  const state = root.querySelector('[data-controller-input-state]');
+  if (state) state.textContent = titleCase((data.state || 'listening').replace(/-/g, ' '));
+  const device = root.querySelector('[data-controller-input-device]');
+  if (device) device.textContent = data.device || 'No controller detected';
+  const pressed = new Set((data.pressed || []).map((item) => item.control));
+  root.querySelectorAll('[data-controller-control]').forEach((pill) => {
+    const active = pressed.has(pill.dataset.controllerControl || '');
+    pill.classList.toggle('controller-button-dot--active', active);
+  });
+  const axes = root.querySelector('[data-controller-axes]');
+  if (axes) {
+    const values = data.axes || [];
+    axes.innerHTML = '';
+    if (!values.length) {
+      const idle = document.createElement('span');
+      idle.textContent = 'Move a stick or hold a button to light this pane.';
+      axes.appendChild(idle);
+    } else {
+      values.forEach((axis) => {
+        const pill = document.createElement('span');
+        pill.className = 'controller-axis-pill';
+        pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}`.trim();
+        axes.appendChild(pill);
+      });
+    }
+  }
+}
+
+function bindControllerLiveInput() {
+  const root = document.querySelector('[data-controller-live-input]');
+  if (!root) return;
+  const poll = async () => {
+    const active = document.querySelector('[data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
+    if (!active) return;
+    try { updateControllerLiveInput(await getJson('/api/controllers/input')); } catch (_) {}
+  };
+  poll();
+  window.setInterval(poll, 650);
+}
+
 function bindStorageModals() {
   document.querySelectorAll('[data-storage-modal]').forEach((button) => button.addEventListener('click', () => openStorageModal(button.dataset.storageModal)));
   document.querySelectorAll('[data-storage-cleanup]').forEach((button) => button.addEventListener('click', () => {
@@ -1589,6 +1632,7 @@ function bindSystemTrustAndAccessForms() {
 initializeArcadiaTheme();
 bindNavigation();
 bindConsoleActions();
+bindControllerLiveInput();
 bindStorageModals();
 bindProviderKeys();
 bindHarmoniaModules();

@@ -140,6 +140,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/network/state", get(network_state_route))
         .route("/api/ai/state", get(ai_state_route))
         .route("/api/controllers/state", get(controllers_state_route))
+        .route("/api/controllers/input", get(controllers_input_route))
         .route("/api/network/wifi/status", get(wifi_status))
         .route("/api/network/wifi/scan", post(wifi_scan))
         .route("/api/network/wifi/connect", post(wifi_connect))
@@ -220,6 +221,14 @@ async fn main() -> anyhow_free::Result<()> {
         .route(
             "/api/actions/controllers-test",
             post(action_controllers_test),
+        )
+        .route(
+            "/api/actions/controllers-save-profile",
+            post(action_controllers_save_profile),
+        )
+        .route(
+            "/api/actions/controllers-assign-retroarch",
+            post(action_controllers_assign_retroarch),
         )
         .route(
             "/api/actions/clear-artwork-cache",

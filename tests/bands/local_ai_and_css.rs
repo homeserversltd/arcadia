@@ -217,7 +217,9 @@
             "PPSSPP",
             "data-action=\"controllers-rescan\"",
             "data-action=\"controllers-test\"",
-            "Controller mapping",
+            "data-controller-live-input",
+            "data-controller-mapping-editor=\"default\"",
+            "Live input",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
         }
@@ -229,10 +231,16 @@
         ] {
             assert!(!controllers_html.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
-        assert!(APP_JS.contains("action === 'controllers-rescan' || action === 'controllers-test'"));
+        assert!(APP_JS.contains("bindControllerLiveInput"));
+        assert!(APP_JS.contains("/api/controllers/input"));
         assert!(APP_CSS.contains(".controllers-hero"));
         assert!(APP_CSS.contains(".emulator-controller-grid"));
-        assert!(include_str!("../../src/bands/status_controllers.rs").contains("/proc/bus/input/devices"));
+        assert!(APP_CSS.contains(".controller-button-dot--active"));
+        let controller_backend = include_str!("../../src/bands/status_controllers.rs");
+        assert!(controller_backend.contains("/proc/bus/input/devices"));
+        assert!(controller_backend.contains("Keyboard") || controller_backend.contains("keyboard"));
+        assert!(controller_backend.contains("event-joystick"));
+        assert!(controller_backend.contains("controllers-assign-retroarch"));
     }
 
 
