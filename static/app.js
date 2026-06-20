@@ -588,12 +588,12 @@ async function copyToClipboard(value) {
 function prepareSyncStart() {
   const root = document.querySelector('[data-sync-root]');
   const stateNode = document.getElementById('sync-state');
-  if (stateNode?.dataset.syncState === 'scanning' || root?.dataset.syncState === 'running') {
-    PopupManager.showToast('ROM scan is already running.', 'error');
+  if (['scanning', 'syncing'].includes(stateNode?.dataset.syncState) || root?.dataset.syncState === 'running') {
+    PopupManager.showToast('Sync is already running.', 'error');
     return false;
   }
   if (root?.dataset.storageBlocked === 'true' || root?.dataset.storageHealth === 'Full') {
-    const message = 'Storage is full. Free space before scanning ROMs.';
+    const message = 'Storage is full. Free space before syncing.';
     setMessage('console-action-message', message, 'error');
     PopupManager.showToast(message, 'error');
     document.querySelector('[data-nav-target="storage"]')?.focus();
@@ -634,9 +634,9 @@ function startSyncProgress() {
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
   if (panel) panel.hidden = false;
-  if (progress) progress.textContent = 'Scanning ROM folders…';
-  if (log) log.textContent = 'Scanning ROM folders…';
-  setSyncReadback('running', 'Scanning ROM folders now.');
+  if (progress) progress.textContent = 'Syncing…';
+  if (log) log.textContent = 'Syncing…';
+  setSyncReadback('running', 'Sync is reading the games folders now.');
   return { stop() { if (panel) panel.hidden = true; } };
 }
 
@@ -646,19 +646,19 @@ function finishSyncProgress(ok, data = {}, progressHandle = null) {
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
   if (ok) {
-    setSyncState('Completed', 'completed');
-    if (button) button.textContent = 'Scan complete';
-    const message = data.message || 'Scan complete. GameScope entries and artwork were updated from the ROM folders.';
+    setSyncState('Synced', 'synced');
+    if (button) button.textContent = 'Synced';
+    const message = data.message || 'Sync complete. GameScope entries were updated.';
     if (progress) progress.textContent = message;
-    setSyncReadback('success', 'Scan complete. Results now reflect the completed run.');
+    setSyncReadback('success', 'Sync complete. Queue readback now reflects the completed run.');
     if (log) log.textContent = formatActionResult(data);
     markOnboardingFirstSyncComplete(data);
   } else {
-    setSyncState('Needs attention', 'needs-attention');
-    if (button) button.textContent = 'Scan failed';
-    const message = data.message || 'Sync could not complete. Open Output for the receipt and fix the reported issue.';
+    setSyncState('Sync failed', 'sync-failed');
+    if (button) button.textContent = 'Sync failed';
+    const message = data.message || 'Sync could not complete. Receipt output is stored below.';
     if (progress) progress.textContent = message;
-    setSyncReadback('error', 'Needs attention. Open Output for the last sync receipt and fix the reported issue.');
+    setSyncReadback('error', 'Sync failed. Receipt output is stored below.');
     if (log) log.textContent = formatActionResult(data);
   }
 }

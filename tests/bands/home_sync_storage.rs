@@ -212,7 +212,7 @@
     }
 
     #[test]
-    fn sync_view_is_samba_rom_scan_not_log_first() {
+    fn sync_view_is_reasonable_samba_ip_and_queue_surface() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -230,69 +230,64 @@
         let sync_html = &rendered[sync_start..sync_end];
 
         for required in [
-            "Sync ROMs to GameScope",
-            "Put ROMs in the network game folders",
-            "sync artwork where available",
-            "playable GameScope entries",
-            "Scan ROM folders",
             r#"data-action="sync-games""#,
-            "Put ROMs here",
-            r#"\\HOMECONSOLE\games"#,
-            "smb://homeconsole/games",
-            "Configured ROM folders",
-            "GBA",
+            "Sync now",
+            "sync-folder-source",
+            "Samba for Windows",
+            "Samba for Linux",
+            ">IP<",
+            r#"\\console.home.arpa\games"#,
+            "smb://console.home.arpa/games",
+            "Queued",
+            "Detected",
+            "GameScope",
+            "/home/owner/Games",
             "games/gba",
-            "Open Games Folder",
-            "Copy Windows path",
-            "Copy Linux/macOS path",
             "sync-running-panel",
-            "Scanning ROM folders",
-            "No scan has run yet",
-            "No sync has run yet.",
-            "Tools and troubleshooting",
-            "Configure Scrapers",
-            "Output",
+            "Queued",
         ] {
             assert!(sync_html.contains(required), "missing {required}");
         }
+        for forbidden in [
+            "home console",
+            "smb://homeconsole/games",
+            r#"\\HOMECONSOLE\games"#,
+            "Sync ROMs to GameScope",
+            "Scan ROM folders",
+            "Open Games Folder",
+            "Copy Windows path",
+            "Copy Linux/macOS path",
+            "Copy IP Windows path",
+            "Copy IP SMB URL",
+            "Tools and troubleshooting",
+            "Configure Scrapers",
+            "Output</button>",
+            "Storage</button>",
+            "<details",
+            "Ready to scan",
+            "Scanning Samba ROM folders",
+            "Needs attention. Open Output",
+            "Scan complete. GameScope entries and artwork were updated from the ROM folders.",
+        ] {
+            assert!(
+                !sync_html.contains(forbidden),
+                "rejected sync surface survived: {forbidden}"
+            );
+        }
+        assert_eq!(
+            sync_html.matches("data-copy-value=").count(),
+            3,
+            "sync view exposes exactly three copy buttons"
+        );
+        assert!(sync_html.contains("data-storage-health=\"OK\""));
         assert!(VIEWPORT_CSS.contains("prefers-reduced-motion"));
         assert!(APP_CSS.contains("sync-scan-dot"));
         assert!(!sync_html.contains("provider-keys-form"));
         assert!(!sync_html.contains("screenscraper_api_key"));
-
-        let folder_source = sync_html
-            .find("sync-folder-source")
-            .expect("folder source shown");
-        let output = sync_html
-            .find("sync-output-panel")
-            .expect("output available");
-        assert!(
-            folder_source < output,
-            "folder source appears before the collapsed output"
-        );
-        for forbidden in [
-            "Turn copied files into playable games",
-            "sync-workflow",
-            "sync-flask-stage",
-            "sync-flask-liquid",
-            "Waiting",
-            "Skipped",
-            "View Sync Log",
-            "Logs are secondary",
-            "ROM parser",
-            "shortcut VDF",
-            "SteamGrid pipeline",
-        ] {
-            assert!(
-                !sync_html.contains(forbidden),
-                "rejected sync copy survived: {forbidden}"
-            );
-        }
-        assert!(sync_html.contains("data-storage-health=\"OK\""));
-        assert!(APP_JS.contains("Scanning ROM folders…"));
-        assert!(APP_JS.contains("Scan complete. GameScope entries and artwork were updated from the ROM folders."));
-        assert!(APP_JS.contains("Storage is full. Free space before scanning ROMs."));
-        assert!(APP_JS.contains("ROM scan is already running."));
+        assert!(APP_JS.contains("Scanning"));
+        assert!(!APP_JS.contains("Scanning Samba ROM folders"));
+        assert!(!APP_JS.contains("Sync complete. Playable GameScope entries were updated from the ROM folders."));
+        assert!(!APP_JS.contains("Needs attention. Open Output"));
     }
 
 
@@ -320,10 +315,11 @@
         let sync_end = sync_start + rendered[sync_start..].find("<section id=\"view-storage\"").expect("storage follows sync");
         let sync_html = &rendered[sync_start..sync_end];
 
-        assert!(rendered.contains("Sync: Not scanned"));
-        assert!(sync_html.contains("Not scanned yet"));
-        assert!(sync_html.contains("No scan has run yet"));
-        assert!(sync_html.contains("No sync has run yet."));
+        assert!(rendered.contains("Games: Pending scan"));
+        assert!(sync_html.contains("Needs first sync"));
+        assert!(sync_html.contains("First sync waiting"));
+        assert!(sync_html.contains("No sync receipt yet."));
+        assert!(sync_html.contains("/home/owner/Games"));
         assert!(!sync_html.contains("Completed"));
         assert!(!sync_html.contains("Scan complete"));
         assert!(!rendered.contains("Games: Synced"));
@@ -350,11 +346,11 @@
         status.library.artwork_status = "2 complete · 1 missing".to_string();
 
         let rendered = ui::layout(&status).into_string();
-        assert!(rendered.contains("Sync: Idle"));
-        assert!(!rendered.contains("Games: Synced"));
-        assert!(rendered.contains("Completed"));
-        assert!(rendered.contains("ROMs detected"));
-        assert!(rendered.contains("GameScope entries"));
+        assert!(rendered.contains("Games: Synced"));
+        assert!(rendered.contains("Synced"));
+        assert!(rendered.contains("Last sync complete"));
+        assert!(rendered.contains("Detected"));
+        assert!(rendered.contains("GameScope"));
         assert!(rendered.contains("2 complete · 1 missing"));
 
         status.library.total_detected_games = 0;
@@ -363,9 +359,9 @@
         status.library.artwork_missing = 0;
         status.library.artwork_status = "No artwork".to_string();
         let zero = ui::layout(&status).into_string();
-        assert!(zero.contains("Sync: No ROMs"));
-        assert!(zero.contains("Scan complete — no ROMs found"));
-        assert!(zero.contains("No playable ROM files were detected in the configured folders."));
+        assert!(zero.contains("Games: No ROMs"));
+        assert!(zero.contains("Last sync complete"));
+        assert!(zero.contains("0 queued changes under /home/owner/Games."));
         assert!(!zero.contains("No scan has run yet"));
     }
 

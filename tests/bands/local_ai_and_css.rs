@@ -64,7 +64,7 @@
         for required in [
             "HomeConsole",
             "Network",
-            "Sync",
+            "Games",
             "Updates",
             "Uptime",
             "AI",
@@ -95,7 +95,7 @@
         }
         assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
-        assert!(rendered.contains("\\\\HOMECONSOLE"));
+        assert!(rendered.contains("\\\\console.home.arpa\\games"));
         assert!(rendered.contains("Trust &amp; HTTPS"));
 
         assert!(
