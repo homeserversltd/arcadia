@@ -752,11 +752,10 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 div class="sync-intake-drive" aria-hidden="true" { span { "▰" } }
                 div class="sync-intake-copy" {
                     strong { (sync_detection_headline(status, pending_changes)) }
-                    p { "Drop games here or choose files from this computer." }
+                    p { "Choose the game kind first, then add files." }
                 }
                 div class="sync-intake-actions" {
-                    label class="btn btn--secondary sync-upload-label" for="sync-upload-input" { "Choose files" }
-                    input id="sync-upload-input" class="sync-upload-input" type="file" multiple data-sync-upload="true" data-endpoint="/api/actions/add-games" {}
+                    button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
                 }
             }
 
@@ -862,7 +861,7 @@ fn sync_ready_message(
     } else if pending_changes > 0 {
         plural_games(pending_changes, "game needs sync", "games need sync")
     } else if !sync_has_history(status) {
-        "Drop games here or choose files from this computer.".to_string()
+        "Choose the game kind first, then add files.".to_string()
     } else if status.library.total_detected_games > status.library.total_synced_entries {
         format!(
             "{} detected · {} admitted",

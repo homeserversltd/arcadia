@@ -292,11 +292,9 @@
             r#"data-action="sync-games""#,
             r#"data-endpoint="/api/actions/sync-games""#,
             r#"data-sync-add-games="true""#,
-            r#"data-sync-upload="true""#,
-            r#"data-endpoint="/api/actions/add-games""#,
             "Sync games",
             "Add games",
-            "Drop games here or choose files from this computer.",
+            "Choose the game kind first, then add files.",
             "sync-running-panel",
             "sync-result-card",
             "sync-progress-text",
@@ -349,11 +347,17 @@
         assert!(APP_CSS.contains("sync-intake-panel"));
         assert!(!sync_html.contains("provider-keys-form"));
         assert!(!sync_html.contains("screenscraper_api_key"));
+        assert!(APP_JS.contains("openSyncAddGamesModal"));
+        assert!(APP_JS.contains("selectSyncGameKind"));
+        assert!(APP_JS.contains("Select the game kind first"));
+        assert!(APP_JS.contains("form.append('system', gameKind)"));
         assert!(APP_JS.contains("uploadSyncGames"));
         assert!(APP_JS.contains("uploadSyncFiles"));
         assert!(APP_JS.contains("dragover"));
         assert!(APP_JS.contains("dataTransfer"));
-        assert!(APP_CSS.contains("data-drag-active"));
+        assert!(APP_CSS.contains("sync-add-games-modal"));
+        assert!(APP_CSS.contains("sync-kind-grid"));
+        assert!(APP_CSS.contains("sync-kind-dropzone"));
         for forbidden in [
             "Scanning Samba ROM folders",
             "Sync complete. Playable GameScope entries were updated from the ROM folders.",
@@ -393,6 +397,7 @@
         assert!(before.contains("No sync receipt yet."));
         assert!(before.contains("Add games"));
         assert!(before.contains("Sync games"));
+        assert!(before.contains("Choose the game kind first, then add files."));
         assert!(!before.contains("/home/owner/Games"));
         assert!(!before.contains("Synced"));
         assert!(!before.contains("Completed"));
@@ -486,8 +491,11 @@
         assert!(source.contains("async fn action_add_games_upload"));
         assert!(source.contains("arcadia.sync.upload.v1"));
         assert!(source.contains("unsupported game file"));
+        assert!(source.contains("Select a game kind before adding files."));
+        assert!(source.contains("valid_game_system"));
+        assert!(source.contains("supported_game_file"));
         assert!(source.contains("game_system_storage_path(system)"));
-        assert!(source.contains("classify_upload_system"));
+        assert!(!source.contains("classify_upload_system"));
         assert!(source.contains("create_new(true)"));
         assert!(source.contains("duplicate name"));
         assert!(source.contains("No game files were selected"));
