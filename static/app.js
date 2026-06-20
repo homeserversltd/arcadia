@@ -868,7 +868,7 @@ function openSyncAddGamesModal() {
   drop.className = 'sync-kind-dropzone';
   drop.dataset.syncKindDropzone = 'true';
   drop.hidden = true;
-  drop.innerHTML = '<strong data-sync-kind-title>Choose a game kind</strong><span>Drop files here or use the picker.</span>';
+  drop.innerHTML = '<strong data-sync-kind-title>Select a game kind</strong><span>Drop files here after selecting the kind.</span>';
   body.appendChild(drop);
 
   const actions = document.createElement('div');
@@ -878,7 +878,7 @@ function openSyncAddGamesModal() {
   choose.className = 'btn btn--primary';
   choose.dataset.syncChooseFiles = 'true';
   choose.disabled = true;
-  choose.textContent = 'Choose files';
+  choose.textContent = 'Select a kind first';
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'btn btn--secondary';
@@ -908,7 +908,7 @@ function selectSyncGameKind(value, label, root) {
   selectedSyncGameKind = value;
   root.querySelectorAll('[data-sync-game-kind]').forEach((button) => button.dataset.selected = String(button.dataset.syncGameKind === value));
   const choose = root.querySelector('[data-sync-choose-files]');
-  if (choose) choose.disabled = false;
+  if (choose) { choose.disabled = false; choose.textContent = `Add ${label} files`; }
   const drop = root.querySelector('[data-sync-kind-dropzone]');
   if (drop) {
     drop.hidden = false;

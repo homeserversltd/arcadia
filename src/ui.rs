@@ -847,8 +847,6 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                             (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync games" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
                         }
                         button class="btn btn--secondary" type="button" data-button="secondary" data-sync-add-games="true" { "Add games" }
-                        label class="btn btn--secondary sync-upload-label" for="sync-upload-input" { "Choose files" }
-                        input id="sync-upload-input" class="sync-upload-input" type="file" multiple data-sync-upload="true" data-endpoint="/api/actions/add-games" {}
                     }
                 }
 

@@ -364,6 +364,9 @@
             "hidden sync output panel",
             "sync-output-store",
             "collapsible-log",
+            "Choose files",
+            "sync-upload-label",
+            r#"data-sync-upload=\"true\""#,
         ] {
             assert!(
                 !sync_html.contains(forbidden),
@@ -384,6 +387,9 @@
         assert!(APP_JS.contains("openSyncAddGamesModal"));
         assert!(APP_JS.contains("selectSyncGameKind"));
         assert!(APP_JS.contains("Select the game kind first"));
+        assert!(APP_JS.contains("Select a kind first"));
+        assert!(APP_JS.contains("Add ${label} files"));
+        assert!(!APP_JS.contains("Choose files"));
         assert!(APP_JS.contains("form.append('system', gameKind)"));
         assert!(APP_JS.contains("uploadSyncGames"));
         assert!(APP_JS.contains("uploadSyncFiles"));
@@ -400,6 +406,7 @@
             "Receipt output is stored below",
             "Open Games Folder",
             "Copy IP SMB URL",
+            "Choose files",
         ] {
             assert!(!APP_JS.contains(forbidden), "raw sync JS residue survived: {forbidden}");
         }
