@@ -70,22 +70,26 @@
         for required in [
             "priority-strip",
             "home-operational-grid",
+            "home-operational-grid--dashboard",
             "Storage",
             "storage-bar",
             "Artwork",
             "AI Models",
             "Other",
+            "Cleanup",
+            "Warnings",
             "Network",
-            "Manage Network",
+            "home-topology",
+            "Console URL",
             "Local AI",
-            "Model",
             "LAN",
             "Sync",
             "Available ROMs",
-            "0 available ROMs",
+            "0 playable ROMs",
             "Last scan",
-            "Manage Storage",
-            "Browse Folders",
+            "Updates",
+            "System Health",
+            "Appliance",
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
@@ -98,6 +102,16 @@
             "Console Status",
             "Recent Activity",
             "home-action-tile",
+            "data-nav-target=",
+            "launcher-button",
+            "Manage Network",
+            "Manage Storage",
+            "Browse Folders",
+            "Open Sync",
+            "Open Local AI",
+            "Open Storage",
+            "Review Update",
+            "<button",
         ] {
             assert!(
                 !home_html.contains(forbidden),
@@ -111,11 +125,52 @@
         );
         assert!(APP_CSS.contains(".priority-strip"));
         assert!(APP_CSS.contains(".home-operational-grid"));
+        assert!(APP_CSS.contains(".view[data-view-panel=\"home\"].is-active"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
         for forbidden in ["Game Library", "Detected", ">Synced<", "GPU", "Folders unavailable"] {
             assert!(!home_html.contains(forbidden), "unbacked home claim survived: {forbidden}");
         }
+    }
+
+    #[test]
+    fn home_view_updates_available_and_service_states_are_truthful() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.updates.state = "available".to_string();
+        status.updates.available_version = Some("arcadia-next".to_string());
+        status.updates.suite_ok = true;
+        if let Some(first) = status.system.services.get_mut(0) {
+            first.state = "running".to_string();
+        }
+        if let Some(second) = status.system.services.get_mut(1) {
+            second.state = "available".to_string();
+        }
+        status.arcadia.service = "stopped";
+
+        let rendered = ui::layout(&status).into_string();
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-sync\"")
+                .expect("sync view follows home");
+        let home_html = &rendered[home_start..home_end];
+
+        assert!(home_html.contains("Updates"));
+        assert!(home_html.contains(">Available<"));
+        assert!(!home_html.contains(">Current<"));
+        assert!(home_html.contains(">Running<"));
+        assert!(home_html.contains("Game Session"));
+        assert!(home_html.contains(">Stopped<"));
+        assert!(!home_html.contains(">Unknown<"));
+        assert!(!home_html.contains("GameScope"));
+        assert!(!home_html.contains(">Arcadia<"));
     }
 
     #[test]
@@ -316,8 +371,8 @@
         let sync_html = &rendered[sync_start..sync_end];
 
         assert!(rendered.contains("Games: 0 ROMs"));
-        assert!(rendered.contains("Not scanned · 0 ROMs"));
-        assert!(rendered.contains("0 available ROMs"));
+        assert!(rendered.contains("First sync waiting"));
+        assert!(rendered.contains("0 playable ROMs"));
         assert!(sync_html.contains("Needs first sync"));
         assert!(sync_html.contains("First sync waiting"));
         assert!(sync_html.contains("No sync receipt yet."));
@@ -349,8 +404,8 @@
 
         let rendered = ui::layout(&status).into_string();
         assert!(rendered.contains("Games: 3 ROMs"));
-        assert!(rendered.contains("Idle · 3 ROMs"));
-        assert!(rendered.contains("3 available ROMs"));
+        assert!(rendered.contains("Synced"));
+        assert!(rendered.contains("3 playable ROMs"));
         assert!(rendered.contains("Last sync complete"));
         assert!(rendered.contains("Available ROMs"));
         assert!(rendered.contains("GameScope"));
@@ -363,8 +418,8 @@
         status.library.artwork_status = "No artwork".to_string();
         let zero = ui::layout(&status).into_string();
         assert!(zero.contains("Games: 0 ROMs"));
-        assert!(zero.contains("Idle · 0 ROMs"));
-        assert!(zero.contains("0 available ROMs"));
+        assert!(zero.contains("Synced"));
+        assert!(zero.contains("0 playable ROMs"));
         assert!(zero.contains("Last sync complete"));
         assert!(zero.contains("0 queued changes under /home/owner/Games."));
         assert!(zero.contains("Available ROMs"));

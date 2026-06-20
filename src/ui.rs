@@ -1,7 +1,7 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
-    platform_display_name, AiModelStorageStatus, ButtonVariant, ConsoleStatus,
+    human_size, platform_display_name, AiModelStorageStatus, ButtonVariant, ConsoleStatus,
     StorageCategoryStatus, GAMES_ROOT, GAME_SYSTEMS,
 };
 
@@ -318,25 +318,26 @@ fn home_view(status: &ConsoleStatus) -> Markup {
     html! {
         section id="view-home" class="view" data-view-panel="home" tabindex="-1" {
             (priority_strip(status))
-            div class="home-operational-grid" {
+            div class="home-operational-grid home-operational-grid--dashboard" {
                 (home_storage_card(status))
-                (home_network_card(status))
-                (home_local_ai_card(status))
                 (home_sync_card(status))
+                (home_network_card(status))
+                (home_updates_card(status))
+                (home_local_ai_card(status))
+                (home_system_health_card(status))
+                (home_identity_card(status))
                 @if status.arcadia.service != "running" {
                     (home_gamescope_card(status))
                 }
             }
             @if status.library.last_sync_state == "error" || status.local_ai.load_state == "error" {
-                div class="active-warning-strip" {
+                div class="active-warning-strip home-warning-strip" {
                     @if status.library.last_sync_state == "error" {
                         strong { "Sync failed" }
-                        span { "Open Sync for the last receipt." }
-                        (nav_button("View Sync", "sync"))
+                        span { "Latest game sync needs attention in the Sync pane." }
                     } @else {
                         strong { "Local AI error" }
-                        span { "Open Local AI or unload the failed model." }
-                        (nav_button("Open Local AI", "local-ai"))
+                        span { "Selected model failed to load; Local AI owns the recovery controls." }
                     }
                 }
             }
@@ -345,90 +346,77 @@ fn home_view(status: &ConsoleStatus) -> Markup {
 }
 
 fn priority_strip(status: &ConsoleStatus) -> Markup {
-    let priority: Option<(String, String, Option<&str>, Option<&str>, Option<&str>)> =
-        if !status.network.online {
-            Some((
-                "Network offline".to_string(),
-                "Console network is unavailable.".to_string(),
-                Some("Manage Network"),
-                Some("network"),
-                None,
-            ))
-        } else if status.storage.percent_used >= 90 {
-            Some((
-                format!("Storage low: {} free", status.storage.free),
-                format!("{} used", status.storage.percent),
-                Some("Open Storage"),
-                Some("storage"),
-                None,
-            ))
-        } else if status.library.last_sync_state == "error" {
-            Some((
-                "Sync failed".to_string(),
-                "Open Sync for the latest receipt.".to_string(),
-                Some("View Sync"),
-                Some("sync"),
-                None,
-            ))
-        } else if !sync_has_history(status) {
-            Some((
-                "Sync pending scan".to_string(),
-                "No ROM scan has run yet.".to_string(),
-                Some("Scan ROMs"),
-                None,
-                Some("/api/actions/sync-games"),
-            ))
-        } else if status.library.sync_needed {
-            let changes = status.library.unsynced_added
-                + status.library.unsynced_changed
-                + status.library.unsynced_removed;
-            Some((
-                format!("{} changes waiting for sync", changes),
-                "ROM folder changes are ready to scan.".to_string(),
-                Some("Start Sync"),
-                None,
-                Some("/api/actions/sync-games"),
-            ))
-        } else if status.updates.state == "available" {
-            Some((
-                "Update available".to_string(),
-                status
-                    .updates
-                    .available_version
-                    .clone()
-                    .unwrap_or_else(|| "Review update".to_string()),
-                Some("Review Update"),
-                Some("updates"),
-                None,
-            ))
-        } else if status.local_ai.load_state == "error" {
-            Some((
-                "Local AI error".to_string(),
-                status
-                    .local_ai
-                    .selected_model_name
-                    .clone()
-                    .unwrap_or_else(|| "Model load failed".to_string()),
-                Some("Open Local AI"),
-                Some("local-ai"),
-                None,
-            ))
-        } else {
-            None
-        };
+    let priority: Option<(String, String, &'static str)> = if !status.network.online {
+        Some((
+            "Network offline".to_string(),
+            "Console network is unavailable; network controls stay in the left pane.".to_string(),
+            "bad",
+        ))
+    } else if status.storage.percent_used >= 90 {
+        Some((
+            format!("Storage low: {} free", status.storage.free),
+            format!("{} used across managed storage.", status.storage.percent),
+            "warn",
+        ))
+    } else if status.library.last_sync_state == "error" {
+        Some((
+            "Sync failed".to_string(),
+            "Latest receipt reports a game-library sync failure.".to_string(),
+            "bad",
+        ))
+    } else if !sync_has_history(status) {
+        Some((
+            "First sync waiting".to_string(),
+            format!(
+                "{} playable ROMs are visible before the first verified sync receipt.",
+                status.library.total_detected_games
+            ),
+            "idle",
+        ))
+    } else if status.library.sync_needed {
+        let changes = status.library.unsynced_added
+            + status.library.unsynced_changed
+            + status.library.unsynced_removed;
+        Some((
+            format!("{} changes waiting for sync", changes),
+            "ROM folder changes are queued for the Sync pane.".to_string(),
+            "warn",
+        ))
+    } else if status.updates.state == "available" {
+        Some((
+            "Update available".to_string(),
+            status
+                .updates
+                .available_version
+                .clone()
+                .unwrap_or_else(|| "Harmonia reports available work.".to_string()),
+            "warn",
+        ))
+    } else if status.local_ai.load_state == "error" {
+        Some((
+            "Local AI error".to_string(),
+            status
+                .local_ai
+                .selected_model_name
+                .clone()
+                .unwrap_or_else(|| "Model load failed.".to_string()),
+            "bad",
+        ))
+    } else {
+        None
+    };
 
-    if let Some((state, detail, action, target, endpoint)) = priority {
+    if let Some((state, detail, tone)) = priority {
+        let badge = if tone == "idle" {
+            "Waiting"
+        } else {
+            "Attention"
+        };
         html! {
-            article class="priority-strip" aria-label="Highest priority console state" {
+            article class=(format!("priority-strip priority-strip--{}", tone)) aria-label="Highest priority console state" {
                 strong { (state) }
                 span { (detail) }
-                @if let Some(label) = action {
-                    @if let Some(endpoint) = endpoint {
-                        (action_button(ButtonVariant::Primary, label, "sync-games", endpoint))
-                    } @else if let Some(target) = target {
-                        (nav_button(label, target))
-                    }
-                }
+                b class=(format!("system-status system-status--{}", if tone == "bad" { "error" } else if tone == "warn" { "starting" } else { "unknown" })) { (badge) }
             }
         }
     } else {
@@ -437,6 +425,15 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_storage_card(status: &ConsoleStatus) -> Markup {
+    let warning_count = status.storage.diagnostics.warnings.len()
+        + status.storage.diagnostics.missing_dirs.len()
+        + status.storage.diagnostics.permission_errors.len();
+    let cleanup_bytes = status.storage.cleanup.artwork_bytes_clearable
+        + status.storage.cleanup.temporary_bytes_clearable
+        + status.storage.cleanup.partial_downloads_bytes_clearable
+        + status.storage.cleanup.old_update_bytes_clearable
+        + status.storage.cleanup.logs_bytes_clearable;
+    let cleanup_label = human_size(cleanup_bytes);
     html! {
         article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) {
             div class="card-head" { h3 { "Storage" } strong { (status.storage.free) " free" } }
@@ -447,24 +444,28 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total.max(if status.storage.other.bytes > 0 { 1 } else { 0 }))) title=(format!("Other {}", status.storage.other.size)) {}
                 span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
             }
-            p class="card-line" { (status.storage.percent) " used" }
+            p class="card-line" { (status.storage.percent) " used · " (status.storage.total) " total" }
             div class="storage-mini-rows" {
                 (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total, status.storage.games.bytes))
                 (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total, status.storage.artwork.bytes))
                 (storage_mini_row("AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total, status.storage.ai_models.bytes))
                 (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total, status.storage.other.bytes))
             }
-            div class="inline-actions inline-actions--compact" {
-                (nav_button("Manage Storage", "storage"))
-                (nav_button("Browse Folders", "storage"))
-                @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clean Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
-                @if status.storage.ai_models.bytes > 0 { (nav_button("Manage Models", "local-ai")) }
+            div class="home-signal-strip" aria-label="Storage signals" {
+                (home_signal("Volumes", &status.storage.volumes.len().to_string(), "idle"))
+                (home_signal("Cleanup", &cleanup_label, if cleanup_bytes > 0 { "warn" } else { "ok" }))
+                (home_signal("Warnings", &warning_count.to_string(), if warning_count > 0 { "warn" } else { "ok" }))
             }
         }
     }
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {
+    let internet_label = match status.network.internet_reachable {
+        Some(true) => "Online".to_string(),
+        Some(false) => "No internet".to_string(),
+        None => "Unchecked".to_string(),
+    };
     html! {
         article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
             @if status.network.online {
@@ -476,18 +477,24 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                     p class="card-line" { "Ethernet · " (status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown speed".to_string())) }
                     p class="card-line" { (status.network.ip_address) }
                 }
+                div class="home-topology" aria-label="Network topology" {
+                    span { "Console" }
+                    i { "→" }
+                    span { "Home LAN" }
+                    i { "→" }
+                    span { (internet_label) }
+                }
                 div class="reachability-row reachability-row--topology" {
                     (reachability("Link", status.network.online))
                     @if let Some(internet) = status.network.internet_reachable { (reachability("Internet", internet)) }
+                    (reachability("Samba", status.network.samba_reachable))
+                    (reachability("AI", status.network.lan_ai_reachable))
                 }
-                div class="inline-actions inline-actions--compact" {
-                    (nav_button("Manage Network", "network"))
-                    (copy_button("Console URL", status.identity.web_origin.as_str()))
-                }
+                div class="home-code-line" aria-label="Console URL" { code { (status.identity.web_origin) } }
             } @else {
-                h3 { "Network offline" }
+                div class="card-head" { h3 { "Network" } strong { "Offline" } }
                 p class="card-line" { "Console network is unavailable." }
-                (nav_button("Manage Network", "network"))
+                div class="home-signal-strip" { (home_signal("Ethernet", if status.network.ethernet_available { "Present" } else { "Absent" }, if status.network.ethernet_available { "idle" } else { "warn" })) (home_signal("Wi-Fi", if status.network.wifi_adapter_available { "Present" } else { "Absent" }, if status.network.wifi_adapter_available { "idle" } else { "warn" })) }
             }
         }
     }
@@ -502,33 +509,29 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
     } else if status.library.last_sync_state == "running" {
         "Scanning"
     } else if pending_changes > 0 || status.library.sync_needed {
-        "Scan ready"
+        "Sync needed"
     } else if !sync_has_history(status) {
-        "Not scanned"
+        "First sync waiting"
     } else {
-        "Idle"
+        "Synced"
     };
-    let rom_count = rom_count_label(status);
+    let sync_delta = status
+        .library
+        .total_detected_games
+        .saturating_sub(status.library.total_synced_entries);
     html! {
-        article class="operational-card sync-home-card" {
-            div class="card-head" { h3 { "Sync" } strong { (format!("{} · {} ROMs", state, status.library.total_detected_games)) } }
-            p class="card-line" { (rom_count) }
+        article class=(if status.library.last_sync_state == "error" || pending_changes > 0 || status.library.sync_needed { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) {
+            div class="card-head" { h3 { "Sync" } strong { (state) } }
+            p class="card-line" { (status.library.total_detected_games) " playable ROMs · " (status.library.total_synced_entries) " library entries" }
             div class="state-rows state-rows--compact" {
                 (state_row("Available ROMs", &status.library.total_detected_games.to_string()))
                 (state_row("Last scan", &status.library.last_sync))
-                @if pending_changes > 0 { (state_row("Folder changes", &pending_changes.to_string())) }
+                (state_row("Folder changes", &pending_changes.to_string()))
+                (state_row("Library gap", &sync_delta.to_string()))
                 (state_row("Artwork", &status.library.artwork_status))
-            }
-            div class="inline-actions inline-actions--compact" {
-                (nav_button("Open Sync", "sync"))
-                (action_button(ButtonVariant::Secondary, "Scan ROM folders", "sync-games", "/api/actions/sync-games"))
             }
         }
     }
-}
-
-fn rom_count_label(status: &ConsoleStatus) -> String {
-    format!("{} available ROMs", status.library.total_detected_games)
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
@@ -553,23 +556,88 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
         article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) {
             div class="card-head" { h3 { "Local AI" } strong { (state) } }
             p class="card-line" { (model_line) }
-            @if !status.local_ai.available_models.is_empty() {
-                label class="compact-select-label" { span { "Model" } select class="compact-select" name="home-local-ai-model" {
-                    @for model in &status.local_ai.available_models { option value=(model.id) selected[status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str())] { (model.name) } }
-                } }
-            }
             div class="state-rows state-rows--compact" {
                 @if let Some(accelerator) = accelerator { (state_row("Accelerator", accelerator)) }
                 (state_row("LAN", &lan))
-                @if status.local_ai.available_models.is_empty() { (state_row("Models", "Not configured")) }
+                (state_row("Models", &status.local_ai.available_models.len().to_string()))
             }
             @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
                 div class="gpu-bar" aria-label="Accelerator memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
             }
-            div class="inline-actions inline-actions--compact" {
-                @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
-                @else if !status.local_ai.available_models.is_empty() { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
-                (nav_button("Open", "local-ai"))
+        }
+    }
+}
+
+fn home_updates_card(status: &ConsoleStatus) -> Markup {
+    let (state_label, state_tone) = if status.updates.state == "available" {
+        ("Available", "warn")
+    } else if status.updates.suite_ok {
+        ("Current", "ok")
+    } else {
+        ("Repair pending", "warn")
+    };
+    let missing = if status.updates.first_missing_signal.is_empty() {
+        "None"
+    } else {
+        status.updates.first_missing_signal.as_str()
+    };
+    let receipt = receipt_short_name(&status.updates.latest_receipt);
+    html! {
+        article class=(if state_tone == "warn" { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) {
+            div class="card-head" { h3 { "Updates" } strong { (state_label) } }
+            p class="card-line" { (status.updates.profile_id) " · " (status.updates.module_count) " modules · " (status.updates.operation_count) " operations" }
+            div class="state-rows state-rows--compact" {
+                (state_row("Receipt", &receipt))
+                (state_row("Missing", missing))
+            }
+        }
+    }
+}
+
+fn home_system_health_card(status: &ConsoleStatus) -> Markup {
+    let service_total = status.system.services.len();
+    let running = status
+        .system
+        .services
+        .iter()
+        .filter(|svc| matches!(svc.state.as_str(), "running" | "available" | "enabled"))
+        .count();
+    let failed = service_total.saturating_sub(running);
+    html! {
+        article class=(if failed > 0 { "operational-card health-home-card attention" } else { "operational-card health-home-card" }) {
+            div class="card-head" { h3 { "System Health" } strong { (running) "/" (service_total) } }
+            p class="card-line" { "Machine " (status.runtime.machine_uptime) " · Interface " (status.runtime.arcadia_uptime) }
+            div class="home-service-list" aria-label="Appliance services" {
+                @for svc in status.system.services.iter().take(2) {
+                    div class="home-service-row" {
+                        span { (&svc.name) }
+                        b class=(status_class(&svc.state)) { (title_case_state_like(&svc.state)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn home_identity_card(status: &ConsoleStatus) -> Markup {
+    let lock_state = if status.gui_pin.pin_required {
+        "PIN required"
+    } else {
+        "Open"
+    };
+    let trust_state = if status.system.trust.mode == "https" {
+        "Secure web"
+    } else {
+        "Local HTTP"
+    };
+    html! {
+        article class="operational-card identity-home-card" {
+            div class="card-head" { h3 { "Appliance" } strong { (&status.identity.hostname) } }
+            p class="card-line" { (&status.identity.product_name) " · " (&status.identity.version) }
+            div class="state-rows state-rows--compact" {
+                (state_row("Address", &status.network.ip_address))
+                (state_row("Access", lock_state))
+                (state_row("Trust", trust_state))
             }
         }
     }
@@ -578,13 +646,15 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
 fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class="operational-card gamescope-home-card attention" {
-            div class="card-head" { h3 { "GameScope" } strong { (title_case_state(status.arcadia.service)) } }
-            p class="card-line" { "No active game reported." }
-            div class="inline-actions inline-actions--compact" {
-                (nav_button("System", "system"))
-            }
+            div class="card-head" { h3 { "Game Session" } strong { (title_case_state_like(status.arcadia.service)) } }
+            p class="card-line" { "No active game session reported by the appliance service." }
+            div class="home-signal-strip" { (home_signal("Interface", status.arcadia.service, if status.arcadia.service == "running" { "ok" } else { "warn" })) }
         }
     }
+}
+
+fn home_signal(label: &str, value: &str, tone: &str) -> Markup {
+    html! { span class=(format!("home-signal home-signal--{}", tone)) { em { (label) } strong { (value) } } }
 }
 
 fn title_case_state_like(state: &str) -> &'static str {
@@ -594,6 +664,14 @@ fn title_case_state_like(state: &str) -> &'static str {
         "loading" => "Loading",
         "hot" => "Hot",
         "error" => "Error",
+        "running" => "Running",
+        "available" => "Available",
+        "enabled" => "Enabled",
+        "stopped" => "Stopped",
+        "disabled" => "Disabled",
+        "success" => "Success",
+        "current" => "Current",
+        "repair_pending" => "Repair pending",
         _ => "Unknown",
     }
 }
