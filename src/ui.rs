@@ -505,29 +505,29 @@ fn home_load_card() -> Markup {
         .map(|value| format!("{value:.2}"))
         .unwrap_or_else(|| "—".to_string());
     html! {
-        article class="operational-card load-home-card" aria-label="Load dashboard" {
-            div class="card-head" { h3 { "Load" } strong { (load_headline) } }
+        article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-poll-ms="5000" {
+            div class="card-head" { h3 { "Load" } strong data-load-headline { (load_headline) } }
             div class="load-orb-row" {
-                div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) {
-                    span { (load_percent) "%" }
+                div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) data-load-orb {
+                    span data-load-percent { (load_percent) "%" }
                 }
                 div class="load-spark-bank" aria-label="Load average" {
-                    (load_spark("1m", one, cores))
-                    (load_spark("5m", five, cores))
-                    (load_spark("15m", fifteen, cores))
+                    (load_spark("1m", "oneMinute", one, cores))
+                    (load_spark("5m", "fiveMinute", five, cores))
+                    (load_spark("15m", "fifteenMinute", fifteen, cores))
                 }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
-                (load_chip("CPU", &temp_label, temp_state))
-                (load_chip("I/O", &io_label, io_state))
-                (load_chip("Read", &read_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
-                (load_chip("Write", &written_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
+                (load_chip("CPU", "cpu", &temp_label, temp_state))
+                (load_chip("I/O", "io", &io_label, io_state))
+                (load_chip("Read", "read", &read_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
+                (load_chip("Write", "write", &written_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
             }
         }
     }
 }
 
-fn load_spark(label: &str, value: Option<f64>, cores: f64) -> Markup {
+fn load_spark(label: &str, key: &str, value: Option<f64>, cores: f64) -> Markup {
     let width = value
         .map(|number| ((number / cores) * 100.0).clamp(0.0, 100.0).round() as u8)
         .unwrap_or(0);
@@ -535,19 +535,19 @@ fn load_spark(label: &str, value: Option<f64>, cores: f64) -> Markup {
         .map(|number| format!("{number:.2}"))
         .unwrap_or_else(|| "—".to_string());
     html! {
-        div class="load-spark" {
+        div class="load-spark" data-load-spark=(key) {
             span { (label) }
-            i { em style=(format!("width:{}%;", width)) {} }
-            strong { (display) }
+            i { em style=(format!("width:{}%;", width)) data-load-spark-bar=(key) {} }
+            strong data-load-spark-value=(key) { (display) }
         }
     }
 }
 
-fn load_chip(label: &str, value: &str, state: &str) -> Markup {
+fn load_chip(label: &str, key: &str, value: &str, state: &str) -> Markup {
     html! {
-        div class=(format!("load-chip load-chip--{}", state)) {
+        div class=(format!("load-chip load-chip--{}", state)) data-load-chip=(key) {
             em { (label) }
-            strong { (value) }
+            strong data-load-chip-value=(key) { (value) }
         }
     }
 }
