@@ -566,122 +566,103 @@ fn games_view(status: &ConsoleStatus) -> Markup {
 fn sync_view(status: &ConsoleStatus) -> Markup {
     let storage_blocked = status.storage.health == "Full";
     let storage_low = status.storage.percent_used >= 90;
-    view_shell("sync", "Library transformation", "Sync Games", "Sync scans the console’s game folders, finds copied games, fetches artwork, and adds playable entries to GameScope.", html! {
-        section class="sync-command-center" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) aria-labelledby="sync-command-title" {
-            div class="sync-command-copy" {
-                h3 id="sync-command-title" { "Turn copied files into playable games" }
-                p { "I copy games into folders. Sync turns those files into a usable console library." }
-                div class="sync-state-line" {
-                    span { "Current state" }
-                    strong id="sync-state" data-sync-state="idle" { "Waiting" }
+    view_shell(
+        "sync",
+        "Library transformation",
+        "Sync Games",
+        "",
+        html! {
+            section class="sync-command-center sync-command-center--alchemy" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) aria-label="Sync command" {
+                div class="sync-command-copy" {
+                    h3 id="sync-command-title" { "Turn copied files into playable games" }
+                    p { "Copy games into the console folders, then Sync scans the files, matches artwork and metadata, writes GameScope entries, and leaves the games ready to launch." }
+                    div class="sync-state-line" {
+                        span { "Current state" }
+                        strong id="sync-state" data-sync-state="idle" { "Waiting" }
+                    }
+                }
+                div class="sync-primary-action" {
+                    (action_button(ButtonVariant::Primary, if storage_blocked { "Storage Full" } else { "Start Sync" }, "sync-games", "/api/actions/sync-games"))
+                    button class="btn btn--secondary" type="button" data-provider-keys-open="true" { "API Keys" }
+                    p id="sync-progress-text" { (if storage_blocked { "Storage is full. Free space before syncing games." } else { "Ready to hydrate the GameScope library." }) }
                 }
             }
-            div class="sync-primary-action" {
-                (action_button(ButtonVariant::Primary, if storage_blocked { "Storage Full" } else { "Start Sync" }, "sync-games", "/api/actions/sync-games"))
-                p id="sync-progress-text" { (if storage_blocked { "Storage is full. Free space before syncing games." } else { "Ready to scan copied games." }) }
-            }
-        }
 
-        @if storage_blocked {
-            div class="warning sync-storage-warning" {
-                strong { "Storage is full. Free space before syncing games." }
-                (nav_button("Open Storage", "storage"))
+            @if storage_blocked {
+                div class="warning sync-storage-warning" {
+                    strong { "Storage is full. Free space before syncing games." }
+                    (nav_button("Open Storage", "storage"))
+                }
+            } @else if storage_low {
+                div class="warning sync-storage-warning" {
+                    strong { "Storage is low. Sync may fail if there is not enough space for artwork or library entries." }
+                    (nav_button("Open Storage", "storage"))
+                }
             }
-        } @else if storage_low {
-            div class="warning sync-storage-warning" {
-                strong { "Storage is low. Sync may fail if there is not enough space for artwork or library entries." }
-                (nav_button("Open Storage", "storage"))
-            }
-        }
 
-        div class="sync-state-legend" aria-label="Sync step states" {
-            span { "Waiting" }
-            span { "Running" }
-            span { "Complete" }
-            span { "Skipped" }
-            span { "Error" }
-        }
-        section class="sync-workflow" aria-label="Sync workflow" {
-            (sync_step("1", "▣", "Copy Games", "Copy game files into the matching console folders over the network.", "Waiting", html! {
+            section class="sync-explainer-strip" aria-label="Before syncing" {
+                span { strong { "Before" } "Copy games to the matching network folder." }
+                span { strong { "Optional" } "Add scraper API keys for better artwork and metadata." }
+                span { strong { "After" } "GameScope shows the synced games when the run completes." }
+            }
+
+            div class="sync-state-legend" aria-label="Sync step states" {
+                span { "Waiting" }
+                span { "Running" }
+                span { "Complete" }
+                span { "Skipped" }
+                span { "Error" }
+            }
+            section class="sync-workflow sync-workflow--flasks" aria-label="Alchemical sync workflow" {
+                (sync_step("1", "▣", "Copy Games", "Source files enter the console folders over the home network.", "Waiting", html! {
+                    (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
+                    (nav_button("Add Games", "games"))
+                }))
+                (sync_step("2", "⌕", "Scan Library", "Folders are measured for new, changed, and removed game files.", "Waiting", html! {
+                    (sync_detail("Games found", "Not run yet"))
+                    (sync_detail("Changed files", "Not run yet"))
+                }))
+                (sync_step("3", "★", "Fetch Artwork", "Configured scrapers enrich titles, covers, and artwork.", "Waiting", html! {
+                    (sync_detail("SteamGridDB", "Unknown"))
+                    (sync_detail("TheGamesDB", "Unknown"))
+                    (sync_detail("ScreenScraper", "Unknown"))
+                    button class="btn btn--secondary" type="button" data-provider-keys-open="true" { "Configure Scrapers" }
+                }))
+                (sync_step("4", "＋", "Create Game Entries", "The sync writes or updates the library records GameScope reads.", "Waiting", html! {
+                    (sync_detail("Created", "Not run yet"))
+                    (sync_detail("Updated", "Not run yet"))
+                    (sync_detail("Skipped", "Not run yet"))
+                }))
+                (sync_step("5", "▶", "Available in GameScope", "Completed entries appear in the GameScope library after sync.", "Waiting", html! {
+                    (sync_detail("Last sync", &status.library.last_sync))
+                    (sync_detail("Synced entries", &status.library.total_synced_entries.to_string()))
+                }))
+            }
+
+            section class="sync-result-card" aria-labelledby="sync-result-title" data-sync-result="waiting" {
+                div class="section-heading section-heading--compact" {
+                    h3 id="sync-result-title" { "Sync readback" }
+                    p id="sync-result-copy" { "Start Sync to scan copied games, fetch artwork, and publish entries into GameScope." }
+                }
+                div class="sync-result-grid" {
+                    (sync_detail("Detected", &status.library.total_detected_games.to_string()))
+                    (sync_detail("Synced", &status.library.total_synced_entries.to_string()))
+                    (sync_detail("Added", &status.library.unsynced_added.to_string()))
+                    (sync_detail("Changed", &status.library.unsynced_changed.to_string()))
+                    (sync_detail("Removed", &status.library.unsynced_removed.to_string()))
+                    (sync_detail("Artwork", &status.library.artwork_status))
+                }
+            }
+
+            div class="sync-secondary-actions" {
                 (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
-                (nav_button("View Add Games Instructions", "games"))
-            }))
-            (sync_step("2", "⌕", "Scan Library", "The console scans game folders and detects new, changed, or removed files.", "Waiting", html! {
-                (sync_detail("Games found", "Not run yet"))
-                (sync_detail("New games", "Not run yet"))
-                (sync_detail("Removed games", "Not run yet"))
-                (sync_detail("Changed files", "Not run yet"))
-            }))
-            (sync_step("3", "★", "Fetch Artwork", "Optional metadata providers improve titles, covers, and artwork.", "Waiting", html! {
-                (sync_detail("Artwork found", "Not run yet"))
-                (sync_detail("Artwork missing", "Not run yet"))
-                (sync_detail("Provider key status", "Optional"))
-                (sync_detail("SteamGridDB", "Missing"))
-                (sync_detail("TheGamesDB", "Missing"))
-                (sync_detail("ScreenScraper", "Missing"))
-                p class="sync-small-copy" { "Games still work without artwork keys." }
-                a class="sync-inline-link" href="#sync-provider-settings" { "Configure Metadata Providers" }
-            }))
-            (sync_step("4", "＋", "Create Game Entries", "The console creates or updates GameScope library entries for detected games.", "Waiting", html! {
-                (sync_detail("Entries created", "Not run yet"))
-                (sync_detail("Entries updated", "Not run yet"))
-                (sync_detail("Entries skipped", "Not run yet"))
-                (sync_detail("Errors", "Not run yet"))
-            }))
-            (sync_step("5", "▶", "Available in GameScope", "Synced games appear in the GameScope library after sync completes.", "Waiting", html! {
-                (sync_detail("Last successful sync", "Not reported"))
-                (sync_detail("Total synced games", "Not reported"))
-                (sync_detail("GameScope state", "Running"))
-                p class="sync-small-copy" { "GameScope is running. Synced games should appear after sync completes." }
-            }))
-        }
-
-        section class="sync-result-card sync-desktop-detail" aria-labelledby="sync-result-title" data-sync-result="waiting" {
-            div class="section-heading section-heading--compact" {
-                h3 id="sync-result-title" { "Result Summary" }
-                p id="sync-result-copy" { "Start Sync to scan copied games and create playable GameScope entries." }
+                button class="btn btn--secondary" type="button" data-provider-keys-open="true" { "Configure Scrapers" }
+                button class="btn btn--secondary" type="button" data-modal-title="Sync Output" data-modal-body="Sync output appears here after a run." { "Output" }
             }
-            div class="sync-result-grid" {
-                (sync_detail("Games found", "Not run yet"))
-                (sync_detail("New entries created", "Not run yet"))
-                (sync_detail("Entries updated", "Not run yet"))
-                (sync_detail("Artwork downloaded", "Not run yet"))
-                (sync_detail("Artwork missing", "Not run yet"))
-                (sync_detail("Errors", "Not run yet"))
-                (sync_detail("Duration", "Not run yet"))
-                (sync_detail("Completed time", "Not run yet"))
-            }
-        }
-
-        div class="sync-secondary-actions sync-desktop-detail" {
-            (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
-            a class="btn btn--secondary" href="#sync-provider-settings" { "Configure Metadata Providers" }
-            a class="btn btn--secondary" href="#sync-output-panel" { "Output" }
-            (nav_button("Open Storage", "storage"))
-        }
-
-        details id="sync-provider-settings" class="settings-panel sync-provider-panel sync-desktop-detail" {
-            summary { "Configure Metadata Providers" }
-            p { "Metadata keys are optional. They improve artwork and titles, but games can still sync without them." }
-            div class="provider-status-grid" {
-                (provider_status("SteamGridDB", "Missing"))
-                (provider_status("TheGamesDB", "Missing"))
-                (provider_status("ScreenScraper", "Missing"))
-            }
-            form id="provider-keys-form" class="settings-form" autocomplete="off" {
-                label { span { "SteamGridDB API key" } input class="field" type="password" name="steamgriddb_api_key" autocomplete="off"; }
-                label { span { "TheGamesDB API key" } input class="field" type="password" name="thegamesdb_api_key" autocomplete="off"; }
-                label { span { "ScreenScraper API key" } input class="field" type="password" name="screenscraper_api_key" autocomplete="off"; }
-                div id="provider-keys-message" class="message" hidden {}
-                button class="btn btn--primary" type="submit" { "Save Optional Keys" }
-            }
-        }
-        details id="sync-output-panel" class="collapsible-log sync-desktop-detail" {
-            summary { "Output" }
-            pre { code id="sync-output" {} }
-        }
-        div id="console-action-message" class="message" hidden {}
-    })
+            div id="sync-output-panel" class="collapsible-log sync-output-store" hidden { pre { code id="sync-output" {} } }
+            div id="console-action-message" class="message" hidden {}
+        },
+    )
 }
 
 fn storage_view(status: &ConsoleStatus) -> Markup {
@@ -1260,10 +1241,6 @@ fn path_card(title: &str, path: &str) -> Markup {
     html! { article class="path-card" { span { (title) } code { (path) } } }
 }
 
-fn provider_status(name: &str, state: &str) -> Markup {
-    html! { div class="provider-status" { span { (name) } strong { (state) } } }
-}
-
 fn sync_step(
     number: &str,
     icon: &str,
@@ -1273,7 +1250,11 @@ fn sync_step(
     body: Markup,
 ) -> Markup {
     html! {
-        article class="sync-step" data-sync-step=(number) data-sync-step-title=(title) data-step-state="waiting" {
+        article class="sync-step sync-flask-stage" data-sync-step=(number) data-sync-step-title=(title) data-step-state="waiting" {
+            div class="sync-flask" aria-hidden="true" {
+                span class="sync-flask-neck" {}
+                span class="sync-flask-bowl" { span class="sync-flask-liquid" {} span class="sync-flask-bubble sync-flask-bubble--a" {} span class="sync-flask-bubble sync-flask-bubble--b" {} }
+            }
             div class="sync-step-top" {
                 span class="sync-step-number" { (number) }
                 span class="sync-step-icon" aria-hidden="true" { (icon) }

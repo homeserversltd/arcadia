@@ -36,6 +36,11 @@ const GUI_PIN_ACCESS_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-access"
 const GUI_PIN_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-change";
 const GUI_PIN_RESET_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-reset-default";
 const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
+const PROVIDER_KEY_NAMES: [(&str, &str); 3] = [
+    ("steamgriddb", "STEAMGRIDDB_API_KEY"),
+    ("thegamesdb", "THEGAMESDB_API_KEY"),
+    ("screenscraper", "SCREENSCRAPER_API_KEY"),
+];
 const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
 const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
@@ -924,6 +929,22 @@ struct ProviderKeysRequest {
 }
 
 #[derive(Serialize)]
+struct ProviderKeyStatus {
+    id: &'static str,
+    env_key: &'static str,
+    configured: bool,
+}
+
+#[derive(Serialize)]
+struct ProviderKeysStatusResponse {
+    ok: bool,
+    action: &'static str,
+    path: &'static str,
+    providers: Vec<ProviderKeyStatus>,
+    message: String,
+}
+
+#[derive(Serialize)]
 struct ProviderKeysResponse {
     ok: bool,
     action: &'static str,
@@ -1062,6 +1083,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/gui-pin/status", get(gui_pin_status_route))
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))
+        .route("/api/provider-keys/status", get(provider_keys_status))
         .route("/api/provider-keys/save", post(save_provider_keys))
         .route(
             "/api/ai/runtime/check-update",
@@ -2148,6 +2170,46 @@ fn redacted_output(bytes: &[u8]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+async fn provider_keys_status() -> Json<ProviderKeysStatusResponse> {
+    let configured = read_provider_key_presence();
+    let providers = PROVIDER_KEY_NAMES
+        .iter()
+        .map(|(id, key)| ProviderKeyStatus {
+            id: *id,
+            env_key: *key,
+            configured: configured.get(*key).copied().unwrap_or(false),
+        })
+        .collect::<Vec<_>>();
+    Json(ProviderKeysStatusResponse {
+        ok: true,
+        action: "provider-keys-status",
+        path: PROVIDER_KEYS_PATH,
+        providers,
+        message: "Provider key status loaded without exposing secret values.".to_string(),
+    })
+}
+
+fn read_provider_key_presence() -> HashMap<String, bool> {
+    let mut result = HashMap::new();
+    let Ok(text) = fs::read_to_string(PROVIDER_KEYS_PATH) else {
+        return result;
+    };
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, raw_value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let value = raw_value.trim().trim_matches('"').trim_matches('\'');
+        if !value.is_empty() {
+            result.insert(key.trim().to_string(), true);
+        }
+    }
+    result
 }
 
 async fn save_provider_keys(
@@ -5358,6 +5420,28 @@ mod tests {
     }
 
     #[test]
+    fn provider_status_response_is_redacted() {
+        let response = ProviderKeysStatusResponse {
+            ok: true,
+            action: "provider-keys-status",
+            path: PROVIDER_KEYS_PATH,
+            providers: PROVIDER_KEY_NAMES
+                .iter()
+                .map(|(id, key)| ProviderKeyStatus {
+                    id: *id,
+                    env_key: *key,
+                    configured: true,
+                })
+                .collect(),
+            message: "Provider key status loaded without exposing secret values.".to_string(),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("STEAMGRIDDB_API_KEY"));
+        assert!(!json.contains("scrape-secret"));
+        assert!(!json.to_ascii_lowercase().contains("password"));
+    }
+
+    #[test]
     fn network_status_parses_ip_addr_global_fallback() {
         let text =
             "2: enp1s0    inet 192.168.123.54/24 brd 192.168.123.255 scope global dynamic enp1s0\n";
@@ -5377,8 +5461,13 @@ mod tests {
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
 
-        assert!(rendered.contains("ScreenScraper API key"));
-        assert!(rendered.contains("screenscraper_api_key"));
+        assert!(rendered.contains(r#"data-provider-keys-open="true""#));
+        assert!(!rendered.contains(r#"id="provider-keys-form""#));
+        assert!(!rendered.contains(r#"name="screenscraper_api_key""#));
+        assert!(APP_JS.contains("ScreenScraper API key"));
+        assert!(APP_JS.contains("screenscraper_api_key"));
+        assert!(APP_JS.contains("/api/provider-keys/status"));
+        assert!(APP_JS.contains("PopupManager.trapFocus"));
         assert!(!rendered.contains("screenscraper_user"));
         assert!(!rendered.contains("screenscraper_password"));
         assert!(!rendered.contains("ScreenScraper user"));
@@ -5684,53 +5773,51 @@ mod tests {
         let sync_html = &rendered[sync_start..sync_end];
 
         for required in [
-            "I copy games into folders. Sync turns those files into a usable console library.",
+            "Copy games into the console folders, then Sync scans the files",
             "Start Sync",
-            "data-action=\"sync-games\"",
+            r#"data-action="sync-games""#,
             "Copy Games",
-            "Copy game files into the matching console folders over the network.",
+            "Source files enter the console folders over the home network.",
             "Scan Library",
-            "The console scans game folders and detects new, changed, or removed files.",
+            "Folders are measured for new, changed, and removed game files.",
             "Fetch Artwork",
-            "Optional metadata providers improve titles, covers, and artwork.",
+            "Configured scrapers enrich titles, covers, and artwork.",
             "Create Game Entries",
-            "The console creates or updates GameScope library entries for detected games.",
+            "The sync writes or updates the library records GameScope reads.",
             "Available in GameScope",
-            "Synced games appear in the GameScope library after sync completes.",
+            "Completed entries appear in the GameScope library after sync.",
             "Waiting",
             "Running",
             "Complete",
             "Skipped",
             "Error",
+            "Before",
+            "Optional",
+            "After",
             "Games found",
-            "New games",
-            "Removed games",
             "Changed files",
-            "Artwork found",
-            "Artwork missing",
-            "Provider key status",
-            "Configure Metadata Providers",
-            "Games still work without artwork keys.",
-            "Entries created",
-            "Entries updated",
-            "Entries skipped",
-            "Last successful sync",
-            "Total synced games",
-            "GameScope state",
-            "GameScope is running. Synced games should appear after sync completes.",
-            "Result Summary",
-            "New entries created",
-            "Artwork downloaded",
-            "Duration",
-            "Completed time",
+            "Configure Scrapers",
+            "Created",
+            "Updated",
+            "Skipped",
+            "Last sync",
+            "Synced entries",
+            "Sync readback",
+            "Detected",
+            "Artwork",
             "Output",
-            "Metadata keys are optional. They improve artwork and titles, but games can still sync without them.",
             "SteamGridDB",
             "TheGamesDB",
             "ScreenScraper",
+            "sync-flask-stage",
+            "sync-flask-liquid",
         ] {
             assert!(sync_html.contains(required), "missing {required}");
         }
+        assert!(APP_CSS.contains("flask-hydrate"));
+        assert!(VIEWPORT_CSS.contains("prefers-reduced-motion"));
+        assert!(!sync_html.contains("provider-keys-form"));
+        assert!(!sync_html.contains("screenscraper_api_key"));
 
         let workflow = sync_html.find("sync-workflow").expect("workflow shown");
         let output = sync_html

@@ -30,6 +30,18 @@ const PopupManager = (() => {
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
   }
 
+  function trapFocus(event) {
+    const el = overlay();
+    if (!el || el.hidden || event.key !== 'Tab') return false;
+    const focusable = Array.from(el.querySelectorAll('button, [href], input, select, textarea, details, [tabindex]:not([tabindex="-1"])')).filter((node) => !node.disabled && node.offsetParent !== null);
+    if (!focusable.length) return false;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); return true; }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); return true; }
+    return false;
+  }
+
   function showToast(message, variant = 'info') {
     const root = toasts();
     if (!root) return;
@@ -51,7 +63,7 @@ const PopupManager = (() => {
     setTimeout(() => node.remove(), 3600);
   }
 
-  return { showModal, closeModal, showToast };
+  return { showModal, closeModal, showToast, trapFocus };
 })();
 
 
@@ -1201,36 +1213,93 @@ function bindGuiPinChange() {
   });
 }
 
-function bindProviderKeys() {
-  const form = document.getElementById('provider-keys-form');
-  if (!form) return;
-  form.addEventListener('submit', async (event) => {
+function providerLabel(id) {
+  return { steamgriddb: 'SteamGridDB', thegamesdb: 'TheGamesDB', screenscraper: 'ScreenScraper' }[id] || id;
+}
+
+function setProviderStatusBadges(providers = []) {
+  const map = new Map(providers.map((p) => [p.id, p]));
+  document.querySelectorAll('[data-provider-status]').forEach((node) => {
+    const item = map.get(node.dataset.providerStatus);
+    node.textContent = item?.configured ? 'Configured' : 'Missing';
+    node.dataset.configured = item?.configured ? 'true' : 'false';
+  });
+}
+
+async function loadProviderKeyStatus() {
+  try {
+    const data = await getJson('/api/provider-keys/status');
+    setProviderStatusBadges(data.providers || []);
+    return data;
+  } catch (_) {
+    return { ok: false, providers: [], message: 'Provider key status unavailable.' };
+  }
+}
+
+async function openProviderKeysModal() {
+  const body = document.createElement('form');
+  body.className = 'settings-form provider-key-modal';
+  body.autocomplete = 'off';
+  body.innerHTML = `
+    <p class="modal-note">Scraper API keys are optional. They improve title and artwork lookups during Sync. Existing values are never shown here.</p>
+    <div class="provider-status-grid provider-status-grid--modal" aria-label="Configured scraper keys">
+      <div class="provider-status"><span>SteamGridDB</span><strong data-provider-status="steamgriddb">Checking</strong></div>
+      <div class="provider-status"><span>TheGamesDB</span><strong data-provider-status="thegamesdb">Checking</strong></div>
+      <div class="provider-status"><span>ScreenScraper</span><strong data-provider-status="screenscraper">Checking</strong></div>
+    </div>
+    <label><span>SteamGridDB API key</span><input class="field" type="password" name="steamgriddb_api_key" autocomplete="off" placeholder="Leave blank to keep unset"></label>
+    <label><span>TheGamesDB API key</span><input class="field" type="password" name="thegamesdb_api_key" autocomplete="off" placeholder="Leave blank to keep unset"></label>
+    <label><span>ScreenScraper API key</span><input class="field" type="password" name="screenscraper_api_key" autocomplete="off" placeholder="Leave blank to keep unset"></label>
+    <label class="wifi-show-password"><input type="checkbox" data-toggle-provider-secrets>Show keys while editing</label>
+    <div id="provider-keys-message" class="message" hidden></div>
+    <div class="inline-actions"><button class="btn btn--primary" type="submit">Save API Keys</button><button class="btn btn--secondary" type="button" data-modal-cancel>Cancel</button></div>`;
+  body.querySelector('[data-toggle-provider-secrets]')?.addEventListener('change', (event) => {
+    body.querySelectorAll('input[type="password"], input[data-provider-secret-visible]').forEach((input) => {
+      input.type = event.target.checked ? 'text' : 'password';
+      input.toggleAttribute('data-provider-secret-visible', event.target.checked);
+    });
+  });
+  body.querySelector('[data-modal-cancel]')?.addEventListener('click', () => PopupManager.closeModal());
+  body.addEventListener('submit', async (event) => {
     event.preventDefault();
     clearMessage('provider-keys-message');
-    const button = form.querySelector('button[type="submit"]');
-    const body = {
-      steamgriddb_api_key: form.querySelector('input[name="steamgriddb_api_key"]')?.value || '',
-      thegamesdb_api_key: form.querySelector('input[name="thegamesdb_api_key"]')?.value || '',
-      screenscraper_api_key: form.querySelector('input[name="screenscraper_api_key"]')?.value || '',
+    const button = body.querySelector('button[type="submit"]');
+    const payload = {
+      steamgriddb_api_key: body.querySelector('input[name="steamgriddb_api_key"]')?.value || '',
+      thegamesdb_api_key: body.querySelector('input[name="thegamesdb_api_key"]')?.value || '',
+      screenscraper_api_key: body.querySelector('input[name="screenscraper_api_key"]')?.value || '',
     };
-    if (!Object.values(body).some((value) => value.trim())) {
-      return setMessage('provider-keys-message', 'Enter at least one optional API key, or leave this section closed.', 'error');
-    }
+    if (!Object.values(payload).some((value) => value.trim())) return setMessage('provider-keys-message', 'Enter at least one API key to save.', 'error');
     button.disabled = true;
     button.textContent = 'Saving...';
     try {
-      const data = await postJson('/api/provider-keys/save', body);
-      form.reset();
-      if (data.ok) clearMessage('provider-keys-message');
-      else setMessage('provider-keys-message', data.message || 'Optional keys not saved.', 'error');
-      PopupManager.showToast(data.ok ? 'Optional keys saved' : 'Optional keys not saved', data.ok ? 'success' : 'error');
+      const data = await postJson('/api/provider-keys/save', payload);
+      body.querySelectorAll('input[name$="api_key"]').forEach((input) => { input.value = ''; });
+      if (data.ok) {
+        clearMessage('provider-keys-message');
+        PopupManager.showToast('Scraper API keys saved', 'success');
+        await loadProviderKeyStatus();
+        PopupManager.closeModal();
+      } else {
+        setMessage('provider-keys-message', data.message || 'API keys not saved.', 'error');
+        PopupManager.showToast('API keys not saved', 'error');
+      }
     } catch (_) {
       setMessage('provider-keys-message', 'API key save request failed.', 'error');
+      PopupManager.showToast('API key save request failed', 'error');
     } finally {
       button.disabled = false;
-      button.textContent = 'Save Optional Keys';
+      button.textContent = 'Save API Keys';
     }
   });
+  PopupManager.showModal({ title: 'Scraper API Keys', body, hideDefaultAction: true });
+  await loadProviderKeyStatus();
+  body.querySelector('input[name="steamgriddb_api_key"]')?.focus();
+}
+
+function bindProviderKeys() {
+  document.querySelectorAll('[data-provider-keys-open]').forEach((button) => button.addEventListener('click', openProviderKeysModal));
+  loadProviderKeyStatus();
 }
 
 initializeArcadiaTheme();
@@ -1257,5 +1326,6 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (PopupManager.trapFocus(event)) return;
   if (event.key === 'Escape') PopupManager.closeModal();
 });
