@@ -201,21 +201,19 @@ function bindGuiPinAccess() {
   document.querySelectorAll('[data-module="gui-pin-access"] .btn[data-pin-required]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
-      clearMessage('gui-pin-access-message');
       const pinRequired = button.dataset.pinRequired === 'true';
       const original = button.textContent;
       button.disabled = true;
       button.textContent = 'Saving...';
       try {
         const data = await postJson('/api/gui-pin/access', { pin_required: pinRequired });
-        setMessage('gui-pin-access-message', data.message || 'GUI PIN access setting returned no message.', data.ok ? 'success' : 'error');
-        PopupManager.showToast(data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved', data.ok ? 'success' : 'error');
+        PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved'), data.ok ? 'success' : 'error');
         if (data.ok) {
           document.body.dataset.guiPinRequired = String(data.pin_required);
           setPinIndicator(Boolean(data.pin_required));
         }
       } catch (_) {
-        setMessage('gui-pin-access-message', 'GUI PIN access request failed.', 'error');
+        PopupManager.showToast('GUI PIN access request failed.', 'error');
       } finally {
         button.disabled = false;
         button.textContent = original;
