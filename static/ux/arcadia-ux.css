@@ -15,30 +15,30 @@
 
   --ux-workspace-sidebar-width: 96px;
   --ux-sidebar-top: 14px;
-  --ux-sidebar-gap: 10px;
-  --ux-sidebar-padding-block: 12px;
+  --ux-sidebar-gap: 4px;
+  --ux-sidebar-padding-block: 6px;
   --ux-sidebar-padding-inline: 10px;
   --ux-sidebar-radius: 26px;
-  --ux-launcher-min-height: 64px;
-  --ux-launcher-padding-block: 7px;
-  --ux-launcher-padding-inline: 5px;
-  --ux-launcher-radius: 21px;
-  --ux-launcher-icon-size: 34px;
+  --ux-launcher-min-height: 40px;
+  --ux-launcher-padding-block: 3px;
+  --ux-launcher-padding-inline: 4px;
+  --ux-launcher-radius: 15px;
+  --ux-launcher-icon-size: 22px;
   --ux-launcher-icon-radius: 12px;
 
   --ux-viewport-radius: 30px;
-  --ux-view-min-height: calc(100vh - 120px);
-  --ux-view-padding-block: 16px;
-  --ux-view-padding-inline: 18px;
+  --ux-view-min-height: calc(100vh - (var(--ux-shell-padding) * 2) - var(--ux-header-min-height) - var(--ux-shell-gap) - 2px);
+  --ux-view-padding-block: 10px;
+  --ux-view-padding-inline: 12px;
 
-  --ux-grid-gap: 12px;
-  --ux-control-gap: 10px;
-  --ux-card-padding: 14px;
-  --ux-compact-card-padding: 12px;
-  --ux-field-min-height: 50px;
-  --ux-button-min-height: 42px;
-  --ux-button-padding-block: 10px;
-  --ux-button-padding-inline: 16px;
+  --ux-grid-gap: 8px;
+  --ux-control-gap: 7px;
+  --ux-card-padding: 10px;
+  --ux-compact-card-padding: 9px;
+  --ux-field-min-height: 42px;
+  --ux-button-min-height: 34px;
+  --ux-button-padding-block: 7px;
+  --ux-button-padding-inline: 10px;
   --ux-button-radius: 16px;
   --ux-compact-button-min-height: 34px;
   --ux-compact-button-padding-block: 7px;

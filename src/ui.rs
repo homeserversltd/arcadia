@@ -483,7 +483,6 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
                 @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
                 @else if !status.local_ai.available_models.is_empty() { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
                 (nav_button("Open Local AI", "local-ai"))
-                (nav_button("Open Local AI", "local-ai"))
             }
         }
     }
@@ -640,7 +639,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
             }))
         }
 
-        section class="sync-result-card" aria-labelledby="sync-result-title" data-sync-result="waiting" {
+        section class="sync-result-card sync-desktop-detail" aria-labelledby="sync-result-title" data-sync-result="waiting" {
             div class="section-heading section-heading--compact" {
                 h3 id="sync-result-title" { "Result Summary" }
                 p id="sync-result-copy" { "Start Sync to scan copied games and create playable GameScope entries." }
@@ -657,14 +656,14 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
             }
         }
 
-        div class="sync-secondary-actions" {
+        div class="sync-secondary-actions sync-desktop-detail" {
             (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
             a class="btn btn--secondary" href="#sync-provider-settings" { "Configure Metadata Providers" }
             a class="btn btn--secondary" href="#sync-output-panel" { "Output" }
             (nav_button("Open Storage", "storage"))
         }
 
-        details id="sync-provider-settings" class="settings-panel sync-provider-panel" {
+        details id="sync-provider-settings" class="settings-panel sync-provider-panel sync-desktop-detail" {
             summary { "Configure Metadata Providers" }
             p { "Metadata keys are optional. They improve artwork and titles, but games can still sync without them." }
             div class="provider-status-grid" {
@@ -680,7 +679,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 button class="btn btn--primary" type="submit" { "Save Optional Keys" }
             }
         }
-        details id="sync-output-panel" class="collapsible-log" {
+        details id="sync-output-panel" class="collapsible-log sync-desktop-detail" {
             summary { "Output" }
             pre { code id="sync-output" {} }
         }
@@ -906,7 +905,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                         (model_meta("State", title_case_state_like(&status.local_ai.load_state)))
                     }
                     div class="inline-actions" {
-                        @if status.local_ai.available_models.is_empty() { (nav_focus_button("Get Models", "local-ai", "get-models")) }
+                        @if status.local_ai.available_models.is_empty() { button class="btn btn--primary" type="button" data-ai-action="install-recommended" data-model-id="inharmonia" { "Install Inharmonia" } }
                         @else if status.local_ai.load_state != "hot" && status.local_ai.load_state != "loading" { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load" } }
                         @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
                         @if status.local_ai.load_state == "hot" || inference_on { button class="btn btn--secondary" type="button" data-ai-action="runtime-restart" { "Restart" } }
@@ -915,7 +914,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section class="local-ai-section ai-manager-section" aria-label="Installed Models" {
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Installed Models" {
                 div class="network-section-head" { h3 { "Installed Models" } }
                 div class="model-grid" {
                     @if status.local_ai.available_models.is_empty() {
@@ -928,7 +927,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section id="get-models" class="local-ai-section ai-manager-section" aria-label="Get Models" tabindex="-1" {
+            section id="get-models" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Get Models" tabindex="-1" {
                 div class="network-section-head" { h3 { "Get Models" } }
                 div class="model-grid" {
                     article class="model-card model-card--recommended" {
@@ -966,7 +965,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section class="local-ai-section ai-manager-section" aria-label="GPU & Storage" {
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="GPU & Storage" {
                 div class="network-section-head" { h3 { "GPU & Storage" } }
                 @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
                     (meter_block("GPU", &human_bytes(used), &human_bytes(total), used, total))
@@ -976,7 +975,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 div class="inline-actions" { (nav_button("Open Storage", "storage")) @if status.storage.ai_models.bytes > 0 { (nav_focus_button("Remove Unused Models", "local-ai", "installed-models")) } }
             }
 
-            section class="local-ai-section ai-manager-section" aria-label="Activity" {
+            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Activity" {
                 div class="network-section-head" { h3 { "Activity" } }
                 div id="ai-activity" class="system-field-grid" { (system_field("Current operation", if inference_on { "serving inference" } else { "idle" })) (system_field("Last error", "None")) }
                 details class="collapsible-log" { summary { "Runtime update log" } pre { code { "No runtime update log reported." } } }
@@ -1120,7 +1119,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
-            details class="network-section diagnostics-panel" {
+            details class="network-section diagnostics-panel sync-desktop-detail" {
                 summary { "Diagnostics" }
                 div class="inline-actions inline-actions--compact" data-diagnostics-actions="true" {
                     button class="btn btn--secondary" type="button" data-diagnostic="gateway" { "Test Gateway" }
@@ -1257,7 +1256,7 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
-                article class="system-card system-card--logs" {
+                article class="system-card system-card--logs system-card--desktop-detail" {
                     (system_log_group("Sync"))
                     (system_log_group("Local AI"))
                     (system_log_group("Local AI Inference"))
@@ -1265,7 +1264,7 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                     (system_log_group("Web GUI"))
                 }
 
-                article class="system-card system-card--networking" {
+                article class="system-card system-card--networking system-card--desktop-detail" {
                     div class="system-field-grid" {
                         (system_field("Hostname", "console.home.arpa"))
                         (system_field("Local domain/path", status.canonical_url.trim_end_matches('/')))

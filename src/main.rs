@@ -5439,15 +5439,50 @@ mod tests {
     fn ux_library_owns_viewport_contract() {
         assert!(UX_CSS.contains("Arcadia UX library"));
         assert!(UX_CSS.contains("--ux-shell-padding"));
+        assert!(UX_CSS.contains("--ux-view-min-height"));
+        assert!(UX_CSS.contains("var(--ux-header-min-height)"));
         assert!(VIEWPORT_CSS.contains("Arcadia viewport contract"));
         assert!(VIEWPORT_CSS.contains("@media (max-width: 980px)"));
         assert!(VIEWPORT_CSS.contains("@media (max-width: 720px)"));
+        assert!(VIEWPORT_CSS.contains("overflow-y: auto"));
         assert!(
             APP_CSS
                 .lines()
                 .all(|line| !line.trim_start().starts_with("@media")),
             "static/app.css must not own viewport media bands"
         );
+        assert!(APP_CSS.contains("height: 100vh"));
+        assert!(APP_CSS.contains("Desktop appliance fit"));
+        assert!(APP_CSS.contains(".ai-manager-section--desktop-detail"));
+    }
+
+    #[test]
+    fn desktop_fit_defers_heavy_detail_from_default_panes() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+
+        for marker in [
+            "ai-manager-section--desktop-detail",
+            "system-card--desktop-detail",
+            "sync-desktop-detail",
+        ] {
+            assert!(
+                rendered.contains(marker),
+                "missing desktop deferral marker {marker}"
+            );
+            assert!(
+                APP_CSS.contains(marker),
+                "desktop CSS does not defer {marker}"
+            );
+            assert!(
+                VIEWPORT_CSS.contains(marker),
+                "mobile CSS does not restore {marker}"
+            );
+        }
     }
 
     #[test]
