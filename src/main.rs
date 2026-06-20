@@ -53,6 +53,7 @@ include!("bands/storage_scan.rs");
 include!("bands/storage_registry.rs");
 include!("bands/storage_diagnostics.rs");
 include!("bands/storage_cleanup.rs");
+include!("bands/api_root.rs");
 include!("bands/anyhow_free.rs");
 
 #[tokio::main]
@@ -79,6 +80,8 @@ async fn main() -> anyhow_free::Result<()> {
     let app = Router::new()
         .route("/", get(index))
         .route("/health", get(health))
+        .route("/api", get(api_root_route))
+        .route("/api/root", get(api_root_route))
         .route("/api/status", get(status))
         .route("/api/storage/state", get(storage_state_route))
         .route("/api/storage/summary", get(storage_summary_route))

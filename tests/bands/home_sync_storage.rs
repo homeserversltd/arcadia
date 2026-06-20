@@ -551,6 +551,61 @@
     }
 
     #[test]
+    fn api_root_object_is_decomposable_infinite_infinite_tree() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let root = api_root_object(&state);
+        let encoded = serde_json::to_value(&root).expect("api root serializes");
+        assert_eq!(encoded["schema"], "arcadia.api.root.v1");
+        assert_eq!(encoded["kind"], "arcadia-root");
+        assert!(encoded["children"].as_array().expect("children array").len() >= 4);
+
+        let storage = encoded["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .find(|node| node["id"] == "storage")
+            .expect("storage node present");
+        assert_eq!(storage["route"], "/api/storage/state");
+        assert!(storage["children"]
+            .as_array()
+            .expect("storage children")
+            .iter()
+            .any(|node| node["id"] == "games"));
+        assert!(storage["children"]
+            .as_array()
+            .expect("storage children")
+            .iter()
+            .any(|node| node["id"] == "artwork"));
+
+        let telemetry = encoded["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .find(|node| node["id"] == "telemetry")
+            .expect("telemetry node present");
+        assert!(telemetry["data"].get("cpu").is_some());
+        assert!(telemetry["data"].get("load").is_some());
+        assert!(telemetry["data"].get("io").is_some());
+        assert!(telemetry["metrics"]
+            .as_array()
+            .expect("metrics")
+            .iter()
+            .any(|metric| metric["id"] == "cpuTemperatureCelsius"));
+    }
+
+    #[test]
+    fn api_root_routes_are_registered() {
+        let source = include_str!("../../src/main.rs");
+        assert!(source.contains(".route(\"/api\", get(api_root_route))"));
+        assert!(source.contains(".route(\"/api/root\", get(api_root_route))"));
+        assert!(source.contains("include!(\"bands/api_root.rs\")"));
+    }
+
+    #[test]
     fn storage_game_roots_follow_homeconsole_runtime_hierarchy() {
         assert_eq!(
             game_system_storage_path("gba").to_string_lossy(),
