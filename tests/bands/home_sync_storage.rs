@@ -469,7 +469,7 @@
 
     #[test]
     fn library_lists_gamescope_shortcuts_across_profiles() {
-        let bytes = b"\x00AppName\x00Driven (GBA)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L core driven.gba\x00AppName\x00Road Rash (Genesis)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L core road-rash.md\x00";
+        let bytes = b"\x00\x01AppName\x00Driven (GBA)\x00\x01Exe\x00/usr/bin/retroarch\x00\x01LaunchOptions\x00-L core driven.gba\x00\x01AppName\x00Road Rash (Genesis)\x00\x01Exe\x00/usr/bin/retroarch\x00\x01LaunchOptions\x00-L core road-rash.md\x00";
         let entries = parse_steam_shortcuts_bytes(
             bytes,
             "/home/steam/.local/share/Steam/userdata",

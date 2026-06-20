@@ -315,22 +315,21 @@ fn parse_steam_shortcuts_bytes(
     let tokens = bytes
         .split(|byte| *byte == 0)
         .filter_map(|token| std::str::from_utf8(token).ok())
+        .map(normalize_steam_shortcut_token)
         .filter(|token| !token.is_empty())
         .collect::<Vec<_>>();
     let mut entries = Vec::new();
     let mut i = 0usize;
     while i < tokens.len() {
         if tokens[i] == "AppName" {
-            let name = tokens.get(i + 1).unwrap_or(&"Unknown").to_string();
+            let name = tokens.get(i + 1).cloned().unwrap_or_else(|| "Unknown".to_string());
             let mut executable = None;
             let mut launch_options = None;
             let mut j = i + 2;
             while j < tokens.len() && tokens[j] != "AppName" {
-                match tokens[j] {
-                    "Exe" => executable = tokens.get(j + 1).map(|value| value.to_string()),
-                    "LaunchOptions" => {
-                        launch_options = tokens.get(j + 1).map(|value| value.to_string())
-                    }
+                match tokens[j].as_str() {
+                    "Exe" => executable = tokens.get(j + 1).cloned(),
+                    "LaunchOptions" => launch_options = tokens.get(j + 1).cloned(),
                     _ => {}
                 }
                 j += 1;
@@ -351,6 +350,12 @@ fn parse_steam_shortcuts_bytes(
         }
     }
     entries
+}
+
+fn normalize_steam_shortcut_token(token: &str) -> String {
+    token
+        .trim_matches(|ch: char| ch.is_control() || ch == '\u{7f}')
+        .to_string()
 }
 
 fn steam_user_from_shortcuts_path(path: &Path) -> Option<String> {
