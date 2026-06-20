@@ -1,22 +1,30 @@
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, State},
     http::{header, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
+    response::{
+        sse::{Event, KeepAlive, Sse},
+        IntoResponse, Response,
+    },
     routing::{get, post},
     Json, Router,
 };
+use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
     collections::HashMap,
+    convert::Infallible,
     env, fs,
     fs::OpenOptions,
     io::Write,
     net::{Ipv4Addr, SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::net::TcpListener;
@@ -82,6 +90,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/health", get(health))
         .route("/api", get(api_root_route))
         .route("/api/root", get(api_root_route))
+        .route("/api/root/events", get(api_root_events_route))
         .route("/api/status", get(status))
         .route("/api/storage/state", get(storage_state_route))
         .route("/api/storage/summary", get(storage_summary_route))

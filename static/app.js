@@ -187,7 +187,7 @@ function bindHomeLoadPolling() {
   const card = document.querySelector('[data-load-card]');
   if (!card) return;
   const pollMs = Math.max(2000, Number(card.dataset.loadPollMs || 5000));
-  const state = { timer: null, inFlight: false, polls: 0 };
+  const state = { timer: null, source: null, inFlight: false, polls: 0, events: 0, fallback: false };
   window.arcadiaHomeLoadPollState = state;
   const homeIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
   const setText = (selector, text) => { const node = card.querySelector(selector); if (node) node.textContent = text; };
@@ -237,6 +237,8 @@ function bindHomeLoadPolling() {
     setChip('read', disk.readBytesApprox == null ? '—' : formatBytes(Number(disk.readBytesApprox)), 'idle');
     setChip('write', disk.writtenBytesApprox == null ? '—' : formatBytes(Number(disk.writtenBytesApprox)), 'idle');
   };
+  const stopPolling = () => { if (state.timer) clearInterval(state.timer); state.timer = null; };
+  const stopEvents = () => { if (state.source) state.source.close(); state.source = null; };
   const poll = async () => {
     if (!homeIsActive() || state.inFlight) return;
     state.inFlight = true;
@@ -249,13 +251,54 @@ function bindHomeLoadPolling() {
       state.inFlight = false;
     }
   };
-  const stop = () => { if (state.timer) clearInterval(state.timer); state.timer = null; };
-  const start = () => {
-    if (!homeIsActive()) return stop();
+  const startPolling = () => {
+    stopEvents();
+    state.fallback = true;
+    if (!homeIsActive()) return stopPolling();
     if (!state.timer) state.timer = setInterval(poll, pollMs);
     poll();
   };
-  window.arcadiaHomeLoadPolling = { start, stop, poll, homeIsActive };
+  const startEvents = () => {
+    stopPolling();
+    state.fallback = false;
+    if (!homeIsActive()) return stopEvents();
+    if (!('EventSource' in window)) return startPolling();
+    if (state.source) return;
+    try {
+      const source = new EventSource('/api/root/events');
+      state.source = source;
+      const onRoot = (event) => {
+        if (!homeIsActive()) return stopEvents();
+        try {
+          apply(JSON.parse(event.data));
+          state.events += 1;
+        } catch (_) {
+          // Ignore malformed event payloads and keep the last known values.
+        }
+      };
+      source.addEventListener('snapshot', onRoot);
+      source.addEventListener('root', onRoot);
+      source.addEventListener('lease', (event) => { try { state.lease = JSON.parse(event.data); } catch (_) {} });
+      source.addEventListener('heartbeat', (event) => { try { state.heartbeat = JSON.parse(event.data); } catch (_) {} });
+      source.onmessage = onRoot;
+      source.onerror = () => {
+        stopEvents();
+        startPolling();
+      };
+    } catch (_) {
+      startPolling();
+    }
+  };
+  const stop = () => {
+    stopEvents();
+    stopPolling();
+  };
+  const start = () => {
+    if (!homeIsActive()) return stop();
+    if (state.fallback) startPolling();
+    else startEvents();
+  };
+  window.arcadiaHomeLoadPolling = { start, stop, poll, homeIsActive, startEvents, startPolling };
   document.addEventListener('arcadia:view-change', () => { if (homeIsActive()) start(); else stop(); });
   document.addEventListener('visibilitychange', () => { if (homeIsActive()) start(); else stop(); });
   start();
