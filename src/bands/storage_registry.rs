@@ -8,8 +8,7 @@ fn storage_registry(network: &NetworkStatus) -> StorageRegistry {
         .map(|platform| {
             let share = format!("games\\{}", platform);
             let smb_share = format!("games/{}", platform);
-            let path = Path::new(GAMES_ROOT)
-                .join(platform)
+            let path = game_system_storage_path(platform)
                 .to_string_lossy()
                 .to_string();
             GameRoot {

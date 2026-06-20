@@ -378,6 +378,34 @@
     }
 
     #[test]
+    fn storage_game_roots_follow_homeconsole_runtime_hierarchy() {
+        assert_eq!(
+            game_system_storage_path("gba").to_string_lossy(),
+            "/home/owner/Games/roms/gba"
+        );
+        assert_eq!(
+            game_system_storage_path("ps2").to_string_lossy(),
+            "/home/owner/Games/isos/ps2"
+        );
+        assert_eq!(
+            game_system_storage_path("dos").to_string_lossy(),
+            "/home/owner/Games/pc/dos"
+        );
+
+        let registry = storage_registry(&network_status());
+        let gba = registry
+            .categories
+            .games
+            .roots
+            .iter()
+            .find(|root| root.id == "gba")
+            .expect("gba root exists");
+        assert_eq!(gba.path, "/home/owner/Games/roms/gba");
+        assert_ne!(gba.path, "/home/owner/Games/gba");
+        assert_eq!(gba.samba_share_name, "games/gba");
+    }
+
+    #[test]
     fn storage_view_answers_where_disk_space_went_safely() {
         let state = AppState {
             started_unix: 0,
