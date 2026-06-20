@@ -54,6 +54,7 @@ include!("bands/storage_diagnostics.rs");
 include!("bands/storage_cleanup.rs");
 include!("bands/anyhow_free.rs");
 
+#[tokio::main]
 async fn main() -> anyhow_free::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -238,4 +239,4 @@ async fn main() -> anyhow_free::Result<()> {
     Ok(())
 }
 
-include!("bands/tests.rs");
+include!("../tests/index.rsi");

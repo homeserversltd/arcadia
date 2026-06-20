@@ -31,7 +31,6 @@
     "storage-registry",
     "storage-diagnostics",
     "storage-cleanup",
-    "anyhow-free",
-    "tests"
+    "anyhow-free"
   ]
 }
