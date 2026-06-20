@@ -74,7 +74,7 @@
             "load-orb",
             "load-spark-bank",
             "data-load-card",
-            r#"data-load-poll-ms="5000""#,
+            r#"data-load-retry-ms="5000""#,
             "data-load-orb",
             "data-load-headline",
             "data-load-spark-value",
@@ -145,24 +145,30 @@
         assert!(APP_CSS.contains(".load-spark"));
         assert!(APP_CSS.contains(".load-telemetry-grid"));
         assert!(APP_CSS.contains("conic-gradient"));
-        assert!(APP_JS.contains("function bindHomeLoadPolling()"));
+        assert!(APP_JS.contains("function bindHomeLoadSubscription()"));
+        assert!(APP_JS.contains("window.arcadiaHomeLoadSubscriptionState = state"));
         assert!(APP_JS.contains("new EventSource('/api/root/events')"));
+        assert!(APP_JS.contains("fetch('/api/root/events/renew'"));
+        assert!(APP_JS.contains("JSON.stringify({ leaseId: state.lease.leaseId })"));
         assert!(APP_JS.contains("source.addEventListener('snapshot', onRoot)"));
         assert!(APP_JS.contains("source.addEventListener('root', onRoot)"));
-        assert!(APP_JS.contains("source.addEventListener('lease'"));
-        assert!(APP_JS.contains("source.addEventListener('heartbeat'"));
-        assert!(APP_JS.contains("source.onerror = () =>"));
-        assert!(APP_JS.contains("startPolling();"));
-        assert!(APP_JS.contains("fetch('/api/root'"));
+        assert!(APP_JS.contains("source.addEventListener('lease', onLease)"));
+        assert!(APP_JS.contains("source.addEventListener('heartbeat', onHeartbeat)"));
+        assert!(APP_JS.contains("source.addEventListener('expired'"));
+        assert!(APP_JS.contains("fetchSnapshotOnce();"));
+        assert!(APP_JS.contains("scheduleRetry();"));
         assert!(APP_JS.contains("arcadia:view-change"));
         assert!(APP_JS.contains("visibilitychange"));
         assert!(APP_JS.contains("document.visibilityState === 'visible'"));
         assert!(APP_JS.contains("[data-view-panel=\"home\"].is-active"));
-        assert!(APP_JS.contains("setInterval(poll, pollMs)"));
-        assert!(APP_JS.contains("stopEvents();"));
-        assert!(APP_JS.contains("stopPolling();"));
+        assert!(APP_JS.contains("clearTimeout(state.renewalTimer)"));
+        assert!(APP_JS.contains("clearTimeout(state.retryTimer)"));
         assert!(APP_JS.contains("state.source.close()"));
-        assert!(APP_JS.contains("bindHomeLoadPolling();"));
+        assert!(APP_JS.contains("bindHomeLoadSubscription();"));
+        assert!(!APP_JS.contains("function bindHomeLoadPolling()"));
+        assert!(!APP_JS.contains("window.arcadiaHomeLoadPollState"));
+        assert!(!APP_JS.contains("setInterval(poll, pollMs)"));
+        assert!(!APP_JS.contains("window.arcadiaHomeLoadPolling"));
         assert!(APP_CSS.contains(".view[data-view-panel=\"home\"].is-active"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
@@ -748,6 +754,7 @@
         assert!(source.contains(".route(\"/api\", get(api_root_route))"));
         assert!(source.contains(".route(\"/api/root\", get(api_root_route))"));
         assert!(source.contains(".route(\"/api/root/events\", get(api_root_events_route))"));
+        assert!(source.contains(".route(\"/api/root/events/renew\", post(api_root_events_renew_route))"));
         assert!(source.contains("include!(\"bands/api_root.rs\")"));
     }
 
@@ -757,11 +764,19 @@
         assert!(source.contains("async fn api_root_events_route"));
         assert!(source.contains("Sse<impl Stream<Item = Result<Event, Infallible>>>"));
         assert!(source.contains("HOME_TELEMETRY_LEASE_COUNTER"));
+        assert!(source.contains("HOME_TELEMETRY_LEASES"));
+        assert!(source.contains("HOME_TELEMETRY_RENEW_SECONDS"));
+        assert!(source.contains("HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS"));
+        assert!(source.contains("async fn api_root_events_renew_route"));
+        assert!(source.contains("home_telemetry_renew_lease"));
+        assert!(source.contains("home_telemetry_lease_status"));
+        assert!(source.contains("homeTelemetryLeaseExpired"));
         assert!(source.contains("Event::default()\n            .event(\"snapshot\")"));
         assert!(source.contains("Event::default()\n                .event(\"root\")"));
         assert!(source.contains("Event::default().event(\"lease\")"));
         assert!(source.contains("Event::default().event(\"heartbeat\")"));
-        assert!(source.contains("tokio::time::interval(Duration::from_secs(5))"));
+        assert!(source.contains("Event::default().event(\"expired\")"));
+        assert!(source.contains("tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS))"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
     }
@@ -777,6 +792,8 @@
         assert!(main.contains("use futures_core::Stream;"));
         assert!(main.contains("convert::Infallible"));
         assert!(main.contains("AtomicU64"));
+        assert!(main.contains("Mutex"));
+        assert!(main.contains("OnceLock"));
     }
 
     #[test]

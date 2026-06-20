@@ -501,7 +501,7 @@ fn home_load_card() -> Markup {
         .map(|value| format!("{value:.2}"))
         .unwrap_or_else(|| "—".to_string());
     html! {
-        article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-poll-ms="5000" {
+        article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" {
             div class="card-head" aria-label="Load" { strong data-load-headline { (load_headline) } }
             div class="load-orb-row" {
                 div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) data-load-orb {

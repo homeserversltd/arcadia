@@ -8,14 +8,14 @@ aliases:
   - arcadia sse telemetry
   - api root events
   - eventsource home telemetry
-description: Arcadia Home telemetry broadcast contract for /api/root/events, EventSource lifecycle, fallback-only polling, and live verification.
+description: Arcadia Home telemetry broadcast contract for /api/root/events, renewal leases, EventSource lifecycle, snapshot fallback, and live verification.
 ---
 
 # Home Telemetry Broadcast
 
 Arcadia Home load telemetry is a watched-surface broadcast, not a raw polling loop.
 
-When the Home viewport is active and the browser document is visible, the browser joins the live Home load feed with `EventSource('/api/root/events')`. Rust/Axum keeps an HTTP SSE stream open and sends appliance-safe telemetry events. When the operator leaves Home, hides the document, or the stream fails, the browser closes the source. `/api/root` polling is retained only as a bounded compatibility fallback.
+When the Home viewport is active and the browser document is visible, the browser joins the live Home load feed with `EventSource('/api/root/events')`. Rust/Axum keeps an HTTP SSE stream open and sends appliance-safe telemetry events. The browser renews the lease through `POST /api/root/events/renew`; the server records `lastContactUnix` and `expiresAtUnix`, and the stream expires when renewal stops. When the operator leaves Home, hides the document, or the stream fails, the browser closes the source and keeps the last rendered telemetry as a cache. `/api/root` is retained only as a one-shot snapshot fallback and retry bridge, not as interval polling.
 
 ## Product contract
 
@@ -23,13 +23,16 @@ When the Home viewport is active and the browser document is visible, the browse
 Home active + visible
   -> open EventSource('/api/root/events')
   -> receive snapshot and lease
+  -> renew lease with POST /api/root/events/renew before expiresAtUnix
   -> receive root telemetry events every cadence
   -> receive heartbeat events for liveness/readback
 leave Home or hide document
   -> close EventSource immediately
+  -> stop renewal timer and retry timer
+  -> keep last telemetry rendered as cached state
   -> no interval polling remains running
 SSE unsupported or errored
-  -> fallback to /api/root polling, still Home-active + visible only
+  -> fetch one /api/root snapshot, schedule stream retry, still Home-active + visible only
 ```
 
 The Home card remains an appliance card: compact load ring, 1m/5m/15m load bands, CPU/I/O/read/write chips, no raw `/proc` copy, no developer log wall, no in-pane buttons.
@@ -40,20 +43,25 @@ The Home card remains an appliance card: compact load ring, 1m/5m/15m load bands
 GET /api/root/events
 Accept: text/event-stream
 Content-Type: text/event-stream
+
+POST /api/root/events/renew
+Content-Type: application/json
+{"leaseId":"home-load-..."}
 ```
 
-The route lives beside `/api/root` and reuses the same `ApiRootObject` builder. `/api/root` remains the snapshot authority and fallback surface.
+The event route lives beside `/api/root` and reuses the same `ApiRootObject` builder. The renewal route is the client contact surface: each valid renewal updates server-side `lastContactUnix` and `expiresAtUnix`. `/api/root` remains the snapshot authority and one-shot fallback surface.
 
 Current event families:
 
 ```text
 event: snapshot   # first full ApiRootObject
-event: lease      # lease-ish membership/readback for topic home.load
+event: lease      # server membership handle with lastContactUnix, renewAfterSeconds, expiresAtUnix
 event: root       # periodic full ApiRootObject update
-event: heartbeat  # liveness/readback for the current lease
+event: heartbeat  # server-side lease/liveness readback
+event: expired    # server expired the stream because renewal/contact stopped
 ```
 
-The first implementation uses a monotonic lease id and heartbeat payloads. A later tranche may promote this into a full `HomeTelemetryHub` with server-side active lease registry, timeout reaper, and diagnostics.
+The current implementation uses a monotonic lease id, a server-side lease map, renewal POSTs, heartbeat payloads, and expiry checks. A later tranche may promote this into a full multi-topic `HomeTelemetryHub` with richer active lease diagnostics.
 
 ## Rust seams
 
@@ -68,10 +76,14 @@ src/main.rs
   futures_core::Stream
   std::convert::Infallible
   /api/root/events -> api_root_events_route
+  /api/root/events/renew -> api_root_events_renew_route
 
 src/bands/api_root.rs
   HOME_TELEMETRY_LEASE_COUNTER
+  HOME_TELEMETRY_LEASES
+  HomeTelemetryLease and HomeTelemetryLeaseResponse
   api_root_events_route
+  api_root_events_renew_route
   api_root_object(&state) reused for snapshot/root events
 ```
 
@@ -81,18 +93,20 @@ Do not duplicate telemetry readers in the event route. The event stream consumes
 
 ```text
 static/app.js
-  bindHomeLoadPolling() owns current compatibility name
-  EventSource('/api/root/events') is preferred transport
+  bindHomeLoadSubscription() owns the Home load live surface
+  EventSource('/api/root/events') is the preferred transport
+  /api/root/events/renew is the client renewal/contact route
   snapshot/root events call the existing Home load DOM apply path
-  lease/heartbeat are stored in window.arcadiaHomeLoadPollState for readback
-  startPolling() is fallback only
-  stopEvents() closes the source on view/visibility transitions
+  lease/heartbeat are stored in window.arcadiaHomeLoadSubscriptionState for readback
+  cachedRoot preserves the last telemetry values while moving between pages
+  fetchSnapshotOnce() is a one-shot fallback only
+  stopEvents() closes the source and clears renewal/retry timers on view/visibility transitions
 ```
 
 The public debug/readback object is intentionally small:
 
 ```js
-window.arcadiaHomeLoadPollState
+window.arcadiaHomeLoadSubscriptionState
 ```
 
 Healthy Home-active readback:
@@ -102,10 +116,12 @@ Healthy Home-active readback:
   readyState: 1,
   hasSource: true,
   events: 5,
-  polls: 0,
+  fallbackSnapshots: 0,
   fallback: false,
-  lease: 'lease',
-  heartbeat: 'heartbeat'
+  lastContactUnix: 1781990000,
+  expiresAtUnix: 1781990030,
+  lease: 'homeTelemetryLease',
+  heartbeat: 'homeTelemetryLease'
 }
 ```
 
@@ -114,8 +130,9 @@ After switching away from Home:
 ```js
 {
   hasSource: false,
-  timer: false,
-  polls: 0
+  renewalTimer: false,
+  retryTimer: false,
+  fallbackSnapshots: 0
 }
 ```
 
@@ -126,11 +143,13 @@ The Arcadia tests must guard both product shape and transport lifecycle:
 - Home section has `load-home-card`, `load-orb`, `load-spark-bank`, and `load-telemetry-grid`.
 - Home section has zero visible buttons and no duplicate navigation controls.
 - `static/app.js` contains `new EventSource('/api/root/events')`.
+- `static/app.js` renews the lease through `fetch('/api/root/events/renew')`.
 - `static/app.js` closes the source on `arcadia:view-change` and `visibilitychange`.
-- fallback polling still contains `fetch('/api/root')` and `setInterval(poll, pollMs)`.
-- fallback polling is guarded by `[data-view-panel="home"].is-active` and `document.visibilityState === 'visible'`.
-- `src/main.rs` registers `.route("/api/root/events", get(api_root_events_route))`.
-- `src/bands/api_root.rs` emits `snapshot`, `lease`, `root`, and `heartbeat` events.
+- fallback snapshot logic contains `fetch('/api/root')` but no Home load `setInterval(poll, pollMs)`.
+- fallback snapshot/retry logic is guarded by `[data-view-panel="home"].is-active` and `document.visibilityState === 'visible'`.
+- legacy `bindHomeLoadPolling`, `arcadiaHomeLoadPollState`, and `arcadiaHomeLoadPolling` names are absent.
+- `src/main.rs` registers `.route("/api/root/events", get(api_root_events_route))` and `.route("/api/root/events/renew", post(api_root_events_renew_route))`.
+- `src/bands/api_root.rs` emits `snapshot`, `lease`, `root`, `heartbeat`, and `expired` events.
 
 Focused proof commands:
 
@@ -158,8 +177,19 @@ event: snapshot
 event: lease
 event: root
 event: heartbeat
+event: expired
 arcadia.api.root.v1
 ```
+
+Lease renewal proof:
+
+```bash
+curl -fsS -X POST http://127.0.0.1:8080/api/root/events/renew \
+  -H 'Content-Type: application/json' \
+  -d '{"leaseId":"<lease-from-event>"}'
+```
+
+Expected renewal evidence includes `kind: homeTelemetryLease`, `lastContactUnix`, `renewAfterSeconds`, and `expiresAtUnix`. Expired or unknown leases return `410 Gone` with `kind: homeTelemetryLeaseExpired`.
 
 Browser proof on `http://console.home.arpa/` or the target IP should show:
 

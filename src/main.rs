@@ -23,7 +23,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex, OnceLock,
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -91,6 +91,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api", get(api_root_route))
         .route("/api/root", get(api_root_route))
         .route("/api/root/events", get(api_root_events_route))
+        .route("/api/root/events/renew", post(api_root_events_renew_route))
         .route("/api/status", get(status))
         .route("/api/storage/state", get(storage_state_route))
         .route("/api/storage/summary", get(storage_summary_route))

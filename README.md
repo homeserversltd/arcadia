@@ -44,9 +44,9 @@ Home telemetry broadcast doctrine:
 
 - `docs/home-telemetry-broadcast.md` governs the Home load live telemetry substrate.
 - `/api/root` remains the snapshot object tree; `/api/root/events` is the Server-Sent Events stream for watched Home telemetry.
-- Browser lifecycle is Home-active and visible only: open `EventSource('/api/root/events')` on Home, close it when leaving Home or hiding the document.
-- `/api/root` polling is fallback only when SSE is unavailable or errored; it must stay guarded by the same Home-active and visible predicate.
-- The stream emits `snapshot`, `lease`, `root`, and `heartbeat` events and reuses `ApiRootObject` rather than duplicating telemetry readers.
+- Browser lifecycle is Home-active and visible only: open `EventSource('/api/root/events')` on Home, renew through `POST /api/root/events/renew`, close it when leaving Home or hiding the document.
+- `/api/root` is a one-shot snapshot fallback/retry bridge only when SSE is unavailable or errored; no Home load interval polling remains.
+- The stream emits `snapshot`, `lease`, `root`, `heartbeat`, and `expired` events and reuses `ApiRootObject` rather than duplicating telemetry readers.
 
 Run locally:
 
