@@ -124,7 +124,7 @@
     }
 
     #[test]
-    fn system_view_replaces_advanced_with_structured_support_panel() {
+    fn system_view_is_an_appliance_front_panel_not_a_backend_dump() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -141,93 +141,90 @@
         assert!(!rendered.contains("data-view=\"power\""));
         assert!(!rendered.contains("id=\"view-power\""));
         for required in [
-            "System",
-            "Power",
             "Power &amp; Sessions",
-            "Administration",
-            "Restart Arcadia",
-            "Full system reboot",
-            "Power off appliance",
-            "Game session only",
-            "reboot-console",
-            "shutdown-console",
+            "Restart Console",
+            "Shut Down",
+            "Restart Interface",
+            "Restart Game Session",
             "Remote Access",
-            "SSH service",
-            "Hostname",
-            "LAN IP address",
-            "Username",
-            "ssh owner@",
-            "Enable SSH",
-            "Disable SSH",
-            "Copy SSH Command",
-            "Authorized public key",
-            "Install Public Key",
-            "Trust &amp; HTTPS",
-            "Root CA bundle",
-            "Install Root CA",
-            "HTTP Mode",
-            "HTTPS with Home Root CA",
-            "GameScope",
-            "Samba",
+            "Login policy",
+            "Copy Command",
+            "Trusted public key",
+            "Add Trusted Key",
+            "Secure Web Access",
+            "Home Root CA bundle",
+            "Install Home Root CA",
+            "System Health",
+            "Game Session",
+            "Game Folders",
             "Game Sync",
             "Local AI",
-            "Local AI Inference",
-            "Web GUI",
-            "Restart",
-            "Sync",
-            "View",
-            "Copy",
-            "Download",
-            "Root CA",
-            "CA path",
-            "Arcadia",
+            "HomeConsole Interface",
+            "Diagnostics",
+            "Open Diagnostics",
         ] {
             assert!(system_html.contains(required), "missing {required}");
         }
-
-        let first_log_group = system_html.find(">Sync<").expect("sync group shown");
-        let service_row = system_html.find("GameScope").expect("service row shown");
         assert!(
-            service_row < first_log_group,
-            "service rows precede event groups"
+            system_html.contains("Turn On Remote Access")
+                || system_html.contains("Turn Off Remote Access"),
+            "remote access must expose exactly one next action"
         );
+        assert!(
+            system_html.contains("Allow Password Login")
+                || system_html.contains("Require Key Login"),
+            "login policy must expose exactly one next action"
+        );
+        assert!(
+            system_html.contains("Enable Secure Web Access")
+                || system_html.contains("Use Local HTTP"),
+            "trust mode must expose exactly one next action"
+        );
+        for action in [
+            "restart-arcadia",
+            "restart-gamescope",
+            "enable-ssh",
+            "disable-ssh",
+            "enable-ssh-password",
+            "disable-ssh-password",
+            "trust-mode-http",
+            "trust-mode-https",
+        ] {
+            assert!(
+                system_html.matches(&format!("data-action=\"{action}\"")).count() <= 1,
+                "duplicated System action {action}"
+            );
+        }
+        for forbidden in [
+            "Enable SSH",
+            "Disable SSH",
+            "Enable SSH Password",
+            "Disable SSH Password",
+            "Trust &amp; HTTPS",
+            "HTTP Mode",
+            "HTTPS with Home Root CA</button>",
+            "GameScope",
+            "Samba",
+            "Local AI Inference",
+            "Web GUI",
+            ">Arcadia<",
+            ">Restart</button>",
+            ">View</button>",
+            ">Download</button>",
+            "data-modal-body=\"\"",
+            "data-copy-value=\"\"",
+            "Expert Mode",
+            "Developer",
+        ] {
+            assert!(
+                !system_html.contains(forbidden),
+                "forbidden System substrate survived: {forbidden}"
+            );
+        }
         assert!(rendered.contains("data-nav-target=\"system\""));
         assert!(APP_JS.contains("if (view === 'advanced') view = 'system';"));
         assert!(APP_JS.contains("Restarting GameScope may close the active game session."));
         assert!(!rendered.contains("data-view=\"advanced\""));
         assert!(!rendered.contains(">Advanced<"));
-        let forbidden = [
-            ["Power", &format!("{} controls", "Console")].join(" "),
-            "Expert Mode".to_string(),
-            "Developer".to_string(),
-            ["View", "Logs"].join(" "),
-            ["Logs help", "diagnose problems"].join(" "),
-            ["View technical", "console status"].join(" "),
-            ["view", "heading"].join("-"),
-            "Networking".to_string(),
-            "Health for the console services".to_string(),
-            "How the console is reached".to_string(),
-            "Open local ports".to_string(),
-            "Network status".to_string(),
-            "Sync Log".to_string(),
-            "Local AI Log".to_string(),
-            "System Log".to_string(),
-            "SSH is for direct technical access".to_string(),
-            "Normal game management does not require SSH".to_string(),
-            "Only enable SSH on a trusted home network".to_string(),
-            "LAN Inference is intended only for trusted home networks".to_string(),
-            "Runs the console gaming session".to_string(),
-            "Shares game folders".to_string(),
-            "Adds copied games".to_string(),
-            "Loads the selected local AI model".to_string(),
-            "Lets other home-network devices".to_string(),
-            "Runs this management interface".to_string(),
-        ];
-        for forbidden in forbidden {
-            assert!(
-                !system_html.contains(&forbidden),
-                "forbidden System label survived: {forbidden}"
-            );
-        }
     }
 

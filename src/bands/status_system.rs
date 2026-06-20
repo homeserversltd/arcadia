@@ -129,14 +129,8 @@ fn https_probe_ok() -> bool {
 
 fn system_service_statuses() -> Vec<SystemServiceStatus> {
     vec![
-        system_service_status(
-            "GameScope",
-            "gamescope.service",
-            "Game session",
-            Some("restart-gamescope"),
-            Some("/api/actions/restart-gamescope"),
-        ),
-        system_service_status("Samba", "smb.service", "Game folders", None, None),
+        system_service_status("Game Session", "gamescope.service", "Game display", None, None),
+        system_service_status("Game Folders", "smb.service", "File sharing", None, None),
         system_service_status(
             "Game Sync",
             "homeconsole-sync.service",
@@ -147,30 +141,16 @@ fn system_service_statuses() -> Vec<SystemServiceStatus> {
         system_service_status(
             "Local AI",
             "llama-server.service",
-            "Model runtime",
+            "Model and LAN inference runtime",
             None,
             None,
         ),
         system_service_status(
-            "Local AI Inference",
-            "llama-server.service",
-            ":7777",
-            None,
-            None,
-        ),
-        system_service_status(
-            "Web GUI",
+            "HomeConsole Interface",
             "arcadia.service",
-            "HomeConsole",
-            Some("restart-arcadia"),
-            Some("/api/actions/restart-arcadia"),
-        ),
-        system_service_status(
-            "Arcadia",
-            "arcadia.service",
-            "Web GUI runtime",
-            Some("restart-arcadia"),
-            Some("/api/actions/restart-arcadia"),
+            "Web front panel",
+            None,
+            None,
         ),
     ]
 }

@@ -96,7 +96,7 @@
         assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
         assert!(rendered.contains("\\\\console.home.arpa\\games"));
-        assert!(rendered.contains("Trust &amp; HTTPS"));
+        assert!(rendered.contains("Secure Web Access"));
 
         assert!(
             !rendered.contains("data-view=\"games\""),
