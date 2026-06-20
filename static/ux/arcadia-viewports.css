@@ -56,3 +56,10 @@
   .modal-close { position: static; transform: none; float: right; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Controller viewport responsive restoration */
+@media (max-width: 980px) {
+  .controllers-command-deck, .controller-workbench { grid-template-columns: 1fr; }
+  .controller-bind-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .view[data-view-panel="controllers"] .emulator-controller-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
