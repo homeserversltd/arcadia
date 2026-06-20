@@ -34,17 +34,130 @@ pub struct ApiMetric {
     pub state: Option<String>,
 }
 
+const HOME_TELEMETRY_TOPIC: &str = "home.load";
+const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 5;
+const HOME_TELEMETRY_RENEW_SECONDS: u64 = 10;
+const HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS: u64 = 30;
+
 static HOME_TELEMETRY_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
+static HOME_TELEMETRY_LEASES: OnceLock<Mutex<HashMap<String, HomeTelemetryLease>>> = OnceLock::new();
+
+#[derive(Clone)]
+struct HomeTelemetryLease {
+    lease_id: String,
+    topic: String,
+    joined_at_unix: u64,
+    last_contact_unix: u64,
+    expires_at_unix: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HomeTelemetryRenewRequest {
+    lease_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HomeTelemetryLeaseResponse {
+    schema: &'static str,
+    kind: &'static str,
+    lease_id: String,
+    topic: String,
+    joined_at_unix: u64,
+    last_contact_unix: u64,
+    renew_after_seconds: u64,
+    expires_at_unix: u64,
+    active: bool,
+}
+
+fn home_telemetry_leases() -> &'static Mutex<HashMap<String, HomeTelemetryLease>> {
+    HOME_TELEMETRY_LEASES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn home_telemetry_response(lease: &HomeTelemetryLease, active: bool) -> HomeTelemetryLeaseResponse {
+    HomeTelemetryLeaseResponse {
+        schema: "arcadia.api.root.lease.v1",
+        kind: "homeTelemetryLease",
+        lease_id: lease.lease_id.clone(),
+        topic: lease.topic.clone(),
+        joined_at_unix: lease.joined_at_unix,
+        last_contact_unix: lease.last_contact_unix,
+        renew_after_seconds: HOME_TELEMETRY_RENEW_SECONDS,
+        expires_at_unix: lease.expires_at_unix,
+        active,
+    }
+}
+
+fn home_telemetry_create_lease() -> HomeTelemetryLeaseResponse {
+    let now = now_unix_seconds();
+    let lease_seq = HOME_TELEMETRY_LEASE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let lease = HomeTelemetryLease {
+        lease_id: format!("home-load-{lease_seq}"),
+        topic: HOME_TELEMETRY_TOPIC.to_string(),
+        joined_at_unix: now,
+        last_contact_unix: now,
+        expires_at_unix: now + HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS,
+    };
+    let response = home_telemetry_response(&lease, true);
+    if let Ok(mut leases) = home_telemetry_leases().lock() {
+        leases.retain(|_, lease| lease.expires_at_unix >= now);
+        leases.insert(lease.lease_id.clone(), lease);
+    }
+    response
+}
+
+fn home_telemetry_renew_lease(lease_id: &str) -> Option<HomeTelemetryLeaseResponse> {
+    let now = now_unix_seconds();
+    let mut leases = home_telemetry_leases().lock().ok()?;
+    leases.retain(|_, lease| lease.expires_at_unix >= now);
+    let lease = leases.get_mut(lease_id)?;
+    lease.last_contact_unix = now;
+    lease.expires_at_unix = now + HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS;
+    Some(home_telemetry_response(lease, true))
+}
+
+fn home_telemetry_lease_status(lease_id: &str) -> Option<HomeTelemetryLeaseResponse> {
+    let now = now_unix_seconds();
+    let mut leases = home_telemetry_leases().lock().ok()?;
+    leases.retain(|_, lease| lease.expires_at_unix >= now);
+    let lease = leases.get(lease_id)?;
+    Some(home_telemetry_response(lease, lease.expires_at_unix >= now))
+}
+
+fn home_telemetry_drop_lease(lease_id: &str) {
+    if let Ok(mut leases) = home_telemetry_leases().lock() {
+        leases.remove(lease_id);
+    }
+}
 
 async fn api_root_route(State(state): State<Arc<AppState>>) -> Json<ApiRootObject> {
     Json(api_root_object(&state))
 }
 
+async fn api_root_events_renew_route(
+    Json(request): Json<HomeTelemetryRenewRequest>,
+) -> impl IntoResponse {
+    match home_telemetry_renew_lease(&request.lease_id) {
+        Some(lease) => (StatusCode::OK, Json(lease)).into_response(),
+        None => (
+            StatusCode::GONE,
+            Json(serde_json::json!({
+                "schema": "arcadia.api.root.lease.v1",
+                "kind": "homeTelemetryLeaseExpired",
+                "leaseId": request.lease_id,
+                "active": false,
+            })),
+        )
+            .into_response(),
+    }
+}
+
 async fn api_root_events_route(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let lease_seq = HOME_TELEMETRY_LEASE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let lease_id = format!("home-load-{lease_seq}");
+    let lease = home_telemetry_create_lease();
+    let lease_id = lease.lease_id.clone();
     let stream = async_stream::stream! {
         let snapshot = api_root_object(&state);
         let snapshot_json = serde_json::to_string(&snapshot)
@@ -54,20 +167,26 @@ async fn api_root_events_route(
             .id(snapshot.generated_at_unix.to_string())
             .data(snapshot_json));
 
-        let joined_at = now_unix_seconds();
-        let lease_json = serde_json::json!({
-            "schema": "arcadia.api.root.event.v1",
-            "kind": "lease",
-            "leaseId": lease_id,
-            "topic": "home.load",
-            "joinedAtUnix": joined_at,
-            "expiresAfterSeconds": 60,
-        });
-        yield Ok(Event::default().event("lease").data(lease_json.to_string()));
+        let lease_json = serde_json::to_string(&lease)
+            .unwrap_or_else(|_| "{}".to_string());
+        yield Ok(Event::default().event("lease").data(lease_json));
 
-        let mut tick = tokio::time::interval(Duration::from_secs(5));
+        let mut tick = tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS));
         loop {
             tick.tick().await;
+            let Some(status) = home_telemetry_lease_status(&lease_id) else {
+                let expired = serde_json::json!({
+                    "schema": "arcadia.api.root.lease.v1",
+                    "kind": "homeTelemetryLeaseExpired",
+                    "leaseId": lease_id,
+                    "topic": HOME_TELEMETRY_TOPIC,
+                    "generatedAtUnix": now_unix_seconds(),
+                    "active": false,
+                });
+                yield Ok(Event::default().event("expired").data(expired.to_string()));
+                break;
+            };
+
             let root = api_root_object(&state);
             let payload = serde_json::to_string(&root)
                 .unwrap_or_else(|_| "{}".to_string());
@@ -76,16 +195,11 @@ async fn api_root_events_route(
                 .id(root.generated_at_unix.to_string())
                 .data(payload));
 
-            let heartbeat = serde_json::json!({
-                "schema": "arcadia.api.root.event.v1",
-                "kind": "heartbeat",
-                "leaseId": lease_id,
-                "topic": "home.load",
-                "generatedAtUnix": now_unix_seconds(),
-                "expiresAfterSeconds": 60,
-            });
-            yield Ok(Event::default().event("heartbeat").data(heartbeat.to_string()));
+            let heartbeat = serde_json::to_string(&status)
+                .unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default().event("heartbeat").data(heartbeat));
         }
+        home_telemetry_drop_lease(&lease_id);
     };
 
     Sse::new(stream).keep_alive(

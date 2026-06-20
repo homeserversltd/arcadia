@@ -183,12 +183,25 @@ function bindNavigation() {
   activate(stored);
 }
 
-function bindHomeLoadPolling() {
+function bindHomeLoadSubscription() {
   const card = document.querySelector('[data-load-card]');
   if (!card) return;
-  const pollMs = Math.max(2000, Number(card.dataset.loadPollMs || 5000));
-  const state = { timer: null, source: null, inFlight: false, polls: 0, events: 0, fallback: false };
-  window.arcadiaHomeLoadPollState = state;
+  const retryMs = Math.max(2000, Number(card.dataset.loadRetryMs || 5000));
+  const state = {
+    source: null,
+    lease: null,
+    heartbeat: null,
+    renewalTimer: null,
+    retryTimer: null,
+    inFlight: false,
+    events: 0,
+    fallbackSnapshots: 0,
+    fallback: false,
+    cachedRoot: null,
+    lastContactUnix: null,
+    expiresAtUnix: null,
+  };
+  window.arcadiaHomeLoadSubscriptionState = state;
   const homeIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
   const setText = (selector, text) => { const node = card.querySelector(selector); if (node) node.textContent = text; };
   const setChip = (key, text, stateName = 'idle') => {
@@ -207,6 +220,7 @@ function bindHomeLoadPolling() {
     if (bar) bar.style.width = `${pct}%`;
   };
   const apply = (root) => {
+    state.cachedRoot = root;
     const telemetry = (root.children || []).find((node) => node.id === 'telemetry') || {};
     const data = telemetry.data || {};
     const load = data.load || {};
@@ -237,32 +251,68 @@ function bindHomeLoadPolling() {
     setChip('read', disk.readBytesApprox == null ? '—' : formatBytes(Number(disk.readBytesApprox)), 'idle');
     setChip('write', disk.writtenBytesApprox == null ? '—' : formatBytes(Number(disk.writtenBytesApprox)), 'idle');
   };
-  const stopPolling = () => { if (state.timer) clearInterval(state.timer); state.timer = null; };
-  const stopEvents = () => { if (state.source) state.source.close(); state.source = null; };
-  const poll = async () => {
+  const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
+  const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
+  const stopEvents = () => { if (state.source) state.source.close(); state.source = null; clearRenewal(); clearRetry(); };
+  const fetchSnapshotOnce = async () => {
     if (!homeIsActive() || state.inFlight) return;
     state.inFlight = true;
     try {
       const res = await fetch('/api/root', { headers: { Accept: 'application/json' }, cache: 'no-store' });
-      if (res.ok) { apply(await res.json()); state.polls += 1; }
+      if (res.ok) { apply(await res.json()); state.fallbackSnapshots += 1; }
     } catch (_) {
-      // Home load polling stays silent; the card keeps its last known values.
+      // Snapshot fallback stays silent; the card keeps its cached values.
     } finally {
       state.inFlight = false;
     }
   };
-  const startPolling = () => {
-    stopEvents();
-    state.fallback = true;
-    if (!homeIsActive()) return stopPolling();
-    if (!state.timer) state.timer = setInterval(poll, pollMs);
-    poll();
+  const scheduleRetry = () => {
+    clearRetry();
+    if (!homeIsActive()) return;
+    state.retryTimer = setTimeout(() => {
+      state.retryTimer = null;
+      startEvents();
+    }, retryMs);
+  };
+  const scheduleRenewal = () => {
+    clearRenewal();
+    if (!homeIsActive() || !state.lease?.leaseId) return;
+    const renewMs = Math.max(1000, Number(state.lease.renewAfterSeconds || 10) * 1000);
+    state.renewalTimer = setTimeout(renewLease, renewMs);
+  };
+  const renewLease = async () => {
+    if (!homeIsActive() || !state.lease?.leaseId) return clearRenewal();
+    try {
+      const res = await fetch('/api/root/events/renew', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ leaseId: state.lease.leaseId }),
+        cache: 'no-store',
+        keepalive: true,
+      });
+      if (!res.ok) throw new Error('lease expired');
+      state.lease = await res.json();
+      state.lastContactUnix = state.lease.lastContactUnix;
+      state.expiresAtUnix = state.lease.expiresAtUnix;
+      scheduleRenewal();
+    } catch (_) {
+      stopEvents();
+      if (homeIsActive()) {
+        state.fallback = true;
+        fetchSnapshotOnce();
+        scheduleRetry();
+      }
+    }
   };
   const startEvents = () => {
-    stopPolling();
+    clearRetry();
     state.fallback = false;
     if (!homeIsActive()) return stopEvents();
-    if (!('EventSource' in window)) return startPolling();
+    if (!('EventSource' in window)) {
+      state.fallback = true;
+      fetchSnapshotOnce();
+      return scheduleRetry();
+    }
     if (state.source) return;
     try {
       const source = new EventSource('/api/root/events');
@@ -276,29 +326,56 @@ function bindHomeLoadPolling() {
           // Ignore malformed event payloads and keep the last known values.
         }
       };
+      const onLease = (event) => {
+        try {
+          state.lease = JSON.parse(event.data);
+          state.lastContactUnix = state.lease.lastContactUnix;
+          state.expiresAtUnix = state.lease.expiresAtUnix;
+          scheduleRenewal();
+        } catch (_) {}
+      };
+      const onHeartbeat = (event) => {
+        try {
+          state.heartbeat = JSON.parse(event.data);
+          state.expiresAtUnix = state.heartbeat.expiresAtUnix;
+        } catch (_) {}
+      };
       source.addEventListener('snapshot', onRoot);
       source.addEventListener('root', onRoot);
-      source.addEventListener('lease', (event) => { try { state.lease = JSON.parse(event.data); } catch (_) {} });
-      source.addEventListener('heartbeat', (event) => { try { state.heartbeat = JSON.parse(event.data); } catch (_) {} });
+      source.addEventListener('lease', onLease);
+      source.addEventListener('heartbeat', onHeartbeat);
+      source.addEventListener('expired', () => {
+        stopEvents();
+        if (homeIsActive()) {
+          state.fallback = true;
+          fetchSnapshotOnce();
+          scheduleRetry();
+        }
+      });
       source.onmessage = onRoot;
       source.onerror = () => {
         stopEvents();
-        startPolling();
+        if (homeIsActive()) {
+          state.fallback = true;
+          fetchSnapshotOnce();
+          scheduleRetry();
+        }
       };
     } catch (_) {
-      startPolling();
+      state.fallback = true;
+      fetchSnapshotOnce();
+      scheduleRetry();
     }
   };
   const stop = () => {
     stopEvents();
-    stopPolling();
   };
   const start = () => {
     if (!homeIsActive()) return stop();
-    if (state.fallback) startPolling();
-    else startEvents();
+    if (state.cachedRoot) apply(state.cachedRoot);
+    startEvents();
   };
-  window.arcadiaHomeLoadPolling = { start, stop, poll, homeIsActive, startEvents, startPolling };
+  window.arcadiaHomeLoadSubscription = { start, stop, homeIsActive, startEvents, fetchSnapshotOnce, renewLease };
   document.addEventListener('arcadia:view-change', () => { if (homeIsActive()) start(); else stop(); });
   document.addEventListener('visibilitychange', () => { if (homeIsActive()) start(); else stop(); });
   start();
@@ -1914,7 +1991,7 @@ function bindSystemTrustAndAccessForms() {
 
 initializeArcadiaTheme();
 bindNavigation();
-bindHomeLoadPolling();
+bindHomeLoadSubscription();
 bindConsoleActions();
 bindControllerLiveInput();
 bindStorageModals();

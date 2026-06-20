@@ -30,11 +30,12 @@ cargo test api_root_routes_are_registered -- --nocapture
 
 They guard:
 
-- `/api/root/events` route registration.
+- `/api/root/events` route registration and `/api/root/events/renew` lease-renewal route registration.
 - SSE source dependencies and `api_root_events_route` shape.
-- `snapshot`, `lease`, `root`, and `heartbeat` event families.
+- `snapshot`, `lease`, `root`, `heartbeat`, and `expired` event families.
 - Browser `EventSource('/api/root/events')` lifecycle.
-- fallback `/api/root` polling as compatibility only.
+- client renewal through `/api/root/events/renew`.
+- `/api/root` one-shot snapshot fallback as compatibility only, with no Home telemetry interval polling.
 - Home-active and document-visible guards for any telemetry transport.
 - source closure on `arcadia:view-change` and `visibilitychange`.
 - zero Home buttons and no duplicate navigation controls.
