@@ -5506,7 +5506,8 @@ mod tests {
         assert!(!rendered.contains("gui-pin-access-message"));
         assert!(!APP_JS.contains("setMessage('gui-pin-access-message'"));
         assert!(!APP_JS.contains("clearMessage('gui-pin-access-message'"));
-        assert!(APP_JS.contains("PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved'"));
+        assert!(APP_JS
+            .contains("PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved'"));
     }
 
     #[test]
@@ -6096,7 +6097,7 @@ mod tests {
             "Sync",
             "Local AI",
             "Updates",
-            "Access / PIN",
+            "Access\nPIN",
         ] {
             assert!(rendered.contains(indicator), "missing {indicator}");
         }
