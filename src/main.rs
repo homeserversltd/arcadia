@@ -5510,6 +5510,17 @@ mod tests {
     }
 
     #[test]
+    fn transient_success_feedback_uses_toasts_not_message_divs() {
+        assert!(!APP_CSS.contains(".message--success"));
+        for line in APP_JS.lines().filter(|line| line.contains("setMessage(")) {
+            assert!(
+                !line.contains("success"),
+                "successful transient feedback must use PopupManager.showToast, not setMessage: {line}"
+            );
+        }
+    }
+
+    #[test]
     fn human_text_font_sizes_stay_inside_ordinary_bounds() {
         let allowed_large_icon_selectors = [".product-mark", ".launcher-icon", ".home-action-icon"];
 
