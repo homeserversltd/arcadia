@@ -339,100 +339,94 @@ fn home_view(status: &ConsoleStatus) -> Markup {
 }
 
 fn priority_strip(status: &ConsoleStatus) -> Markup {
-    let (state, detail, action, target, endpoint): (
-        String,
-        String,
-        Option<&str>,
-        Option<&str>,
-        Option<&str>,
-    ) = if !status.network.online {
-        (
-            "Network offline".to_string(),
-            "Console network is unavailable.".to_string(),
-            Some("Manage Network"),
-            Some("network"),
-            None,
-        )
-    } else if status.storage.percent_used >= 90 {
-        (
-            format!("Storage low: {} free", status.storage.free),
-            format!("{} used", status.storage.percent),
-            Some("Open Storage"),
-            Some("storage"),
-            None,
-        )
-    } else if status.library.last_sync_state == "error" {
-        (
-            "Sync failed".to_string(),
-            "Open Sync for the latest receipt.".to_string(),
-            Some("View Sync"),
-            Some("sync"),
-            None,
-        )
-    } else if !sync_has_history(status) {
-        (
-            "Sync pending scan".to_string(),
-            "No ROM scan has run yet.".to_string(),
-            Some("Scan ROMs"),
-            None,
-            Some("/api/actions/sync-games"),
-        )
-    } else if status.library.sync_needed {
-        let changes = status.library.unsynced_added
-            + status.library.unsynced_changed
-            + status.library.unsynced_removed;
-        (
-            format!("{} changes waiting for sync", changes),
-            "ROM folder changes are ready to scan.".to_string(),
-            Some("Start Sync"),
-            None,
-            Some("/api/actions/sync-games"),
-        )
-    } else if status.updates.state == "available" {
-        (
-            "Update available".to_string(),
-            status
-                .updates
-                .available_version
-                .clone()
-                .unwrap_or_else(|| "Review update".to_string()),
-            Some("Review Update"),
-            Some("updates"),
-            None,
-        )
-    } else if status.local_ai.load_state == "error" {
-        (
-            "Local AI error".to_string(),
-            status
-                .local_ai
-                .selected_model_name
-                .clone()
-                .unwrap_or_else(|| "Model load failed".to_string()),
-            Some("Open Local AI"),
-            Some("local-ai"),
-            None,
-        )
-    } else {
-        (
-            "Ready".to_string(),
-            "All systems current.".to_string(),
-            None,
-            None,
-            None,
-        )
-    };
-    html! {
-        article class="priority-strip" aria-label="Highest priority console state" {
-            strong { (state) }
-            span { (detail) }
-            @if let Some(label) = action {
-                @if let Some(endpoint) = endpoint {
-                    (action_button(ButtonVariant::Primary, label, "sync-games", endpoint))
-                } @else if let Some(target) = target {
-                    (nav_button(label, target))
+    let priority: Option<(String, String, Option<&str>, Option<&str>, Option<&str>)> =
+        if !status.network.online {
+            Some((
+                "Network offline".to_string(),
+                "Console network is unavailable.".to_string(),
+                Some("Manage Network"),
+                Some("network"),
+                None,
+            ))
+        } else if status.storage.percent_used >= 90 {
+            Some((
+                format!("Storage low: {} free", status.storage.free),
+                format!("{} used", status.storage.percent),
+                Some("Open Storage"),
+                Some("storage"),
+                None,
+            ))
+        } else if status.library.last_sync_state == "error" {
+            Some((
+                "Sync failed".to_string(),
+                "Open Sync for the latest receipt.".to_string(),
+                Some("View Sync"),
+                Some("sync"),
+                None,
+            ))
+        } else if !sync_has_history(status) {
+            Some((
+                "Sync pending scan".to_string(),
+                "No ROM scan has run yet.".to_string(),
+                Some("Scan ROMs"),
+                None,
+                Some("/api/actions/sync-games"),
+            ))
+        } else if status.library.sync_needed {
+            let changes = status.library.unsynced_added
+                + status.library.unsynced_changed
+                + status.library.unsynced_removed;
+            Some((
+                format!("{} changes waiting for sync", changes),
+                "ROM folder changes are ready to scan.".to_string(),
+                Some("Start Sync"),
+                None,
+                Some("/api/actions/sync-games"),
+            ))
+        } else if status.updates.state == "available" {
+            Some((
+                "Update available".to_string(),
+                status
+                    .updates
+                    .available_version
+                    .clone()
+                    .unwrap_or_else(|| "Review update".to_string()),
+                Some("Review Update"),
+                Some("updates"),
+                None,
+            ))
+        } else if status.local_ai.load_state == "error" {
+            Some((
+                "Local AI error".to_string(),
+                status
+                    .local_ai
+                    .selected_model_name
+                    .clone()
+                    .unwrap_or_else(|| "Model load failed".to_string()),
+                Some("Open Local AI"),
+                Some("local-ai"),
+                None,
+            ))
+        } else {
+            None
+        };
+
+    if let Some((state, detail, action, target, endpoint)) = priority {
+        html! {
+            article class="priority-strip" aria-label="Highest priority console state" {
+                strong { (state) }
+                span { (detail) }
+                @if let Some(label) = action {
+                    @if let Some(endpoint) = endpoint {
+                        (action_button(ButtonVariant::Primary, label, "sync-games", endpoint))
+                    } @else if let Some(target) = target {
+                        (nav_button(label, target))
+                    }
                 }
             }
         }
+    } else {
+        html! {}
     }
 }
 
@@ -508,11 +502,13 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
     } else {
         "Idle"
     };
+    let rom_count = rom_count_label(status);
     html! {
         article class="operational-card sync-home-card" {
             div class="card-head" { h3 { "Sync" } strong { (state) } }
-            p class="card-line" { "ROM folder scan and artwork workflow." }
+            p class="card-line" { (rom_count) }
             div class="state-rows state-rows--compact" {
+                (state_row("Available ROMs", &status.library.total_detected_games.to_string()))
                 (state_row("Last scan", &status.library.last_sync))
                 @if pending_changes > 0 { (state_row("Folder changes", &pending_changes.to_string())) }
                 (state_row("Artwork", &status.library.artwork_status))
@@ -522,6 +518,14 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
                 (action_button(ButtonVariant::Secondary, "Scan ROM folders", "sync-games", "/api/actions/sync-games"))
             }
         }
+    }
+}
+
+fn rom_count_label(status: &ConsoleStatus) -> String {
+    if !sync_has_history(status) {
+        "No ROM scan history".to_string()
+    } else {
+        format!("{} available ROMs", status.library.total_detected_games)
     }
 }
 
@@ -804,7 +808,10 @@ fn sync_result_copy(status: &ConsoleStatus, pending_changes: u64) -> String {
             "Scan complete. No playable ROM files were detected in the configured folders.".to_string()
         }
         "success" => {
-            "Scan complete. GameScope entries and artwork were updated from real scan results.".to_string()
+            format!(
+                "Scan complete. {} available ROMs and {} GameScope entries were updated from real scan results.",
+                status.library.total_detected_games, status.library.total_synced_entries
+            )
         }
         "error" => {
             "Needs attention. Open Output for the last sync receipt and fix the reported issue."

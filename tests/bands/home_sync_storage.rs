@@ -81,6 +81,8 @@
             "Model",
             "LAN",
             "Sync",
+            "Available ROMs",
+            "No ROM scan history",
             "Last scan",
             "Manage Storage",
             "Browse Folders",
@@ -114,6 +116,41 @@
         for forbidden in ["Game Library", "Detected", ">Synced<", "GPU", "Folders unavailable"] {
             assert!(!home_html.contains(forbidden), "unbacked home claim survived: {forbidden}");
         }
+    }
+
+    #[test]
+    fn home_view_has_no_idle_readiness_indicator() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.network.online = true;
+        status.storage.percent_used = 40;
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "success".to_string();
+        status.library.sync_state = "idle".to_string();
+        status.library.sync_needed = false;
+        status.library.unsynced_added = 0;
+        status.library.unsynced_changed = 0;
+        status.library.unsynced_removed = 0;
+        status.updates.state = "current".to_string();
+        status.local_ai.load_state = "stopped".to_string();
+
+        let rendered = ui::layout(&status).into_string();
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-sync\"")
+                .expect("sync view follows home");
+        let home_html = &rendered[home_start..home_end];
+
+        assert!(!home_html.contains("priority-strip"));
+        assert!(!home_html.contains(">Ready<"));
+        assert!(!home_html.contains("All systems current."));
     }
 
     #[test]
@@ -326,7 +363,7 @@
         status.library.artwork_missing = 0;
         status.library.artwork_status = "No artwork".to_string();
         let zero = ui::layout(&status).into_string();
-        assert!(zero.contains("Games: No ROMs"));
+        assert!(zero.contains("Sync: No ROMs"));
         assert!(zero.contains("Scan complete — no ROMs found"));
         assert!(zero.contains("No playable ROM files were detected in the configured folders."));
         assert!(!zero.contains("No scan has run yet"));
