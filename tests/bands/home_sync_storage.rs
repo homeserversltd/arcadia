@@ -254,6 +254,14 @@
     }
 
     #[test]
+    fn sync_action_uses_installed_harmonia_module_path() {
+        assert_eq!(HOMECONSOLE_SYNC_MODULE, "/etc/harmonia/modules/homeconsole/sync/index.json");
+        let source = include_str!("../../src/bands/console_system_actions.rs");
+        assert!(source.contains("\"--module\",\n            HOMECONSOLE_SYNC_MODULE"));
+        assert!(!source.contains("profiles/homeconsole/modules/sync/index.json"));
+    }
+
+    #[test]
     fn storage_view_answers_where_disk_space_went_safely() {
         let state = AppState {
             started_unix: 0,

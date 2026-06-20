@@ -383,6 +383,8 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
         &[
             "homeconsole-sync",
             HOMECONSOLE_PROFILE,
+            "--module",
+            HOMECONSOLE_SYNC_MODULE,
             "--provider-env",
             PROVIDER_KEYS_PATH,
             "--adapter-command",
