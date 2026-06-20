@@ -14,7 +14,7 @@ const VIEWS: [(&str, &str, &str); 9] = [
     ("storage", "▰", "Storage"),
     ("local-ai", "◉", "Local AI"),
     ("network", "◌", "Network"),
-    ("access-pin", "●", "Access / PIN"),
+    ("access-pin", "●", "Access\nPIN"),
     ("updates", "⬆", "Updates"),
     ("system", "⚙", "System"),
 ];
@@ -345,7 +345,7 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
     } else {
         (
             "Ready".to_string(),
-            "No action needed.".to_string(),
+            "All systems current.".to_string(),
             None,
             None,
             None,
@@ -377,7 +377,7 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total.max(if status.storage.other.bytes > 0 { 1 } else { 0 }))) title=(format!("Other {}", status.storage.other.size)) {}
                 span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
             }
-            p class="card-line" { (status.storage.percent) " used · low-space threshold 90%" }
+            p class="card-line" { (status.storage.percent) " used" }
             div class="storage-mini-rows" {
                 (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total, status.storage.games.bytes))
                 (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total, status.storage.artwork.bytes))
@@ -385,7 +385,7 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total, status.storage.other.bytes))
             }
             div class="inline-actions inline-actions--compact" {
-                (nav_button("Open Storage", "storage"))
+                (nav_button("Open", "storage"))
                 @if status.storage.artwork.bytes >= 1_000_000_000 { (action_button(ButtonVariant::Secondary, "Clean Artwork", "clear-artwork-cache", "/api/actions/clear-artwork-cache")) }
                 @if status.storage.ai_models.bytes > 0 { (nav_button("Manage Models", "local-ai")) }
             }
@@ -412,9 +412,9 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                     (reachability("LAN AI", status.network.lan_ai_reachable))
                 }
                 div class="inline-actions inline-actions--compact" {
-                    (nav_focus_button("Manage Wi-Fi", "network", "wifi-management"))
-                    @if let Some(path) = status.surfaces.windows_unc.as_deref().or(status.surfaces.smb_url.as_deref()) { (copy_button("Copy folders", path)) } @else { button class="btn btn--secondary" type="button" disabled { "Game folders unavailable" } }
-                    (copy_button("Copy console URL", status.identity.web_origin.as_str()))
+                    (nav_focus_button("Wi-Fi", "network", "wifi-management"))
+                    @if let Some(path) = status.surfaces.windows_unc.as_deref().or(status.surfaces.smb_url.as_deref()) { (copy_button("Folders", path)) } @else { button class="btn btn--secondary" type="button" disabled { "Folders unavailable" } }
+                    (copy_button("Console URL", status.identity.web_origin.as_str()))
                 }
             } @else {
                 h3 { "Network offline" }
@@ -428,7 +428,7 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
 fn home_library_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class="operational-card library-home-card" {
-            div class="card-head" { h3 { "Game Library" } strong { (status.library.total_detected_games) " game" (if status.library.total_detected_games == 1 { "" } else { "s" }) " · " (if status.library.sync_needed { "changes" } else if status.library.sync_state == "unknown" { "unknown" } else { "synced" }) } }
+            div class="card-head" { h3 { "Game Library" } strong { (status.library.total_detected_games) " · " (if status.library.sync_needed { "changes" } else if status.library.sync_state == "unknown" { "unknown" } else { "synced" }) } }
             div class="state-rows state-rows--compact" {
                 (state_row("Detected", &status.library.total_detected_games.to_string()))
                 (state_row("Synced", &status.library.total_synced_entries.to_string()))
@@ -436,7 +436,7 @@ fn home_library_card(status: &ConsoleStatus) -> Markup {
                 (state_row("Artwork", &status.library.artwork_status))
             }
             div class="inline-actions inline-actions--compact" {
-                (nav_button("View Details", "sync"))
+                (nav_button("Details", "sync"))
             }
         }
     }
@@ -479,7 +479,7 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
             div class="inline-actions inline-actions--compact" {
                 @if status.local_ai.load_state == "hot" || status.local_ai.load_state == "loading" { (modal_button(ButtonVariant::Secondary, "Unload", "Unload local AI", "Unload the active local AI model when the backend control is connected.")) }
                 @else if !status.local_ai.available_models.is_empty() { (modal_button(ButtonVariant::Primary, "Load", "Load local AI", "Load the selected local AI model when the backend control is connected.")) }
-                (nav_button("Open Local AI", "local-ai"))
+                (nav_button("Open", "local-ai"))
             }
         }
     }

@@ -35,6 +35,12 @@
   --ux-control-gap: 7px;
   --ux-card-padding: 10px;
   --ux-compact-card-padding: 9px;
+  --ux-card-min-inline: 0;
+  --ux-card-divider: 1px solid var(--line);
+  --ux-card-header-gap: 8px;
+  --ux-chip-min-inline: 88px;
+  --ux-chip-max-inline: 132px;
+  --ux-chip-dot-size: 7px;
   --ux-field-min-height: 42px;
   --ux-button-min-height: 34px;
   --ux-button-padding-block: 7px;
