@@ -5451,6 +5451,50 @@ mod tests {
     }
 
     #[test]
+    fn theme_system_is_rendered_and_served_through_unified_assets() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+        let css_bundle = format!("{}\n{}\n{}\n{}", THEME_CSS, UX_CSS, APP_CSS, VIEWPORT_CSS);
+        let js_bundle = format!("{}\n{}", THEME_JS, APP_JS);
+
+        for theme in [
+            "crown-noir",
+            "ember-aubergine",
+            "forge-slate",
+            "orchard-terminal",
+        ] {
+            assert!(THEME_CSS.contains(&format!("data-theme=\"{}\"", theme)));
+            assert!(THEME_JS.contains(&format!("name: {:?}", theme)));
+        }
+        assert!(rendered.contains("data-theme-cycle=\"true\""));
+        assert!(rendered.contains("class=\"theme-name\""));
+        assert!(APP_JS.contains("function initializeArcadiaTheme"));
+        assert!(APP_JS.contains("localStorage.getItem('arcadia-theme')"));
+        assert!(APP_CSS.contains("--aubergine-0: var(--theme-bg-base)"));
+        assert!(APP_CSS.contains("--orange: var(--theme-accent"));
+        assert!(
+            css_bundle.find("generated from static/themes").unwrap()
+                < css_bundle.find("Arcadia UX library").unwrap()
+        );
+        assert!(
+            css_bundle.find("Arcadia UX library").unwrap()
+                < css_bundle.find("Arcadia appliance shell").unwrap()
+        );
+        assert!(
+            css_bundle.find("Arcadia appliance shell").unwrap()
+                < css_bundle.find("Arcadia viewport contract").unwrap()
+        );
+        assert!(
+            js_bundle.find("window.ARCADIA_THEMES").unwrap()
+                < js_bundle.find("function arcadiaThemeNames").unwrap()
+        );
+    }
+
+    #[test]
     fn toasts_are_clickable_dismiss_controls() {
         assert!(APP_JS.contains("document.createElement('button')"));
         assert!(APP_JS.contains("dismiss notification"));
