@@ -781,3 +781,59 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="access-pin"] .settings-action-row__action .btn { min-height: 32px; }
 .view[data-view-panel="access-pin"] .instruction-card { display: none; }
 .view[data-view-panel="access-pin"] .form-card p { display: none; }
+.view[data-view-panel="access-pin"] .access-pin-card--change p,
+.view[data-view-panel="access-pin"] .settings-action-row--destructive {
+  display: none;
+}
+
+/* Basic desktop fit: default launcher panes show controls/state first; drill-in detail returns on phone/tablet. */
+.view[data-view-panel="sync"] .sync-folder-list,
+.view[data-view-panel="sync"] .sync-result-card {
+  display: none;
+}
+.view[data-view-panel="sync"] .sync-rom-panel {
+  padding: 12px;
+  gap: 10px;
+}
+.view[data-view-panel="sync"] .sync-folder-source {
+  margin: 8px 0;
+  padding: 10px;
+  gap: 8px;
+}
+.view[data-view-panel="sync"] .sync-rom-copy p,
+.view[data-view-panel="sync"] .sync-rom-action p,
+.view[data-view-panel="sync"] .sync-folder-source-main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view[data-view-panel="updates"] .harmonia-module-grid,
+.view[data-view-panel="updates"] .harmonia-receipts {
+  display: none;
+}
+.view[data-view-panel="updates"] .harmonia-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.view[data-view-panel="system"] .system-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.view[data-view-panel="system"] .system-card--ssh .system-field:nth-child(n+4),
+.view[data-view-panel="system"] .system-card--trust .system-field:nth-child(n+4),
+.view[data-view-panel="system"] .system-card--ssh .command-box,
+.view[data-view-panel="system"] .system-card--ssh .settings-form,
+.view[data-view-panel="system"] .system-card--trust .settings-form,
+.view[data-view-panel="system"] .system-card--services .system-service-row:nth-child(n+4) {
+  display: none;
+}
+.view[data-view-panel="system"] .system-card-band {
+  margin-bottom: 5px;
+}
+.view[data-view-panel="system"] .inline-actions {
+  margin: 6px 0 0;
+}
+.view[data-view-panel="system"] .system-service-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.view[data-view-panel="system"] .system-service-row .system-row-actions {
+  display: none;
+}
