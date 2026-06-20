@@ -450,12 +450,43 @@
         fs::create_dir_all(shortcuts.parent().expect("shortcut parent")).expect("vdf dir created");
         fs::write(
             &shortcuts,
-            b"\x00AppName\x00Driven (GBA)\x00exe\x00/usr/bin/retroarch\x00",
+            b"\x00AppName\x00Driven (GBA)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L /usr/lib/libretro/mgba_libretro.so /home/owner/Games/roms/gba/Driven.gba\x00",
         )
         .expect("vdf written");
-        assert_eq!(count_steam_shortcuts_in_file(&shortcuts), 1);
-        assert_eq!(count_steam_shortcuts_vdf_entries_under(&root, 6), 1);
+        let entries = read_steam_shortcuts_file(&shortcuts, "/tmp/steam-userdata", "steam", "75467976");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Driven (GBA)");
+        assert_eq!(entries[0].steam_user, "75467976");
+        assert_eq!(entries[0].owner_user, "steam");
+        assert_eq!(entries[0].executable.as_deref(), Some("/usr/bin/retroarch"));
+        assert!(entries[0]
+            .launch_options
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Driven.gba"));
         fs::remove_dir_all(&root).expect("temp vdf root removed");
+    }
+
+    #[test]
+    fn library_lists_gamescope_shortcuts_across_profiles() {
+        let bytes = b"\x00AppName\x00Driven (GBA)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L core driven.gba\x00AppName\x00Road Rash (Genesis)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L core road-rash.md\x00";
+        let entries = parse_steam_shortcuts_bytes(
+            bytes,
+            "/home/steam/.local/share/Steam/userdata",
+            "steam",
+            "75467976",
+            "/home/steam/.local/share/Steam/userdata/75467976/config/shortcuts.vdf",
+        );
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "Driven (GBA)");
+        assert_eq!(entries[1].name, "Road Rash (Genesis)");
+        assert_eq!(entries[0].steam_user, "75467976");
+        assert_eq!(entries[0].owner_user, "steam");
+        assert!(entries[1]
+            .launch_options
+            .as_deref()
+            .unwrap_or_default()
+            .contains("road-rash.md"));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 fn library_status(storage: &StorageStatus) -> LibraryStatus {
     let game_files = current_game_files();
     let detected_games = game_files.len() as u64;
-    let gamescope_entries = count_gamescope_entries();
+    let gamescope_inventory = gamescope_inventory();
+    let gamescope_entries = gamescope_inventory.entries.len() as u64;
     let manifest = load_sync_manifest();
     let mut unsynced_added = 0u64;
     let mut unsynced_changed = 0u64;
@@ -98,6 +99,8 @@ fn library_status(storage: &StorageStatus) -> LibraryStatus {
         detected_games,
         detected_files: detected_games,
         gamescope_entries,
+        gamescope_profiles: gamescope_inventory.profiles,
+        gamescope_installed_games: gamescope_inventory.entries,
         first_sync_completed: matches!(last_sync_state.as_str(), "success" | "error") || total_synced_entries > 0,
         last_sync,
         last_sync_at: None,
@@ -178,88 +181,190 @@ fn load_sync_manifest() -> Option<Vec<SyncManifestEntry>> {
     None
 }
 
-fn count_gamescope_entries() -> u64 {
-    let desktop_roots = [
+fn gamescope_inventory() -> GameScopeInventory {
+    let desktop_entries = desktop_gamescope_entries();
+    let mut profiles = Vec::new();
+    let mut entries = desktop_entries;
+    for root in STEAM_USERDATA_ROOTS {
+        collect_steam_shortcuts_profiles(Path::new(root), root, &mut profiles, &mut entries, 6);
+    }
+    GameScopeInventory { profiles, entries }
+}
+
+fn desktop_gamescope_entries() -> Vec<GameScopeInstalledGame> {
+    let mut entries = Vec::new();
+    for root in [
         "/home/owner/.local/share/applications",
         "/home/owner/.steam/steam/userdata",
-    ];
-    let desktop_entries = desktop_roots
-        .iter()
-        .map(|root| count_files_with_extension(Path::new(root), "desktop", 5))
-        .sum::<u64>();
-    desktop_entries.saturating_add(count_steam_shortcuts_vdf_entries())
+    ] {
+        collect_desktop_gamescope_entries(Path::new(root), root, &mut entries, 5);
+    }
+    entries
 }
 
-fn count_steam_shortcuts_vdf_entries() -> u64 {
-    let roots = [
-        "/home/steam/.local/share/Steam/userdata",
-        "/home/owner/.steam/steam/userdata",
-    ];
-    roots
-        .iter()
-        .map(|root| count_steam_shortcuts_vdf_entries_under(Path::new(root), 6))
-        .sum()
-}
-
-fn count_steam_shortcuts_vdf_entries_under(path: &Path, depth: usize) -> u64 {
+fn collect_desktop_gamescope_entries(
+    path: &Path,
+    root: &str,
+    out: &mut Vec<GameScopeInstalledGame>,
+    depth: usize,
+) {
     if depth == 0 {
-        return 0;
+        return;
     }
     let Ok(entries) = fs::read_dir(path) else {
-        return 0;
+        return;
     };
-    let mut count = 0;
     for entry in entries.flatten() {
         let p = entry.path();
         let Ok(metadata) = entry.metadata() else {
             continue;
         };
         if metadata.is_dir() {
-            count += count_steam_shortcuts_vdf_entries_under(&p, depth - 1);
+            collect_desktop_gamescope_entries(&p, root, out, depth - 1);
+        } else if metadata.is_file()
+            && p.extension()
+                .and_then(|v| v.to_str())
+                .map(|v| v.eq_ignore_ascii_case("desktop"))
+                .unwrap_or(false)
+        {
+            let name = p
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .unwrap_or("desktop-entry")
+                .to_string();
+            out.push(GameScopeInstalledGame {
+                name,
+                steam_user: "desktop".to_string(),
+                owner_user: owner_from_steam_root(root).to_string(),
+                source_root: root.to_string(),
+                shortcuts_vdf: p.to_string_lossy().to_string(),
+                entry_index: out.len() as u64,
+                executable: None,
+                launch_options: None,
+            });
+        }
+    }
+}
+
+fn collect_steam_shortcuts_profiles(
+    path: &Path,
+    root: &str,
+    profiles: &mut Vec<GameScopeProfileInventory>,
+    entries: &mut Vec<GameScopeInstalledGame>,
+    depth: usize,
+) {
+    if depth == 0 {
+        return;
+    }
+    let Ok(children) = fs::read_dir(path) else {
+        return;
+    };
+    for child in children.flatten() {
+        let p = child.path();
+        let Ok(metadata) = child.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_steam_shortcuts_profiles(&p, root, profiles, entries, depth - 1);
         } else if metadata.is_file()
             && p.file_name()
                 .and_then(|v| v.to_str())
                 .map(|v| v.eq_ignore_ascii_case("shortcuts.vdf"))
                 .unwrap_or(false)
         {
-            count += count_steam_shortcuts_in_file(&p);
+            let steam_user = steam_user_from_shortcuts_path(&p).unwrap_or_else(|| "unknown".to_string());
+            let owner_user = owner_from_steam_root(root).to_string();
+            let parsed = read_steam_shortcuts_file(&p, root, &owner_user, &steam_user);
+            profiles.push(GameScopeProfileInventory {
+                steam_user,
+                owner_user,
+                source_root: root.to_string(),
+                shortcuts_vdf: p.to_string_lossy().to_string(),
+                installed_count: parsed.len() as u64,
+            });
+            entries.extend(parsed);
         }
     }
-    count
 }
 
-fn count_steam_shortcuts_in_file(path: &Path) -> u64 {
+fn read_steam_shortcuts_file(
+    path: &Path,
+    root: &str,
+    owner_user: &str,
+    steam_user: &str,
+) -> Vec<GameScopeInstalledGame> {
     let Ok(bytes) = fs::read(path) else {
-        return 0;
+        return Vec::new();
     };
-    bytes.windows(b"AppName".len()).filter(|w| *w == b"AppName").count() as u64
+    parse_steam_shortcuts_bytes(
+        &bytes,
+        root,
+        owner_user,
+        steam_user,
+        &path.to_string_lossy(),
+    )
 }
 
-fn count_files_with_extension(path: &Path, ext: &str, depth: usize) -> u64 {
-    if depth == 0 {
-        return 0;
-    }
-    let Ok(entries) = fs::read_dir(path) else {
-        return 0;
-    };
-    let mut count = 0;
-    for entry in entries.flatten() {
-        let p = entry.path();
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-        if metadata.is_dir() {
-            count += count_files_with_extension(&p, ext, depth - 1);
-        } else if metadata.is_file()
-            && p.extension()
-                .and_then(|v| v.to_str())
-                .map(|v| v.eq_ignore_ascii_case(ext))
-                .unwrap_or(false)
-        {
-            count += 1;
+fn parse_steam_shortcuts_bytes(
+    bytes: &[u8],
+    root: &str,
+    owner_user: &str,
+    steam_user: &str,
+    shortcuts_vdf: &str,
+) -> Vec<GameScopeInstalledGame> {
+    let tokens = bytes
+        .split(|byte| *byte == 0)
+        .filter_map(|token| std::str::from_utf8(token).ok())
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let mut entries = Vec::new();
+    let mut i = 0usize;
+    while i < tokens.len() {
+        if tokens[i] == "AppName" {
+            let name = tokens.get(i + 1).unwrap_or(&"Unknown").to_string();
+            let mut executable = None;
+            let mut launch_options = None;
+            let mut j = i + 2;
+            while j < tokens.len() && tokens[j] != "AppName" {
+                match tokens[j] {
+                    "Exe" => executable = tokens.get(j + 1).map(|value| value.to_string()),
+                    "LaunchOptions" => {
+                        launch_options = tokens.get(j + 1).map(|value| value.to_string())
+                    }
+                    _ => {}
+                }
+                j += 1;
+            }
+            entries.push(GameScopeInstalledGame {
+                name,
+                steam_user: steam_user.to_string(),
+                owner_user: owner_user.to_string(),
+                source_root: root.to_string(),
+                shortcuts_vdf: shortcuts_vdf.to_string(),
+                entry_index: entries.len() as u64,
+                executable,
+                launch_options,
+            });
+            i = j;
+        } else {
+            i += 1;
         }
     }
-    count
+    entries
+}
+
+fn steam_user_from_shortcuts_path(path: &Path) -> Option<String> {
+    path.parent()?.parent()?.file_name()?.to_str().map(|value| value.to_string())
+}
+
+fn owner_from_steam_root(root: &str) -> &'static str {
+    if root.starts_with("/home/steam/") {
+        "steam"
+    } else if root.starts_with("/home/owner/") {
+        "owner"
+    } else {
+        "unknown"
+    }
 }
 
 fn latest_sync_summary() -> Option<String> {

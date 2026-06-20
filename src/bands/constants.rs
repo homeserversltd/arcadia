@@ -31,6 +31,10 @@ const GAME_SYSTEMS: [&str; 12] = [
     "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
     "dos",
 ];
+const STEAM_USERDATA_ROOTS: [&str; 2] = [
+    "/home/steam/.local/share/Steam/userdata",
+    "/home/owner/.steam/steam/userdata",
+];
 
 fn game_system_storage_path(system: &str) -> PathBuf {
     let subpath = match system {
