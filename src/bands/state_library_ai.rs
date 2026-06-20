@@ -4,6 +4,8 @@ pub struct LibraryStatus {
     pub detected_games: u64,
     pub detected_files: u64,
     pub gamescope_entries: u64,
+    pub gamescope_profiles: Vec<GameScopeProfileInventory>,
+    pub gamescope_installed_games: Vec<GameScopeInstalledGame>,
     pub first_sync_completed: bool,
     pub last_sync: String,
     pub last_sync_at: Option<String>,
@@ -18,6 +20,35 @@ pub struct LibraryStatus {
     pub unsynced_removed: u64,
     pub total_detected_games: u64,
     pub total_synced_entries: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameScopeProfileInventory {
+    pub steam_user: String,
+    pub owner_user: String,
+    pub source_root: String,
+    pub shortcuts_vdf: String,
+    pub installed_count: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameScopeInstalledGame {
+    pub name: String,
+    pub steam_user: String,
+    pub owner_user: String,
+    pub source_root: String,
+    pub shortcuts_vdf: String,
+    pub entry_index: u64,
+    pub executable: Option<String>,
+    pub launch_options: Option<String>,
+}
+
+#[derive(Clone)]
+struct GameScopeInventory {
+    profiles: Vec<GameScopeProfileInventory>,
+    entries: Vec<GameScopeInstalledGame>,
 }
 
 #[derive(Clone)]

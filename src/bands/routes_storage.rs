@@ -86,11 +86,22 @@ async fn storage_game_folders_route() -> Json<Vec<GameFolderStorage>> {
 
 async fn storage_games_route() -> Json<serde_json::Value> {
     let storage = storage_scan();
+    let library = library_status(&storage);
     Json(serde_json::json!({
         "summary": storage.categories.games,
         "folders": storage.game_folders,
+        "gamescopeProfiles": library.gamescope_profiles,
+        "gamescopeInstalledGames": library.gamescope_installed_games,
         "syncStatusAvailable": load_sync_manifest().is_some(),
         "syncUnavailableMessage": "Sync status unavailable for game folders."
+    }))
+}
+
+async fn storage_gamescope_route() -> Json<serde_json::Value> {
+    let inventory = gamescope_inventory();
+    Json(serde_json::json!({
+        "profiles": inventory.profiles,
+        "installedGames": inventory.entries,
     }))
 }
 

@@ -122,6 +122,7 @@ async fn main() -> anyhow_free::Result<()> {
         )
         .route("/api/storage/game-folders", get(storage_game_folders_route))
         .route("/api/storage/games", get(storage_games_route))
+        .route("/api/storage/gamescope", get(storage_gamescope_route))
         .route(
             "/api/storage/games/:platform",
             get(storage_game_platform_route),
