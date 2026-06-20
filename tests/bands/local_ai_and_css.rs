@@ -149,3 +149,19 @@
         assert!(APP_CSS.contains(".path-card code { display: block; margin-top: 7px; color: var(--orange-strong); font-size: 20px;"));
         assert!(APP_CSS.contains(".status-card strong, .active-model strong { display: block; margin: 5px 0 7px; font-size: 18px;"));
     }
+
+
+    #[test]
+    fn local_ai_runtime_actions_call_real_harmonia_and_reject_fake_green() {
+        assert!(
+            include_str!("../../src/bands/routes_ai_models.rs").contains("homeconsole-local-ai-update"),
+            "runtime update must call the real Harmonia Local AI transition"
+        );
+        assert!(
+            include_str!("../../src/bands/routes_ai_models.rs").contains("runtime.installed"),
+            "runtime update must prove installed state after Harmonia runs"
+        );
+        let runtime_routes = include_str!("../../src/bands/routes_ai_runtime.rs");
+        assert!(runtime_routes.contains("llama.cpp is not installed. Run Update llama.cpp before enabling inference."));
+        assert!(runtime_routes.contains("llama.cpp is not installed. Run Update llama.cpp before exposing Local AI on LAN."));
+    }
