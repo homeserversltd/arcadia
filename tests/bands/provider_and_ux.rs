@@ -59,7 +59,7 @@
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
 
-        assert!(rendered.contains(r#"data-provider-keys-open="true""#));
+        assert!(!rendered.contains(r#"data-provider-keys-open="true""#));
         assert!(!rendered.contains(r#"id="provider-keys-form""#));
         assert!(!rendered.contains(r#"name="screenscraper_api_key""#));
         assert!(APP_JS.contains("ScreenScraper API key"));

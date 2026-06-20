@@ -2,7 +2,7 @@ use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
     platform_display_name, AiModelStorageStatus, ButtonVariant, ConsoleStatus,
-    StorageCategoryStatus, GAME_SYSTEMS,
+    StorageCategoryStatus, GAMES_ROOT, GAME_SYSTEMS,
 };
 
 const VIEWS: [(&str, &str, &str); 8] = [
@@ -58,21 +58,21 @@ fn header(status: &ConsoleStatus) -> Markup {
         + status.library.unsynced_removed;
     let (sync_label, sync_class, sync_tip) = if status.library.last_sync_state == "running" {
         (
-            "Scanning".to_string(),
+            "Syncing".to_string(),
             "warn",
-            "ROM folders are being scanned now".to_string(),
+            "Game folders are syncing now".to_string(),
         )
     } else if status.library.last_sync_state == "error" {
         (
-            "Needs attention".to_string(),
+            "Sync failed".to_string(),
             "bad",
-            "Last ROM scan failed".to_string(),
+            "Last game sync failed".to_string(),
         )
     } else if !sync_has_history(status) {
         (
-            "Not scanned".to_string(),
+            "Pending scan".to_string(),
             "idle",
-            "No verified ROM scan history is available".to_string(),
+            "No verified game sync receipt is available".to_string(),
         )
     } else if status.library.last_sync_state == "success"
         && status.library.total_detected_games == 0
@@ -80,25 +80,25 @@ fn header(status: &ConsoleStatus) -> Markup {
         (
             "No ROMs".to_string(),
             "idle",
-            "Last scan completed and found no playable ROM files".to_string(),
+            "Last sync completed and found no playable ROM files".to_string(),
         )
     } else if status.library.sync_needed || sync_delta > 0 {
         (
-            "Scan ready".to_string(),
+            "Sync needed".to_string(),
             "warn",
-            "ROM folder changes are ready to scan".to_string(),
+            "Game folder changes are queued for sync".to_string(),
         )
     } else if status.library.sync_state == "unknown" {
         (
             "Unknown".to_string(),
             "idle",
-            "ROM scan state is unavailable".to_string(),
+            "Game sync state is unavailable".to_string(),
         )
     } else {
         (
-            "Idle".to_string(),
-            "idle",
-            "No pending ROM folder scan reported".to_string(),
+            "Synced".to_string(),
+            "good",
+            "No queued game sync changes".to_string(),
         )
     };
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
@@ -159,7 +159,7 @@ fn header(status: &ConsoleStatus) -> Markup {
             }
             div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
                 (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
-                (currentness_status_chip("sync", "Sync", &sync_label, sync_class, &sync_tip, "sync"))
+                (currentness_status_chip("sync", "Games", &sync_label, sync_class, &sync_tip, "sync"))
                 (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
                 (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
                 (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
@@ -619,16 +619,13 @@ fn reachability(label: &str, ok: bool) -> Markup {
 fn sync_view(status: &ConsoleStatus) -> Markup {
     let storage_blocked = status.storage.health == "Full";
     let storage_low = status.storage.percent_used >= 90;
-    let windows_root = status
-        .surfaces
-        .windows_unc
-        .as_deref()
-        .unwrap_or(r"\\HOMECONSOLE\games");
-    let smb_root = status
-        .surfaces
-        .smb_url
-        .as_deref()
-        .unwrap_or("smb://homeconsole/games");
+    let windows_root = r"\\console.home.arpa\games";
+    let smb_root = "smb://console.home.arpa/games";
+    let ip_value = if status.network.ip_address == "—" {
+        "IP unavailable"
+    } else {
+        status.network.ip_address.as_str()
+    };
     let pending_changes = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
@@ -639,49 +636,49 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            section class="sync-rom-panel" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-labelledby="sync-rom-title" {
+            section class="sync-rom-panel sync-rom-panel--decision" data-sync-root="true" data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync" {
                 div class="sync-rom-copy" {
-                    h2 id="sync-rom-title" { "Sync ROMs to GameScope" }
-                    p { "Put ROMs in the network game folders, scan them, sync artwork where available, and create or update playable GameScope entries." }
                     div class="sync-status-line" role="status" aria-live="polite" aria-atomic="true" {
-                        span { "Status" }
+                        span { "Sync" }
                         strong id="sync-state" data-sync-state=(state_label.to_lowercase().replace(' ', "-")) { (state_label) }
                     }
+                    p id="sync-progress-text" aria-live="polite" { (sync_ready_message(status, storage_blocked, pending_changes)) }
                 }
                 div class="sync-rom-action" {
                     @if storage_blocked || status.library.last_sync_state == "running" {
-                        button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Scan running" }) }
+                        button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Sync running" }) }
                     } @else {
-                        (action_button(ButtonVariant::Primary, "Scan ROM folders", "sync-games", "/api/actions/sync-games"))
+                        (action_button(ButtonVariant::Primary, if pending_changes > 0 || !sync_has_history(status) { "Sync now" } else { "Check again" }, "sync-games", "/api/actions/sync-games"))
                     }
-                    p id="sync-progress-text" aria-live="polite" { (sync_ready_message(status, storage_blocked, pending_changes)) }
                 }
             }
 
             @if storage_blocked {
                 div class="warning sync-storage-warning" {
-                    strong { "Storage is full. Free space before scanning ROMs." }
-                    (nav_button("Open Storage", "storage"))
+                    strong { "Storage is full. Free space before syncing." }
+                    (nav_button("Storage", "storage"))
                 }
             } @else if storage_low {
                 div class="warning sync-storage-warning" {
-                    strong { "Storage is low. Artwork or library updates may need more room." }
-                    (nav_button("Open Storage", "storage"))
+                    strong { "Storage is low. Large syncs may fail." }
+                    (nav_button("Storage", "storage"))
                 }
             }
 
-            section class="sync-folder-source" aria-label="ROM folder source" {
+            section class="sync-folder-source" aria-label="Samba access" {
                 div class="sync-folder-source-main" {
-                    span { "Put ROMs here" }
+                    span { "Add games" }
                     strong { (windows_root) }
-                    em { (smb_root) }
+                    em { (GAMES_ROOT) }
                 }
-                div class="inline-actions inline-actions--compact" {
-                    (link_button(ButtonVariant::Secondary, "Open Games Folder", "open-games-folder", status.surfaces.smb_url.as_deref().unwrap_or("#")))
-                    (copy_button("Copy Windows path", windows_root))
-                    (copy_button("Copy Linux/macOS path", smb_root))
+                div class="inline-actions inline-actions--compact sync-copy-actions" aria-label="Sync copy buttons" {
+                    (copy_button("Samba for Windows", windows_root))
+                    (copy_button("Samba for Linux", smb_root))
+                    (copy_button("IP", ip_value))
                 }
-                div class="sync-folder-list" aria-label="Configured ROM folders" {
+                div class="sync-folder-list" aria-label="Queued content folders" {
+                    span class="sync-folder-pill sync-folder-pill--queue" { "Queued" " · " code { (pending_changes) } }
+                    span class="sync-folder-pill" { "Folder" " · " code { (GAMES_ROOT) } }
                     @for system in GAME_SYSTEMS {
                         span class="sync-folder-pill" { (platform_display_name(system)) " · " code { (format!("games/{}", system)) } }
                     }
@@ -695,8 +692,8 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                     span class="sync-scanner-file" {}
                 }
                 div {
-                    strong id="sync-running-title" { "Scanning ROM folders" }
-                    p id="sync-running-copy" { "Looking for copied ROM files, matching metadata, and preparing GameScope entries." }
+                    strong id="sync-running-title" { "Syncing" }
+                    p id="sync-running-copy" { "Reading the games folders and updating GameScope entries." }
                 }
             }
 
@@ -706,26 +703,16 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                     p id="sync-result-copy" { (sync_result_copy(status, pending_changes)) }
                 }
                 div class="sync-result-list" {
-                    @if status.library.total_detected_games > 0 { (sync_detail("ROMs detected", &status.library.total_detected_games.to_string())) }
-                    @if status.library.total_synced_entries > 0 { (sync_detail("GameScope entries", &status.library.total_synced_entries.to_string())) }
-                    @if pending_changes > 0 { (sync_detail("Needs scan", &pending_changes.to_string())) }
+                    (sync_detail("Queued", &pending_changes.to_string()))
+                    (sync_detail("Detected", &status.library.total_detected_games.to_string()))
+                    (sync_detail("GameScope", &status.library.total_synced_entries.to_string()))
                     @if status.library.unsynced_added > 0 { (sync_detail("New", &status.library.unsynced_added.to_string())) }
                     @if status.library.unsynced_changed > 0 { (sync_detail("Changed", &status.library.unsynced_changed.to_string())) }
                     @if status.library.unsynced_removed > 0 { (sync_detail("Removed", &status.library.unsynced_removed.to_string())) }
                     @if status.library.artwork_complete > 0 || status.library.artwork_missing > 0 { (sync_detail("Artwork", &status.library.artwork_status)) }
-                    @if status.library.last_sync_state == "success" && status.library.total_detected_games == 0 { span class="sync-empty-readback" { "No playable ROM files were detected in the configured folders." } }
-                    @else if !sync_has_history(status) && status.library.total_detected_games == 0 && pending_changes == 0 && status.library.total_synced_entries == 0 { span class="sync-empty-readback" { "No scan has run yet." } }
                 }
             }
 
-            details class="sync-secondary-actions" {
-                summary { "Tools and troubleshooting" }
-                div class="inline-actions inline-actions--compact" {
-                    button class="btn btn--secondary" type="button" data-provider-keys-open="true" { "Configure Scrapers" }
-                    button class="btn btn--secondary" type="button" data-modal-title="Sync Output" data-modal-body="Sync output appears here after a run." { "Output" }
-                    (nav_button("Storage", "storage"))
-                }
-            }
             div id="sync-output-panel" class="collapsible-log sync-output-store" hidden { pre { code id="sync-output" {} } }
             div id="console-action-message" class="message" hidden {}
         },
@@ -740,14 +727,18 @@ fn sync_has_history(status: &ConsoleStatus) -> bool {
 }
 
 fn sync_state_label(status: &ConsoleStatus) -> &'static str {
+    let pending_changes = status.library.unsynced_added
+        + status.library.unsynced_changed
+        + status.library.unsynced_removed;
     match status.library.last_sync_state.as_str() {
-        "running" => "Scanning",
-        "success" if status.library.total_detected_games == 0 => "Scan complete",
-        "success" => "Completed",
-        "error" => "Needs attention",
-        _ if !sync_has_history(status) => "Not scanned yet",
-        _ if status.library.sync_needed => "Ready to scan",
-        _ => "Ready to scan",
+        "running" => "Syncing",
+        "error" => "Sync failed",
+        _ if pending_changes > 0 || status.library.sync_needed => "Sync needed",
+        _ if !sync_has_history(status) => "Needs first sync",
+        _ if status.library.total_detected_games > status.library.total_synced_entries => {
+            "Sync recommended"
+        }
+        _ => "Synced",
     }
 }
 
@@ -757,35 +748,35 @@ fn sync_ready_message(
     pending_changes: u64,
 ) -> String {
     if storage_blocked {
-        "Storage is full. Free space before scanning ROMs.".to_string()
+        "Storage is full. Free space before syncing.".to_string()
     } else if pending_changes > 0 {
         format!(
-            "{} ROM file changes are waiting for a scan.",
-            pending_changes
-        )
-    } else if status.library.total_detected_games > 0 {
-        format!(
-            "Ready to scan {} detected ROM files again.",
-            status.library.total_detected_games
+            "Sync needed: {} queued change(s) in {}.",
+            pending_changes, GAMES_ROOT
         )
     } else if !sync_has_history(status) {
-        "Add ROMs to the folders, then scan to create/update GameScope entries and sync artwork."
-            .to_string()
+        format!(
+            "Needs first sync: add ROMs under {}, then sync.",
+            GAMES_ROOT
+        )
+    } else if status.library.total_detected_games > status.library.total_synced_entries {
+        format!(
+            "Sync recommended: {} detected, {} in GameScope.",
+            status.library.total_detected_games, status.library.total_synced_entries
+        )
     } else {
-        "Ready to scan the Samba game folders for ROM files.".to_string()
+        format!("Synced: 0 queued changes in {}.", GAMES_ROOT)
     }
 }
 
 fn sync_result_title(status: &ConsoleStatus, pending_changes: u64) -> &'static str {
     match status.library.last_sync_state.as_str() {
-        "success" if pending_changes > 0 => "Scan complete — new changes waiting",
-        "success" if status.library.total_detected_games == 0 => "Scan complete — no ROMs found",
-        "success" => "Scan complete",
-        "error" => "Scan failed",
-        "running" => "Scanning ROM folders…",
-        _ if pending_changes > 0 => "Ready to scan",
-        _ if !sync_has_history(status) => "No scan has run yet",
-        _ => "Ready to scan",
+        "running" => "Sync in progress",
+        "error" => "Sync failed",
+        _ if pending_changes > 0 => "Queued for sync",
+        _ if !sync_has_history(status) => "First sync waiting",
+        "success" => "Last sync complete",
+        _ => "Sync state",
     }
 }
 
@@ -800,32 +791,23 @@ fn sync_result_kind(status: &ConsoleStatus) -> &'static str {
 
 fn sync_result_copy(status: &ConsoleStatus, pending_changes: u64) -> String {
     match status.library.last_sync_state.as_str() {
-        "success" if pending_changes > 0 => format!(
-            "Previous scan completed, and {} ROM file changes are ready for the next scan.",
-            pending_changes
+        "error" => "Read the hidden sync output panel for the last failure receipt.".to_string(),
+        "running" => format!("Sync is reading {} now.", GAMES_ROOT),
+        _ if pending_changes > 0 => format!(
+            "{} queued change(s): {} new, {} changed, {} removed under {}.",
+            pending_changes,
+            status.library.unsynced_added,
+            status.library.unsynced_changed,
+            status.library.unsynced_removed,
+            GAMES_ROOT
         ),
-        "success" if status.library.total_detected_games == 0 => {
-            "Scan complete. No playable ROM files were detected in the configured folders.".to_string()
-        }
-        "success" => {
+        _ if !sync_has_history(status) => {
             format!(
-                "Scan complete. {} available ROMs and {} GameScope entries were updated from real scan results.",
-                status.library.total_detected_games, status.library.total_synced_entries
+                "No sync receipt yet. Put ROMs in {} and press Sync now.",
+                GAMES_ROOT
             )
         }
-        "error" => {
-            "Needs attention. Open Output for the last sync receipt and fix the reported issue."
-                .to_string()
-        }
-        "running" => "Scanning ROM folders now.".to_string(),
-        _ if pending_changes > 0 => format!(
-            "{} detected ROM changes are ready to scan.",
-            pending_changes
-        ),
-        _ if status.library.total_synced_entries > 0 => {
-            "No new ROM changes reported since the last sync.".to_string()
-        }
-        _ => "No sync has run yet. Add ROMs to the games folder, then scan to create/update GameScope entries and sync artwork.".to_string(),
+        _ => format!("0 queued changes under {}.", GAMES_ROOT),
     }
 }
 
@@ -1855,10 +1837,6 @@ fn nav_focus_button(label: &str, target: &str, focus: &str) -> Markup {
 
 fn action_button(variant: ButtonVariant, label: &str, action: &str, endpoint: &str) -> Markup {
     html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-endpoint=(endpoint) { (label) } }
-}
-
-fn link_button(variant: ButtonVariant, label: &str, action: &str, url: &str) -> Markup {
-    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-action=(action) data-url=(url) { (label) } }
 }
 
 fn nav_button(label: &str, view: &str) -> Markup {

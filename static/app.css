@@ -915,14 +915,13 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   display: none;
 }
 
-/* Basic desktop fit: default launcher panes show controls/state first; drill-in detail returns on phone/tablet. */
-.view[data-view-panel="sync"] .sync-folder-list,
-.view[data-view-panel="sync"] .sync-result-card {
-  display: none;
-}
+/* Basic desktop fit: sync keeps decision, queue, location, and three copy controls visible. */
 .view[data-view-panel="sync"] .sync-rom-panel {
   padding: 12px;
   gap: 10px;
+}
+.view[data-view-panel="sync"] .sync-result-card {
+  display: block;
 }
 .view[data-view-panel="sync"] .sync-folder-source {
   margin: 8px 0;
