@@ -26,10 +26,12 @@ Theme doctrine:
 UX library doctrine:
 
 - Arcadia shared UX CSS lives at `/fulcrum/attachments/arcadia/static/ux/`.
-- `static/ux/arcadia-ux.css` owns reusable shell rhythm, component scale, spacing, utility primitives, and ordinary text bounds.
+- Arcadia UI work starts in the shared UX library and theme system. The library is the reliable path for appliance geometry, control rhythm, responsive behavior, and themeable surfaces.
+- `static/ux/arcadia-ux.css` owns reusable shell rhythm, component scale, action/control tracks, spacing, utility primitives, and ordinary text bounds.
 - `static/ux/arcadia-viewports.css` owns all tablet/phone viewport dialing; `static/app.css` must not grow new `@media` bands.
 - The served `/static/app.css` response is composed by Rust in this order: generated theme CSS, UX library CSS, app defaults, viewport CSS.
 - Theme JSONs remain skin/color/radius inputs only; responsive layout belongs in the UX library.
+- Feature selectors in `static/app.css` consume UX/theme variables for domain-specific composition. When button, card, row, or viewport geometry drifts, repair the shared track or its viewport-scoped consumption before adding local one-off sizing.
 
 System appliance doctrine:
 
