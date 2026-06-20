@@ -393,7 +393,7 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
             "--receipt-dir",
             "/var/lib/harmonia/receipts/game-sync-latest",
         ],
-        "Games synced. Receipt ready.",
+        "Done.",
         "Sync failed. Open the ledger for the reason and fix action.",
     )
 }
@@ -405,7 +405,6 @@ const MAX_SYNC_UPLOAD_TOTAL_BYTES: usize = 512 * 1024 * 1024;
 async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<ConsoleActionResponse>) {
     let mut accepted = 0u64;
     let mut rejected = 0u64;
-    let mut selected_system: Option<String> = None;
     let mut seen = Vec::new();
     let mut total_bytes = 0usize;
     let mut staged = Vec::new();
@@ -420,27 +419,6 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
                 complaints.push("The upload could not be read.".to_string());
                 break;
             }
-        };
-        let field_name = field.name().unwrap_or("").to_string();
-        if field_name == "system" {
-            match field.text().await {
-                Ok(value) if valid_game_system(value.trim()) => {
-                    selected_system = Some(value.trim().to_string());
-                }
-                _ => {
-                    rejected += 1;
-                    complaints.push("Select a supported game kind before adding files.".to_string());
-                }
-            }
-            continue;
-        }
-        if field_name != "games" {
-            continue;
-        }
-        let Some(system) = selected_system.as_deref() else {
-            rejected += 1;
-            complaints.push("Select a game kind before adding files.".to_string());
-            continue;
         };
         if accepted + rejected >= MAX_SYNC_UPLOAD_FILES {
             rejected += 1;
@@ -459,11 +437,11 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
             continue;
         }
         seen.push(safe_name.clone());
-        if !supported_game_file(&safe_name) {
+        let Some(system) = classify_upload_system(&safe_name) else {
             rejected += 1;
             complaints.push(format!("{} was rejected: unsupported game file.", public_file_name(&safe_name)));
             continue;
-        }
+        };
         let Ok(bytes) = field.bytes().await else {
             rejected += 1;
             complaints.push(format!("{} was rejected: the machine could not read it.", public_file_name(&safe_name)));
@@ -522,10 +500,6 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
         }
     }
 
-    if selected_system.is_none() {
-        rejected = rejected.saturating_add(1);
-        complaints.push("Select a game kind before adding files.".to_string());
-    }
     if accepted == 0 && rejected == 0 {
         rejected = 1;
         complaints.push("No game files were selected.".to_string());
@@ -536,7 +510,6 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
     let receipt = serde_json::json!({
         "family": "arcadia.sync.upload.v1",
         "ok": ok || partial,
-        "selected_system": selected_system.as_deref().map(platform_display_name),
         "accepted": accepted,
         "rejected": rejected,
         "staged": staged,
@@ -552,7 +525,7 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
     let message = if partial {
         format!("{} accepted · {} rejected. Open the ledger for the reason and fix action.", accepted, rejected)
     } else if accepted > 0 {
-        format!("{} game{} staged for {}. Press Sync games.", accepted, if accepted == 1 { "" } else { "s" }, selected_system.as_deref().map(platform_display_name).unwrap_or_else(|| "the selected kind".to_string()))
+        format!("{} game{} staged. Press Sync games.", accepted, if accepted == 1 { "" } else { "s" })
     } else {
         "Those files were rejected. Open the ledger for the reason and fix action.".to_string()
     };
@@ -572,9 +545,6 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
 }
 
 fn sync_upload_target_dir(system: &str) -> Result<PathBuf, String> {
-    if !valid_game_system(system) {
-        return Err("unsupported game kind".to_string());
-    }
     let target_dir = game_system_storage_path(system);
     fs::create_dir_all(&target_dir).map_err(|_| "storage is not ready".to_string())?;
     let games_root = Path::new(GAMES_ROOT)
@@ -589,19 +559,23 @@ fn sync_upload_target_dir(system: &str) -> Result<PathBuf, String> {
     Ok(canonical_target)
 }
 
-fn valid_game_system(system: &str) -> bool {
-    GAME_SYSTEMS.contains(&system)
-}
-
-fn supported_game_file(file_name: &str) -> bool {
+fn classify_upload_system(file_name: &str) -> Option<&'static str> {
     let lower = file_name.to_ascii_lowercase();
-    let Some(ext) = Path::new(&lower).extension().and_then(|ext| ext.to_str()) else {
-        return false;
-    };
-    matches!(
-        ext,
-        "gba" | "gb" | "gbc" | "sfc" | "smc" | "nes" | "md" | "gen" | "sms" | "z64" | "n64" | "v64" | "iso" | "chd" | "cue" | "bin" | "cso" | "dol" | "gcm" | "wad" | "wbfs" | "zip" | "7z"
-    )
+    let ext = Path::new(&lower).extension()?.to_str()?;
+    match ext {
+        "gba" => Some("gba"),
+        "gb" | "gbc" => Some("gba"),
+        "sfc" | "smc" => Some("snes"),
+        "nes" => Some("nes"),
+        "md" | "gen" | "sms" => Some("genesis"),
+        "z64" | "n64" | "v64" => Some("n64"),
+        "iso" | "chd" | "cue" | "bin" => Some("ps1"),
+        "cso" => Some("psp"),
+        "dol" | "gcm" => Some("gamecube"),
+        "wad" | "wbfs" => Some("wii"),
+        "zip" | "7z" => Some("dos"),
+        _ => None,
+    }
 }
 
 fn safe_upload_name(name: &str) -> String {
