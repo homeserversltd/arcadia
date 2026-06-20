@@ -273,6 +273,7 @@ struct AISettingsRequest {
     batch: Option<u32>,
     concurrency: Option<u32>,
     request_limit: Option<u32>,
+    lan_port: Option<u16>,
     lan_cidr: Option<String>,
     cors_origins: Option<Vec<String>>,
     log_level: Option<String>,

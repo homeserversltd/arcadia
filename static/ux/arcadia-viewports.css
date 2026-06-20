@@ -21,6 +21,9 @@
   .system-power-panel, .system-power-actions, .sync-rom-panel { grid-template-columns: 1fr; }
   .storage-hero { grid-template-columns: 1fr; }
   .section-heading { align-items: start; flex-direction: column; }
+  .local-ai-hero { grid-template-columns: auto minmax(0, 1fr); }
+  .local-ai-hero-endpoint { grid-column: 1 / -1; }
+  .local-ai-state-list, .local-ai-access-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
   html, body { height: auto; overflow-y: auto; }
