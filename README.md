@@ -31,6 +31,13 @@ UX library doctrine:
 - The served `/static/app.css` response is composed by Rust in this order: generated theme CSS, UX library CSS, app defaults, viewport CSS.
 - Theme JSONs remain skin/color/radius inputs only; responsive layout belongs in the UX library.
 
+System appliance doctrine:
+
+- `docs/system-appliance-front-panel.md` governs the System viewport.
+- System keeps power, remote access, secure web access, service health, and diagnostics capabilities, but presents them as a HomeConsole appliance front panel.
+- One job has one visible control; implementation duplicate nouns, permanent enable/disable pairs, and empty log/copy/download buttons are forbidden.
+- Raw service evidence belongs behind Diagnostics, not as front-panel button spam.
+
 Run locally:
 
 ```bash
