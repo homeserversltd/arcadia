@@ -982,3 +982,14 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   animation: sync-button-sweep .82s linear infinite;
 }
 @keyframes sync-button-sweep { to { transform: translateX(120%); } }
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
