@@ -684,17 +684,7 @@ function bindStorageModals() {
     const endpoints = { 'clear-artwork-cache': '/api/storage/cleanup/artwork', 'clean-temporary-files': '/api/storage/cleanup/temporary', 'clear-old-updates': '/api/storage/cleanup/old-updates', 'prune-logs': '/api/storage/cleanup/logs', 'clear-partial-ai-downloads': '/api/storage/cleanup/partial-ai-downloads' };
     runStorageCleanup(button.dataset.storageCleanup, endpoints[button.dataset.storageCleanup]);
   }));
-  document.querySelectorAll('[data-sync-add-games]').forEach((button) => button.addEventListener('click', () => document.getElementById('sync-upload-input')?.click()));
-  document.querySelectorAll('[data-sync-upload]').forEach((input) => input.addEventListener('change', () => uploadSyncGames(input)));
-  document.querySelectorAll('[data-sync-add-games-panel]').forEach((panel) => {
-    panel.addEventListener('dragover', (event) => { event.preventDefault(); panel.dataset.dragActive = 'true'; });
-    panel.addEventListener('dragleave', () => { panel.dataset.dragActive = 'false'; });
-    panel.addEventListener('drop', (event) => {
-      event.preventDefault();
-      panel.dataset.dragActive = 'false';
-      uploadSyncFiles(Array.from(event.dataTransfer?.files || []), panel.dataset.endpoint || '/api/actions/add-games');
-    });
-  });
+  document.querySelectorAll('[data-sync-add-games]').forEach((button) => button.addEventListener('click', () => openSyncAddGamesModal()));
 }
 
 function validCopyValue(value) {
@@ -763,12 +753,12 @@ function setSyncReadback(kind, message) {
 }
 
 function startSyncProgress() {
-  setSyncState('working', 'scanning');
+  setSyncState('Scanning', 'scanning');
   const panel = document.getElementById('sync-running-panel');
   const progress = document.getElementById('sync-progress-text');
   if (panel) panel.hidden = false;
-  if (progress) progress.textContent = '';
-  setSyncReadback('running', '');
+  if (progress) progress.textContent = 'Preparing game import…';
+  setSyncReadback('running', 'The machine is importing games now.');
   return { stop() { if (panel) panel.hidden = true; } };
 }
 
@@ -777,32 +767,134 @@ function finishSyncProgress(ok, data = {}, progressHandle = null) {
   const button = document.querySelector('[data-action="sync-games"]');
   const progress = document.getElementById('sync-progress-text');
   if (ok) {
-    setSyncState('ready', 'ready');
-    if (button) button.textContent = 'Check again';
-    const message = data.message || 'Done.';
-    if (progress) progress.textContent = '';
-    setSyncReadback('success', '');
-    PopupManager.showToast(message, 'success');
+    setSyncState('Synced', 'synced');
+    if (button) button.textContent = 'Synced';
+    const message = data.message || 'Games synced. Receipt ready.';
+    if (progress) progress.textContent = message;
+    setSyncReadback('success', 'Games synced. Receipt ready.');
     markOnboardingFirstSyncComplete(data);
   } else {
-    setSyncState('retry', 'sync-failed');
-    if (button) button.textContent = 'Retry';
+    setSyncState('Sync failed', 'sync-failed');
+    if (button) button.textContent = 'Sync failed';
     const message = data.message || 'Sync failed. Open the ledger for the reason and fix action.';
-    if (progress) progress.textContent = '';
-    setSyncReadback('error', '');
-    PopupManager.showToast(message, 'error');
+    if (progress) progress.textContent = message;
+    setSyncReadback('error', 'Sync failed. Open the ledger for the reason and fix action.');
   }
+}
+
+const SYNC_GAME_KINDS = [
+  ['gba', 'GBA'],
+  ['genesis', 'Genesis'],
+  ['snes', 'SNES'],
+  ['nes', 'NES'],
+  ['ps1', 'PS1'],
+  ['n64', 'N64'],
+  ['ps2', 'PS2'],
+  ['sega-cd', 'Sega CD'],
+  ['psp', 'PSP'],
+  ['gamecube', 'GameCube'],
+  ['wii', 'Wii'],
+  ['dos', 'DOS'],
+];
+let selectedSyncGameKind = null;
+
+function openSyncAddGamesModal() {
+  selectedSyncGameKind = null;
+  const body = document.createElement('div');
+  body.className = 'sync-add-games-modal';
+  const intro = document.createElement('p');
+  intro.className = 'modal-note';
+  intro.textContent = 'Select the game kind first. The next files you choose go to that kind.';
+  body.appendChild(intro);
+
+  const grid = document.createElement('div');
+  grid.className = 'sync-kind-grid';
+  SYNC_GAME_KINDS.forEach(([value, label]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sync-kind-option';
+    button.dataset.syncGameKind = value;
+    button.textContent = label;
+    button.addEventListener('click', () => selectSyncGameKind(value, label, body));
+    grid.appendChild(button);
+  });
+  body.appendChild(grid);
+
+  const drop = document.createElement('div');
+  drop.className = 'sync-kind-dropzone';
+  drop.dataset.syncKindDropzone = 'true';
+  drop.hidden = true;
+  drop.innerHTML = '<strong data-sync-kind-title>Choose a game kind</strong><span>Drop files here or use the picker.</span>';
+  body.appendChild(drop);
+
+  const actions = document.createElement('div');
+  actions.className = 'inline-actions';
+  const choose = document.createElement('button');
+  choose.type = 'button';
+  choose.className = 'btn btn--primary';
+  choose.dataset.syncChooseFiles = 'true';
+  choose.disabled = true;
+  choose.textContent = 'Choose files';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn--secondary';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => PopupManager.closeModal());
+  actions.append(choose, cancel);
+  body.appendChild(actions);
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.className = 'sync-upload-input';
+  input.dataset.syncUpload = 'true';
+  input.dataset.endpoint = '/api/actions/add-games';
+  input.addEventListener('change', () => uploadSyncGames(input));
+  body.appendChild(input);
+
+  choose.addEventListener('click', () => {
+    if (!selectedSyncGameKind) return PopupManager.showToast('Select a game kind first.', 'error');
+    input.click();
+  });
+  bindSyncDropzone(drop);
+  PopupManager.showModal({ title: 'Add games', body, hideDefaultAction: true });
+}
+
+function selectSyncGameKind(value, label, root) {
+  selectedSyncGameKind = value;
+  root.querySelectorAll('[data-sync-game-kind]').forEach((button) => button.dataset.selected = String(button.dataset.syncGameKind === value));
+  const choose = root.querySelector('[data-sync-choose-files]');
+  if (choose) choose.disabled = false;
+  const drop = root.querySelector('[data-sync-kind-dropzone]');
+  if (drop) {
+    drop.hidden = false;
+    const title = drop.querySelector('[data-sync-kind-title]');
+    if (title) title.textContent = `${label} selected`;
+  }
+}
+
+function bindSyncDropzone(dropzone) {
+  dropzone.addEventListener('dragover', (event) => { event.preventDefault(); if (selectedSyncGameKind) dropzone.dataset.dragActive = 'true'; });
+  dropzone.addEventListener('dragleave', () => { dropzone.dataset.dragActive = 'false'; });
+  dropzone.addEventListener('drop', (event) => {
+    event.preventDefault();
+    dropzone.dataset.dragActive = 'false';
+    if (!selectedSyncGameKind) return PopupManager.showToast('Select a game kind first.', 'error');
+    uploadSyncFiles(Array.from(event.dataTransfer?.files || []), selectedSyncGameKind, '/api/actions/add-games');
+  });
 }
 
 async function uploadSyncGames(input) {
   const files = Array.from(input.files || []);
-  await uploadSyncFiles(files, input.dataset.endpoint || '/api/actions/add-games');
+  await uploadSyncFiles(files, selectedSyncGameKind, input.dataset.endpoint || '/api/actions/add-games');
   input.value = '';
 }
 
-async function uploadSyncFiles(files, endpoint = '/api/actions/add-games') {
+async function uploadSyncFiles(files, gameKind, endpoint = '/api/actions/add-games') {
+  if (!gameKind) return PopupManager.showToast('Select a game kind first.', 'error');
   if (!files.length) return;
   const form = new FormData();
+  form.append('system', gameKind);
   files.forEach((file) => form.append('games', file, file.name));
   setSyncReadback('running', 'Checking added games…');
   PopupManager.showToast(`${files.length} game file${files.length === 1 ? '' : 's'} entering the machine.`, 'info');
@@ -818,6 +910,7 @@ async function uploadSyncFiles(files, endpoint = '/api/actions/add-games') {
     const message = data.message || 'Games staged. Press Sync games.';
     setSyncReadback('success', message);
     PopupManager.showToast(message, 'success');
+    PopupManager.closeModal();
   } catch (_) {
     const message = 'The machine could not accept those games.';
     setSyncReadback('error', message);
