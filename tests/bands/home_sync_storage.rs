@@ -142,12 +142,22 @@
         assert!(APP_CSS.contains(".load-telemetry-grid"));
         assert!(APP_CSS.contains("conic-gradient"));
         assert!(APP_JS.contains("function bindHomeLoadPolling()"));
-        assert!(APP_JS.contains("/api/root"));
+        assert!(APP_JS.contains("new EventSource('/api/root/events')"));
+        assert!(APP_JS.contains("source.addEventListener('snapshot', onRoot)"));
+        assert!(APP_JS.contains("source.addEventListener('root', onRoot)"));
+        assert!(APP_JS.contains("source.addEventListener('lease'"));
+        assert!(APP_JS.contains("source.addEventListener('heartbeat'"));
+        assert!(APP_JS.contains("source.onerror = () =>"));
+        assert!(APP_JS.contains("startPolling();"));
+        assert!(APP_JS.contains("fetch('/api/root'"));
         assert!(APP_JS.contains("arcadia:view-change"));
+        assert!(APP_JS.contains("visibilitychange"));
         assert!(APP_JS.contains("document.visibilityState === 'visible'"));
         assert!(APP_JS.contains("[data-view-panel=\"home\"].is-active"));
         assert!(APP_JS.contains("setInterval(poll, pollMs)"));
-        assert!(APP_JS.contains("stop();"));
+        assert!(APP_JS.contains("stopEvents();"));
+        assert!(APP_JS.contains("stopPolling();"));
+        assert!(APP_JS.contains("state.source.close()"));
         assert!(APP_JS.contains("bindHomeLoadPolling();"));
         assert!(APP_CSS.contains(".view[data-view-panel=\"home\"].is-active"));
         assert!(!home_html.contains("Now"));
@@ -726,7 +736,36 @@
         let source = include_str!("../../src/main.rs");
         assert!(source.contains(".route(\"/api\", get(api_root_route))"));
         assert!(source.contains(".route(\"/api/root\", get(api_root_route))"));
+        assert!(source.contains(".route(\"/api/root/events\", get(api_root_events_route))"));
         assert!(source.contains("include!(\"bands/api_root.rs\")"));
+    }
+
+    #[test]
+    fn api_root_events_route_streams_sse_root_payloads() {
+        let source = include_str!("../../src/bands/api_root.rs");
+        assert!(source.contains("async fn api_root_events_route"));
+        assert!(source.contains("Sse<impl Stream<Item = Result<Event, Infallible>>>"));
+        assert!(source.contains("HOME_TELEMETRY_LEASE_COUNTER"));
+        assert!(source.contains("Event::default()\n            .event(\"snapshot\")"));
+        assert!(source.contains("Event::default()\n                .event(\"root\")"));
+        assert!(source.contains("Event::default().event(\"lease\")"));
+        assert!(source.contains("Event::default().event(\"heartbeat\")"));
+        assert!(source.contains("tokio::time::interval(Duration::from_secs(5))"));
+        assert!(source.contains("KeepAlive::new()"));
+        assert!(source.contains("Duration::from_secs(15)"));
+    }
+
+    #[test]
+    fn api_root_events_dependencies_are_declared() {
+        let cargo = include_str!("../../Cargo.toml");
+        let main = include_str!("../../src/main.rs");
+        assert!(cargo.contains("async-stream"));
+        assert!(cargo.contains("futures-core"));
+        assert!(cargo.contains("\"time\""));
+        assert!(main.contains("sse::{Event, KeepAlive, Sse}"));
+        assert!(main.contains("use futures_core::Stream;"));
+        assert!(main.contains("convert::Infallible"));
+        assert!(main.contains("AtomicU64"));
     }
 
     #[test]

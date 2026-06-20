@@ -34,8 +34,65 @@ pub struct ApiMetric {
     pub state: Option<String>,
 }
 
+static HOME_TELEMETRY_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
+
 async fn api_root_route(State(state): State<Arc<AppState>>) -> Json<ApiRootObject> {
     Json(api_root_object(&state))
+}
+
+async fn api_root_events_route(
+    State(state): State<Arc<AppState>>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let lease_seq = HOME_TELEMETRY_LEASE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let lease_id = format!("home-load-{lease_seq}");
+    let stream = async_stream::stream! {
+        let snapshot = api_root_object(&state);
+        let snapshot_json = serde_json::to_string(&snapshot)
+            .unwrap_or_else(|_| "{}".to_string());
+        yield Ok(Event::default()
+            .event("snapshot")
+            .id(snapshot.generated_at_unix.to_string())
+            .data(snapshot_json));
+
+        let joined_at = now_unix_seconds();
+        let lease_json = serde_json::json!({
+            "schema": "arcadia.api.root.event.v1",
+            "kind": "lease",
+            "leaseId": lease_id,
+            "topic": "home.load",
+            "joinedAtUnix": joined_at,
+            "expiresAfterSeconds": 60,
+        });
+        yield Ok(Event::default().event("lease").data(lease_json.to_string()));
+
+        let mut tick = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            tick.tick().await;
+            let root = api_root_object(&state);
+            let payload = serde_json::to_string(&root)
+                .unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default()
+                .event("root")
+                .id(root.generated_at_unix.to_string())
+                .data(payload));
+
+            let heartbeat = serde_json::json!({
+                "schema": "arcadia.api.root.event.v1",
+                "kind": "heartbeat",
+                "leaseId": lease_id,
+                "topic": "home.load",
+                "generatedAtUnix": now_unix_seconds(),
+                "expiresAfterSeconds": 60,
+            });
+            yield Ok(Event::default().event("heartbeat").data(heartbeat.to_string()));
+        }
+    };
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(15))
+            .text("arcadia-home-telemetry"),
+    )
 }
 
 fn api_root_object(state: &AppState) -> ApiRootObject {
