@@ -36,29 +36,55 @@ async fn ai_runtime_check_update(
 async fn ai_runtime_update(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    if helper_exists("/usr/local/bin/harmonia") {
-        ai_action(
-            StatusCode::OK,
-            &state,
-            true,
-            "runtime-update",
-            "Runtime update started through Harmonia.",
-        )
-    } else {
-        ai_action(
+    if !helper_exists(HARMONIA_BIN) {
+        return ai_action(
             StatusCode::NOT_IMPLEMENTED,
             &state,
             false,
             "runtime-update",
-            "Runtime update helper is unavailable.",
-        )
+            "Harmonia is unavailable; Local AI runtime cannot be installed from Arcadia.",
+        );
     }
+    let output = Command::new(HARMONIA_BIN)
+        .args([
+            "homeconsole-local-ai-update",
+            HOMECONSOLE_PROFILE,
+            "--apply",
+            "--receipt-dir",
+            "/var/lib/harmonia/receipts/local-ai-runtime-latest",
+        ])
+        .output();
+    let command_ok = output.as_ref().map(|o| o.status.success()).unwrap_or(false);
+    let runtime_installed = local_ai_state(&state).runtime.installed;
+    let ok = command_ok && runtime_installed;
+    ai_action(
+        if ok { StatusCode::OK } else { StatusCode::FAILED_DEPENDENCY },
+        &state,
+        ok,
+        "runtime-update",
+        if ok {
+            "llama.cpp installed and proven through Harmonia."
+        } else if command_ok {
+            "Harmonia ran, but llama.cpp is still not installed; check /var/lib/harmonia/receipts/local-ai-runtime-latest."
+        } else {
+            "Harmonia Local AI runtime update failed; check /var/lib/harmonia/receipts/local-ai-runtime-latest."
+        },
+    )
 }
 async fn ai_runtime_restart(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
+    if !local_ai_state(&state).runtime.installed {
+        return ai_action(
+            StatusCode::FAILED_DEPENDENCY,
+            &state,
+            false,
+            "runtime-restart",
+            "llama.cpp is not installed. Run Update llama.cpp first.",
+        );
+    }
     let ok = Command::new(SYSTEMCTL_BIN)
-        .args(["--user", "restart", "llama-server.service"])
+        .args(["restart", "arcadia-llama-server.service"])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
