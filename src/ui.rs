@@ -70,17 +70,21 @@ fn header(status: &ConsoleStatus) -> Markup {
         )
     } else if !sync_has_history(status) {
         (
-            "Pending scan".to_string(),
+            format!("{} ROMs", status.library.total_detected_games),
             "idle",
-            "No verified game sync receipt is available".to_string(),
+            format!(
+                "No verified sync receipt; current folders contain {} playable ROM files",
+                status.library.total_detected_games
+            ),
         )
-    } else if status.library.last_sync_state == "success"
-        && status.library.total_detected_games == 0
-    {
+    } else if status.library.last_sync_state == "success" {
         (
-            "No ROMs".to_string(),
+            format!("{} ROMs", status.library.total_detected_games),
             "idle",
-            "Last sync completed and found no playable ROM files".to_string(),
+            format!(
+                "Last sync counted {} playable ROM files",
+                status.library.total_detected_games
+            ),
         )
     } else if status.library.sync_needed || sync_delta > 0 {
         (
@@ -505,7 +509,7 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
     let rom_count = rom_count_label(status);
     html! {
         article class="operational-card sync-home-card" {
-            div class="card-head" { h3 { "Sync" } strong { (state) } }
+            div class="card-head" { h3 { "Sync" } strong { (format!("{} · {} ROMs", state, status.library.total_detected_games)) } }
             p class="card-line" { (rom_count) }
             div class="state-rows state-rows--compact" {
                 (state_row("Available ROMs", &status.library.total_detected_games.to_string()))
@@ -522,11 +526,7 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn rom_count_label(status: &ConsoleStatus) -> String {
-    if !sync_has_history(status) {
-        "No ROM scan history".to_string()
-    } else {
-        format!("{} available ROMs", status.library.total_detected_games)
-    }
+    format!("{} available ROMs", status.library.total_detected_games)
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
@@ -704,7 +704,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 }
                 div class="sync-result-list" {
                     (sync_detail("Queued", &pending_changes.to_string()))
-                    (sync_detail("Detected", &status.library.total_detected_games.to_string()))
+                    (sync_detail("Available ROMs", &status.library.total_detected_games.to_string()))
                     (sync_detail("GameScope", &status.library.total_synced_entries.to_string()))
                     @if status.library.unsynced_added > 0 { (sync_detail("New", &status.library.unsynced_added.to_string())) }
                     @if status.library.unsynced_changed > 0 { (sync_detail("Changed", &status.library.unsynced_changed.to_string())) }

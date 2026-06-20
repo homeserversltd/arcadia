@@ -82,7 +82,7 @@
             "LAN",
             "Sync",
             "Available ROMs",
-            "No ROM scan history",
+            "0 available ROMs",
             "Last scan",
             "Manage Storage",
             "Browse Folders",
@@ -239,7 +239,7 @@
             r#"\\console.home.arpa\games"#,
             "smb://console.home.arpa/games",
             "Queued",
-            "Detected",
+            "Available ROMs",
             "GameScope",
             "/home/owner/Games",
             "games/gba",
@@ -315,7 +315,9 @@
         let sync_end = sync_start + rendered[sync_start..].find("<section id=\"view-storage\"").expect("storage follows sync");
         let sync_html = &rendered[sync_start..sync_end];
 
-        assert!(rendered.contains("Games: Pending scan"));
+        assert!(rendered.contains("Games: 0 ROMs"));
+        assert!(rendered.contains("Not scanned · 0 ROMs"));
+        assert!(rendered.contains("0 available ROMs"));
         assert!(sync_html.contains("Needs first sync"));
         assert!(sync_html.contains("First sync waiting"));
         assert!(sync_html.contains("No sync receipt yet."));
@@ -346,10 +348,11 @@
         status.library.artwork_status = "2 complete · 1 missing".to_string();
 
         let rendered = ui::layout(&status).into_string();
-        assert!(rendered.contains("Games: Synced"));
-        assert!(rendered.contains("Synced"));
+        assert!(rendered.contains("Games: 3 ROMs"));
+        assert!(rendered.contains("Idle · 3 ROMs"));
+        assert!(rendered.contains("3 available ROMs"));
         assert!(rendered.contains("Last sync complete"));
-        assert!(rendered.contains("Detected"));
+        assert!(rendered.contains("Available ROMs"));
         assert!(rendered.contains("GameScope"));
         assert!(rendered.contains("2 complete · 1 missing"));
 
@@ -359,9 +362,13 @@
         status.library.artwork_missing = 0;
         status.library.artwork_status = "No artwork".to_string();
         let zero = ui::layout(&status).into_string();
-        assert!(zero.contains("Games: No ROMs"));
+        assert!(zero.contains("Games: 0 ROMs"));
+        assert!(zero.contains("Idle · 0 ROMs"));
+        assert!(zero.contains("0 available ROMs"));
         assert!(zero.contains("Last sync complete"));
         assert!(zero.contains("0 queued changes under /home/owner/Games."));
+        assert!(zero.contains("Available ROMs"));
+        assert!(!zero.contains("No ROMs"));
         assert!(!zero.contains("No scan has run yet"));
     }
 

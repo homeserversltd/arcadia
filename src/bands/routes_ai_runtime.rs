@@ -119,18 +119,22 @@ async fn ai_model_load(
             "Model file was not found.",
         );
     };
+    let cfg = load_ai_config();
+    let bind_host = if cfg.lan_enabled { "0.0.0.0" } else { "127.0.0.1" };
     let ok = helper_exists(LLAMA_SERVER_BIN)
         && Command::new(SYSTEMD_RUN_BIN)
             .args([
                 "--unit=arcadia-llama-server",
                 "--collect",
+                "--property=Restart=on-failure",
+                "--property=RestartSec=2",
                 LLAMA_SERVER_BIN,
                 "-m",
                 path.to_string_lossy().as_ref(),
                 "--port",
-                &load_ai_config().lan_port.to_string(),
+                &cfg.lan_port.to_string(),
                 "--host",
-                "127.0.0.1",
+                bind_host,
             ])
             .status()
             .map(|s| s.success())
@@ -284,7 +288,7 @@ async fn ai_inference_set_lan_access(
         ok,
         "inference-set-lan-access",
         if ok && body.enabled {
-            "LAN access applied through Nginx/firewall as trusted-home-LAN only."
+            "LAN access applied through the trusted-home-LAN port."
         } else if ok {
             "LAN access disabled and proxy/firewall state removed where possible."
         } else {

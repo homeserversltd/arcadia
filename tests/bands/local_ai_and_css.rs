@@ -183,6 +183,8 @@
         assert!(runtime_routes.contains("Local inference server is not running. Load a model before exposing Local AI on LAN."));
         assert!(runtime_routes.contains("ai.installed_models.is_empty()"));
         assert!(runtime_routes.contains("tcp_port_listening(cfg_now.lan_port)"));
+        assert!(runtime_routes.contains("let bind_host = if cfg.lan_enabled { \"0.0.0.0\" } else { \"127.0.0.1\" };"));
+        assert!(include_str!("../../src/bands/local_ai_config.rs").contains("mode=direct-llama-server-lan-bind"));
         assert!(APP_JS.contains("lanPort: payload.port"));
         assert!(APP_JS.contains("Port must be between 1024 and 65535."));
         assert!(include_str!("../../src/bands/routes_ai_settings.rs").contains("body.lan_port"));
