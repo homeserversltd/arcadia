@@ -1143,7 +1143,6 @@ fn access_pin_view(status: &ConsoleStatus) -> Markup {
                 button class="btn btn--secondary" type="button" data-action="gui-pin-disable" data-endpoint="/api/gui-pin/access" data-pin-required="false" { "Open Without PIN" }
             }
         }
-        div id="gui-pin-access-message" class="message" hidden {}
         article class="form-card" {
             h3 { "Change PIN" }
             p { "Enter the current PIN, then choose a new PIN. Arcadia never displays saved PIN values." }

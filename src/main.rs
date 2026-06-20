@@ -5496,6 +5496,20 @@ mod tests {
     }
 
     #[test]
+    fn gui_pin_access_uses_toast_not_inline_success_popup() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+        assert!(!rendered.contains("gui-pin-access-message"));
+        assert!(!APP_JS.contains("setMessage('gui-pin-access-message'"));
+        assert!(!APP_JS.contains("clearMessage('gui-pin-access-message'"));
+        assert!(APP_JS.contains("PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved'"));
+    }
+
+    #[test]
     fn human_text_font_sizes_stay_inside_ordinary_bounds() {
         let allowed_large_icon_selectors = [".product-mark", ".launcher-icon", ".home-action-icon"];
 
