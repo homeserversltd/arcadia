@@ -312,50 +312,62 @@ fn parse_steam_shortcuts_bytes(
     steam_user: &str,
     shortcuts_vdf: &str,
 ) -> Vec<GameScopeInstalledGame> {
-    let tokens = bytes
-        .split(|byte| *byte == 0)
-        .filter_map(|token| std::str::from_utf8(token).ok())
-        .map(normalize_steam_shortcut_token)
-        .filter(|token| !token.is_empty())
-        .collect::<Vec<_>>();
     let mut entries = Vec::new();
-    let mut i = 0usize;
-    while i < tokens.len() {
-        if tokens[i] == "AppName" {
-            let name = tokens.get(i + 1).cloned().unwrap_or_else(|| "Unknown".to_string());
-            let mut executable = None;
-            let mut launch_options = None;
-            let mut j = i + 2;
-            while j < tokens.len() && tokens[j] != "AppName" {
-                match tokens[j].as_str() {
-                    "Exe" => executable = tokens.get(j + 1).cloned(),
-                    "LaunchOptions" => launch_options = tokens.get(j + 1).cloned(),
-                    _ => {}
-                }
-                j += 1;
-            }
-            entries.push(GameScopeInstalledGame {
-                name,
-                steam_user: steam_user.to_string(),
-                owner_user: owner_user.to_string(),
-                source_root: root.to_string(),
-                shortcuts_vdf: shortcuts_vdf.to_string(),
-                entry_index: entries.len() as u64,
-                executable,
-                launch_options,
-            });
-            i = j;
-        } else {
-            i += 1;
-        }
+    let app_name_positions = find_steam_key_positions(bytes, b"AppName\0");
+    for (entry_index, app_name_pos) in app_name_positions.iter().enumerate() {
+        let name_start = app_name_pos + b"AppName\0".len();
+        let name = read_null_terminated_string(bytes, name_start).unwrap_or_else(|| "Unknown".to_string());
+        let segment_end = app_name_positions
+            .get(entry_index + 1)
+            .copied()
+            .unwrap_or(bytes.len());
+        let segment = &bytes[name_start..segment_end];
+        let executable = read_field_after_key(segment, b"Exe\0");
+        let launch_options = read_field_after_key(segment, b"LaunchOptions\0");
+        entries.push(GameScopeInstalledGame {
+            name,
+            steam_user: steam_user.to_string(),
+            owner_user: owner_user.to_string(),
+            source_root: root.to_string(),
+            shortcuts_vdf: shortcuts_vdf.to_string(),
+            entry_index: entries.len() as u64,
+            executable,
+            launch_options,
+        });
     }
     entries
 }
 
-fn normalize_steam_shortcut_token(token: &str) -> String {
-    token
-        .trim_matches(|ch: char| ch.is_control() || ch == '\u{7f}')
-        .to_string()
+fn find_steam_key_positions(bytes: &[u8], key: &[u8]) -> Vec<usize> {
+    bytes
+        .windows(key.len())
+        .enumerate()
+        .filter_map(|(index, window)| if window == key { Some(index) } else { None })
+        .collect()
+}
+
+fn read_field_after_key(segment: &[u8], key: &[u8]) -> Option<String> {
+    let key_pos = find_steam_key_positions(segment, key).into_iter().next()?;
+    read_null_terminated_string(segment, key_pos + key.len())
+}
+
+fn read_null_terminated_string(bytes: &[u8], start: usize) -> Option<String> {
+    if start >= bytes.len() {
+        return None;
+    }
+    let end = bytes[start..]
+        .iter()
+        .position(|byte| *byte == 0)
+        .map(|offset| start + offset)
+        .unwrap_or(bytes.len());
+    let value = String::from_utf8_lossy(&bytes[start..end])
+        .trim_matches('"')
+        .to_string();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 fn steam_user_from_shortcuts_path(path: &Path) -> Option<String> {
