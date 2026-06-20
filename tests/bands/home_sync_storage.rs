@@ -440,6 +440,25 @@
     }
 
     #[test]
+    fn library_counts_steam_shortcuts_vdf_entries() {
+        let root = std::env::temp_dir().join(format!(
+            "arcadia-steam-shortcuts-vdf-{}",
+            std::process::id()
+        ));
+        let shortcuts = root.join("75467976/config/shortcuts.vdf");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(shortcuts.parent().expect("shortcut parent")).expect("vdf dir created");
+        fs::write(
+            &shortcuts,
+            b"\x00AppName\x00Driven (GBA)\x00exe\x00/usr/bin/retroarch\x00",
+        )
+        .expect("vdf written");
+        assert_eq!(count_steam_shortcuts_in_file(&shortcuts), 1);
+        assert_eq!(count_steam_shortcuts_vdf_entries_under(&root, 6), 1);
+        fs::remove_dir_all(&root).expect("temp vdf root removed");
+    }
+
+    #[test]
     fn storage_view_answers_where_disk_space_went_safely() {
         let state = AppState {
             started_unix: 0,

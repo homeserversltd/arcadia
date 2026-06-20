@@ -179,14 +179,60 @@ fn load_sync_manifest() -> Option<Vec<SyncManifestEntry>> {
 }
 
 fn count_gamescope_entries() -> u64 {
-    let roots = [
+    let desktop_roots = [
         "/home/owner/.local/share/applications",
+        "/home/owner/.steam/steam/userdata",
+    ];
+    let desktop_entries = desktop_roots
+        .iter()
+        .map(|root| count_files_with_extension(Path::new(root), "desktop", 5))
+        .sum::<u64>();
+    desktop_entries.saturating_add(count_steam_shortcuts_vdf_entries())
+}
+
+fn count_steam_shortcuts_vdf_entries() -> u64 {
+    let roots = [
+        "/home/steam/.local/share/Steam/userdata",
         "/home/owner/.steam/steam/userdata",
     ];
     roots
         .iter()
-        .map(|root| count_files_with_extension(Path::new(root), "desktop", 5))
+        .map(|root| count_steam_shortcuts_vdf_entries_under(Path::new(root), 6))
         .sum()
+}
+
+fn count_steam_shortcuts_vdf_entries_under(path: &Path, depth: usize) -> u64 {
+    if depth == 0 {
+        return 0;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    let mut count = 0;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            count += count_steam_shortcuts_vdf_entries_under(&p, depth - 1);
+        } else if metadata.is_file()
+            && p.file_name()
+                .and_then(|v| v.to_str())
+                .map(|v| v.eq_ignore_ascii_case("shortcuts.vdf"))
+                .unwrap_or(false)
+        {
+            count += count_steam_shortcuts_in_file(&p);
+        }
+    }
+    count
+}
+
+fn count_steam_shortcuts_in_file(path: &Path) -> u64 {
+    let Ok(bytes) = fs::read(path) else {
+        return 0;
+    };
+    bytes.windows(b"AppName".len()).filter(|w| *w == b"AppName").count() as u64
 }
 
 fn count_files_with_extension(path: &Path, ext: &str, depth: usize) -> u64 {
