@@ -335,10 +335,8 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                 div class="active-warning-strip home-warning-strip" {
                     @if status.library.last_sync_state == "error" {
                         strong { "Sync failed" }
-                        span { "Latest game sync needs attention in the Sync pane." }
                     } @else {
                         strong { "Local AI error" }
-                        span { "Selected model failed to load; Local AI owns the recovery controls." }
                     }
                 }
             }
@@ -407,7 +405,7 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
         None
     };
 
-    if let Some((state, detail, tone)) = priority {
+    if let Some((state, _detail, tone)) = priority {
         let badge = if tone == "idle" {
             "Waiting"
         } else {
@@ -416,7 +414,6 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
         html! {
             article class=(format!("priority-strip priority-strip--{}", tone)) aria-label="Highest priority console state" {
                 strong { (state) }
-                span { (detail) }
                 b class=(format!("system-status system-status--{}", if tone == "bad" { "error" } else if tone == "warn" { "starting" } else { "unknown" })) { (badge) }
             }
         }
@@ -437,7 +434,7 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
     let cleanup_label = human_size(cleanup_bytes);
     html! {
         article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) {
-            div class="card-head" { h3 { "Storage" } strong { (status.storage.free) " free" } }
+            div class="card-head" aria-label="Storage" { strong { (status.storage.free) " free" } }
             div class="storage-bar storage-bar--home" aria-label="Storage usage by category" {
                 span class="storage-segment storage-segment--games" style=(format!("width: {}%", status.storage.games.percent_of_total.max(if status.storage.games.bytes > 0 { 1 } else { 0 }))) title=(format!("Games {}", status.storage.games.size)) {}
                 span class="storage-segment storage-segment--artwork" style=(format!("width: {}%", status.storage.artwork.percent_of_total.max(if status.storage.artwork.bytes > 0 { 1 } else { 0 }))) title=(format!("Artwork {}", status.storage.artwork.size)) {}
@@ -445,7 +442,6 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total.max(if status.storage.other.bytes > 0 { 1 } else { 0 }))) title=(format!("Other {}", status.storage.other.size)) {}
                 span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
             }
-            p class="card-line" { (status.storage.percent) " used · " (status.storage.total) " total" }
             div class="storage-mini-rows" {
                 (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total, status.storage.games.bytes))
                 (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total, status.storage.artwork.bytes))
@@ -506,7 +502,7 @@ fn home_load_card() -> Markup {
         .unwrap_or_else(|| "—".to_string());
     html! {
         article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-poll-ms="5000" {
-            div class="card-head" { h3 { "Load" } strong data-load-headline { (load_headline) } }
+            div class="card-head" aria-label="Load" { strong data-load-headline { (load_headline) } }
             div class="load-orb-row" {
                 div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) data-load-orb {
                     span data-load-percent { (load_percent) "%" }
@@ -569,13 +565,11 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
             @if status.network.online {
-                div class="card-head" { h3 { "Network" } strong { (status.network.connection_type) } }
+                div class="card-head" aria-label="Network" { strong { (status.network.ip_address) } }
                 @if status.network.active_type == "wifi" {
-                    p class="card-line" { (status.network.ssid.as_deref().unwrap_or("Wi-Fi")) " · " (status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "Unknown signal".to_string())) }
-                    p class="card-line" { (status.network.ip_address) }
+                    div class="home-signal-strip" aria-label="Wi-Fi signal" { (home_signal("Wi-Fi", &status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "—".to_string()), "idle")) }
                 } @else {
-                    p class="card-line" { "Ethernet · " (status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "Unknown speed".to_string())) }
-                    p class="card-line" { (status.network.ip_address) }
+                    div class="home-signal-strip" aria-label="Ethernet speed" { (home_signal("Ethernet", &status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "—".to_string()), "idle")) }
                 }
                 div class="home-topology" aria-label="Network topology" {
                     span { "Console" }
@@ -592,8 +586,7 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                 }
                 div class="home-code-line" aria-label="Console URL" { code { (status.identity.web_origin) } }
             } @else {
-                div class="card-head" { h3 { "Network" } strong { "Offline" } }
-                p class="card-line" { "Console network is unavailable." }
+                div class="card-head" aria-label="Network" { strong { "Offline" } }
                 div class="home-signal-strip" { (home_signal("Ethernet", if status.network.ethernet_available { "Present" } else { "Absent" }, if status.network.ethernet_available { "idle" } else { "warn" })) (home_signal("Wi-Fi", if status.network.wifi_adapter_available { "Present" } else { "Absent" }, if status.network.wifi_adapter_available { "idle" } else { "warn" })) }
             }
         }
@@ -620,9 +613,8 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
         .total_detected_games
         .saturating_sub(status.library.total_synced_entries);
     html! {
-        article class=(if status.library.last_sync_state == "error" || pending_changes > 0 || status.library.sync_needed { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) {
-            div class="card-head" { h3 { "Sync" } strong { (state) } }
-            p class="card-line" { (status.library.total_detected_games) " playable ROMs · " (status.library.total_synced_entries) " library entries" }
+        article class=(if status.library.last_sync_state == "error" || pending_changes > 0 || status.library.sync_needed { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) data-home-sync-state=(state) {
+            div class="card-head" aria-label="Game library" { strong { (status.library.total_detected_games) " / " (status.library.total_synced_entries) } }
             div class="state-rows state-rows--compact" {
                 (state_row("Available ROMs", &status.library.total_detected_games.to_string()))
                 (state_row("Last scan", &status.library.last_sync))
@@ -635,7 +627,6 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
-    let state = title_case_state_like(&status.local_ai.load_state);
     let model_line = status
         .local_ai
         .loaded_model_name
@@ -654,8 +645,7 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
     };
     html! {
         article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) {
-            div class="card-head" { h3 { "Local AI" } strong { (state) } }
-            p class="card-line" { (model_line) }
+            div class="card-head" aria-label="Local AI" { strong { (model_line) } }
             div class="state-rows state-rows--compact" {
                 @if let Some(accelerator) = accelerator { (state_row("Accelerator", accelerator)) }
                 (state_row("LAN", &lan))
@@ -684,9 +674,9 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
     let receipt = receipt_short_name(&status.updates.latest_receipt);
     html! {
         article class=(if state_tone == "warn" { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) {
-            div class="card-head" { h3 { "Updates" } strong { (state_label) } }
-            p class="card-line" { (status.updates.profile_id) " · " (status.updates.module_count) " modules · " (status.updates.operation_count) " operations" }
+            div class="card-head" aria-label="Updates" { strong { (status.updates.module_count) " / " (status.updates.operation_count) } }
             div class="state-rows state-rows--compact" {
+                @if state_tone == "warn" { (state_row("Update state", state_label)) }
                 (state_row("Receipt", &receipt))
                 (state_row("Missing", missing))
             }
@@ -705,13 +695,12 @@ fn home_system_health_card(status: &ConsoleStatus) -> Markup {
     let failed = service_total.saturating_sub(running);
     html! {
         article class=(if failed > 0 { "operational-card health-home-card attention" } else { "operational-card health-home-card" }) {
-            div class="card-head" { h3 { "System Health" } strong { (running) "/" (service_total) } }
-            p class="card-line" { "Machine " (status.runtime.machine_uptime) " · Interface " (status.runtime.arcadia_uptime) }
+            div class="card-head" aria-label="System Health" { strong { (running) "/" (service_total) } }
             div class="home-service-list" aria-label="Appliance services" {
                 @for svc in status.system.services.iter().take(2) {
                     div class="home-service-row" {
                         span { (&svc.name) }
-                        b class=(status_class(&svc.state)) { (title_case_state_like(&svc.state)) }
+                        b class=(status_class(&svc.state)) data-state=(&svc.state) aria-label=(format!("{} {}", svc.name, title_case_state_like(&svc.state))) { (if matches!(svc.state.as_str(), "running" | "available" | "enabled") { "✓" } else { "!" }) }
                     }
                 }
             }
@@ -732,12 +721,11 @@ fn home_identity_card(status: &ConsoleStatus) -> Markup {
     };
     html! {
         article class="operational-card identity-home-card" {
-            div class="card-head" { h3 { "Appliance" } strong { (&status.identity.hostname) } }
-            p class="card-line" { (&status.identity.product_name) " · " (&status.identity.version) }
+            div class="card-head" aria-label="Appliance" { strong { (&status.identity.hostname) } }
             div class="state-rows state-rows--compact" {
                 (state_row("Address", &status.network.ip_address))
-                (state_row("Access", lock_state))
-                (state_row("Trust", trust_state))
+                @if status.gui_pin.pin_required { (state_row("Access", lock_state)) }
+                @if status.system.trust.mode == "https" { (state_row("Trust", trust_state)) }
             }
         }
     }
@@ -746,15 +734,14 @@ fn home_identity_card(status: &ConsoleStatus) -> Markup {
 fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
     html! {
         article class="operational-card gamescope-home-card attention" {
-            div class="card-head" { h3 { "Game Session" } strong { (title_case_state_like(status.arcadia.service)) } }
-            p class="card-line" { "No active game session reported by the appliance service." }
+            div class="card-head" aria-label="Game Session" { strong data-state=(status.arcadia.service) { "!" } }
             div class="home-signal-strip" { (home_signal("Interface", status.arcadia.service, if status.arcadia.service == "running" { "ok" } else { "warn" })) }
         }
     }
 }
 
 fn home_signal(label: &str, value: &str, tone: &str) -> Markup {
-    html! { span class=(format!("home-signal home-signal--{}", tone)) { em { (label) } strong { (value) } } }
+    html! { span class=(format!("home-signal home-signal--{}", tone)) data-label=(label) aria-label=(format!("{} {}", label, value)) { strong { (value) } } }
 }
 
 fn title_case_state_like(state: &str) -> &'static str {
@@ -790,7 +777,7 @@ fn title_case_state_like(state: &str) -> &'static str {
 }
 
 fn storage_mini_row(label: &str, value: &str, percent: u8, bytes: u64) -> Markup {
-    html! { div class="storage-mini-row" { span { (label) } strong { (value) } em { (percent_label(percent, bytes)) } } }
+    html! { div class="storage-mini-row" data-label=(label) aria-label=(format!("{} {} {}", label, value, percent_label(percent, bytes))) { strong { (value) } em { (percent_label(percent, bytes)) } } }
 }
 
 fn percent_label(percent: u8, bytes: u64) -> String {
@@ -802,11 +789,11 @@ fn percent_label(percent: u8, bytes: u64) -> String {
 }
 
 fn state_row(label: &str, value: &str) -> Markup {
-    html! { div class="state-row" { span { (label) } strong { (value) } } }
+    html! { div class="state-row" data-label=(label) aria-label=(format!("{} {}", label, value)) { strong { (value) } } }
 }
 
 fn reachability(label: &str, ok: bool) -> Markup {
-    html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) { (label) " " (if ok { "✓" } else { "—" }) } }
+    html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) data-label=(label) aria-label=(format!("{} {}", label, if ok { "ok" } else { "unavailable" })) { (if ok { "✓" } else { "—" }) } }
 }
 
 fn sync_view(status: &ConsoleStatus) -> Markup {

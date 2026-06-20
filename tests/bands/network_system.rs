@@ -18,14 +18,16 @@
         let home_html = &rendered[home_start..home_end];
         for required in [
             "priority-strip",
-            "Storage",
-            "Network",
-            "Local AI",
-            "Sync",
+            r#"aria-label="Storage""#,
+            r#"aria-label="Network""#,
+            r#"aria-label="Local AI""#,
+            r#"aria-label="Game library""#,
             "storage-bar",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
+        assert!(!home_html.contains("<h3"));
+        assert!(!home_html.contains("<p"));
         for forbidden in [
             "Console Home",
             "HomeConsole Launchpad",
