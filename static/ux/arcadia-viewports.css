@@ -56,3 +56,7 @@
   .modal-close { position: static; transform: none; float: right; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-rom-panel[data-sync-state="scanning"] .btn[data-action="sync-games"]::after { animation: none; opacity: .35; }
+}
