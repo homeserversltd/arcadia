@@ -360,9 +360,10 @@ fn read_null_terminated_string(bytes: &[u8], start: usize) -> Option<String> {
         .position(|byte| *byte == 0)
         .map(|offset| start + offset)
         .unwrap_or(bytes.len());
-    let value = String::from_utf8_lossy(&bytes[start..end])
-        .trim_matches('"')
-        .to_string();
+    let mut value = String::from_utf8_lossy(&bytes[start..end]).to_string();
+    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
+        value = value[1..value.len() - 1].to_string();
+    }
     if value.is_empty() {
         None
     } else {
