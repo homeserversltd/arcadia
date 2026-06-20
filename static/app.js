@@ -314,7 +314,7 @@ function bindConsoleActions() {
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
-        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Open Output for the receipt and fix the reported issue.' }, syncProgress);
+        if (action === 'sync-games') finishSyncProgress(false, { message: 'Failed' }, syncProgress);
       } finally {
         button.disabled = false;
         button.textContent = original;
@@ -666,10 +666,10 @@ function startSyncProgress() {
   const panel = document.getElementById('sync-running-panel');
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
-  if (panel) panel.hidden = false;
-  if (progress) progress.textContent = 'Scanning ROM folders…';
-  if (log) log.textContent = 'Scanning ROM folders…';
-  setSyncReadback('running', 'Scanning ROM folders now.');
+  if (panel) panel.hidden = true;
+  if (progress) progress.textContent = 'Scanning';
+  if (log) log.textContent = 'Scanning';
+  setSyncReadback('running', '');
   return { stop() { if (panel) panel.hidden = true; } };
 }
 
@@ -679,19 +679,17 @@ function finishSyncProgress(ok, data = {}, progressHandle = null) {
   const progress = document.getElementById('sync-progress-text');
   const log = document.getElementById('sync-output');
   if (ok) {
-    setSyncState('Completed', 'completed');
-    if (button) button.textContent = 'Scan complete';
-    const message = data.message || 'Scan complete. GameScope entries and artwork were updated from the ROM folders.';
-    if (progress) progress.textContent = message;
-    setSyncReadback('success', 'Scan complete. Results now reflect the completed run.');
+    setSyncState('', 'completed');
+    if (button) button.textContent = 'Scan for ROMs';
+    if (progress) progress.textContent = '';
+    setSyncReadback('success', '');
     if (log) log.textContent = formatActionResult(data);
     markOnboardingFirstSyncComplete(data);
   } else {
-    setSyncState('Needs attention', 'needs-attention');
-    if (button) button.textContent = 'Scan failed';
-    const message = data.message || 'Sync could not complete. Open Output for the receipt and fix the reported issue.';
-    if (progress) progress.textContent = message;
-    setSyncReadback('error', 'Needs attention. Open Output for the last sync receipt and fix the reported issue.');
+    setSyncState('', 'needs-attention');
+    if (button) button.textContent = 'Scan for ROMs';
+    if (progress) progress.textContent = 'Failed';
+    setSyncReadback('error', '');
     if (log) log.textContent = formatActionResult(data);
   }
 }
