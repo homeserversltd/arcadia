@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "schema_version": "arcadia.rust-bands.v1",
+    "doctrine": "infinite-infinite",
+    "intent": "Keep src/main.rs as the thin Arcadia process face and decompose coherent Rust transition surfaces into ordered child bands."
+  },
+  "children": [
+    "constants",
+    "state-core",
+    "state-surface-network",
+    "state-library-ai",
+    "state-actions",
+    "routes-storage",
+    "routes-ai-models",
+    "routes-ai-runtime",
+    "routes-ai-settings",
+    "console-system-actions",
+    "console-access-actions",
+    "provider-keys",
+    "network-wifi",
+    "network-diagnostics-pin",
+    "assets",
+    "status-core",
+    "status-network",
+    "status-system",
+    "status-library",
+    "local-ai-config",
+    "local-ai-runtime",
+    "surface",
+    "storage-scan",
+    "storage-registry",
+    "storage-diagnostics",
+    "storage-cleanup",
+    "anyhow-free",
+    "tests"
+  ]
+}
