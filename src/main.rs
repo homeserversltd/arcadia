@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Path as AxumPath, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -214,6 +214,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/harmonia/ledger", get(harmonia_ledger_route))
         .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))
+        .route(
+            "/api/actions/add-games",
+            post(action_add_games_upload).layer(DefaultBodyLimit::max(MAX_SYNC_UPLOAD_TOTAL_BYTES)),
+        )
         .route(
             "/api/actions/controllers-rescan",
             post(action_controllers_rescan),

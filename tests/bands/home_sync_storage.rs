@@ -266,15 +266,7 @@
         }
     }
 
-    #[test]
-    fn sync_view_is_reasonable_samba_ip_and_queue_surface() {
-        let state = AppState {
-            started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
-            product: "HomeConsole".to_string(),
-        };
-        let status = console_status(&state);
-        let rendered = ui::layout(&status).into_string();
+    fn sync_slice(rendered: &str) -> &str {
         let sync_start = rendered
             .find("<section id=\"view-sync\"")
             .expect("sync view starts");
@@ -282,72 +274,101 @@
             + rendered[sync_start..]
                 .find("<section id=\"view-storage\"")
                 .expect("storage follows sync");
-        let sync_html = &rendered[sync_start..sync_end];
+        &rendered[sync_start..sync_end]
+    }
+
+    #[test]
+    fn sync_view_is_appliance_fsm_without_raw_share_or_path_residue() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let sync_html = sync_slice(&rendered);
 
         for required in [
             r#"data-action="sync-games""#,
-            "Sync now",
-            "sync-folder-source",
-            "Samba for Windows",
-            "Samba for Linux",
-            ">IP<",
-            r#"\\console.home.arpa\games"#,
-            "smb://console.home.arpa/games",
-            "Queued",
-            "Available ROMs",
-            "GameScope",
-            "/home/owner/Games",
-            "games/gba",
+            r#"data-endpoint="/api/actions/sync-games""#,
+            r#"data-sync-add-games="true""#,
+            r#"data-sync-upload="true""#,
+            r#"data-endpoint="/api/actions/add-games""#,
+            "Sync games",
+            "Add games",
+            "Drop games here or choose files from this computer.",
             "sync-running-panel",
-            "Queued",
+            "sync-result-card",
+            "sync-progress-text",
+            "sync-state",
+            "Receipt ready",
+            "Ledger",
         ] {
-            assert!(sync_html.contains(required), "missing {required}");
+            assert!(sync_html.contains(required), "missing appliance sync marker: {required}");
         }
         for forbidden in [
-            "home console",
-            "smb://homeconsole/games",
+            "sync-folder-source",
+            "Samba",
+            "Samba for Windows",
+            "Samba for Linux",
+            r#"\\console.home.arpa\games"#,
             r#"\\HOMECONSOLE\games"#,
-            "Sync ROMs to GameScope",
-            "Scan ROM folders",
-            "Open Games Folder",
+            "smb://console.home.arpa/games",
+            "smb://homeconsole/games",
+            "/home/owner/Games",
+            "games/gba",
+            "games/ps2",
+            "games/dos",
+            ">IP<",
             "Copy Windows path",
             "Copy Linux/macOS path",
             "Copy IP Windows path",
             "Copy IP SMB URL",
-            "Tools and troubleshooting",
-            "Configure Scrapers",
-            "Output</button>",
-            "Storage</button>",
-            "<details",
-            "Ready to scan",
+            "Open Games Folder",
+            "Scan ROM folders",
             "Scanning Samba ROM folders",
-            "Needs attention. Open Output",
-            "Scan complete. GameScope entries and artwork were updated from the ROM folders.",
+            "ROM folders",
+            "Output</button>",
+            "hidden sync output panel",
+            "sync-output-store",
+            "collapsible-log",
         ] {
             assert!(
                 !sync_html.contains(forbidden),
-                "rejected sync surface survived: {forbidden}"
+                "raw sync implementation residue survived: {forbidden}"
             );
         }
         assert_eq!(
             sync_html.matches("data-copy-value=").count(),
-            3,
-            "sync view exposes exactly three copy buttons"
+            0,
+            "sync view exposes no raw copy buttons"
         );
         assert!(sync_html.contains("data-storage-health=\"OK\""));
         assert!(VIEWPORT_CSS.contains("prefers-reduced-motion"));
         assert!(APP_CSS.contains("sync-scan-dot"));
+        assert!(APP_CSS.contains("sync-intake-panel"));
         assert!(!sync_html.contains("provider-keys-form"));
         assert!(!sync_html.contains("screenscraper_api_key"));
-        assert!(APP_JS.contains("Scanning"));
-        assert!(!APP_JS.contains("Scanning Samba ROM folders"));
-        assert!(!APP_JS.contains("Sync complete. Playable GameScope entries were updated from the ROM folders."));
-        assert!(!APP_JS.contains("Needs attention. Open Output"));
+        assert!(APP_JS.contains("uploadSyncGames"));
+        assert!(APP_JS.contains("uploadSyncFiles"));
+        assert!(APP_JS.contains("dragover"));
+        assert!(APP_JS.contains("dataTransfer"));
+        assert!(APP_CSS.contains("data-drag-active"));
+        for forbidden in [
+            "Scanning Samba ROM folders",
+            "Sync complete. Playable GameScope entries were updated from the ROM folders.",
+            "Needs attention. Open Output",
+            "Sync is reading the games folders now.",
+            "Receipt output is stored below",
+            "Open Games Folder",
+            "Copy IP SMB URL",
+        ] {
+            assert!(!APP_JS.contains(forbidden), "raw sync JS residue survived: {forbidden}");
+        }
     }
 
-
     #[test]
-    fn sync_no_history_never_claims_completed_or_synced() {
+    fn sync_fsm_renders_before_during_and_after_as_appliance_states() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -365,26 +386,118 @@
         status.library.unsynced_changed = 0;
         status.library.unsynced_removed = 0;
 
-        let rendered = ui::layout(&status).into_string();
-        let sync_start = rendered.find("<section id=\"view-sync\"").expect("sync view starts");
-        let sync_end = sync_start + rendered[sync_start..].find("<section id=\"view-storage\"").expect("storage follows sync");
-        let sync_html = &rendered[sync_start..sync_end];
+        let before_rendered = ui::layout(&status).into_string();
+        let before = sync_slice(&before_rendered);
+        assert!(before.contains("Needs first sync"));
+        assert!(before.contains("First sync waiting"));
+        assert!(before.contains("No sync receipt yet."));
+        assert!(before.contains("Add games"));
+        assert!(before.contains("Sync games"));
+        assert!(!before.contains("/home/owner/Games"));
+        assert!(!before.contains("Synced"));
+        assert!(!before.contains("Completed"));
 
-        assert!(rendered.contains("Games: 0 ROMs"));
-        assert!(rendered.contains("First sync waiting"));
-        assert!(rendered.contains("0 playable ROMs"));
-        assert!(sync_html.contains("Needs first sync"));
-        assert!(sync_html.contains("First sync waiting"));
-        assert!(sync_html.contains("No sync receipt yet."));
-        assert!(sync_html.contains("/home/owner/Games"));
-        assert!(!sync_html.contains("Completed"));
-        assert!(!sync_html.contains("Scan complete"));
-        assert!(!rendered.contains("Games: Synced"));
-        assert!(!rendered.contains(r#"data-chip-kind="games""#));
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "running".to_string();
+        status.library.sync_state = "running".to_string();
+        status.library.sync_needed = true;
+        status.library.unsynced_added = 2;
+        status.library.unsynced_changed = 1;
+        status.library.unsynced_removed = 0;
+        let during_rendered = ui::layout(&status).into_string();
+        let during = sync_slice(&during_rendered);
+        assert!(during.contains("Syncing"));
+        assert!(during.contains("Sync in progress"));
+        assert!(during.contains("Sync running"));
+        assert!(during.contains("sync-running-panel"));
+        assert!(during.contains("Importing games into the console library."));
+        assert!(during.contains("disabled"));
+        assert!(!during.contains("GameScope"));
+        assert!(!during.contains("games folders"));
+
+        status.library.last_sync_state = "success".to_string();
+        status.library.last_sync = "Receipt found".to_string();
+        status.library.sync_state = "idle".to_string();
+        status.library.sync_needed = false;
+        status.library.total_detected_games = 3;
+        status.library.total_synced_entries = 3;
+        status.library.unsynced_added = 0;
+        status.library.unsynced_changed = 0;
+        status.library.unsynced_removed = 0;
+        let after_rendered = ui::layout(&status).into_string();
+        let after = sync_slice(&after_rendered);
+        assert!(after.contains("Synced"));
+        assert!(after.contains("Last sync complete"));
+        assert!(after.contains("0 new · 0 failed"));
+        assert!(after.contains("Check again"));
+        assert!(after.contains("Receipt ready"));
+        assert!(after.contains("Ledger"));
+        assert!(!after.contains("Needs first sync"));
+        assert!(!after.contains("Sync failed"));
+        assert!(!after.contains("/home/owner/Games"));
     }
 
     #[test]
-    fn sync_completed_and_zero_rom_states_are_truthful_fixtures() {
+    fn sync_complaint_and_eject_states_are_appliance_actions_not_output_or_path_prompts() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "error".to_string();
+        status.library.last_sync = "Failed".to_string();
+        status.library.sync_state = "idle".to_string();
+        status.library.sync_needed = true;
+        status.library.unsynced_added = 1;
+
+        let complaint_rendered = ui::layout(&status).into_string();
+        let complaint = sync_slice(&complaint_rendered);
+        assert!(complaint.contains("Sync failed"));
+        assert!(complaint.contains("Needs attention"));
+        assert!(complaint.contains("Ledger"));
+        assert!(complaint.contains("kicked out"));
+        assert!(!complaint.contains("Open Output"));
+        assert!(!complaint.contains("hidden sync output panel"));
+        assert!(!complaint.contains("sync-output-store"));
+
+        status.library.last_sync_state = "success".to_string();
+        status.library.sync_needed = true;
+        status.library.unsynced_added = 0;
+        status.library.unsynced_changed = 0;
+        status.library.unsynced_removed = 2;
+        let eject_rendered = ui::layout(&status).into_string();
+        let eject = sync_slice(&eject_rendered);
+        assert!(eject.contains("Sync needed"));
+        assert!(eject.contains("Ejected"));
+        assert!(eject.contains("2 games were ejected and need attention"));
+        assert!(!eject.contains("/home/owner/Games"));
+        assert!(!eject.contains("Folder"));
+        assert!(!eject.contains("Path"));
+    }
+
+    #[test]
+    fn sync_upload_endpoint_accepts_games_and_rejects_unknowns() {
+        let source = include_str!("../../src/bands/console_system_actions.rs");
+        let main_source = include_str!("../../src/main.rs");
+        assert!(main_source.contains("/api/actions/add-games"));
+        assert!(main_source.contains("DefaultBodyLimit::max(MAX_SYNC_UPLOAD_TOTAL_BYTES)"));
+        assert!(source.contains("async fn action_add_games_upload"));
+        assert!(source.contains("arcadia.sync.upload.v1"));
+        assert!(source.contains("unsupported game file"));
+        assert!(source.contains("game_system_storage_path(system)"));
+        assert!(source.contains("classify_upload_system"));
+        assert!(source.contains("create_new(true)"));
+        assert!(source.contains("duplicate name"));
+        assert!(source.contains("No game files were selected"));
+        assert!(source.contains("MAX_SYNC_UPLOAD_FILES"));
+        assert!(source.contains("MAX_SYNC_UPLOAD_BYTES"));
+        assert!(!source.contains("\"target\":"));
+    }
+
+    #[test]
+    fn sync_completed_and_zero_states_are_truthful_fixtures() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -403,13 +516,14 @@
         status.library.artwork_status = "2 complete · 1 missing".to_string();
 
         let rendered = ui::layout(&status).into_string();
+        let sync_html = sync_slice(&rendered);
         assert!(rendered.contains("Games: 3 ROMs"));
-        assert!(rendered.contains("Synced"));
+        assert!(sync_html.contains("Synced"));
         assert!(rendered.contains("3 playable ROMs"));
-        assert!(rendered.contains("Last sync complete"));
-        assert!(rendered.contains("Available ROMs"));
-        assert!(rendered.contains("GameScope"));
-        assert!(rendered.contains("2 complete · 1 missing"));
+        assert!(sync_html.contains("Last sync complete"));
+        assert!(sync_html.contains("Detected"));
+        assert!(sync_html.contains("Admitted"));
+        assert!(sync_html.contains("2 complete · 1 missing"));
 
         status.library.total_detected_games = 0;
         status.library.total_synced_entries = 0;
@@ -417,14 +531,15 @@
         status.library.artwork_missing = 0;
         status.library.artwork_status = "No artwork".to_string();
         let zero = ui::layout(&status).into_string();
+        let zero_sync = sync_slice(&zero);
         assert!(zero.contains("Games: 0 ROMs"));
-        assert!(zero.contains("Synced"));
+        assert!(zero_sync.contains("Synced"));
         assert!(zero.contains("0 playable ROMs"));
-        assert!(zero.contains("Last sync complete"));
-        assert!(zero.contains("0 queued changes under /home/owner/Games."));
-        assert!(zero.contains("Available ROMs"));
-        assert!(!zero.contains("No ROMs"));
-        assert!(!zero.contains("No scan has run yet"));
+        assert!(zero_sync.contains("Last sync complete"));
+        assert!(zero_sync.contains("0 new · 0 failed"));
+        assert!(!zero_sync.contains("/home/owner/Games"));
+        assert!(!zero_sync.contains("No ROMs"));
+        assert!(!zero_sync.contains("No scan has run yet"));
     }
 
     #[test]

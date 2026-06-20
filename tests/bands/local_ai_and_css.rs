@@ -46,7 +46,6 @@
             assert!(rendered.contains(view), "missing {view}");
         }
         for indicator in [
-            "GameScope",
             "Storage",
             "Sync",
             "Local AI",
@@ -97,7 +96,6 @@
         }
         assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
-        assert!(rendered.contains("\\\\console.home.arpa\\games"));
         assert!(rendered.contains("Secure Web Access"));
 
         assert!(

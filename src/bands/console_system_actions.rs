@@ -393,9 +393,224 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
             "--receipt-dir",
             "/var/lib/harmonia/receipts/game-sync-latest",
         ],
-        "Sync games completed.",
-        "Sync games failed. Read /var/lib/harmonia/receipts/game-sync-latest.",
+        "Games synced. Receipt ready.",
+        "Sync failed. Open the ledger for the reason and fix action.",
     )
+}
+
+const MAX_SYNC_UPLOAD_FILES: u64 = 32;
+const MAX_SYNC_UPLOAD_BYTES: usize = 256 * 1024 * 1024;
+const MAX_SYNC_UPLOAD_TOTAL_BYTES: usize = 512 * 1024 * 1024;
+
+async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let mut accepted = 0u64;
+    let mut rejected = 0u64;
+    let mut seen = Vec::new();
+    let mut total_bytes = 0usize;
+    let mut staged = Vec::new();
+    let mut complaints = Vec::new();
+
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(_) => {
+                rejected += 1;
+                complaints.push("The upload could not be read.".to_string());
+                break;
+            }
+        };
+        if accepted + rejected >= MAX_SYNC_UPLOAD_FILES {
+            rejected += 1;
+            complaints.push("Too many files were added at once.".to_string());
+            continue;
+        }
+        let Some(file_name) = field.file_name().map(|name| name.to_string()) else {
+            rejected += 1;
+            complaints.push("A file was rejected because it had no name.".to_string());
+            continue;
+        };
+        let safe_name = safe_upload_name(&file_name);
+        if seen.iter().any(|existing| existing == &safe_name) {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: duplicate name.", public_file_name(&safe_name)));
+            continue;
+        }
+        seen.push(safe_name.clone());
+        let Some(system) = classify_upload_system(&safe_name) else {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: unsupported game file.", public_file_name(&safe_name)));
+            continue;
+        };
+        let Ok(bytes) = field.bytes().await else {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: the machine could not read it.", public_file_name(&safe_name)));
+            continue;
+        };
+        if bytes.is_empty() {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: empty file.", public_file_name(&safe_name)));
+            continue;
+        }
+        if bytes.len() > MAX_SYNC_UPLOAD_BYTES {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: file is too large for this intake lane.", public_file_name(&safe_name)));
+            continue;
+        }
+        total_bytes = total_bytes.saturating_add(bytes.len());
+        if total_bytes > MAX_SYNC_UPLOAD_TOTAL_BYTES {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: this upload batch is too large.", public_file_name(&safe_name)));
+            continue;
+        }
+        let target_dir = match sync_upload_target_dir(system) {
+            Ok(path) => path,
+            Err(err) => {
+                rejected += 1;
+                complaints.push(format!("{} was rejected: {err}.", public_file_name(&safe_name)));
+                continue;
+            }
+        };
+        if let Err(err) = fs::create_dir_all(&target_dir) {
+            rejected += 1;
+            complaints.push(format!("{} was rejected: storage is not ready ({err}).", public_file_name(&safe_name)));
+            continue;
+        }
+        let target = target_dir.join(&safe_name);
+        match OpenOptions::new().write(true).create_new(true).open(&target) {
+            Ok(mut file) => match file.write_all(&bytes) {
+                Ok(()) => {
+                    accepted += 1;
+                    staged.push(serde_json::json!({
+                        "display_name": public_file_name(&safe_name),
+                        "system": platform_display_name(system),
+                        "state": "placed"
+                    }));
+                }
+                Err(err) => {
+                    let _ = fs::remove_file(&target);
+                    rejected += 1;
+                    complaints.push(format!("{} was rejected: storage would not accept it ({err}).", public_file_name(&safe_name)));
+                }
+            },
+            Err(err) => {
+                rejected += 1;
+                complaints.push(format!("{} was rejected: a game with that name already exists or storage refused it ({err}).", public_file_name(&safe_name)));
+            }
+        }
+    }
+
+    if accepted == 0 && rejected == 0 {
+        rejected = 1;
+        complaints.push("No game files were selected.".to_string());
+    }
+
+    let ok = accepted > 0 && rejected == 0;
+    let partial = accepted > 0 && rejected > 0;
+    let receipt = serde_json::json!({
+        "family": "arcadia.sync.upload.v1",
+        "ok": ok || partial,
+        "accepted": accepted,
+        "rejected": rejected,
+        "staged": staged,
+        "complaints": complaints,
+    });
+    let _ = fs::create_dir_all("/var/lib/arcadia/sync-upload-latest");
+    let _ = fs::write(
+        "/var/lib/arcadia/sync-upload-latest/run.json",
+        serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".to_string()),
+    );
+
+    let status = if accepted > 0 { StatusCode::OK } else { StatusCode::BAD_REQUEST };
+    let message = if partial {
+        format!("{} accepted · {} rejected. Open the ledger for the reason and fix action.", accepted, rejected)
+    } else if accepted > 0 {
+        format!("{} game{} staged. Press Sync games.", accepted, if accepted == 1 { "" } else { "s" })
+    } else {
+        "Those files were rejected. Open the ledger for the reason and fix action.".to_string()
+    };
+
+    (
+        status,
+        Json(ConsoleActionResponse {
+            ok: accepted > 0,
+            action: "add-games",
+            command: "arcadia-sync-intake",
+            exit_code: Some(if accepted > 0 { 0 } else { 1 }),
+            message,
+            stdout: format!("accepted={accepted} rejected={rejected}"),
+            stderr: complaints.join("\n"),
+        }),
+    )
+}
+
+fn sync_upload_target_dir(system: &str) -> Result<PathBuf, String> {
+    let target_dir = game_system_storage_path(system);
+    fs::create_dir_all(&target_dir).map_err(|_| "storage is not ready".to_string())?;
+    let games_root = Path::new(GAMES_ROOT)
+        .canonicalize()
+        .map_err(|_| "game storage is not ready".to_string())?;
+    let canonical_target = target_dir
+        .canonicalize()
+        .map_err(|_| "game storage is not ready".to_string())?;
+    if !canonical_target.starts_with(&games_root) {
+        return Err("storage is not safe for intake".to_string());
+    }
+    Ok(canonical_target)
+}
+
+fn classify_upload_system(file_name: &str) -> Option<&'static str> {
+    let lower = file_name.to_ascii_lowercase();
+    let ext = Path::new(&lower).extension()?.to_str()?;
+    match ext {
+        "gba" => Some("gba"),
+        "gb" | "gbc" => Some("gba"),
+        "sfc" | "smc" => Some("snes"),
+        "nes" => Some("nes"),
+        "md" | "gen" | "sms" => Some("genesis"),
+        "z64" | "n64" | "v64" => Some("n64"),
+        "iso" | "chd" | "cue" | "bin" => Some("ps1"),
+        "cso" => Some("psp"),
+        "dol" | "gcm" => Some("gamecube"),
+        "wad" | "wbfs" => Some("wii"),
+        "zip" | "7z" => Some("dos"),
+        _ => None,
+    }
+}
+
+fn safe_upload_name(name: &str) -> String {
+    let raw = Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("game.bin");
+    let cleaned: String = raw
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | ' ') { ch } else { '-' })
+        .collect();
+    let trimmed = cleaned.trim_matches([' ', '.', '-']).trim();
+    let value = if trimmed.is_empty() { "game.bin" } else { trimmed };
+    cap_upload_name(value, 128)
+}
+
+fn cap_upload_name(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let path = Path::new(value);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("game");
+    let ext_len = if ext.is_empty() { 0 } else { ext.chars().count() + 1 };
+    let keep = max_chars.saturating_sub(ext_len).max(1);
+    let mut capped: String = stem.chars().take(keep).collect();
+    if !ext.is_empty() {
+        capped.push('.');
+        capped.push_str(ext);
+    }
+    capped
+}
+
+fn public_file_name(name: &str) -> String {
+    safe_upload_name(name)
 }
 
 async fn action_clear_artwork_cache(

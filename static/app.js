@@ -315,7 +315,7 @@ function bindConsoleActions() {
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
-        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync could not complete. Open Output for the receipt and fix the reported issue.' }, syncProgress);
+        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync failed. Open the ledger for the reason and fix action.' }, syncProgress);
       } finally {
         button.disabled = false;
         button.textContent = original;
@@ -605,6 +605,17 @@ function bindStorageModals() {
     const endpoints = { 'clear-artwork-cache': '/api/storage/cleanup/artwork', 'clean-temporary-files': '/api/storage/cleanup/temporary', 'clear-old-updates': '/api/storage/cleanup/old-updates', 'prune-logs': '/api/storage/cleanup/logs', 'clear-partial-ai-downloads': '/api/storage/cleanup/partial-ai-downloads' };
     runStorageCleanup(button.dataset.storageCleanup, endpoints[button.dataset.storageCleanup]);
   }));
+  document.querySelectorAll('[data-sync-add-games]').forEach((button) => button.addEventListener('click', () => document.getElementById('sync-upload-input')?.click()));
+  document.querySelectorAll('[data-sync-upload]').forEach((input) => input.addEventListener('change', () => uploadSyncGames(input)));
+  document.querySelectorAll('[data-sync-add-games-panel]').forEach((panel) => {
+    panel.addEventListener('dragover', (event) => { event.preventDefault(); panel.dataset.dragActive = 'true'; });
+    panel.addEventListener('dragleave', () => { panel.dataset.dragActive = 'false'; });
+    panel.addEventListener('drop', (event) => {
+      event.preventDefault();
+      panel.dataset.dragActive = 'false';
+      uploadSyncFiles(Array.from(event.dataTransfer?.files || []), panel.dataset.endpoint || '/api/actions/add-games');
+    });
+  });
 }
 
 function validCopyValue(value) {
@@ -676,11 +687,9 @@ function startSyncProgress() {
   setSyncState('Scanning', 'scanning');
   const panel = document.getElementById('sync-running-panel');
   const progress = document.getElementById('sync-progress-text');
-  const log = document.getElementById('sync-output');
   if (panel) panel.hidden = false;
-  if (progress) progress.textContent = 'Syncing…';
-  if (log) log.textContent = 'Syncing…';
-  setSyncReadback('running', 'Sync is reading the games folders now.');
+  if (progress) progress.textContent = 'Preparing game import…';
+  setSyncReadback('running', 'The machine is importing games now.');
   return { stop() { if (panel) panel.hidden = true; } };
 }
 
@@ -688,22 +697,50 @@ function finishSyncProgress(ok, data = {}, progressHandle = null) {
   if (progressHandle && typeof progressHandle.stop === 'function') progressHandle.stop();
   const button = document.querySelector('[data-action="sync-games"]');
   const progress = document.getElementById('sync-progress-text');
-  const log = document.getElementById('sync-output');
   if (ok) {
     setSyncState('Synced', 'synced');
     if (button) button.textContent = 'Synced';
-    const message = data.message || 'Sync complete. GameScope entries were updated.';
+    const message = data.message || 'Games synced. Receipt ready.';
     if (progress) progress.textContent = message;
-    setSyncReadback('success', 'Sync complete. Queue readback now reflects the completed run.');
-    if (log) log.textContent = formatActionResult(data);
+    setSyncReadback('success', 'Games synced. Receipt ready.');
     markOnboardingFirstSyncComplete(data);
   } else {
     setSyncState('Sync failed', 'sync-failed');
     if (button) button.textContent = 'Sync failed';
-    const message = data.message || 'Sync could not complete. Receipt output is stored below.';
+    const message = data.message || 'Sync failed. Open the ledger for the reason and fix action.';
     if (progress) progress.textContent = message;
-    setSyncReadback('error', 'Sync failed. Receipt output is stored below.');
-    if (log) log.textContent = formatActionResult(data);
+    setSyncReadback('error', 'Sync failed. Open the ledger for the reason and fix action.');
+  }
+}
+
+async function uploadSyncGames(input) {
+  const files = Array.from(input.files || []);
+  await uploadSyncFiles(files, input.dataset.endpoint || '/api/actions/add-games');
+  input.value = '';
+}
+
+async function uploadSyncFiles(files, endpoint = '/api/actions/add-games') {
+  if (!files.length) return;
+  const form = new FormData();
+  files.forEach((file) => form.append('games', file, file.name));
+  setSyncReadback('running', 'Checking added games…');
+  PopupManager.showToast(`${files.length} game file${files.length === 1 ? '' : 's'} entering the machine.`, 'info');
+  try {
+    const response = await fetch(endpoint, { method: 'POST', body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.ok === false) {
+      const message = data.message || 'Some games were rejected. Open the ledger for the reason and fix action.';
+      setSyncReadback('error', message);
+      PopupManager.showToast(message, 'error');
+      return;
+    }
+    const message = data.message || 'Games staged. Press Sync games.';
+    setSyncReadback('success', message);
+    PopupManager.showToast(message, 'success');
+  } catch (_) {
+    const message = 'The machine could not accept those games.';
+    setSyncReadback('error', message);
+    PopupManager.showToast(message, 'error');
   }
 }
 
