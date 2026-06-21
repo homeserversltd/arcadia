@@ -1188,14 +1188,14 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                 }
 
                 div class="storage-category-list storage-category-list--dashboard" aria-label="Storage consumption breakdown" {
-                    (storage_category_row("🎮", "Games", &status.storage.games, "games"))
-                    (storage_category_row("🖼", "Artwork", &status.storage.artwork, "artwork"))
+                    (storage_category_row("🎮", "Games", &status.storage.games, "games", "games"))
+                    (storage_category_row("🖼", "Artwork", &status.storage.artwork, "artwork", "artwork-detail"))
                     (storage_ai_category_row(&status.storage.ai_models))
-                    (storage_category_row("⬇", "Updates", &status.storage.categories.updates, "updates"))
-                    (storage_category_row("≋", "Logs", &status.storage.categories.logs, "logs"))
-                    (storage_category_row("⌁", "Temporary Files", &status.storage.categories.temporary, "temporary"))
-                    (storage_category_row("▣", "System", &status.storage.categories.system, "system"))
-                    (storage_category_row("◇", "Other", &status.storage.other, "other"))
+                    (storage_category_row("⬇", "Updates", &status.storage.categories.updates, "updates", "updates-detail"))
+                    (storage_category_row("≋", "Logs", &status.storage.categories.logs, "logs", "logs-detail"))
+                    (storage_category_row("⌁", "Temporary Files", &status.storage.categories.temporary, "temporary", "cleanup-review"))
+                    (storage_category_row("▣", "System", &status.storage.categories.system, "system", "system-detail"))
+                    (storage_category_row("◇", "Other", &status.storage.other, "other", "category-other"))
                     (storage_free_row(status))
                 }
             }
@@ -1216,19 +1216,8 @@ fn storage_mismatch_copy(
     classified_bytes: u64,
     accounted_bytes: u64,
 ) -> String {
-    let first_warning = status
-        .storage
-        .diagnostics
-        .warnings
-        .first()
-        .or_else(|| status.storage.diagnostics.overlap_warnings.first())
-        .or_else(|| status.storage.diagnostics.category_scan_errors.first())
-        .or_else(|| status.storage.diagnostics.missing_dirs.first())
-        .map(String::as_str)
-        .unwrap_or("Managed storage scan reported a mismatch.");
     format!(
-        "{} Filesystem used {}. Managed categories classify {}; accounting total is {}. Rescan, then review mismatch if it remains.",
-        first_warning,
+        "Storage map conflict. Managed storage categories overlap or could not be fully scanned. Filesystem used {}. Managed categories classify {}; accounting total is {}. Rescan, then review mismatch if it remains.",
         status.storage.used,
         human_or_zero(classified_bytes),
         human_or_zero(accounted_bytes)
@@ -1248,9 +1237,10 @@ fn storage_category_row(
     label: &str,
     category: &StorageCategoryStatus,
     color: &str,
+    modal: &str,
 ) -> Markup {
     html! {
-        article class="storage-category-row storage-category-row--inline" data-storage-category=(color) {
+        button class="storage-category-row storage-category-row--inline storage-category-row--action" type="button" data-storage-category=(color) data-storage-modal=(modal) aria-label=(format!("Open {} storage details", label)) {
             span class="storage-category-icon" { (icon) }
             div class="storage-category-main" {
                 strong { (label) }
@@ -1260,22 +1250,24 @@ fn storage_category_row(
             em { (percent_label(category.percent_of_total, category.bytes)) }
             div class="storage-category-mini" aria-hidden="true" { span class=(format!("storage-segment--{}", color)) style=(format!("width: {}%", category.percent_of_total.max(if category.bytes == 0 { 0 } else { 1 }))) {} }
             span class=(format!("system-status system-status--{}", state_class(&category.state))) { (title_case_state_like(&category.state)) }
+            span class="storage-category-chevron" aria-hidden="true" { "›" }
         }
     }
 }
 
 fn storage_ai_category_row(category: &AiModelStorageStatus) -> Markup {
     html! {
-        article class="storage-category-row storage-category-row--inline" data-storage-category="ai" {
+        button class="storage-category-row storage-category-row--inline storage-category-row--action" type="button" data-storage-category="ai" data-storage-modal="ai-models-detail" aria-label="Open Local AI storage details" {
             span class="storage-category-icon" { "◉" }
             div class="storage-category-main" {
-                strong { "AI Models" }
+                strong { "Local AI" }
                 small { (category.detail) }
             }
             b { (category.size) }
             em { (percent_label(category.percent_of_total, category.bytes)) }
             div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--ai" style=(format!("width: {}%", category.percent_of_total.max(if category.bytes == 0 { 0 } else { 1 }))) {} }
             span class="system-status system-status--available" { (category.meta) }
+            span class="storage-category-chevron" aria-hidden="true" { "›" }
         }
     }
 }

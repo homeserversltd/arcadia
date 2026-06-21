@@ -930,8 +930,12 @@ body.pin-open .app-shell, body[data-gui-pin-required="false"] .app-shell { opaci
 .storage-category-card p { color: var(--muted); line-height: 1.45; }
 .storage-category-list { display: grid; gap: 7px; }
 .storage-category-list--dashboard { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.storage-category-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 9px 10px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); }
-.storage-category-row--inline { grid-template-areas: "icon main size percent" "icon main mini state"; }
+.storage-category-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); color: inherit; text-align: left; }
+.storage-category-row--inline { grid-template-areas: "icon main size percent affordance" "icon main mini state affordance"; }
+.storage-category-row--action { cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.storage-category-row--action:hover, .storage-category-row--action:focus-visible { border-color: color-mix(in srgb, var(--orange) 62%, var(--line)); background: color-mix(in srgb, var(--theme-button-surface) 88%, transparent); transform: translateY(-1px); outline: none; }
+.storage-category-row--action:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--orange) 40%, transparent); }
+.storage-category-chevron { grid-area: affordance; align-self: center; justify-self: end; color: var(--orange); font-size: 19px; font-weight: 900; line-height: 1; }
 .storage-category-icon { grid-area: icon; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; background: var(--theme-button-surface); }
 .storage-category-main { grid-area: main; display: grid; gap: 2px; min-width: 0; }
 .storage-category-main strong { font-size: 14px; }
@@ -1105,6 +1109,8 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .storage-category-list { gap: 4px; }
 .storage-category-list--dashboard { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .storage-category-row { gap: 4px; padding: 4px 5px; border-radius: 12px; }
+.storage-category-row--action:hover, .storage-category-row--action:focus-visible { transform: none; }
+.storage-category-chevron { font-size: 13px; }
 .storage-category-icon { width: 18px; height: 18px; font-size: 10px; }
 .storage-category-main strong, .storage-category-row b { font-size: 11px; }
 .storage-category-main small { font-size: 9px; line-height: 1.05; }

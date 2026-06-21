@@ -1006,7 +1006,7 @@
             "storage-accounting-grid",
             "storage-category-list",
             "Games",
-            "AI Models",
+            "Local AI",
             "Temporary Files",
             "System",
             "Rescan",
@@ -1015,6 +1015,16 @@
             "Category scan",
             "Other / unclassified",
             "data-storage-modal=\"locations\"",
+            "storage-category-row--action",
+            "storage-category-chevron",
+            "data-storage-modal=\"games\"",
+            "data-storage-modal=\"artwork-detail\"",
+            "data-storage-modal=\"ai-models-detail\"",
+            "data-storage-modal=\"updates-detail\"",
+            "data-storage-modal=\"logs-detail\"",
+            "data-storage-modal=\"cleanup-review\"",
+            "data-storage-modal=\"system-detail\"",
+            "data-storage-modal=\"category-other\"",
         ] {
             assert!(storage_html.contains(required), "missing {required}");
         }
@@ -1028,6 +1038,8 @@
             "Details / Diagnostics",
             "storage-table--games",
             "cleanup-grid",
+            "data-storage-modal=\"category-free\"",
+            "/home/owner",
         ] {
             assert!(
                 !storage_html.contains(forbidden),
