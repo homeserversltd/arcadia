@@ -94,13 +94,20 @@
             r#"aria-label="Updates""#,
             r#"aria-label="System Health""#,
             r#"aria-label="Appliance""#,
+            ">Storage</h3>",
+            ">Load</h3>",
+            ">Games</h3>",
+            ">Network</h3>",
+            ">Updates</h3>",
+            ">Local AI</h3>",
+            ">Health</h3>",
+            ">Appliance</h3>",
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
 
         assert!(!home_html.contains("<h1"));
         assert!(!home_html.contains("<h2"));
-        assert!(!home_html.contains("<h3"));
         assert!(!home_html.contains("<p"));
 
         for forbidden in [

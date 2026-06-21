@@ -26,7 +26,9 @@
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
-        assert!(!home_html.contains("<h3"));
+        for label in [">Storage</h3>", ">Games</h3>", ">Network</h3>", ">Local AI</h3>"] {
+            assert!(home_html.contains(label), "missing home panel chrome {label}");
+        }
         assert!(!home_html.contains("<p"));
         for forbidden in [
             "Console Home",
