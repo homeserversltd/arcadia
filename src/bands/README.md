@@ -15,7 +15,7 @@ Implementation rules:
 - Keep `/api/root` as canonical snapshot authority.
 - Register `/api/root/events` beside `/api/root` in `src/main.rs`.
 - Register `/api/root/events/renew` as the client last-contact renewal route.
-- Emit `snapshot`, `lease`, `root`, `heartbeat`, and `expired` events.
+- Emit `snapshot`, `lease`, one-per-second `root`, `heartbeat`, and `expired` events.
 - Keep `HOME_TELEMETRY_LEASES` as the server-side lease map until a broader hub is needed.
 - Reuse `api_root_object(&state)` for streamed state; do not duplicate `/proc`, load, disk, or telemetry readers in a second path.
 - Static browser code in `static/app.js` opens the stream only while Home is active and visible, renews the lease before expiry, and closes it on off-Home/hidden transitions.
