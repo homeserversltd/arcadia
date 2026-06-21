@@ -24,7 +24,7 @@ Home active + visible
   -> open EventSource('/api/root/events')
   -> receive snapshot and lease
   -> renew lease with POST /api/root/events/renew before expiresAtUnix
-  -> receive root telemetry events every cadence
+  -> receive root telemetry events every second from the server while the lease is active
   -> receive heartbeat events for liveness/readback
 leave Home or hide document
   -> close EventSource immediately
@@ -56,7 +56,7 @@ Current event families:
 ```text
 event: snapshot   # first full ApiRootObject
 event: lease      # server membership handle with lastContactUnix, renewAfterSeconds, expiresAtUnix
-event: root       # periodic full ApiRootObject update
+event: root       # one-per-second full ApiRootObject update while Home clients are subscribed
 event: heartbeat  # server-side lease/liveness readback
 event: expired    # server expired the stream because renewal/contact stopped
 ```

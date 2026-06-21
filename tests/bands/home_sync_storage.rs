@@ -864,6 +864,7 @@
         assert!(source.contains("Event::default().event(\"lease\")"));
         assert!(source.contains("Event::default().event(\"heartbeat\")"));
         assert!(source.contains("Event::default().event(\"expired\")"));
+        assert!(source.contains("const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 1;"));
         assert!(source.contains("tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS))"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
