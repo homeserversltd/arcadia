@@ -18,7 +18,6 @@ fn controller_status() -> ControllerStatus {
         devices,
         profile,
         profile_presets: controller_profile_presets(),
-        bind_steps: controller_bind_steps(),
         live_input,
         emulators: emulator_controller_statuses(),
     }
@@ -97,13 +96,6 @@ fn controller_profile_presets() -> Vec<ControllerProfilePresetStatus> {
     [("Default", "Xbox / SDL order", "active"), ("Nintendo", "A/B swapped", "available"), ("PlayStation", "Cross/Circle labels", "available"), ("Arcade", "D-pad priority", "available")]
         .into_iter()
         .map(|(name, layout, state)| ControllerProfilePresetStatus { name: name.to_string(), layout: layout.to_string(), state: state.to_string() })
-        .collect()
-}
-
-fn controller_bind_steps() -> Vec<ControllerBindStepStatus> {
-    ["A", "B", "X", "Y", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "L1", "R1", "L2", "R2", "Start", "Select", "Left Stick", "Right Stick"]
-        .into_iter()
-        .map(|control| ControllerBindStepStatus { control: control.to_string(), prompt: format!("Press {}", control), state: "waiting".to_string() })
         .collect()
 }
 
@@ -237,11 +229,16 @@ fn default_controller_bindings() -> Vec<ControllerBindingStatus> {
         ("Y", "button 3"),
         ("L1", "button 4"),
         ("R1", "button 5"),
+        ("L2", "axis 2"),
+        ("R2", "axis 5"),
         ("Select", "button 6"),
         ("Start", "button 7"),
-        ("Left stick X", "axis 0"),
-        ("Left stick Y", "axis 1"),
-        ("D-pad", "hat 0"),
+        ("D-pad Up", "hat 0 up"),
+        ("D-pad Down", "hat 0 down"),
+        ("D-pad Left", "hat 0 left"),
+        ("D-pad Right", "hat 0 right"),
+        ("Left Stick", "axis 0"),
+        ("Right Stick", "axis 2"),
     ]
     .into_iter()
     .map(|(control, binding)| ControllerBindingStatus { control: control.to_string(), binding: binding.to_string(), pressed: false })
@@ -260,39 +257,71 @@ fn saved_or_default_controller_bindings() -> Vec<ControllerBindingStatus> {
     let path = controller_profile_path();
     let Ok(text) = fs::read_to_string(&path) else { return default_controller_bindings(); };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { return default_controller_bindings(); };
-    let Some(items) = value.get("bindings").and_then(|v| v.as_array()) else { return default_controller_bindings(); };
+    let items = value
+        .get("tuples")
+        .and_then(|v| v.as_array())
+        .or_else(|| value.get("bindings").and_then(|v| v.as_array()));
+    let Some(items) = items else { return default_controller_bindings(); };
     let mut bindings = default_controller_bindings();
     for item in items {
         let Some(control) = item.get("control").and_then(|v| v.as_str()) else { continue; };
-        let Some(binding) = item.get("binding").and_then(|v| v.as_str()) else { continue; };
-        upsert_binding(&mut bindings, control, binding);
+        let input = item
+            .get("input")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("binding").and_then(|v| v.as_str()));
+        let Some(input) = input else { continue; };
+        upsert_binding(&mut bindings, control, input);
     }
     bindings
 }
 
-fn upsert_binding(bindings: &mut Vec<ControllerBindingStatus>, control: &str, binding: &str) {
-    if let Some(existing) = bindings.iter_mut().find(|b| b.control == control) {
-        existing.binding = binding.to_string();
+fn upsert_binding(bindings: &mut Vec<ControllerBindingStatus>, control: &str, input: &str) {
+    let canonical = canonical_control_name(control);
+    if let Some(existing) = bindings.iter_mut().find(|b| canonical_control_name(&b.control) == canonical) {
+        existing.control = canonical;
+        existing.binding = input.to_string();
         existing.pressed = false;
     } else {
-        bindings.push(ControllerBindingStatus { control: control.to_string(), binding: binding.to_string(), pressed: false });
+        bindings.push(ControllerBindingStatus { control: canonical, binding: input.to_string(), pressed: false });
+    }
+}
+
+fn canonical_control_name(control: &str) -> String {
+    match control.trim().to_ascii_lowercase().as_str() {
+        "left stick" | "left stick x" | "leftstick" => "Left Stick".to_string(),
+        "right stick" | "right stick x" | "rightstick" => "Right Stick".to_string(),
+        "d-pad up" | "dpad up" | "up" => "D-pad Up".to_string(),
+        "d-pad down" | "dpad down" | "down" => "D-pad Down".to_string(),
+        "d-pad left" | "dpad left" | "left" => "D-pad Left".to_string(),
+        "d-pad right" | "dpad right" | "right" => "D-pad Right".to_string(),
+        other => other.split_whitespace().map(|part| {
+            if part.eq_ignore_ascii_case("d-pad") { "D-pad".to_string() }
+            else if part.len() <= 2 { part.to_ascii_uppercase() }
+            else { let mut chars = part.chars(); match chars.next() { Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(), None => String::new() } }
+        }).collect::<Vec<_>>().join(" "),
     }
 }
 
 fn binding_for_control(control: &str) -> String {
-    match control {
-        "Left stick" => "axis 0".to_string(),
-        "Right stick" => "axis 2".to_string(),
-        "D-pad Up" => "hat 0 up".to_string(),
-        "D-pad Down" => "hat 0 down".to_string(),
-        "D-pad Left" => "hat 0 left".to_string(),
-        "D-pad Right" => "hat 0 right".to_string(),
-        _ => default_controller_bindings()
-            .into_iter()
-            .find(|b| b.control == control || (control.starts_with("D-pad") && b.control == "D-pad"))
-            .map(|b| b.binding)
-            .unwrap_or_else(|| format!("virtual:{}", safe_file_stem(control))),
+    let canonical = canonical_control_name(control);
+    default_controller_bindings()
+        .into_iter()
+        .find(|b| b.control == canonical)
+        .map(|b| b.binding)
+        .unwrap_or_else(|| format!("virtual:{}", safe_file_stem(&canonical)))
+}
+
+fn capture_or_default_binding(status: &ControllerStatus, control: &str, explicit: Option<String>) -> String {
+    if let Some(input) = explicit.filter(|value| !value.trim().is_empty()) {
+        return input;
     }
+    status
+        .live_input
+        .pressed
+        .first()
+        .or_else(|| status.live_input.axes.first())
+        .map(|event| event.binding.clone())
+        .unwrap_or_else(|| binding_for_control(control))
 }
 
 fn write_controller_profile(path: &Path, device_name: &str, handler: &str, bindings: &[ControllerBindingStatus]) -> std::io::Result<()> {
@@ -302,12 +331,12 @@ fn write_controller_profile(path: &Path, device_name: &str, handler: &str, bindi
 }
 
 fn controller_profile_json(device_name: &str, handler: &str, bindings: &[ControllerBindingStatus]) -> String {
-    let bindings_json = bindings
+    let tuples_json = bindings
         .iter()
-        .map(|b| format!("    {{\"control\":\"{}\",\"binding\":\"{}\"}}", json_escape(&b.control), json_escape(&b.binding)))
+        .map(|b| format!("    {{\"control\":\"{}\",\"input\":\"{}\"}}", json_escape(&canonical_control_name(&b.control)), json_escape(&b.binding)))
         .collect::<Vec<_>>()
         .join(",\n");
-    format!("{{\n  \"schema\": \"arcadia.controller_profile.v1\",\n  \"name\": \"Default\",\n  \"device\": \"{}\",\n  \"handler\": \"{}\",\n  \"bindings\": [\n{}\n  ]\n}}\n", json_escape(device_name), json_escape(handler), bindings_json)
+    format!("{{\n  \"schema\": \"arcadia.controller_profile.v1\",\n  \"name\": \"Default\",\n  \"device\": \"{}\",\n  \"handler\": \"{}\",\n  \"tuples\": [\n{}\n  ]\n}}\n", json_escape(device_name), json_escape(handler), tuples_json)
 }
 
 fn controller_profile_root() -> PathBuf {
@@ -534,7 +563,7 @@ async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> 
     }
     let status = controller_status();
     let (device_name, handler) = virtual_controller_device(&status);
-    let binding = payload.binding.unwrap_or_else(|| binding_for_control(control));
+    let binding = capture_or_default_binding(&status, control, payload.binding);
     let mut bindings = saved_or_default_controller_bindings();
     upsert_binding(&mut bindings, control, &binding);
     let path = controller_profile_path();

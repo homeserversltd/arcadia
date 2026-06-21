@@ -225,7 +225,6 @@
             "Controller manager",
             "Controller",
             "Profiles",
-            "Bind",
             "RetroArch",
             "Dolphin",
             "DuckStation",
@@ -249,7 +248,6 @@
             "ux-gamepad-face-diamond",
             "ux-gamepad-shoulder",
             "controller-profile-card",
-            "controller-bind-flow",
             "Live input",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
@@ -259,6 +257,11 @@
             "Developer",
             "Debug",
             "Arcadia scaffold",
+            "controller-bind-flow",
+            "controllers-panel--binding",
+            "data-bind-step",
+            "Guided bind flow",
+            ">Bind<",
         ] {
             assert!(!controllers_html.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
@@ -297,7 +300,9 @@
             .expect("profile writes");
         let profile_text = std::fs::read_to_string(&profile).expect("profile text");
         assert!(profile_text.contains("arcadia.controller_profile.v1"));
-        assert!(profile_text.contains("button 9"));
+        assert!(profile_text.contains("\"tuples\""));
+        assert!(profile_text.contains("\"input\":\"button 9\""));
+        assert!(!profile_text.contains("\"bindings\""));
 
         for emulator in ["RetroArch", "Dolphin", "DuckStation", "PCSX2", "PPSSPP"] {
             let path = write_emulator_profile(emulator, "Virtual Arcadia Gamepad", "virtual0", &bindings, false, &root)

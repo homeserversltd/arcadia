@@ -93,13 +93,11 @@
 .ux-controller-stick.is-active, .ux-controller-dpad.is-active, .ux-controller-button.is-active { border-color: var(--good); color: var(--good); box-shadow: 0 0 18px color-mix(in srgb, var(--good) 45%, transparent); }
 .ux-controller-shoulders { position: absolute; left: 20%; right: 20%; top: -11px; display: flex; justify-content: space-between; pointer-events: none; }
 .ux-controller-shoulders span { min-width: 54px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 14px 14px 6px 6px; background: var(--theme-bg-raised); color: var(--muted); text-align: center; font-size: var(--ux-text-xs); font-weight: 900; }
-.controller-profile-cards, .controller-bind-flow { display: grid; gap: 6px; }
+.controller-profile-cards { display: grid; gap: 6px; }
 .controller-profile-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.controller-profile-card, .controller-bind-step, .controller-recovery-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent); padding: 5px 7px; }
-.controller-profile-card strong, .controller-bind-step strong, .controller-recovery-card strong { display: block; color: var(--cream); font-size: var(--ux-text-xs); }
-.controller-profile-card span, .controller-profile-card em, .controller-bind-step span, .controller-recovery-card span, .controller-recovery-card em { display: block; color: var(--muted); font-size: var(--ux-text-xs); font-style: normal; }
-.controller-bind-flow { grid-template-columns: repeat(8, minmax(0, 1fr)); }
-.controller-bind-step.is-active { border-color: var(--good); }
+.controller-profile-card, .controller-recovery-card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent); padding: 5px 7px; }
+.controller-profile-card strong, .controller-recovery-card strong { display: block; color: var(--cream); font-size: var(--ux-text-xs); }
+.controller-profile-card span, .controller-profile-card em, .controller-recovery-card span, .controller-recovery-card em { display: block; color: var(--muted); font-size: var(--ux-text-xs); font-style: normal; }
 
 
 /* Literal gamepad programming primitive: the controller is the surface. */
