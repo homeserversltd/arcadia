@@ -202,7 +202,7 @@ fn admitted_games_from_live_files(
                 .map(|entry| entry.name.clone())
                 .unwrap_or_else(|| "Pending Steam entry".to_string());
             let game_id = slugify(&file.title);
-            let artwork_paired = artwork_exists(&file.system, &game_id);
+            let artwork_paired = artwork_exists_for_title(&file.system, &file.title);
             AdmittedGameTally {
                 title: file.title.clone(),
                 system: display_system(&file.system).to_string(),
@@ -229,7 +229,8 @@ fn admitted_game_from_manifest(entry: &SyncManifestEntry, key: &str) -> Admitted
         .unwrap_or_else(|| title_from_path(Path::new(key)));
     let game_id = entry.slug.clone().unwrap_or_else(|| slugify(&title));
     let artwork_paired = matches!(entry.artwork_status.as_deref(), Some("complete"))
-        || artwork_exists(&system, &game_id);
+        || artwork_exists(&system, &game_id)
+        || artwork_exists_for_title(&system, &title);
     AdmittedGameTally {
         title,
         system: display_system(&system).to_string(),
@@ -318,7 +319,50 @@ fn artwork_exists(system: &str, slug: &str) -> bool {
         Path::new(ARTWORK_ROOT).join(system).join(slug),
         Path::new(ARTWORK_ROOT).join(display_system(system).to_ascii_lowercase()).join(slug),
     ];
-    candidates.iter().any(|path| path.exists())
+    candidates.iter().any(|path| artwork_cache_dir_has_image(path))
+}
+
+fn artwork_exists_for_title(system: &str, title: &str) -> bool {
+    artwork_slug_candidates(title)
+        .iter()
+        .any(|slug| artwork_exists(system, slug))
+}
+
+fn artwork_cache_dir_has_image(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    ["grid.png", "landscape.png", "hero.png", "logo.png", "icon.png"]
+        .iter()
+        .any(|name| path.join(name).is_file())
+}
+
+fn artwork_slug_candidates(title: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    push_slug_candidate(&mut candidates, &slugify(title));
+
+    let mut base = String::new();
+    let mut depth = 0u32;
+    for ch in title.chars() {
+        match ch {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => base.push(ch),
+            _ => {}
+        }
+    }
+    push_slug_candidate(&mut candidates, &slugify(base.trim()));
+
+    if let Some(before_colon) = title.split(':').next() {
+        push_slug_candidate(&mut candidates, &slugify(before_colon.trim()));
+    }
+    candidates
+}
+
+fn push_slug_candidate(candidates: &mut Vec<String>, slug: &str) {
+    if !slug.is_empty() && !candidates.iter().any(|existing| existing == slug) {
+        candidates.push(slug.to_string());
+    }
 }
 
 fn display_system(system: &str) -> &str {
