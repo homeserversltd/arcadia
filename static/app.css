@@ -1592,10 +1592,13 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 }
 .view[data-view-panel="controllers"] .controllers-programmer-summary strong { color: var(--cream); font-size: 14px; }
 .view[data-view-panel="controllers"] .controllers-programmer-summary span { color: var(--muted); font-size: 11px; }
-.controller-programmer-modal { display: grid; grid-template-columns: minmax(460px, 1fr) minmax(220px, .38fr); gap: 12px; min-width: min(980px, calc(100vw - 80px)); color: var(--cream); }
-.controller-programmer-modal .ux-gamepad-stage { min-height: 330px; }
-.controller-programmer-side { display: grid; align-content: start; gap: 10px; min-width: 0; }
-.controller-advanced-card { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 80%, transparent); }
+.controller-programmer-modal { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: min(880px, calc(100vw - 80px)); color: var(--cream); }
+.controller-programmer-modal .ux-gamepad-stage { min-height: 300px; }
+.controller-programmer-side { display: grid; grid-template-columns: minmax(170px,.7fr) minmax(220px,1fr) minmax(190px,.8fr); align-items: stretch; gap: 8px; min-width: 0; }
+.controller-programmer-side > .controllers-panel-head,
+.controller-programmer-side > .controller-live-device,
+.controller-advanced-card { display: grid; align-content: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 80%, transparent); }
+.controller-advanced-card { align-content: start; }
 .controller-toggle-line, .controller-loop-line { display: flex; justify-content: space-between; gap: 8px; align-items: center; color: var(--cream); font-size: 13px; }
 .controller-toggle-line input { accent-color: var(--orange-strong); }
 .modal-content .controller-programmer-modal { white-space: normal; }
