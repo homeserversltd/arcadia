@@ -84,3 +84,4 @@
   .view[data-view-panel="controllers"] .controller-accessory-hero,
   .view[data-view-panel="controllers"] .controller-recovery-card { min-height: 0; }
 }
+@media (max-width: 860px) { .controller-programmer-modal { min-width: 0; grid-template-columns: 1fr; } }

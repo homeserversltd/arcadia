@@ -787,49 +787,128 @@ function updateControllerLiveInput(data) {
   }
 }
 
+
+function formatControllerBinding(binding) {
+  return String(binding || '').replace('button ', 'B').replace('axis ', 'AX').replace('hat 0', 'Hat');
+}
+
+function controllerProgrammerRoot() {
+  return document.querySelector('[data-controller-programmer-modal]') || document.querySelector('[data-view-panel="controllers"]');
+}
+
 function bindControllerProgramming() {
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
   let selected = null;
-  panel.querySelectorAll('button[data-controller-profile-action="apply"]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const profile = button.dataset.controllerProfile || '';
-      button.disabled = true;
-      try {
-        const data = await postJson('/api/actions/controllers-apply-profile', { profile });
-        panel.querySelectorAll('[data-controller-profile-action="apply"]').forEach((node) => node.classList.toggle('controller-profile-card--active', node === button));
-        const state = button.querySelector('em');
-        if (state) state.textContent = data.ok ? 'Active' : 'Apply';
-        PopupManager.showToast(data.message || `${profile} profile applied`, data.ok ? 'success' : 'error');
-      } catch (_) {
-        PopupManager.showToast(`${profile} profile failed`, 'error');
-      } finally {
-        button.disabled = false;
+  let programmerTimer = null;
+  let programmerPaused = false;
+  const intervalMs = 60;
+
+  const bindProfileCards = (root) => {
+    root.querySelectorAll('button[data-controller-profile-action="apply"]:not([data-controller-profile-bound])').forEach((button) => {
+      button.dataset.controllerProfileBound = 'true';
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        const profile = button.dataset.controllerProfile || '';
+        button.disabled = true;
+        try {
+          const data = await postJson('/api/actions/controllers-apply-profile', { profile });
+          panel.querySelectorAll('[data-controller-profile-action="apply"]').forEach((node) => node.classList.toggle('controller-profile-card--active', node === button));
+          const state = button.querySelector('em');
+          if (state) state.textContent = data.ok ? 'Active' : 'Apply';
+          PopupManager.showToast(data.message || `${profile} profile applied`, data.ok ? 'success' : 'error');
+        } catch (_) {
+          PopupManager.showToast(`${profile} profile failed`, 'error');
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+  };
+
+  const bindControlButtons = (root) => {
+    root.querySelectorAll('button[data-controller-control]:not([data-controller-control-bound])').forEach((button) => {
+      button.dataset.controllerControlBound = 'true';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        const control = button.dataset.controllerControl || '';
+        if (!control || control === 'D-pad') return;
+        selected = control;
+        root.querySelectorAll('[data-controller-control]').forEach((node) => node.classList.toggle('is-selected', node === button));
+        const state = root.querySelector('[data-controller-programmer-state]');
+        if (state) state.textContent = `Press controller for ${control}`;
+        PopupManager.showToast(`Press controller input for ${control}`, 'info');
+      });
+    });
+  };
+
+  const ingestProgrammerInput = async (root, data) => {
+    updateControllerLiveInput(data);
+    const pressed = new Set((data.pressed || []).map((item) => item.control));
+    root.querySelectorAll('[data-controller-control]').forEach((pill) => {
+      const active = pressed.has(pill.dataset.controllerControl || '');
+      pill.classList.toggle('controller-button-dot--active', active);
+      pill.classList.toggle('is-active', active);
+    });
+    const device = root.querySelector('[data-controller-programmer-device]');
+    if (device) device.textContent = data.device || 'No controller detected';
+    const axes = root.querySelector('[data-controller-programmer-axes]');
+    if (axes) {
+      axes.textContent = '';
+      (data.axes || []).forEach((axis) => {
+        const pill = document.createElement('span');
+        pill.className = 'controller-axis-pill';
+        pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}`.trim();
+        axes.appendChild(pill);
+      });
+    }
+    if (selected && data.pressed && data.pressed.length) {
+      const input = data.pressed[0].binding || data.pressed[0].input || data.pressed[0].control;
+      if (input) {
+        const result = await postJson('/api/actions/controllers-bind', { control: selected, binding: input });
+        const selectedButton = root.querySelector(`[data-controller-control="${selected}"]`);
+        const label = selectedButton?.querySelector('span, em');
+        if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
+        PopupManager.showToast(result.message || `${selected} mapped`, result.ok ? 'success' : 'error');
+        selected = null;
       }
+    }
+  };
+
+  const startProgrammerLoop = (root) => {
+    if (programmerTimer) window.clearInterval(programmerTimer);
+    bindControlButtons(root);
+    const readout = root.querySelector('[data-controller-broadcast-readout]');
+    if (readout) readout.textContent = `${intervalMs}ms`;
+    programmerTimer = window.setInterval(async () => {
+      if (programmerPaused || !document.querySelector('[data-controller-programmer-modal]')) return;
+      try { await ingestProgrammerInput(root, await getJson('/api/controllers/input')); } catch (_) {}
+    }, intervalMs);
+    root.querySelector('[data-controller-broadcast-toggle]')?.addEventListener('click', (event) => {
+      programmerPaused = !programmerPaused;
+      event.currentTarget.textContent = programmerPaused ? 'Resume broadcast' : 'Pause broadcast';
+    });
+  };
+
+  bindProfileCards(panel);
+  bindControlButtons(panel);
+  panel.querySelectorAll('[data-controller-programmer-open]:not([data-controller-programmer-bound])').forEach((button) => {
+    button.dataset.controllerProgrammerBound = 'true';
+    button.addEventListener('click', () => {
+      const template = document.getElementById('controller-programmer-template');
+      const body = template?.content?.firstElementChild?.cloneNode(true);
+      if (!body) return;
+      PopupManager.showModal({ title: 'Controller programmer', body, hideDefaultAction: true });
+      const root = document.querySelector('[data-controller-programmer-modal]');
+      if (root) startProgrammerLoop(root);
     });
   });
-  panel.querySelectorAll('button[data-controller-control]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
-      event.preventDefault();
-      const control = button.dataset.controllerControl || '';
-      if (!control || control === 'D-pad') return;
-      selected = control;
-      panel.querySelectorAll('[data-controller-control]').forEach((node) => node.classList.toggle('is-selected', node === button));
-      button.disabled = true;
-      try {
-        const data = await postJson('/api/actions/controllers-bind', { control });
-        PopupManager.showToast(data.message || `${control} mapped`, data.ok ? 'success' : 'error');
-        const label = button.querySelector('span, em');
-        if (label && data.stdout) label.textContent = data.stdout.replace('button ', 'B').replace('axis ', 'AX').replace('hat 0', 'Hat');
-      } catch (_) {
-        PopupManager.showToast(`${control} mapping failed`, 'error');
-      } finally {
-        button.disabled = false;
-      }
-    });
-  });
-  window.arcadiaControllerProgramming = { selectedControl: () => selected };
+
+  window.arcadiaControllerProgramming = {
+    selectedControl: () => selected,
+    broadcastMs: () => intervalMs,
+    modalOpen: () => Boolean(document.querySelector('[data-controller-programmer-modal]')),
+  };
 }
 
 function bindControllerLiveInput() {
@@ -838,7 +917,7 @@ function bindControllerLiveInput() {
   bindControllerProgramming();
   const poll = async () => {
     const active = document.querySelector('[data-view-panel="controllers"].is-active, [data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
-    if (!active) return;
+    if (!active || document.querySelector('[data-controller-programmer-modal]')) return;
     try { updateControllerLiveInput(await getJson('/api/controllers/input')); } catch (_) {}
   };
   poll();

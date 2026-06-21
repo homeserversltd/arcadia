@@ -1644,8 +1644,31 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         @else { button class="btn btn--secondary" type="button" disabled title="A gamepad event surface must appear before live input can run." { "Test input" } }
                     }
                 }
-                (controller_silhouette(status, connected))
+                article class="controllers-programmer-summary" data-controller-programmer-summary {
+                    strong { "Programmer" }
+                    span { "Modal · 60ms live loop · tuple capture" }
+                    div class="inline-actions inline-actions--compact controllers-actions" {
+                        button class="btn btn--primary" type="button" data-controller-programmer-open { "Open programmer" }
+                        (modal_button(ButtonVariant::Secondary, "Broadcast", "Controller broadcast loop", "The programmer modal runs a 60 millisecond client loop while open and reads live controller input from the server. Click a control, press the physical controller, and Arcadia writes the tuple profile."))
+                    }
+                }
                 (controller_recovery_card(&status.controllers.recovery))
+                template id="controller-programmer-template" {
+                    div class="controller-programmer-modal" data-controller-programmer-modal data-controller-broadcast-ms="60" data-controller-rapid-fire-ms="60" {
+                        (controller_silhouette(status, connected))
+                        div class="controller-programmer-side" {
+                            div class="controllers-panel-head" { strong { "Live state" } span class="system-status system-status--starting" data-controller-programmer-state { "60ms" } }
+                            div class="controller-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
+                            div class="controller-axis-strip" data-controller-programmer-axes { @for axis in &status.controllers.live_input.axes { span class="controller-axis-pill" { (axis.control) " " (axis.binding) } } }
+                            div class="controller-advanced-card" {
+                                strong { "Options" }
+                                label class="controller-toggle-line" { input type="checkbox" data-controller-rapid-fire; " Rapid fire" }
+                                label class="controller-loop-line" { span { "Broadcast" } output data-controller-broadcast-readout { "60ms" } }
+                                button class="btn btn--secondary" type="button" data-controller-broadcast-toggle { "Pause broadcast" }
+                            }
+                        }
+                    }
+                }
             }
 
             section class="controller-workbench" aria-label="Controller setup workbench" {
