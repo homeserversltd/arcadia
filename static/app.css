@@ -1388,8 +1388,7 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .controller-hero-copy em { color: var(--muted); font-style: normal; font-size: 12px; }
 .controllers-command-deck .controllers-hero-actions { grid-column: 2; display: flex; gap: var(--ux-control-gap); align-items: center; }
 .controller-recovery-card { display: grid; align-content: center; gap: 5px; }
-.controller-workbench { display: grid; grid-template-columns: minmax(210px, .65fr) minmax(260px, .8fr) minmax(360px, 1.15fr); gap: var(--ux-grid-gap); margin-top: var(--ux-grid-gap); }
-.controllers-panel--binding { min-height: 0; }
+.controller-workbench { display: grid; grid-template-columns: minmax(230px, .85fr) minmax(300px, 1fr); gap: var(--ux-grid-gap); margin-top: var(--ux-grid-gap); }
 .controller-device-card { grid-template-columns: auto minmax(0, 1fr) auto; }
 .controller-device-glyph { width: 34px; height: 34px; border-radius: 13px; display: grid; place-items: center; background: var(--theme-button-surface); color: var(--orange-strong); font-weight: 950; font-size: 12px; }
 .controller-empty-accessory { min-height: 74px; display: grid; place-content: center; gap: 4px; text-align: center; color: var(--muted); }
@@ -1415,13 +1414,9 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .controller-hero-copy strong { font-size: 17px; }
 .view[data-view-panel="controllers"] .controller-hero-copy em { font-size: 11px; }
 .view[data-view-panel="controllers"] .controller-recovery-card { padding: 5px 7px; gap: 2px; }
-.view[data-view-panel="controllers"] .controller-workbench { grid-template-columns: minmax(185px, .55fr) minmax(230px, .7fr) minmax(420px, 1.25fr); gap: 5px; margin-top: 5px; }
+.view[data-view-panel="controllers"] .controller-workbench { grid-template-columns: minmax(230px, .85fr) minmax(300px, 1fr); gap: 5px; margin-top: 5px; }
 .view[data-view-panel="controllers"] .controller-profile-cards { gap: 4px; }
 .view[data-view-panel="controllers"] .controller-profile-card,
-.view[data-view-panel="controllers"] .controller-bind-step { padding: 4px 6px; border-radius: 12px; }
-.view[data-view-panel="controllers"] .controller-bind-flow { gap: 4px; }
-.view[data-view-panel="controllers"] .controller-bind-step span,
-.view[data-view-panel="controllers"] .controller-bind-step strong,
 .view[data-view-panel="controllers"] .controller-profile-card strong,
 .view[data-view-panel="controllers"] .controller-profile-card span,
 .view[data-view-panel="controllers"] .controller-profile-card em { font-size: 10px; line-height: 1.12; }
@@ -1467,27 +1462,22 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .controller-recovery-card em { font-size: 10px; line-height: 1.16; }
 .view[data-view-panel="controllers"] .controllers-hero-actions { grid-column: 1 / -1; }
 .view[data-view-panel="controllers"] .controller-workbench {
-  grid-template-columns: minmax(210px, .75fr) minmax(255px, .85fr) minmax(420px, 1.1fr);
+  grid-template-columns: minmax(230px, .85fr) minmax(300px, 1fr);
   margin-top: 5px;
   gap: 5px;
 }
-.view[data-view-panel="controllers"] .controllers-panel--binding .controllers-panel-head strong::after {
   content: " on gamepad";
   color: var(--muted);
   font-weight: 700;
 }
-.view[data-view-panel="controllers"] .controller-bind-flow {
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 3px;
 }
-.view[data-view-panel="controllers"] .controller-bind-step {
   min-height: 26px;
   padding: 3px 4px;
   text-align: center;
   border-radius: 10px;
 }
-.view[data-view-panel="controllers"] .controller-bind-step strong { display: none; }
-.view[data-view-panel="controllers"] .controller-bind-step span { color: var(--cream); font-size: 10px; line-height: 1.05; }
 .view[data-view-panel="controllers"] .controllers-live-test { margin-top: 4px; padding: 4px 8px; }
 .view[data-view-panel="controllers"] .emulator-controller-grid { margin-top: 4px; }
 
@@ -1519,9 +1509,8 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .ux-gamepad-control span { font-size: 8.5px; }
 .view[data-view-panel="controllers"] .controller-workbench { margin-top: 3px; }
 .view[data-view-panel="controllers"] .controller-profile-card,
-.view[data-view-panel="controllers"] .controller-bind-step { padding: 2px 4px; }
 .view[data-view-panel="controllers"] .controllers-live-test { margin-top: 3px; padding: 2px 8px; min-height: 24px; }
-.view[data-view-panel="controllers"] .emulator-controller-grid { margin-top: 3px; }
+.view[data-view-panel="controllers"] .emulator-controller-grid { margin-top: 0; }
 .view[data-view-panel="controllers"] .emulator-controller-card { padding: 3px 5px; }
 
 
@@ -1552,16 +1541,13 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .ux-gamepad-face--a { left: 26px; }
 .view[data-view-panel="controllers"] .ux-gamepad-control strong { font-size: 10px; }
 .view[data-view-panel="controllers"] .ux-gamepad-control span { font-size: 8px; margin-top: 1px; }
-.view[data-view-panel="controllers"] .controller-workbench { grid-template-columns: minmax(190px,.7fr) minmax(230px,.8fr) minmax(360px,1.05fr); }
+.view[data-view-panel="controllers"] .controller-workbench { grid-template-columns: minmax(230px,.85fr) minmax(300px,1fr); }
 .view[data-view-panel="controllers"] .controllers-panel, .view[data-view-panel="controllers"] .emulator-controller-card { padding: 3px 5px; }
 .view[data-view-panel="controllers"] .controllers-panel-head { padding-bottom: 2px; }
 .view[data-view-panel="controllers"] .controller-profile-cards { gap: 2px; }
 .view[data-view-panel="controllers"] .controller-profile-card strong,
 .view[data-view-panel="controllers"] .controller-profile-card span,
 .view[data-view-panel="controllers"] .controller-profile-card em { font-size: 9px; line-height: 1.03; }
-.view[data-view-panel="controllers"] .controller-bind-flow { gap: 2px; }
-.view[data-view-panel="controllers"] .controller-bind-step { min-height: 20px; padding: 1px 3px; }
-.view[data-view-panel="controllers"] .controller-bind-step span { font-size: 8.5px; }
 .view[data-view-panel="controllers"] .emulator-controller-card { min-height: 42px; }
 .view[data-view-panel="controllers"] .emulator-controller-card .controllers-panel-head strong { font-size: 10.5px; }
 .view[data-view-panel="controllers"] .emulator-controller-card .btn { min-height: 18px; padding: 1px 5px; font-size: 9px; }

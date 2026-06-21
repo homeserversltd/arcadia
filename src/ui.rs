@@ -1680,18 +1680,6 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         (modal_button(ButtonVariant::Secondary, "Calibrate", "Calibration", "Rotate sticks and squeeze triggers; active axes light on the controller face."))
                     }
                 }
-
-                article class="controllers-panel controllers-panel--binding" aria-label="Guided bind flow" data-controller-mapping-editor="default" {
-                    div class="controllers-panel-head" {
-                        strong { "Bind" }
-                        span class="system-status system-status--starting" { (if connected { "Ready" } else { "Waiting" }) }
-                    }
-                    div class="controller-bind-flow" data-controller-bind-flow {
-                        @for step in &status.controllers.bind_steps {
-                            (controller_bind_step_card(step, connected))
-                        }
-                    }
-                }
             }
 
             section class="controllers-live-test" aria-label="Live controller input" data-controller-live-input {
@@ -1733,7 +1721,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
             .unwrap_or(if connected { "Tap to bind" } else { "Waiting" })
     };
     html! {
-        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer {
+        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer data-controller-mapping-editor="default" {
             div class="ux-gamepad-body" {
                 div class="ux-gamepad-shell ux-gamepad-shell--left" aria-hidden="true" {}
                 div class="ux-gamepad-shell ux-gamepad-shell--right" aria-hidden="true" {}
@@ -1745,7 +1733,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
                     (gamepad_control("R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
                 }
                 div class="ux-gamepad-left" {
-                    (gamepad_stick("Left stick", binding_for("Left stick X"), active.contains(&"Left stick X") || active.contains(&"Left stick Y")))
+                    (gamepad_stick("Left Stick", binding_for("Left Stick"), active.contains(&"Left Stick")))
                     (gamepad_dpad(active.contains(&"D-pad"), connected))
                 }
                 div class="ux-gamepad-center" {
@@ -1760,7 +1748,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
                         (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
                         (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
                     }
-                    (gamepad_stick("Right stick", binding_for("Right stick"), active.contains(&"Right stick")))
+                    (gamepad_stick("Right Stick", binding_for("Right Stick"), active.contains(&"Right Stick")))
                 }
             }
         }
@@ -1842,15 +1830,6 @@ fn controller_profile_preset_card(
             strong { (preset.name) }
             span { (preset.layout) }
             em { (if enabled { title_case_state_like(&preset.state) } else { "Waiting" }) }
-        }
-    }
-}
-
-fn controller_bind_step_card(step: &crate::ControllerBindStepStatus, enabled: bool) -> Markup {
-    html! {
-        div class=(if enabled { "controller-bind-step" } else { "controller-bind-step controller-bind-step--disabled" }) data-bind-step=(step.control) data-controller-control=(step.control) {
-            span { (step.control) }
-            strong { (if enabled { step.prompt.as_str() } else { "Connect controller" }) }
         }
     }
 }

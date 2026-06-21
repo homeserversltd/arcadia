@@ -114,7 +114,6 @@ pub struct ControllerStatus {
     pub devices: Vec<ControllerDeviceStatus>,
     pub profile: ControllerProfileStatus,
     pub profile_presets: Vec<ControllerProfilePresetStatus>,
-    pub bind_steps: Vec<ControllerBindStepStatus>,
     pub live_input: ControllerInputStatus,
     pub emulators: Vec<EmulatorControllerStatus>,
 }
@@ -145,14 +144,6 @@ pub struct ControllerRecoveryStatus {
 pub struct ControllerProfilePresetStatus {
     pub name: String,
     pub layout: String,
-    pub state: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ControllerBindStepStatus {
-    pub control: String,
-    pub prompt: String,
     pub state: String,
 }
 
