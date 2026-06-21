@@ -289,6 +289,11 @@
         assert!(APP_JS.contains("bindControllerProgramming"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
         assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));
+        assert!(APP_JS.contains("window.setInterval(async ()"));
+        assert!(APP_JS.contains("}, intervalMs);"));
+        assert!(APP_JS.contains("const intervalMs = 60;"));
+        assert!(APP_JS.contains("data-controller-programmer-modal"));
+        assert!(APP_JS.contains("data-controller-broadcast-toggle"));
     }
 
 
