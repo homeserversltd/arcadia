@@ -633,7 +633,7 @@ function copyButtonNode(label, value) {
 
 async function openStorageModal(view) {
   const titles = {
-    games: 'Games', 'artwork-detail': 'Artwork', 'ai-models-detail': 'AI Models', 'updates-detail': 'Updates', 'logs-detail': 'Logs', 'temporary-detail': 'Temporary Files', 'system-detail': 'System', 'category-other': 'Other', 'category-free': 'Free', locations: 'Managed Locations', 'cleanup-review': 'Cleanup', diagnostics: 'Diagnostics'
+    games: 'Games', 'artwork-detail': 'Artwork', 'ai-models-detail': 'Local AI', 'updates-detail': 'Updates', 'logs-detail': 'Logs', 'temporary-detail': 'Temporary Files', 'system-detail': 'System', 'category-other': 'Other', 'category-free': 'Free', locations: 'Managed Locations', 'cleanup-review': 'Cleanup', diagnostics: 'Diagnostics'
   };
   const title = titles[view] || 'Storage';
   const content = storageModalShell(title, ['Storage', title]);
