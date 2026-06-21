@@ -759,6 +759,19 @@
     }
 
     #[test]
+    fn sync_artwork_readback_uses_parenthetical_title_aliases() {
+        let candidates = artwork_slug_candidates("Driven (USA) (En,Fr,De,Es,It)");
+        assert!(candidates.contains(&"driven-usa-en-fr-de-es-it".to_string()));
+        assert!(candidates.contains(&"driven".to_string()));
+        let source = include_str!("../../src/bands/status_library.rs");
+        assert!(source.contains("artwork_exists_for_title(&file.system, &file.title)"));
+        assert!(source.contains("artwork_cache_dir_has_image"));
+        assert!(source.contains("grid.png"));
+        assert!(source.contains("hero.png"));
+        assert!(source.contains("icon.png"));
+    }
+
+    #[test]
     fn sync_action_uses_installed_harmonia_module_path() {
         assert_eq!(HOMECONSOLE_SYNC_MODULE, "/etc/harmonia/modules/homeconsole/sync/index.json");
         let source = include_str!("../../src/bands/console_system_actions.rs");
