@@ -244,6 +244,10 @@ async fn main() -> anyhow_free::Result<()> {
             post(action_controllers_save_profile),
         )
         .route(
+            "/api/actions/controllers-apply-profile",
+            post(action_controllers_apply_profile),
+        )
+        .route(
             "/api/actions/controllers-bind",
             post(action_controllers_bind),
         )

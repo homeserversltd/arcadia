@@ -791,6 +791,24 @@ function bindControllerProgramming() {
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
   let selected = null;
+  panel.querySelectorAll('button[data-controller-profile-action="apply"]').forEach((button) => {
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const profile = button.dataset.controllerProfile || '';
+      button.disabled = true;
+      try {
+        const data = await postJson('/api/actions/controllers-apply-profile', { profile });
+        panel.querySelectorAll('[data-controller-profile-action="apply"]').forEach((node) => node.classList.toggle('controller-profile-card--active', node === button));
+        const state = button.querySelector('em');
+        if (state) state.textContent = data.ok ? 'Active' : 'Apply';
+        PopupManager.showToast(data.message || `${profile} profile applied`, data.ok ? 'success' : 'error');
+      } catch (_) {
+        PopupManager.showToast(`${profile} profile failed`, 'error');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
   panel.querySelectorAll('button[data-controller-control]').forEach((button) => {
     button.addEventListener('click', async (event) => {
       event.preventDefault();
