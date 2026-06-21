@@ -1655,7 +1655,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         span class=(format!("system-status system-status--{}", hero_class)) { (title_case_state_like(&status.controllers.state)) }
                     }
                     @if status.controllers.devices.is_empty() {
-                        div class="controller-empty-accessory" { strong { (status.controllers.recovery.title) } span { (status.controllers.recovery.detail) } }
+                        button class="btn controller-empty-accessory controller-device-card--action" type="button" data-controller-device="receiver" data-modal-title=(status.controllers.recovery.title) data-modal-body=(format!("{}\n{}", status.controllers.recovery.detail, status.controllers.recovery.action)) aria-label="Open controller receiver details" { strong { (status.controllers.recovery.title) } span { (status.controllers.recovery.detail) } span class="controller-card-action" { "Details" } }
                     } @else {
                         div class="controller-device-list" {
                             @for device in &status.controllers.devices {
@@ -1813,23 +1813,23 @@ fn controller_recovery_card(recovery: &crate::ControllerRecoveryStatus) -> Marku
 
 fn controller_device_card(device: &crate::ControllerDeviceStatus) -> Markup {
     html! {
-        article class="controller-device-card" data-controller-device=(device.handler) {
+        button class="btn controller-device-card controller-device-card--action" type="button" data-controller-device=(device.handler) data-modal-title=(format!("{} input details", device.name)) data-modal-body=(format!("Handler: {}\nPath: {}", device.handler, device.path)) aria-label=(format!("Open {} controller details", device.name)) {
             div class="controller-device-glyph" aria-hidden="true" { (device.glyph) }
             div { strong { (device.name) } span { (device.transport) " · " (device.kind) " · " (device.state) } }
-            (modal_button(ButtonVariant::Secondary, "Details", &format!("{} input details", device.name), &format!("Handler: {}\nPath: {}", device.handler, device.path)))
+            span class="controller-card-action" { "Details" }
         }
     }
 }
 
 fn controller_profile_preset_card(
     preset: &crate::ControllerProfilePresetStatus,
-    enabled: bool,
+    _enabled: bool,
 ) -> Markup {
     html! {
-        article class=(if enabled { "controller-profile-card" } else { "controller-profile-card controller-profile-card--disabled" }) data-controller-profile=(preset.name) {
+        button class=(if preset.state == "active" { "controller-profile-card controller-profile-card--active" } else { "controller-profile-card" }) type="button" data-controller-profile=(preset.name) data-controller-profile-action="apply" aria-label=(format!("Apply {} controller profile", preset.name)) {
             strong { (preset.name) }
             span { (preset.layout) }
-            em { (if enabled { title_case_state_like(&preset.state) } else { "Waiting" }) }
+            em { (if preset.state == "active" { "Active" } else { "Apply" }) }
         }
     }
 }

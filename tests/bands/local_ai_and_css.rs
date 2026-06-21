@@ -284,8 +284,11 @@
         assert!(controller_backend.contains("action_controllers_assign_ppsspp"));
         assert!(controller_backend.contains("write_emulator_profile"));
         assert!(controller_backend.contains("ControllerBindRequest"));
+        assert!(controller_backend.contains("ControllerProfileApplyRequest"));
+        assert!(controller_backend.contains("action_controllers_apply_profile"));
         assert!(APP_JS.contains("bindControllerProgramming"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
+        assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));
     }
 
 
@@ -295,6 +298,8 @@
         let _ = std::fs::remove_dir_all(&root);
         let mut bindings = default_controller_bindings();
         upsert_binding(&mut bindings, "A", "button 9");
+        let nintendo = controller_bindings_for_profile("Nintendo");
+        assert!(nintendo.iter().any(|binding| binding.control == "A" && binding.binding == "button 1"));
         let profile = root.join("default.json");
         write_controller_profile(&profile, "Virtual Arcadia Gamepad", "virtual0", &bindings)
             .expect("profile writes");

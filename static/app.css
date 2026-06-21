@@ -1552,3 +1552,30 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="controllers"] .emulator-controller-card .controllers-panel-head strong { font-size: 10.5px; }
 .view[data-view-panel="controllers"] .emulator-controller-card .btn { min-height: 18px; padding: 1px 5px; font-size: 9px; }
 .view[data-view-panel="controllers"] .emulator-controller-meter { height: 2px; }
+
+.view[data-view-panel="controllers"] .controller-profile-card,
+.view[data-view-panel="controllers"] .controller-device-card--action {
+  appearance: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.view[data-view-panel="controllers"] .controller-profile-card:hover,
+.view[data-view-panel="controllers"] .controller-device-card--action:hover,
+.view[data-view-panel="controllers"] .controller-profile-card:focus-visible,
+.view[data-view-panel="controllers"] .controller-device-card--action:focus-visible {
+  border-color: color-mix(in srgb, var(--orange-strong) 70%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--orange-strong) 22%, transparent);
+  outline: none;
+}
+.view[data-view-panel="controllers"] .controller-profile-card--active {
+  border-color: color-mix(in srgb, var(--good) 60%, var(--line));
+  background: color-mix(in srgb, var(--good) 14%, var(--theme-field-surface));
+}
+.view[data-view-panel="controllers"] .controller-card-action {
+  color: var(--orange-strong);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}

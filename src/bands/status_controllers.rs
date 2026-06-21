@@ -245,12 +245,46 @@ fn default_controller_bindings() -> Vec<ControllerBindingStatus> {
     .collect()
 }
 
+fn controller_bindings_for_profile(profile: &str) -> Vec<ControllerBindingStatus> {
+    let mut bindings = default_controller_bindings();
+    match profile.trim().to_ascii_lowercase().as_str() {
+        "nintendo" => {
+            upsert_binding(&mut bindings, "A", "button 1");
+            upsert_binding(&mut bindings, "B", "button 0");
+            upsert_binding(&mut bindings, "X", "button 3");
+            upsert_binding(&mut bindings, "Y", "button 2");
+        }
+        "playstation" => {
+            upsert_binding(&mut bindings, "A", "button 1");
+            upsert_binding(&mut bindings, "B", "button 2");
+            upsert_binding(&mut bindings, "X", "button 0");
+            upsert_binding(&mut bindings, "Y", "button 3");
+        }
+        "arcade" => {
+            upsert_binding(&mut bindings, "A", "button 0");
+            upsert_binding(&mut bindings, "B", "button 1");
+            upsert_binding(&mut bindings, "X", "button 4");
+            upsert_binding(&mut bindings, "Y", "button 5");
+            upsert_binding(&mut bindings, "L1", "button 2");
+            upsert_binding(&mut bindings, "R1", "button 3");
+        }
+        _ => {}
+    }
+    bindings
+}
+
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ControllerBindRequest {
     control: String,
     binding: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControllerProfileApplyRequest {
+    profile: String,
 }
 
 fn saved_or_default_controller_bindings() -> Vec<ControllerBindingStatus> {
@@ -554,6 +588,21 @@ async fn action_controllers_save_profile() -> (StatusCode, Json<ConsoleActionRes
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-save-profile", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not save controller profile: {}", error));
     }
     (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-save-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: "Controller profile saved.".to_string(), stdout: path.display().to_string(), stderr: String::new() }))
+}
+
+async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileApplyRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let profile = payload.profile.trim();
+    if profile.is_empty() {
+        return console_action_error(StatusCode::BAD_REQUEST, "controllers-apply-profile", "/api/actions/controllers-apply-profile", "Choose a controller profile.");
+    }
+    let status = controller_status();
+    let (device_name, handler) = virtual_controller_device(&status);
+    let path = controller_profile_path();
+    let bindings = controller_bindings_for_profile(profile);
+    if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
+        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-apply-profile", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not apply controller profile: {}", error));
+    }
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-apply-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} profile applied.", profile), stdout: path.display().to_string(), stderr: String::new() }))
 }
 
 async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
