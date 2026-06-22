@@ -130,6 +130,7 @@ pub struct LocalAiStatus {
     pub loaded_model_name: Option<String>,
     pub loaded_model: Option<String>,
     pub available_models: Vec<LocalAiModelStatus>,
+    pub library_models: Vec<LocalAiLibraryModelStatus>,
     pub gpu_memory: Option<String>,
     pub gpu_memory_used_bytes: Option<u64>,
     pub gpu_memory_total_bytes: Option<u64>,
@@ -159,6 +160,7 @@ pub struct LocalAIState {
     pub runtime: AIRuntimeState,
     pub loaded_model: AILoadedModelState,
     pub installed_models: Vec<LocalAiModelStatus>,
+    pub library_models: Vec<LocalAiLibraryModelStatus>,
     pub recommended_models: Vec<AIRecommendedModel>,
     pub downloads: Vec<AIDownloadState>,
     pub inference: InferenceState,
@@ -166,6 +168,22 @@ pub struct LocalAIState {
     pub activity: AIActivityState,
     pub settings: AISettingsState,
     pub client_handoff: AIClientHandoffState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalAiLibraryModelStatus {
+    pub id: String,
+    pub name: String,
+    pub lane: String,
+    pub artifact: String,
+    pub source: String,
+    pub repo_id: Option<String>,
+    pub status: String,
+    pub size_bytes: Option<u64>,
+    pub size: String,
+    pub path: Option<String>,
+    pub role: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

@@ -1352,6 +1352,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
     let base_url = format!("{}/v1", endpoint);
     let api_ready = status.local_ai.lan_inference_enabled;
     let model_count = status.local_ai.available_models.len();
+    let library_model_count = status.local_ai.library_models.len();
     let selected_present = status.local_ai.selected_model_id.is_some();
     let model_loaded = matches!(
         status.local_ai.load_state.as_str(),
@@ -1416,7 +1417,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 div class="local-ai-state-list" {
                     (ai_state_tile("Selected", selected_name, if selected_present { "Ready to load" } else { "Choose or import a model" }, "selected"))
                     (ai_state_tile("Serving now", loaded_name, if model_loaded { "Available for client calls" } else { "No model invoked" }, "loaded"))
-                    (ai_state_tile("Model library", &format!("{} installed", model_count), if model_count == 0 { "Empty" } else { "Available" }, "library"))
+                    (ai_state_tile("Model library", &format!("{} library", library_model_count), if library_model_count == 0 { "Empty" } else { "Plain list ready" }, "library"))
                     @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
                 }
                 div class="inline-actions inline-actions--compact local-ai-actions" {
@@ -1478,6 +1479,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             }
 
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model library" {
+                (model_library_plain_dropdown(status))
                 div class="model-grid" {
                     @if status.local_ai.available_models.is_empty() {
                         article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Import a local .gguf file or download a compatible Hugging Face file." } div class="inline-actions local-ai-actions" { (nav_focus_button("Import model", "local-ai", "local-ai-import")) (nav_focus_button("Get GGUF", "local-ai", "get-models")) } }
@@ -1538,6 +1540,30 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             div id="ai-message" class="message" hidden {}
         },
     )
+}
+
+fn model_library_plain_dropdown(status: &ConsoleStatus) -> Markup {
+    html! {
+        article class="form-card model-library-plain" data-model-library-plain="true" {
+            label {
+                span { "All library models" }
+                select class="field" name="modelLibraryPlain" data-model-library-select="true" autocomplete="off" {
+                    @if status.local_ai.library_models.is_empty() {
+                        option value="" { "No model-library entries found" }
+                    } @else {
+                        @for model in &status.local_ai.library_models {
+                            option value=(model.id) {
+                                (model.lane) " · " (model.name) " · " (model.status) " · " (model.size)
+                            }
+                        }
+                    }
+                }
+            }
+            div class="model-library-plain-readback" aria-label="Model library count" {
+                (status.local_ai.library_models.len()) " total · includes untested and unseated library entries"
+            }
+        }
+    }
 }
 
 fn local_ai_model_state_label(

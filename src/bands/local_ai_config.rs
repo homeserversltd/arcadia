@@ -50,6 +50,7 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
             error: None,
         },
         installed_models: installed.clone(),
+        library_models: status.library_models.clone(),
         recommended_models: recommended_ai_models(&installed),
         downloads: active_ai_downloads(),
         inference: InferenceState {
