@@ -80,6 +80,165 @@ fn active_ai_downloads() -> Vec<AIDownloadState> {
     Vec::new()
 }
 
+#[derive(Deserialize)]
+struct ModelLibraryManifestDoc {
+    #[serde(default)]
+    items: Vec<ModelLibraryManifestItem>,
+}
+
+#[derive(Deserialize)]
+struct ModelLibraryManifestItem {
+    id: String,
+    #[serde(default)]
+    lane: Option<String>,
+    #[serde(default)]
+    file: Option<String>,
+    #[serde(default)]
+    dest: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ModelLibraryCatalogDoc {
+    #[serde(default)]
+    entries: Vec<ModelLibraryCatalogEntry>,
+}
+
+#[derive(Deserialize)]
+struct ModelLibraryCatalogEntry {
+    id: String,
+    #[serde(default)]
+    lane: Option<String>,
+    #[serde(default)]
+    file: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
+    #[serde(default)]
+    repo: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    bytes: Option<u64>,
+}
+
+fn local_ai_library_models(installed: &[LocalAiModelStatus]) -> Vec<LocalAiLibraryModelStatus> {
+    let mut models: HashMap<String, LocalAiLibraryModelStatus> = HashMap::new();
+
+    for model in installed {
+        if model.source == "model-library" || model.repo_id.is_some() {
+            models.insert(
+                model.id.clone(),
+                LocalAiLibraryModelStatus {
+                    id: model.id.clone(),
+                    name: model.name.clone(),
+                    lane: lane_from_model_path_or_id(None, &model.id),
+                    artifact: model.filename.clone(),
+                    source: model.source.clone(),
+                    repo_id: model.repo_id.clone(),
+                    status: "available".to_string(),
+                    size_bytes: Some(model.size_bytes),
+                    size: model.size.clone(),
+                    path: None,
+                    role: model.recommended_use.map(str::to_string),
+                },
+            );
+        }
+    }
+
+    if let Ok(text) = fs::read_to_string(MODEL_LIBRARY_MANIFEST_PATH) {
+        if let Ok(doc) = serde_json::from_str::<ModelLibraryManifestDoc>(&text) {
+            for item in doc.items {
+                let artifact = item.file.clone().or(item.dest.clone()).unwrap_or_else(|| item.id.clone());
+                if !library_model_artifact(&artifact) {
+                    continue;
+                }
+                let path = item.dest.as_ref().map(|dest| {
+                    Path::new(MODEL_LIBRARY_ROOT)
+                        .join(dest)
+                        .to_string_lossy()
+                        .to_string()
+                });
+                let status = path
+                    .as_ref()
+                    .filter(|p| Path::new(p).exists())
+                    .map(|_| "available")
+                    .unwrap_or("declared")
+                    .to_string();
+                models.entry(item.id.clone()).or_insert_with(|| LocalAiLibraryModelStatus {
+                    id: item.id.clone(),
+                    name: friendly_model_name(&artifact),
+                    lane: item.lane.clone().unwrap_or_else(|| lane_from_model_path_or_id(item.dest.as_deref(), &item.id)),
+                    artifact,
+                    source: "model-library manifest".to_string(),
+                    repo_id: item.repo.clone(),
+                    status,
+                    size_bytes: None,
+                    size: "Unknown".to_string(),
+                    path,
+                    role: item.role.clone(),
+                });
+            }
+        }
+    }
+
+    if let Ok(text) = fs::read_to_string(MODEL_LIBRARY_CATALOG_PATH) {
+        if let Ok(doc) = serde_json::from_str::<ModelLibraryCatalogDoc>(&text) {
+            for entry in doc.entries {
+                let artifact = entry
+                    .file
+                    .clone()
+                    .or_else(|| entry.path.as_ref().and_then(|p| Path::new(p).file_name().and_then(|f| f.to_str()).map(str::to_string)))
+                    .unwrap_or_else(|| entry.id.clone());
+                if !library_model_artifact(&artifact) {
+                    continue;
+                }
+                models.insert(
+                    entry.id.clone(),
+                    LocalAiLibraryModelStatus {
+                        id: entry.id.clone(),
+                        name: friendly_model_name(&artifact),
+                        lane: entry.lane.clone().unwrap_or_else(|| lane_from_model_path_or_id(entry.path.as_deref(), &entry.id)),
+                        artifact,
+                        source: "model-library catalog".to_string(),
+                        repo_id: entry.repo.clone(),
+                        status: entry.status.clone().unwrap_or_else(|| "available".to_string()),
+                        size_bytes: entry.bytes,
+                        size: entry.bytes.map(human_size).unwrap_or_else(|| "Unknown".to_string()),
+                        path: entry.path.clone(),
+                        role: entry.role.clone(),
+                    },
+                );
+            }
+        }
+    }
+
+    let mut out = models.into_values().collect::<Vec<_>>();
+    out.sort_by(|a, b| a.lane.cmp(&b.lane).then_with(|| a.name.cmp(&b.name)));
+    out
+}
+
+fn library_model_artifact(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".gguf")
+        || lower.ends_with(".onnx")
+        || lower.ends_with(".safetensors")
+        || lower.ends_with("model.safetensors.index.json")
+}
+
+fn lane_from_model_path_or_id(path: Option<&str>, id: &str) -> String {
+    path.and_then(|p| p.split("models/").nth(1))
+        .and_then(|rest| rest.split('/').next())
+        .filter(|lane| !lane.is_empty())
+        .map(str::to_string)
+        .or_else(|| id.split('.').next().filter(|part| *part != id).map(str::to_string))
+        .unwrap_or_else(|| "library".to_string())
+}
+
 fn redacted_log(path: &str) -> String {
     fs::read_to_string(path)
         .unwrap_or_default()
@@ -113,7 +272,10 @@ fn quantization_from_filename(filename: &str) -> Option<String> {
 }
 
 fn model_source_from_path(_filename: &str, path: &Path) -> String {
-    if path.to_string_lossy().contains("huggingface") {
+    let text = path.to_string_lossy();
+    if text.contains(MODEL_LIBRARY_ROOT) {
+        "model-library".to_string()
+    } else if text.contains("huggingface") {
         "huggingface".to_string()
     } else {
         "manual".to_string()
@@ -190,6 +352,7 @@ fn local_ai_status() -> LocalAiStatus {
     }
     .to_string();
     let (gpu_used, gpu_total) = gpu_memory_bytes();
+    let library_models = local_ai_library_models(&available_models);
     let cfg = load_ai_config();
     let lan_inference_enabled = cfg.lan_enabled && tcp_port_listening(cfg.lan_port);
     LocalAiStatus {
@@ -200,6 +363,7 @@ fn local_ai_status() -> LocalAiStatus {
         loaded_model_name: loaded_model.as_ref().map(|name| friendly_model_name(name)),
         loaded_model,
         available_models,
+        library_models,
         gpu_memory: match (gpu_used, gpu_total) {
             (Some(used), Some(total)) => {
                 Some(format!("{} / {}", human_size(used), human_size(total)))
