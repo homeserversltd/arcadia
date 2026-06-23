@@ -222,18 +222,16 @@
         for required in [
             "data-view=\"controllers\"",
             "data-view-panel=\"controllers\"",
-            "Controller manager",
             "Your controllers",
             "data-controller-pool",
             "data-controller-select",
+            "controls-card__head--pool",
             "controls-hub",
-            "controls-status",
             "controller-map-instruction",
             "controller-map-stage__pad",
             "Button pairs",
             "Game systems",
-            "Push to all games",
-            "Map buttons",
+            "Push mapping",
             "data-controller-programmer-open",
             "RetroArch",
             "Dolphin",
@@ -241,15 +239,12 @@
             "PCSX2",
             "PPSSPP",
             "data-action=\"controllers-rescan\"",
-            "data-action=\"controllers-test\"",
             "data-action=\"controllers-save-profile\"",
-            "data-action=\"controllers-ramrod-all\"",
             "data-action=\"controllers-assign-retroarch\"",
             "data-action=\"controllers-assign-dolphin\"",
             "data-action=\"controllers-assign-duckstation\"",
             "data-action=\"controllers-assign-pcsx2\"",
             "data-action=\"controllers-assign-ppsspp\"",
-            "data-controller-live-input",
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
             "data-controller-gamepad-programmer",
@@ -259,7 +254,6 @@
             "ux-gamepad-face-diamond",
             "ux-gamepad-shoulder",
             "controller-profile-card",
-            "Live input",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
         }
@@ -273,6 +267,12 @@
             "data-bind-step",
             "Guided bind flow",
             ">Bind<",
+            "Live input",
+            "data-controller-live-input",
+            "Controller manager",
+            "controls-status",
+            "Push to all games",
+            "Test buttons",
         ] {
             assert!(!controllers_html.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
@@ -281,7 +281,7 @@
         assert!(APP_CSS.contains(".controls-hub"));
         assert!(APP_CSS.contains(".controls-status"));
         assert!(APP_CSS.contains(".view[data-view-panel=\"controllers\"].is-active"));
-        assert!(APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto"));
+        assert!(APP_CSS.contains("grid-template-rows: minmax(0, 1fr) auto"));
         assert!(APP_CSS.contains("--ux-controls-gap"));
         assert!(APP_CSS.contains("repeat(var(--ux-controls-binding-cols)"));
         assert!(VIEWPORT_CSS.contains(".view[data-view-panel=\"controllers\"].is-active"));
@@ -316,7 +316,8 @@
         assert!(controller_backend.contains("action_controllers_apply_profile"));
         assert!(controller_backend.contains("action_controllers_ramrod_all"));
         assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-ramrod-all"));
-        assert!(APP_JS.contains("controllers-ramrod-all"));
+        assert!(APP_JS.contains("controllers-assign-"));
+        assert!(APP_JS.contains("controllerId: activeControllerId()"));
         assert!(APP_JS.contains("bindControllerProgramming"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
         assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));

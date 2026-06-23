@@ -613,24 +613,34 @@ async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>)
     }
 }
 
-async fn action_controllers_assign_retroarch() -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("RetroArch")
+async fn action_controllers_assign_retroarch(
+    Json(payload): Json<ControllerScopedRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_controllers_assign_emulator("RetroArch", payload.controller_id)
 }
 
-async fn action_controllers_assign_dolphin() -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("Dolphin")
+async fn action_controllers_assign_dolphin(
+    Json(payload): Json<ControllerScopedRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_controllers_assign_emulator("Dolphin", payload.controller_id)
 }
 
-async fn action_controllers_assign_duckstation() -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("DuckStation")
+async fn action_controllers_assign_duckstation(
+    Json(payload): Json<ControllerScopedRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_controllers_assign_emulator("DuckStation", payload.controller_id)
 }
 
-async fn action_controllers_assign_pcsx2() -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("PCSX2")
+async fn action_controllers_assign_pcsx2(
+    Json(payload): Json<ControllerScopedRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_controllers_assign_emulator("PCSX2", payload.controller_id)
 }
 
-async fn action_controllers_assign_ppsspp() -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("PPSSPP")
+async fn action_controllers_assign_ppsspp(
+    Json(payload): Json<ControllerScopedRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    action_controllers_assign_emulator("PPSSPP", payload.controller_id)
 }
 
 async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -663,18 +673,57 @@ async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionRespo
     }
 }
 
-fn action_controllers_assign_emulator(emulator: &str) -> (StatusCode, Json<ConsoleActionResponse>) {
+fn action_controllers_assign_emulator(
+    emulator: &str,
+    explicit_controller_id: Option<String>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
     let status = controller_status();
-    let controller_id = active_controller_id();
+    let controller_id = resolve_controller_id(explicit_controller_id);
+    if controller_id.is_empty() {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "controllers-assign-emulator",
+            "controller-profile-writer",
+            "Select a controller from Your controllers before pushing a mapping.",
+        );
+    }
     let (device_name, handler) = virtual_controller_device(&status, &controller_id);
     let bindings = bindings_for_controller_id(&controller_id);
-    let installed = status.emulators.iter().find(|e| e.emulator == emulator).map(|e| e.state != "not installed").unwrap_or(false);
-    match write_emulator_profile(emulator, &device_name, &handler, &bindings, installed, &controller_profile_root()) {
+    let installed = status
+        .emulators
+        .iter()
+        .find(|e| e.emulator == emulator)
+        .map(|e| e.state != "not installed")
+        .unwrap_or(false);
+    match write_emulator_profile(
+        emulator,
+        &device_name,
+        &handler,
+        &bindings,
+        installed,
+        &controller_profile_root(),
+    ) {
         Ok(path) => {
-            let mode = if installed { "assigned" } else { "staged" };
-            (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-assign-emulator", command: "controller-profile-writer", exit_code: Some(0), message: format!("{} controller profile {}.", emulator, mode), stdout: path.display().to_string(), stderr: String::new() }))
+            let mode = if installed { "pushed" } else { "staged" };
+            (
+                StatusCode::OK,
+                Json(ConsoleActionResponse {
+                    ok: true,
+                    action: "controllers-assign-emulator",
+                    command: "controller-profile-writer",
+                    exit_code: Some(0),
+                    message: format!("{device_name} mapping {mode} to {emulator}."),
+                    stdout: path.display().to_string(),
+                    stderr: String::new(),
+                }),
+            )
         }
-        Err(error) => console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-assign-emulator", "controller-profile-writer", &format!("Could not write {} controller profile: {}", emulator, error)),
+        Err(error) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "controllers-assign-emulator",
+            "controller-profile-writer",
+            &format!("Could not write {emulator} controller profile: {error}"),
+        ),
     }
 }
 

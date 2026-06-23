@@ -513,7 +513,10 @@ function bindConsoleActions() {
       let syncProgress = null;
       if (action === 'sync-games') syncProgress = startSyncProgress();
       try {
-        const data = await postJson(endpoint, body);
+        const assignBody = action.startsWith('controllers-assign-')
+          ? { ...body, controllerId: activeControllerId() }
+          : body;
+        const data = await postJson(endpoint, assignBody);
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
