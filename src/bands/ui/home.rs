@@ -311,34 +311,61 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
-    let model_line = status
-        .local_ai
-        .loaded_model_name
-        .as_deref()
-        .or(status.local_ai.selected_model_name.as_deref())
-        .unwrap_or(if status.local_ai.available_models.is_empty() {
-            "No models installed"
-        } else {
-            "No model loaded"
-        });
-    let accelerator = status.local_ai.gpu_memory.as_deref();
-    let lan = if let Some(port) = status.local_ai.lan_inference_port {
-        format!("On · :{}", port)
-    } else {
-        "Off".to_string()
-    };
+    let model_name = home_local_ai_model_name(status);
+    let load_label = home_local_ai_load_label(&status.local_ai.load_state);
+    let activity_label = home_local_ai_activity_label(status);
     html! {
-        article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) {
-            div class="card-head" aria-label="Local AI" { h3 { "Local AI" } strong { (model_line) } }
-            div class="state-rows state-rows--compact" {
-                @if let Some(accelerator) = accelerator { (state_row("Accelerator", accelerator)) }
-                (state_row("LAN", &lan))
-                (state_row("Models", &status.local_ai.available_models.len().to_string()))
+        article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) data-home-ai-load-state=(&status.local_ai.load_state) {
+            div class="card-head" aria-label="AI Model" {
+                h3 { "AI Model" }
             }
-            @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
-                div class="gpu-bar" aria-label="Accelerator memory usage" { span style=(format!("width: {}%", ((used.saturating_mul(100) / total.max(1)).min(100)))) {} }
+            div class="state-rows state-rows--compact local-ai-home-details" {
+                (home_detail_row("Model:", &model_name, false))
+                (home_detail_row("Load:", load_label, true))
+                (home_detail_row("State:", activity_label, true))
             }
         }
+    }
+}
+
+fn home_local_ai_model_name(status: &ConsoleStatus) -> String {
+    status
+        .local_ai
+        .loaded_model_name
+        .clone()
+        .or_else(|| status.local_ai.selected_model_name.clone())
+        .unwrap_or_else(|| {
+            if status.local_ai.available_models.is_empty() {
+                "No models installed".to_string()
+            } else {
+                "No model selected".to_string()
+            }
+        })
+}
+
+fn home_local_ai_load_label(load_state: &str) -> &'static str {
+    match load_state {
+        "hot" => "Hot",
+        "cold" => "Cold",
+        "unloaded" => "Unloaded",
+        "error" => "Error",
+        _ => "Unknown",
+    }
+}
+
+fn home_local_ai_activity_label(status: &ConsoleStatus) -> &'static str {
+    if status.local_ai.load_state == "error" {
+        return "Error";
+    }
+    if status.local_ai.load_state == "hot" && status.local_ai.lan_inference_enabled {
+        return "Actively working";
+    }
+    match status.local_ai.load_state.as_str() {
+        "hot" => "Idle",
+        "cold" => "Idle",
+        "unloaded" if status.local_ai.available_models.is_empty() => "Idle",
+        "unloaded" => "Not loaded",
+        _ => "Idle",
     }
 }
 
@@ -357,8 +384,8 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
                 strong { (ratio) }
             }
             div class="state-rows state-rows--compact updates-home-details" {
-                (updates_detail_row("Last ran:", &status.updates.last_update_run, false))
-                (updates_detail_row("updates available:", &available_line, true))
+                (home_detail_row("Last ran:", &status.updates.last_update_run, false))
+                (home_detail_row("updates available:", &available_line, true))
             }
             div class="inline-actions inline-actions--compact updates-home-actions" {
                 (action_button(ButtonVariant::Primary, "Check", "check-updates", "/api/actions/check-updates"))
@@ -367,11 +394,11 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
     }
 }
 
-fn updates_detail_row(label: &str, value: &str, inline_count: bool) -> Markup {
+fn home_detail_row(label: &str, value: &str, inline_count: bool) -> Markup {
     let row_class = if inline_count {
-        "state-row updates-detail-row updates-detail-row--count"
+        "state-row home-detail-row home-detail-row--inline"
     } else {
-        "state-row updates-detail-row"
+        "state-row home-detail-row"
     };
     html! {
         div class=(row_class) aria-label=(format!("{label} {value}")) {
