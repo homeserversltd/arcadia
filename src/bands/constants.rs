@@ -15,6 +15,7 @@ const PROVIDER_KEY_NAMES: [(&str, &str); 3] = [
     ("thegamesdb", "THEGAMESDB_API_KEY"),
     ("screenscraper", "SCREENSCRAPER_API_KEY"),
 ];
+const CADUCEUS_BIN: &str = "/usr/local/bin/caduceus";
 const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
 const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
 const HOMECONSOLE_SYNC_MODULE: &str = "/etc/harmonia/modules/homeconsole/sync/index.json";

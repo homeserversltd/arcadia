@@ -379,20 +379,8 @@ fn redact_json_value(value: &mut serde_json::Value) {
 async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_console_command(
         "sync-games",
-        HARMONIA_BIN,
-        &[
-            "homeconsole-sync",
-            HOMECONSOLE_PROFILE,
-            "--module",
-            HOMECONSOLE_SYNC_MODULE,
-            "--provider-env",
-            PROVIDER_KEYS_PATH,
-            "--adapter-command",
-            ARCH_GAME_SYNC_BIN,
-            "--apply",
-            "--receipt-dir",
-            "/var/lib/harmonia/receipts/game-sync-latest",
-        ],
+        CADUCEUS_BIN,
+        &["sync", "now"],
         "Games synced. Receipt ready.",
         "Sync failed. Open the ledger for the reason and fix action.",
     )

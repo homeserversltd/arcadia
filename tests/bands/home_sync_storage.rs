@@ -782,11 +782,13 @@
     }
 
     #[test]
-    fn sync_action_uses_installed_harmonia_module_path() {
-        assert_eq!(HOMECONSOLE_SYNC_MODULE, "/etc/harmonia/modules/homeconsole/sync/index.json");
+    fn sync_action_routes_through_caduceus_membrane() {
+        let constants = include_str!("../../src/bands/constants.rs");
         let source = include_str!("../../src/bands/console_system_actions.rs");
-        assert!(source.contains("\"--module\",\n            HOMECONSOLE_SYNC_MODULE"));
-        assert!(!source.contains("profiles/homeconsole/modules/sync/index.json"));
+        assert!(constants.contains("const CADUCEUS_BIN: &str = \"/usr/local/bin/caduceus\";"));
+        assert!(source.contains("CADUCEUS_BIN"));
+        assert!(source.contains("&[\"sync\", \"now\"]"));
+        assert!(!source.contains("async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {\n    run_console_command(\n        \"sync-games\",\n        HARMONIA_BIN,"));
     }
 
     #[test]
