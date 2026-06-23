@@ -313,6 +313,14 @@
         assert!(APP_JS.contains("setOverlayVariant"));
         assert!(APP_JS.contains("variant: 'fullscreen'"));
         assert!(APP_JS.contains("modal-fullscreen-open"));
+        assert!(UX_CSS.contains("--ux-spinner-size-md:"));
+        assert!(APP_CSS.contains(".ux-arcadia-spinner__ring"));
+        assert!(APP_JS.contains("const ArcadiaLoading"));
+        assert!(APP_JS.contains("Opening controller map"));
+        let controllers_backend = include_str!("../../src/bands/status_controllers.rs");
+        assert!(controllers_backend.contains("fn controller_status_api()"));
+        assert!(controllers_backend.contains("Json(controller_status_api())"));
+        assert!(!controllers_backend.contains("console_status(&state)"));
         assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
         assert!(controller_backend.contains("/proc/bus/input/devices"));

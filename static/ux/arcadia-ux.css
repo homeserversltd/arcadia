@@ -56,6 +56,9 @@
   --ux-modal-header-action-size: 34px;
   --ux-modal-fullscreen-padding: 12px 14px 14px;
   --ux-modal-fullscreen-gap: 10px;
+  --ux-spinner-size-sm: 28px;
+  --ux-spinner-size-md: 48px;
+  --ux-spinner-size-lg: 72px;
 
   --ux-text-xs: 11px;
   --ux-text-sm: 12px;
