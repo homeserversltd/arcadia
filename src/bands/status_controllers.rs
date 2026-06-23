@@ -142,10 +142,40 @@ fn controller_glyph(name: &str) -> String {
 }
 
 fn controller_profile_presets() -> Vec<ControllerProfilePresetStatus> {
-    [("Default", "Xbox / SDL order", "active"), ("Nintendo", "A/B swapped", "available"), ("PlayStation", "Cross/Circle labels", "available"), ("Arcade", "D-pad priority", "available")]
-        .into_iter()
-        .map(|(name, layout, state)| ControllerProfilePresetStatus { name: name.to_string(), layout: layout.to_string(), state: state.to_string() })
-        .collect()
+    [
+        (
+            "Default",
+            "Xbox-style labels",
+            "Standard A/B/X/Y and stick names. Best starting point for most gamepads and emulators.",
+            "active",
+        ),
+        (
+            "Nintendo",
+            "Swapped A ↔ B",
+            "Swaps A and B (and X and Y) so on-screen Nintendo names match what you press.",
+            "available",
+        ),
+        (
+            "PlayStation",
+            "△ ○ □ ✕ names",
+            "Uses PlayStation-style face names (cross, circle, square, triangle) on the virtual pad.",
+            "available",
+        ),
+        (
+            "Arcade",
+            "D-pad forward",
+            "Highlights D-pad mapping for arcade cores and digital-first platforms.",
+            "available",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, layout, description, state)| ControllerProfilePresetStatus {
+        name: name.to_string(),
+        layout: layout.to_string(),
+        description: description.to_string(),
+        state: state.to_string(),
+    })
+    .collect()
 }
 
 fn controller_rank(device: &ControllerDeviceStatus) -> u8 {

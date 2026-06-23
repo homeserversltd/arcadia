@@ -238,9 +238,12 @@
             "data-controller-select",
             "controls-card__head--pool",
             "controls-hub",
-            "controller-map-instruction",
             "controller-map-stage__pad",
-            "Button pairs",
+            "Your mappings",
+            "Game control",
+            "Your button",
+            "Button label style",
+            "data-tooltip",
             "Game systems",
             "Push mapping",
             "data-controller-programmer-open",
@@ -288,8 +291,13 @@
             "controls-status",
             "Push to all games",
             "Test buttons",
+            "controller-map-header",
+            "controller-map-instruction",
+            "Button pairs",
+            "tuple pairs",
+            "Linux signal",
         ] {
-            assert!(!controllers_html.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
+            assert!(!controllers_html.contains(forbidden) && !rendered.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
         assert!(APP_JS.contains("bindControllerLiveInput"));
         assert!(APP_JS.contains("const panel = document.querySelector('[data-view-panel=\"controllers\"]')"));

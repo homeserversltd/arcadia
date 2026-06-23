@@ -57,29 +57,26 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
 
                 template id="controller-programmer-template" {
                     div class="controller-programmer-modal" data-controller-programmer-modal data-controller-id=(status.controllers.active_controller_id) data-controller-broadcast-ms="60" data-controller-rapid-fire-ms="60" {
-                        header class="controller-map-header" {
-                            p class="controller-map-instruction" {
-                                "Tap a control on the virtual gamepad, then press the matching button on your real controller."
-                            }
-                            span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Ready — pick a control" }
-                        }
                         div class="controller-map-stage" {
                             div class="controller-map-stage__pad" {
                                 (controller_silhouette(status, connected))
                             }
                         }
                         div class="controller-map-workbench" {
-                            section class="controller-map-bindings" aria-label="Button layout" {
-                                div class="controls-card__head" {
+                            section class="controller-map-bindings" aria-label="Your mappings" {
+                                div class="controls-card__head controls-card__head--compact" {
                                     div {
-                                        strong { "Button pairs" }
-                                        p { "Each control keeps its own Linux signal. Rows mirror the gamepad above." }
+                                        strong { "Your mappings" }
+                                        p { "Each row is a game control and the physical button that drives it. Tap a row or the gamepad to remap." }
                                     }
                                 }
                                 (controller_bindings_grid(&status.controllers.profile.bindings, connected))
                             }
-                            section class="controller-map-presets" aria-label="Layout presets" {
-                                span class="controls-presets__label" { "Layout style" }
+                            section class="controller-map-presets" aria-label="Button label style" {
+                                div class="controls-presets__head" {
+                                    span class="controls-presets__label" { "Button label style" }
+                                    p class="controls-presets__hint" { "How face buttons are named on the virtual pad. Your saved mappings stay put." }
+                                }
                                 div class="controller-profile-cards controls-preset-grid" {
                                     @for preset in &status.controllers.profile_presets {
                                         (controller_profile_preset_card(preset, connected))
@@ -87,9 +84,10 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                                 }
                             }
                             section class="controller-map-live" aria-label="Live preview" {
+                                span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Tap a control on the gamepad to begin" }
                                 p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
                                 div class="controller-axis-strip" data-controller-programmer-axes {}
-                                p class="controls-map-hint" { "Physical presses light up on the gamepad and update the tuple pairs." }
+                                p class="controls-map-hint" { "Press buttons on your real controller to see them light up here and in your mappings." }
                                 div class="controls-card__actions controllers-actions" {
                                     button class="btn btn--secondary" type="button" data-controller-broadcast-toggle { "Pause live preview" }
                                     output class="controls-map-readout" data-controller-broadcast-readout { "Live" }
@@ -98,7 +96,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         }
                         footer class="controller-map-footer controllers-actions" {
                             (action_button(ButtonVariant::Primary, "Save layout", "controllers-save-profile", "/api/actions/controllers-save-profile"))
-                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole keeps a library of every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Tap Map and pair each virtual control with your real gamepad.\n3. Save layout.\n4. Use Push mapping on each game system to write that controller into the emulator mapper."))
+                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole remembers every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Tap Map, choose a control on the virtual pad, then press the matching button on your real controller.\n3. Check Your mappings on the right — that is the before/after readout.\n4. Save layout, then use Push mapping on each game system."))
                         }
                     }
                 }
@@ -108,26 +106,36 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
 }
 
 fn friendly_binding_label(binding: &str) -> String {
-    if binding.starts_with("button ") {
-        format!("Button {}", binding.trim_start_matches("button "))
-    } else if binding.starts_with("axis ") {
-        format!("Stick axis {}", binding.trim_start_matches("axis "))
-    } else if binding.contains("hat") {
-        "D-pad".to_string()
-    } else {
-        binding.to_string()
+    if binding == "Waiting" || binding == "Tap to bind" {
+        return binding.to_string();
     }
+    if let Some(index) = binding.strip_prefix("button ") {
+        let number = index.trim().parse::<u32>().unwrap_or(0).saturating_add(1);
+        return format!("Physical button {number}");
+    }
+    if let Some(index) = binding.strip_prefix("axis ") {
+        return format!("Stick input {index}");
+    }
+    if binding.contains("hat") {
+        return "D-pad".to_string();
+    }
+    binding.to_string()
 }
 
 fn controller_bindings_grid(bindings: &[crate::ControllerBindingStatus], connected: bool) -> Markup {
     html! {
         div class="controls-bindings" data-controller-mapping-editor="default" {
             @if bindings.is_empty() {
-                p class="controls-bindings__empty" { "No button layout saved yet. Connect a gamepad and tap Map buttons to begin." }
+                p class="controls-bindings__empty" { "No mappings yet. Tap a control on the gamepad, then press the matching button on your controller." }
             } @else {
+                div class="controls-bindings-columns" aria-hidden="true" {
+                    span { "Game control" }
+                    span { "Your button" }
+                }
                 @for binding in bindings {
-                    button class="controls-binding-row" type="button" data-controller-control=(binding.control) data-controller-bind-row="true" aria-label=(format!("{} mapped to {}", binding.control, binding.binding)) {
+                    button class="controls-binding-row" type="button" data-controller-control=(binding.control) data-controller-bind-row="true" aria-label=(format!("{} mapped to {}", binding.control, friendly_binding_label(&binding.binding))) {
                         span class="controls-binding-name" { (binding.control) }
+                        span class="controls-binding-arrow" aria-hidden="true" { "→" }
                         span class="controls-binding-value" data-binding-control=(binding.control) {
                             (friendly_binding_label(if connected { &binding.binding } else { "Waiting" }))
                         }
@@ -272,7 +280,7 @@ fn controller_pool_card(entry: &crate::ControllerPoolEntry) -> Markup {
                 }
                 strong class="controller-pool-card__name" { (entry.name) }
                 span class="controller-pool-card__meta" {
-                    (entry.transport) " · " (entry.layout_style) " · " (entry.tuple_count) " pairs"
+                    (entry.transport) " · " (entry.layout_style) " · " (entry.tuple_count) " mapped"
                 }
             }
             button class="btn btn--secondary controller-pool-card__map" type="button" data-controller-programmer-open data-controller-id=(entry.id) { "Map" }
@@ -295,7 +303,7 @@ fn controller_profile_preset_card(
     _enabled: bool,
 ) -> Markup {
     html! {
-        button class=(if preset.state == "active" { "controller-profile-card controls-preset controller-profile-card--active" } else { "controller-profile-card controls-preset" }) type="button" data-controller-profile=(preset.name) data-controller-profile-action="apply" aria-label=(format!("Apply {} layout", preset.name)) {
+        button class=(if preset.state == "active" { "controller-profile-card controls-preset controller-profile-card--active" } else { "controller-profile-card controls-preset" }) type="button" data-controller-profile=(preset.name) data-controller-profile-action="apply" title=(preset.description) data-tooltip=(preset.description) aria-label=(format!("Use {} label style: {}", preset.name, preset.description)) {
             strong { (preset.name) }
             span { (preset.layout) }
             em { (if preset.state == "active" { "Active" } else { "Use" }) }

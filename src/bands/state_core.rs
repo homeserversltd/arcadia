@@ -164,6 +164,7 @@ pub struct ControllerRecoveryStatus {
 pub struct ControllerProfilePresetStatus {
     pub name: String,
     pub layout: String,
+    pub description: String,
     pub state: String,
 }
 

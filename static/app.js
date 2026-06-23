@@ -869,7 +869,15 @@ function updateControllerLiveInput(data) {
 
 
 function formatControllerBinding(binding) {
-  return String(binding || '').replace('button ', 'B').replace('axis ', 'AX').replace('hat 0', 'Hat');
+  const raw = String(binding || '').trim();
+  if (!raw || raw === 'Waiting' || raw === 'Tap to bind') return raw || 'Not set';
+  if (raw.startsWith('button ')) {
+    const index = Number.parseInt(raw.slice('button '.length), 10);
+    return Number.isFinite(index) ? `Physical button ${index + 1}` : raw;
+  }
+  if (raw.startsWith('axis ')) return `Stick input ${raw.slice('axis '.length)}`;
+  if (raw.includes('hat')) return 'D-pad';
+  return raw;
 }
 
 function activeControllerId() {
@@ -965,10 +973,10 @@ function bindControllerProgramming() {
     const state = root.querySelector('[data-controller-programmer-state]');
     if (!state) return;
     if (control) {
-      state.textContent = `Step 2 — press ${control} on your gamepad`;
+      state.textContent = `Now press ${control} on your controller`;
       state.classList.add('controller-map-bind-state--active');
     } else {
-      state.textContent = 'Ready — pick a control';
+      state.textContent = 'Tap a control on the gamepad to begin';
       state.classList.remove('controller-map-bind-state--active');
     }
   };
