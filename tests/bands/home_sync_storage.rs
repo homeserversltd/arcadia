@@ -214,14 +214,56 @@
         let home_html = &rendered[home_start..home_end];
 
         assert!(home_html.contains("aria-label=\"Updates\""));
-        assert!(home_html.contains(">Available<"));
-        assert!(!home_html.contains(">Current<"));
+        assert!(home_html.contains("Update available"));
+        assert!(!home_html.contains("homeconsole-latest/run.json"));
+        assert!(!home_html.contains(">Receipt<"));
         assert!(home_html.contains(">✓<"));
         assert!(home_html.contains("aria-label=\"Game Session\""));
         assert!(home_html.contains(">!<"));
         assert!(!home_html.contains(">Unknown<"));
         assert!(!home_html.contains("GameScope"));
         assert!(!home_html.contains(">Arcadia<"));
+    }
+
+    #[test]
+    fn home_updates_card_surfaces_harmonia_check_and_module_readiness() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-sync\"")
+                .expect("sync view follows home");
+        let home_html = &rendered[home_start..home_end];
+
+        for required in [
+            "updates-home-card",
+            "data-home-harmonia-state",
+            "data-label=\"Check\"",
+            "data-label=\"Suite\"",
+            "data-label=\"Modules\"",
+            "ready",
+        ] {
+            assert!(home_html.contains(required), "home updates card missing {required}");
+        }
+        for forbidden in [
+            "homeconsole-latest/run.json",
+            ">Receipt<",
+            ">Missing<",
+            "receipt-missing",
+        ] {
+            assert!(
+                !home_html.contains(forbidden),
+                "home updates card leaked internal surface: {forbidden}"
+            );
+        }
     }
 
     #[test]

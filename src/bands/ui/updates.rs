@@ -44,6 +44,44 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
+fn harmonia_module_readiness(modules: &[crate::HarmoniaModuleStatus]) -> (usize, usize) {
+    let enabled = modules.iter().filter(|module| module.enabled).count();
+    let ready = modules
+        .iter()
+        .filter(|module| module.enabled && module.present)
+        .count();
+    (ready, enabled)
+}
+
+fn harmonia_check_status_label(status: &crate::UpdatesStatus) -> String {
+    if status.check_missing_signal == "not-checked" {
+        "Not run".to_string()
+    } else if status.check_ok {
+        "Current".to_string()
+    } else {
+        "Needs repair".to_string()
+    }
+}
+
+fn harmonia_suite_status_label(status: &crate::UpdatesStatus) -> String {
+    if status.suite_ok {
+        "Current".to_string()
+    } else if status.first_missing_signal == "receipt-missing" {
+        "Not run".to_string()
+    } else {
+        "Needs repair".to_string()
+    }
+}
+
+fn harmonia_missing_signal_label(signal: &str) -> String {
+    match signal {
+        "none" => "None".to_string(),
+        "not-checked" => "Not checked yet".to_string(),
+        "receipt-missing" => "No Harmonia receipt".to_string(),
+        other => other.replace('-', " "),
+    }
+}
+
 fn harmonia_state_label(state: &str) -> &'static str {
     match state {
         "current" => "Harmonia current",
