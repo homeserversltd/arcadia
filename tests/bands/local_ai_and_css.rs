@@ -333,6 +333,8 @@
         let controllers_backend = include_str!("../../src/bands/status_controllers.rs");
         assert!(controllers_backend.contains("fn controller_status_api()"));
         assert!(controllers_backend.contains("Json(controller_status_api())"));
+        assert!(controllers_backend.contains("async fn controllers_input_route()"));
+        assert!(controllers_backend.contains("read_controller_input(active_device.as_ref().or(devices.first()))"));
         assert!(!controllers_backend.contains("console_status(&state)"));
         assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
@@ -357,6 +359,11 @@
         assert!(APP_JS.contains("controllers-assign-"));
         assert!(APP_JS.contains("controllerId: activeControllerId()"));
         assert!(APP_JS.contains("bindControllerProgramming"));
+        assert!(APP_JS.contains("readBrowserGamepadInput"));
+        assert!(APP_JS.contains("mergeControllerInput"));
+        assert!(APP_JS.contains("navigator.getGamepads"));
+        assert!(APP_JS.contains("normalizeControllerInputEvents"));
+        assert!(APP_JS.contains("Pause or quit your game first"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
         assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));
         assert!(APP_JS.contains("window.setInterval(async ()"));

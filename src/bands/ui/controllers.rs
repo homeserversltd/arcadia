@@ -87,7 +87,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                                 span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Tap a control on the gamepad to begin" }
                                 p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
                                 div class="controller-axis-strip" data-controller-programmer-axes {}
-                                p class="controls-map-hint" { "Press buttons on your real controller to see them light up here and in your mappings." }
+                                p class="controls-map-hint" { "Press buttons on your real controller to see them light up here. If a game is running, pause it first — games can block controller input until you map from the browser." }
                                 div class="controls-card__actions controllers-actions" {
                                     button class="btn btn--secondary" type="button" data-controller-broadcast-toggle { "Pause live preview" }
                                     output class="controls-map-readout" data-controller-broadcast-readout { "Live" }

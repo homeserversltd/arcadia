@@ -835,6 +835,102 @@ async function runStorageCleanup(action, endpoint) {
   if (data.ok) openStorageModal('cleanup-review');
 }
 
+const CONTROLLER_BUTTON_INDEX_LABELS = [
+  'A', 'B', 'X', 'Y', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'Select', 'Start',
+];
+
+function controlLabelForButtonIndex(index) {
+  return CONTROLLER_BUTTON_INDEX_LABELS[index] || `Button ${index}`;
+}
+
+function normalizeControllerInputEvents(data) {
+  if (!data) return data;
+  const normalize = (item) => {
+    const match = String(item.control || '').match(/^Button\s+(\d+)$/i);
+    if (!match) return item;
+    const index = Number.parseInt(match[1], 10);
+    return {
+      ...item,
+      control: controlLabelForButtonIndex(Number.isFinite(index) ? index : 0),
+      binding: item.binding || `button ${match[1]}`,
+    };
+  };
+  return {
+    ...data,
+    pressed: (data.pressed || []).map(normalize),
+    axes: (data.axes || []).map((axis) => {
+      const match = String(axis.control || '').match(/^Axis\s+(\d+)$/i);
+      if (!match) return axis;
+      const labels = ['Left Stick X', 'Left Stick Y', '', 'Right Stick X', 'Right Stick Y'];
+      const index = Number.parseInt(match[1], 10);
+      return { ...axis, control: labels[index] || axis.control };
+    }),
+  };
+}
+
+function readBrowserGamepadInput() {
+  const getGamepads = navigator.getGamepads?.bind(navigator);
+  if (!getGamepads) return null;
+  const pad = getGamepads().find((item) => item && item.connected) || null;
+  if (!pad) {
+    return {
+      state: 'waiting',
+      device: 'No browser gamepad',
+      samplePath: 'navigator.getGamepads',
+      pressed: [],
+      axes: [],
+    };
+  }
+  const pressed = [];
+  const axes = [];
+  pad.buttons.forEach((button, index) => {
+    if (!(button.pressed || button.value > 0.45)) return;
+    pressed.push({
+      control: controlLabelForButtonIndex(index),
+      binding: `button ${index}`,
+      pressed: true,
+    });
+  });
+  const axisLabels = ['Left Stick X', 'Left Stick Y', '', 'Right Stick X', 'Right Stick Y'];
+  pad.axes.forEach((value, index) => {
+    if (Math.abs(value) < 0.55) return;
+    axes.push({
+      control: axisLabels[index] || `Axis ${index}`,
+      binding: String(Math.round(value * 32767)),
+      pressed: true,
+    });
+  });
+  return {
+    state: pressed.length || axes.length ? 'active' : 'listening',
+    device: pad.id || 'Browser gamepad',
+    samplePath: 'navigator.getGamepads',
+    pressed,
+    axes,
+  };
+}
+
+function mergeControllerInput(serverData, browserData) {
+  const server = normalizeControllerInputEvents(serverData) || {
+    state: 'listening',
+    device: '',
+    samplePath: '',
+    pressed: [],
+    axes: [],
+  };
+  if (!browserData) return server;
+  const browser = normalizeControllerInputEvents(browserData);
+  const serverActive = (server.pressed?.length || 0) + (server.axes?.length || 0);
+  const browserActive = (browser.pressed?.length || 0) + (browser.axes?.length || 0);
+  if (serverActive > 0) return server;
+  if (browserActive > 0) return browser;
+  return {
+    ...server,
+    device: browser.device && browser.device !== 'No browser gamepad' ? browser.device : server.device,
+    samplePath: browser.samplePath || server.samplePath,
+    state: browser.state || server.state,
+  };
+}
+
 function updateControllerLiveInput(data) {
   const root = document.querySelector('[data-controller-live-input]');
   if (!root || !data) return;
@@ -928,9 +1024,12 @@ function bindControllerProgramming() {
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
   let selected = null;
+  let bindingStartedAt = 0;
+  let bindingTimeoutShown = false;
   let programmerTimer = null;
   let programmerPaused = false;
   const intervalMs = 60;
+  const bindingTimeoutMs = 3000;
 
   const refreshModalBindings = async (root) => {
     try {
@@ -970,6 +1069,8 @@ function bindControllerProgramming() {
     root.classList.toggle('is-binding', Boolean(control));
     if (control) root.dataset.bindingTarget = control;
     else delete root.dataset.bindingTarget;
+    bindingStartedAt = control ? Date.now() : 0;
+    bindingTimeoutShown = false;
     const state = root.querySelector('[data-controller-programmer-state]');
     if (!state) return;
     if (control) {
@@ -1009,19 +1110,20 @@ function bindControllerProgramming() {
   };
 
   const ingestProgrammerInput = async (root, data) => {
-    updateControllerLiveInput(data);
-    const pressed = new Set((data.pressed || []).map((item) => item.control));
+    const merged = normalizeControllerInputEvents(data);
+    updateControllerLiveInput(merged);
+    const pressed = new Set((merged.pressed || []).map((item) => item.control));
     root.querySelectorAll('[data-controller-control]').forEach((pill) => {
       const active = pressed.has(pill.dataset.controllerControl || '');
       pill.classList.toggle('controller-button-dot--active', active);
       pill.classList.toggle('is-active', active);
     });
     const device = root.querySelector('[data-controller-programmer-device]');
-    if (device) device.textContent = data.device || 'No controller detected';
+    if (device) device.textContent = merged.device || 'No controller detected';
     const axes = root.querySelector('[data-controller-programmer-axes]');
     if (axes) {
       axes.textContent = '';
-      (data.axes || []).forEach((axis) => {
+      (merged.axes || []).forEach((axis) => {
         const pill = document.createElement('span');
         pill.className = 'controller-axis-pill';
         pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}`.trim();
@@ -1029,11 +1131,11 @@ function bindControllerProgramming() {
       });
     }
     const captureBinding = () => {
-      if (data.pressed && data.pressed.length) {
-        return data.pressed[0].binding || data.pressed[0].input || null;
+      if (merged.pressed && merged.pressed.length) {
+        return merged.pressed[0].binding || merged.pressed[0].input || null;
       }
-      if (data.axes && data.axes.length) {
-        const axis = data.axes[0];
+      if (merged.axes && merged.axes.length) {
+        const axis = merged.axes[0];
         const number = String(axis.control || '').match(/(\d+)/);
         if (number) return `axis ${number[1]}`;
         if (axis.binding) return `axis ${axis.binding}`;
@@ -1042,6 +1144,10 @@ function bindControllerProgramming() {
     };
     if (selected) {
       const input = captureBinding();
+      if (!input && bindingStartedAt && !bindingTimeoutShown && Date.now() - bindingStartedAt >= bindingTimeoutMs) {
+        bindingTimeoutShown = true;
+        PopupManager.showToast('No button detected. Pause or quit your game first — running games often keep the controller.', 'info');
+      }
       if (input) {
         const result = await postJson('/api/actions/controllers-bind', scopedControllerBody(root, { control: selected, binding: input }));
         root.querySelectorAll(`[data-controller-control="${selected}"], [data-binding-control="${selected}"]`).forEach((node) => {
@@ -1141,7 +1247,11 @@ function bindControllerProgramming() {
         return;
       }
       if (programmerPaused) return;
-      try { await ingestProgrammerInput(root, await getJson('/api/controllers/input')); } catch (_) {}
+      try {
+        const serverData = await getJson('/api/controllers/input');
+        const browserData = readBrowserGamepadInput();
+        await ingestProgrammerInput(root, mergeControllerInput(serverData, browserData));
+      } catch (_) {}
     }, intervalMs);
     const toggle = root.querySelector('[data-controller-broadcast-toggle]:not([data-controller-broadcast-bound])');
     if (toggle) {
@@ -1188,10 +1298,22 @@ function bindControllerProgramming() {
     });
   });
 
+  if (!window.arcadiaGamepadListenerBound) {
+    window.arcadiaGamepadListenerBound = true;
+    window.addEventListener('gamepadconnected', (event) => {
+      const label = event.gamepad?.id || 'Gamepad';
+      if (document.querySelector('[data-controller-programmer-modal]')) {
+        PopupManager.showToast(`${label} ready in browser`, 'success');
+      }
+    });
+  }
+
   window.arcadiaControllerProgramming = {
     selectedControl: () => selected,
     broadcastMs: () => intervalMs,
     modalOpen: () => Boolean(document.querySelector('[data-controller-programmer-modal]')),
+    readBrowserGamepadInput,
+    mergeControllerInput,
   };
 }
 
@@ -1204,7 +1326,11 @@ function bindControllerLiveInput() {
   const poll = async () => {
     const active = document.querySelector('[data-view-panel="controllers"].is-active, [data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
     if (!active || document.querySelector('[data-controller-programmer-modal]')) return;
-    try { updateControllerLiveInput(await getJson('/api/controllers/input')); } catch (_) {}
+    try {
+      const serverData = await getJson('/api/controllers/input');
+      const browserData = readBrowserGamepadInput();
+      updateControllerLiveInput(mergeControllerInput(serverData, browserData));
+    } catch (_) {}
   };
   poll();
   window.setInterval(poll, 650);

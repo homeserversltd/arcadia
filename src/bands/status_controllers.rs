@@ -508,8 +508,10 @@ async fn controllers_state_route() -> Json<ControllerStatus> {
 }
 
 async fn controllers_input_route() -> Json<ControllerInputStatus> {
-    let status = controller_status();
-    Json(status.live_input)
+    let devices = controller_devices();
+    let active_controller_id = active_controller_id();
+    let active_device = active_connected_device(&devices, &active_controller_id);
+    Json(read_controller_input(active_device.as_ref().or(devices.first())))
 }
 
 async fn action_controllers_rescan() -> (StatusCode, Json<ConsoleActionResponse>) {
