@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::{Path, PathBuf}};
 
 const REQUIRED: &[&str] = &[
     "bg-base",
@@ -58,7 +58,9 @@ const REQUIRED: &[&str] = &[
 ];
 
 fn main() {
+    compose_app_css();
     println!("cargo:rerun-if-changed=static/themes");
+    println!("cargo:rerun-if-changed=static/app");
     let dir = PathBuf::from("static/themes");
     let mut files = fs::read_dir(&dir)
         .expect("static/themes exists")
@@ -110,6 +112,45 @@ fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     fs::write(out.join("themes.css"), css).expect("write generated themes.css");
     fs::write(out.join("themes.js"), manifest).expect("write generated themes.js");
+}
+
+fn compose_app_css() {
+    let app_root = PathBuf::from("static/app");
+    let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+    let mut css = String::from("/* composed from static/app/index.json spine */\n");
+    compose_app_band(&app_root, &mut css);
+    fs::write(out.join("app-composed.css"), css).expect("write composed app css");
+}
+
+fn compose_app_band(band_dir: &Path, css: &mut String) {
+    let index_path = band_dir.join("index.json");
+    if !index_path.exists() {
+        return;
+    }
+    println!("cargo:rerun-if-changed={}", index_path.display());
+    let raw = fs::read_to_string(&index_path).expect("app band index readable");
+    let value: serde_json::Value = serde_json::from_str(&raw).expect("app band index parses");
+    let children = value
+        .get("children")
+        .and_then(|v| v.as_array())
+        .expect("app band children array");
+    for child in children {
+        let name = child.as_str().expect("app band child name");
+        let child_path = band_dir.join(name);
+        if child_path.is_dir() {
+            compose_app_band(&child_path, css);
+            continue;
+        }
+        if name.ends_with(".css") {
+            println!("cargo:rerun-if-changed={}", child_path.display());
+            let chunk = fs::read_to_string(&child_path).expect("app css module readable");
+            css.push('\n');
+            css.push_str(&chunk);
+            if !chunk.ends_with('\n') {
+                css.push('\n');
+            }
+        }
+    }
 }
 
 fn label(name: &str) -> String {
