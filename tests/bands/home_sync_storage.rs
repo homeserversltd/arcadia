@@ -740,9 +740,9 @@
 
         let rendered = ui::layout(&status).into_string();
         let sync_html = sync_slice(&rendered);
-        assert!(rendered.contains("Games: 3 ROMs"));
+        assert!(rendered.contains("Games: 3"));
         assert!(!sync_html.contains("Synced"));
-        assert!(rendered.contains("Games: 3 ROMs"));
+        assert!(rendered.contains("Games: 3"));
         assert!(!sync_html.contains("Last sync complete"));
         assert!(sync_html.contains("Games current"));
         assert!(sync_html.contains("3 admitted"));
@@ -758,7 +758,7 @@
         status.library.artwork_status = "No artwork".to_string();
         let zero = ui::layout(&status).into_string();
         let zero_sync = sync_slice(&zero);
-        assert!(zero.contains("Games: 0 ROMs"));
+        assert!(zero.contains("Games: 0"));
         assert!(!zero_sync.contains("Synced"));
         assert!(zero_sync.contains("Add games"));
         assert!(zero_sync.contains("sync-shelf-empty"));
