@@ -1,0 +1,37 @@
+/* Arcadia appliance shell. Runtime style values are threaded through one compiled JSON theme singleton. */
+:root {
+  color-scheme: dark;
+  font-family: var(--theme-font-family, Inter, Ubuntu, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --aubergine-0: var(--theme-bg-base);
+  --aubergine-1: var(--theme-bg-panel);
+  --aubergine-2: var(--theme-bg-panel-strong);
+  --aubergine-3: var(--theme-bg-panel-strong);
+  --orange: var(--theme-accent, var(--theme-storage-games));
+  --orange-strong: var(--theme-accent-strong);
+  --cream: var(--theme-fg-primary);
+  --muted: var(--theme-fg-muted);
+  --line: var(--theme-line);
+  --glass: var(--theme-glass);
+  --glass-strong: var(--theme-glass-strong);
+  --shadow: var(--theme-shadow);
+  --good: var(--theme-good, var(--theme-storage-artwork));
+  --warn: var(--theme-warn);
+  --bad: var(--theme-bad);
+  --idle: var(--theme-idle, var(--theme-idle));
+  --radius: var(--theme-radius-lg);
+  background: var(--aubergine-0);
+  color: var(--cream);
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; margin: 0; height: 100%; overflow: hidden; }
+body {
+  background:
+    radial-gradient(circle at 16% 12%, var(--theme-accent-soft), transparent 22rem),
+    radial-gradient(circle at 88% 0%, var(--theme-bg-panel-strong), transparent 26rem),
+    var(--theme-bg-shell);
+  color: var(--cream);
+  overflow-x: hidden;
+}
+button, input { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+

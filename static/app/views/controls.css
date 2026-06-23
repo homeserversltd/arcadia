@@ -1,0 +1,370 @@
+/* Controls hub — customer-facing gamepad viewport; desktop fits one pane via UX scale + modal deferral. */
+.view[data-view-panel="controllers"].is-active {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  padding: var(--ux-view-padding-block) var(--ux-view-padding-inline);
+  gap: var(--ux-controls-gap);
+  overflow: hidden;
+}
+.controls-hub {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--ux-controls-gap);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.controls-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "identity badge actions";
+  gap: 8px 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--ux-controls-status-radius);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--theme-accent-soft) 55%, transparent), color-mix(in srgb, var(--theme-bg-raised) 78%, transparent));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--theme-field-surface) 88%, transparent), inset 0 1px 0 var(--theme-glass);
+}
+.controls-status--available { border-color: color-mix(in srgb, var(--good) 45%, var(--line)); }
+.controls-status--starting { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.controls-status--disabled { border-color: color-mix(in srgb, var(--idle) 40%, var(--line)); }
+.controls-status__identity { grid-area: identity; display: flex; gap: 8px; align-items: center; min-width: 0; }
+.controls-status__glyph {
+  width: 40px; height: 40px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 14px;
+  background: var(--theme-button-surface);
+  color: var(--orange-strong);
+  font-size: var(--ux-text-lg); font-weight: 950; letter-spacing: .04em;
+}
+.controls-status__copy { min-width: 0; display: grid; gap: 2px; }
+.controls-status__eyebrow { color: var(--muted); font-size: var(--ux-text-xs); text-transform: uppercase; letter-spacing: .14em; font-weight: 900; }
+.controls-status__title { color: var(--cream); font-size: var(--ux-text-lg); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controls-status__detail { margin: 0; color: var(--muted); font-size: var(--ux-text-sm); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controls-status__badge { grid-area: badge; align-self: center; }
+.controls-status__actions { grid-area: actions; display: flex; flex-wrap: nowrap; gap: var(--ux-control-gap); justify-content: flex-end; }
+.controls-status__actions .btn { min-height: var(--ux-compact-button-min-height); padding: var(--ux-compact-button-padding-block) var(--ux-compact-button-padding-inline); font-size: var(--ux-text-sm); }
+.controls-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ux-controls-gap);
+  min-height: 0;
+  overflow: hidden;
+}
+.controls-mapping-teaser {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--ux-text-sm);
+  line-height: 1.35;
+}
+.controls-mapping-teaser strong { color: var(--cream); }
+.controls-card--pool {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.controls-pool-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--ux-text-sm);
+  line-height: 1.35;
+}
+.controller-pool-scroll {
+  min-height: 0;
+  max-height: min(220px, 28vh);
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  padding-right: 2px;
+}
+.controller-pool-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: stretch;
+}
+.controller-pool-card__select {
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+}
+.controller-pool-card--selected .controller-pool-card__select {
+  border-color: color-mix(in srgb, var(--good) 55%, var(--line));
+  background: color-mix(in srgb, var(--good) 12%, var(--theme-field-surface));
+}
+.controller-pool-card__glyph {
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--theme-button-surface);
+  color: var(--orange-strong);
+  font-weight: 950;
+  font-size: 12px;
+}
+.controller-pool-card__copy { min-width: 0; display: grid; gap: 1px; }
+.controller-pool-card__copy strong { color: var(--cream); font-size: var(--ux-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controller-pool-card__copy span { color: var(--muted); font-size: var(--ux-text-xs); line-height: 1.15; }
+.controller-pool-card__copy em { color: var(--muted); font-size: 10px; font-style: normal; opacity: .8; }
+.controller-pool-card__status { font-size: var(--ux-text-xs); white-space: nowrap; }
+.controller-pool-card__map {
+  min-height: var(--ux-compact-button-min-height);
+  padding: var(--ux-compact-button-padding-block) 12px;
+  font-size: var(--ux-text-xs);
+  align-self: center;
+}
+.controls-card {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--ux-compact-card-padding);
+  border: 1px solid var(--line);
+  border-radius: var(--ux-controls-card-radius);
+  background: linear-gradient(160deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 55%, transparent));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass);
+  display: grid;
+  gap: 6px;
+  overflow: hidden;
+}
+.controls-card__head {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding-bottom: 5px; border-bottom: var(--ux-card-divider);
+}
+.controls-card__head strong { color: var(--cream); font-size: var(--ux-text-md); }
+.controls-card__head p { display: none; margin: 0; color: var(--muted); font-size: var(--ux-text-sm); line-height: 1.3; max-width: 46ch; }
+.controls-card__head--games { align-items: center; }
+.controls-card__head--games .btn[data-action="controllers-ramrod-all"] { display: none; }
+.controls-card__actions { display: flex; flex-wrap: wrap; gap: var(--ux-control-gap); }
+.controls-card--layout { grid-template-rows: auto minmax(0, 1fr); }
+.controls-bindings {
+  display: grid;
+  grid-template-columns: repeat(var(--ux-controls-binding-cols), minmax(0, 1fr));
+  gap: 4px;
+  min-height: 0;
+  overflow: hidden;
+  align-content: start;
+}
+.controls-binding-row {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--theme-field-surface) 76%, transparent);
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: var(--ux-controls-binding-row-min);
+  padding: 4px 6px;
+  text-align: left;
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.controls-binding-row:hover,
+.controls-binding-row:focus-visible,
+.controls-binding-row.is-selected {
+  border-color: color-mix(in srgb, var(--orange-strong) 70%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--orange-strong) 18%, transparent);
+  outline: none;
+  transform: translateY(-1px);
+}
+.controls-binding-name { color: var(--cream); font-size: var(--ux-text-sm); font-weight: 800; }
+.controls-binding-value {
+  color: var(--muted);
+  font-size: var(--ux-text-xs);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-button-surface) 80%, transparent);
+}
+.controls-bindings__empty { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.controls-live-meter { display: none; position: relative; width: 54px; height: 54px; margin: 2px 0 4px; }
+.controls-live-meter__ring,
+.controls-live-meter__core {
+  position: absolute; inset: 0; border-radius: 999px;
+}
+.controls-live-meter__ring {
+  border: 2px solid color-mix(in srgb, var(--good) 35%, transparent);
+  animation: controls-pulse 2.4s ease-in-out infinite;
+}
+.controls-live-meter__core {
+  inset: 14px;
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--good) 55%, transparent), color-mix(in srgb, var(--theme-field-surface) 90%, transparent));
+}
+@keyframes controls-pulse {
+  0%, 100% { transform: scale(1); opacity: .55; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+.controls-live-device { margin: 0; color: var(--muted); font-size: var(--ux-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controls-live-feed { min-height: 0; max-height: 30px; overflow: hidden; }
+.controls-live-idle { color: var(--muted); font-size: var(--ux-text-sm); }
+.controls-presets { display: grid; gap: 4px; }
+.controls-presets__label { color: var(--muted); font-size: var(--ux-text-xs); text-transform: uppercase; letter-spacing: .12em; font-weight: 900; }
+.controls-preset-grid { grid-template-columns: repeat(var(--ux-controls-preset-cols), minmax(0, 1fr)); gap: 4px; }
+.controls-preset { min-height: 40px; padding: 5px 7px; border-radius: 12px; }
+.controls-preset strong { font-size: var(--ux-text-sm); }
+.controls-preset span, .controls-preset em { font-size: var(--ux-text-xs); }
+.controls-card--live { grid-template-rows: auto auto minmax(0, auto) auto auto; }
+.controls-recovery { display: none; padding: 8px 10px; border: 1px dashed color-mix(in srgb, var(--warn) 45%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--warn) 8%, var(--theme-field-surface)); gap: 2px; }
+.controls-recovery strong { color: var(--cream); font-size: var(--ux-text-md); }
+.controls-recovery span, .controls-recovery em { color: var(--muted); font-size: var(--ux-text-sm); font-style: normal; }
+.controls-devices { display: none; gap: 6px; }
+.controls-card--games { min-height: 0; padding: 8px 10px; gap: 5px; }
+.controls-games-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ux-controls-games-cols), minmax(0, 1fr));
+  gap: 6px;
+}
+.controls-game-card {
+  padding: 6px 8px;
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+}
+.controls-game-card__top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: start; }
+.controls-game-card__tag {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border-radius: 10px;
+  background: var(--theme-button-surface);
+  color: var(--orange-strong);
+  font-size: var(--ux-text-xs); font-weight: 950;
+}
+.controls-game-card__copy { min-width: 0; display: grid; gap: 1px; }
+.controls-game-card__copy strong { color: var(--cream); font-size: var(--ux-text-sm); }
+.controls-game-card__copy span { color: var(--muted); font-size: var(--ux-text-xs); line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.controls-game-card__status { font-size: var(--ux-text-xs); white-space: nowrap; }
+.controls-game-card__actions .btn { width: 100%; min-height: var(--ux-compact-button-min-height); padding: var(--ux-compact-button-padding-block) var(--ux-compact-button-padding-inline); font-size: var(--ux-text-xs); }
+.emulator-controller-grid { margin-top: 0; }
+.emulator-controller-card, .controllers-panel {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+}
+.emulator-controller-meter { height: 3px; border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--theme-field-surface) 80%, transparent); }
+.emulator-controller-meter-fill { display: block; height: 100%; width: 36%; border-radius: inherit; background: var(--idle); }
+.emulator-controller-meter-fill--available { width: 100%; background: var(--good); }
+.emulator-controller-meter-fill--starting { width: 62%; background: var(--warn); }
+.emulator-profile-line { display: none; }
+.controller-device-list { display: grid; gap: 6px; }
+.controller-device-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px;
+  background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent);
+  appearance: none; color: inherit; text-align: left; cursor: pointer;
+}
+.controller-device-glyph { width: 34px; height: 34px; border-radius: 13px; display: grid; place-items: center; background: var(--theme-button-surface); color: var(--orange-strong); font-weight: 950; font-size: 12px; }
+.controller-device-card strong { display: block; color: var(--cream); font-size: 14px; }
+.controller-device-card span { color: var(--muted); font-size: 12px; }
+.controller-card-action { color: var(--orange-strong); font-size: 10px; font-weight: 850; text-transform: uppercase; }
+.controller-profile-card {
+  appearance: none; color: inherit; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent);
+  padding: 8px 10px; display: grid; gap: 2px;
+}
+.controller-profile-card--active {
+  border-color: color-mix(in srgb, var(--good) 60%, var(--line));
+  background: color-mix(in srgb, var(--good) 14%, var(--theme-field-surface));
+}
+.controllers-actions .btn, .controls-card__actions .btn {
+  min-height: var(--ux-compact-button-min-height);
+  padding: var(--ux-compact-button-padding-block) var(--ux-compact-button-padding-inline);
+  font-size: var(--ux-text-sm);
+  white-space: nowrap;
+}
+.controllers-live-test { border: 0; background: transparent; box-shadow: none; padding: 0; min-height: 0; overflow: hidden; }
+.controller-axis-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.controller-axis-pill, .controller-button-dot {
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--theme-field-surface) 82%, transparent);
+}
+.controller-button-dot--active, .controller-axis-pill:where(:not(.controls-live-idle)) {
+  color: #07111f;
+  background: linear-gradient(135deg, #86efac, #67e8f9);
+  border-color: color-mix(in srgb, var(--good) 55%, transparent);
+}
+.controller-programmer-modal {
+  display: grid;
+  grid-template-columns: minmax(260px, .95fr) minmax(320px, 1.05fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-width: min(960px, calc(100vw - 80px));
+  max-height: min(78vh, 720px);
+  color: var(--cream);
+}
+.controller-map-stage {
+  min-height: 0;
+  display: grid;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--ux-controls-card-radius);
+  background: color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
+}
+.controller-programmer-modal .ux-gamepad-stage { min-height: 280px; height: 100%; }
+.controller-map-workbench {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  overflow: hidden;
+}
+.controller-map-bindings {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+  padding: var(--ux-compact-card-padding);
+  border: 1px solid var(--line);
+  border-radius: var(--ux-controls-card-radius);
+  background: linear-gradient(160deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 55%, transparent));
+}
+.controller-map-bindings .controls-bindings {
+  max-height: 100%;
+  overflow: auto;
+}
+.controller-map-presets {
+  display: grid;
+  gap: 4px;
+}
+.controller-map-presets .controls-preset-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.controller-map-live {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+}
+.controller-map-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ux-control-gap);
+  padding-top: 4px;
+  border-top: var(--ux-card-divider);
+}
+.controls-map-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.controls-map-readout { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.modal-content .controller-programmer-modal { white-space: normal; }
+

@@ -1,0 +1,4 @@
+{
+  "schema": "arcadia.app.css.band.v1",
+  "children": ["tokens.css"]
+}

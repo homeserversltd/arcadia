@@ -12,7 +12,7 @@ Agent contract:
 
 1. Add or adjust shared UX variables in `arcadia-ux.css`.
 2. Put tablet/phone layout changes in `arcadia-viewports.css`.
-3. Keep `static/app.css` for view/component composition that consumes UX/theme variables and is not viewport-specific.
+3. Keep `static/app/**` composable modules for view/component composition that consumes UX/theme variables and is not viewport-specific. `static/app.css` is a hoist only; `build.rs` composes the spine into `APP_CSS`.
 4. Do not add new `@media` blocks to `static/app.css`; the Rust test suite enforces this.
 5. Keep ordinary human-facing text within 12px through 22px unless a special display surface is explicitly ordered.
 6. Prove visible control geometry with rendered DOM readback when a change touches buttons, cards, action rows, or viewport fit.

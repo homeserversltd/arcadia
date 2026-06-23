@@ -1,4 +1,4 @@
-const APP_CSS: &str = include_str!("../../static/app.css");
+const APP_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/app-composed.css"));
 const UX_CSS: &str = include_str!("../../static/ux/arcadia-ux.css");
 const VIEWPORT_CSS: &str = include_str!("../../static/ux/arcadia-viewports.css");
 const APP_JS: &str = include_str!("../../static/app.js");

@@ -1,0 +1,11 @@
+{
+  "schema": "arcadia.app.css.band.v1",
+  "children": [
+    "home.css",
+    "storage.css",
+    "network.css",
+    "sync.css",
+    "local-ai.css",
+    "controls.css"
+  ]
+}

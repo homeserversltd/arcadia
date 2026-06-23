@@ -1,0 +1,13 @@
+{
+  "schema": "arcadia.app.css.spine.v1",
+  "metadata": {
+    "intent": "Ordered composable CSS modules for the Arcadia appliance shell. Runtime bundle is composed at build time from this spine outward."
+  },
+  "children": [
+    "base",
+    "shell",
+    "components",
+    "views",
+    "desktop-fit"
+  ]
+}
