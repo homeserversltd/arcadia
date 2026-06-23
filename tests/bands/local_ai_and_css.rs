@@ -297,6 +297,9 @@
         assert!(APP_CSS.contains(".controller-pool-scroll"));
         assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
         assert!(APP_CSS.contains("modal-card--controller-map"));
+        assert!(APP_CSS.contains("modal-overlay--controller-map"));
+        assert!(APP_JS.contains("modal-overlay--controller-map"));
+        assert!(APP_JS.contains("setOverlayVariant"));
         assert!(APP_JS.contains("variant: 'controller-map'"));
         assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
