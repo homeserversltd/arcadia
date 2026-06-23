@@ -283,6 +283,10 @@
         assert!(controller_backend.contains("action_controllers_assign_pcsx2"));
         assert!(controller_backend.contains("action_controllers_assign_ppsspp"));
         assert!(controller_backend.contains("write_emulator_profile"));
+        assert!(controller_backend.contains("action_controllers_ramrod_all"));
+        assert!(controller_backend.contains("ramrod_controller_profiles"));
+        assert!(include_str!("../../src/bands/controller_writers/retroarch.rs").contains("input_l_x_plus_axis"));
+        assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-ramrod-all"));
         assert!(controller_backend.contains("ControllerBindRequest"));
         assert!(controller_backend.contains("ControllerProfileApplyRequest"));
         assert!(controller_backend.contains("action_controllers_apply_profile"));
@@ -322,7 +326,84 @@
             assert!(body.contains("mode=staged-for-install"));
             assert!(body.contains("button_9") || body.contains("button 9") || body.contains("9"));
         }
+        let retroarch_body = std::fs::read_to_string(
+            root.join("emulators/RetroArch/default-profile.txt"),
+        )
+        .expect("retroarch staged profile");
+        assert!(retroarch_body.contains("input_l_x_plus_axis = \"+0\""));
+        assert!(retroarch_body.contains("input_l_y_plus_axis = \"+1\""));
+        assert!(retroarch_body.contains("analog_dpad_mode = \"0\""));
+
+        let autoconfig = retroarch_autoconfig_from_bindings("Virtual Arcadia Gamepad", &bindings);
+        assert!(autoconfig.contains("input_l3_btn"));
+        assert!(!autoconfig.contains("input_l_x_plus_axis = \"axis 0\""));
+
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn controller_ramrod_spine_writes_all_emulator_strata() {
+        let root = std::env::temp_dir().join(format!(
+            "arcadia-controller-ramrod-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::env::set_var("ARCADIA_CONTROLLER_PROFILE_ROOT", &root);
+        let bindings = default_controller_bindings();
+        let emulators = vec![
+            EmulatorControllerStatus {
+                emulator: "RetroArch".to_string(),
+                command: "retroarch".to_string(),
+                state: "configured".to_string(),
+                config_path: String::new(),
+                mapping_path: String::new(),
+                profile: String::new(),
+            },
+            EmulatorControllerStatus {
+                emulator: "Dolphin".to_string(),
+                command: "dolphin-emu".to_string(),
+                state: "not installed".to_string(),
+                config_path: String::new(),
+                mapping_path: String::new(),
+                profile: String::new(),
+            },
+            EmulatorControllerStatus {
+                emulator: "DuckStation".to_string(),
+                command: "duckstation-qt".to_string(),
+                state: "not installed".to_string(),
+                config_path: String::new(),
+                mapping_path: String::new(),
+                profile: String::new(),
+            },
+            EmulatorControllerStatus {
+                emulator: "PCSX2".to_string(),
+                command: "pcsx2-qt".to_string(),
+                state: "not installed".to_string(),
+                config_path: String::new(),
+                mapping_path: String::new(),
+                profile: String::new(),
+            },
+            EmulatorControllerStatus {
+                emulator: "PPSSPP".to_string(),
+                command: "PPSSPPSDL".to_string(),
+                state: "not installed".to_string(),
+                config_path: String::new(),
+                mapping_path: String::new(),
+                profile: String::new(),
+            },
+        ];
+        let receipt = ramrod_controller_profiles(
+            "Virtual Arcadia Gamepad",
+            "virtual0",
+            &bindings,
+            &emulators,
+        )
+        .expect("ramrod spine");
+        assert_eq!(receipt.entries.len(), 5);
+        assert!(receipt.entries.iter().any(|entry| entry.emulator == "RetroArch" && entry.deployed));
+        assert!(receipt.entries.iter().any(|entry| entry.emulator == "Dolphin" && !entry.deployed));
+        let _ = std::fs::remove_dir_all(&root);
+        std::env::remove_var("ARCADIA_CONTROLLER_PROFILE_ROOT");
     }
 
 

@@ -25,6 +25,7 @@
     "status-system",
     "status-library",
     "status-controllers",
+    "controller-writers",
     "local-ai-config",
     "local-ai-runtime",
     "surface",
