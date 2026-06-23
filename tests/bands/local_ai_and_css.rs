@@ -223,6 +223,9 @@
             "data-view=\"controllers\"",
             "data-view-panel=\"controllers\"",
             "Controller manager",
+            "Your controllers",
+            "data-controller-pool",
+            "data-controller-select",
             "controls-hub",
             "controls-status",
             "Button pairs",
@@ -314,6 +317,16 @@
         assert!(APP_JS.contains("const intervalMs = 60;"));
         assert!(APP_JS.contains("data-controller-programmer-modal"));
         assert!(APP_JS.contains("data-controller-broadcast-toggle"));
+        assert!(APP_JS.contains("/api/actions/controllers-select"));
+        assert!(APP_JS.contains("controllerId"));
+        assert!(APP_JS.contains("hydrateControllerBindings"));
+        assert!(APP_JS.contains("updateControllerPoolSelection"));
+        assert!(APP_JS.contains("openControllerModal"));
+        assert!(VIEWPORT_CSS.contains(".controller-pool-scroll { max-height: 280px; }"));
+        assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("arcadia.controller_library.v1"));
+        assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("controller_library"));
+        assert!(controller_backend.contains("action_controllers_select"));
+        assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-select"));
     }
 
 

@@ -795,6 +795,46 @@ function formatControllerBinding(binding) {
   return String(binding || '').replace('button ', 'B').replace('axis ', 'AX').replace('hat 0', 'Hat');
 }
 
+function activeControllerId() {
+  const hub = document.querySelector('[data-controller-state]');
+  return hub?.dataset.activeControllerId || '';
+}
+
+function scopedControllerBody(root, extra = {}) {
+  const controllerId = root?.dataset?.controllerId || activeControllerId();
+  return controllerId ? { controllerId, ...extra } : { ...extra };
+}
+
+function hydrateControllerBindings(root, bindings) {
+  if (!root) return;
+  const map = new Map((bindings || []).map((item) => [item.control, item.binding]));
+  root.querySelectorAll('[data-binding-control]').forEach((node) => {
+    const control = node.dataset.bindingControl || '';
+    const binding = map.get(control) || 'Waiting';
+    node.textContent = binding === 'Waiting' ? binding : formatControllerBinding(binding);
+  });
+  root.querySelectorAll('[data-controller-control]').forEach((node) => {
+    const control = node.dataset.controllerControl || '';
+    const binding = map.get(control);
+    if (!binding) return;
+    const label = node.querySelector('span, em');
+    if (label) label.textContent = formatControllerBinding(binding);
+  });
+}
+
+function hydrateControllerGamepad(root, bindings) {
+  hydrateControllerBindings(root, bindings);
+}
+
+function updateControllerPoolSelection(controllerId) {
+  const hub = document.querySelector('[data-controller-state]');
+  if (hub && controllerId) hub.dataset.activeControllerId = controllerId;
+  document.querySelectorAll('[data-controller-pool] .controller-pool-card').forEach((card) => {
+    const id = card.dataset.controllerId || '';
+    card.classList.toggle('controller-pool-card--selected', Boolean(controllerId) && id === controllerId);
+  });
+}
+
 function controllerProgrammerRoot() {
   return document.querySelector('[data-controller-programmer-modal]') || document.querySelector('[data-view-panel="controllers"]');
 }
@@ -807,6 +847,17 @@ function bindControllerProgramming() {
   let programmerPaused = false;
   const intervalMs = 60;
 
+  const refreshModalBindings = async (root) => {
+    try {
+      const state = await getJson('/api/controllers/state');
+      const activeId = root.dataset.controllerId || state.activeControllerId || '';
+      const entry = (state.controllerPool || []).find((item) => item.id === activeId);
+      hydrateControllerBindings(root, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
+      const device = root.querySelector('[data-controller-programmer-device]');
+      if (device) device.textContent = entry?.name || state.primaryDevice || state.liveInput?.device || 'No controller detected';
+    } catch (_) {}
+  };
+
   const bindProfileCards = (root) => {
     root.querySelectorAll('button[data-controller-profile-action="apply"]:not([data-controller-profile-bound])').forEach((button) => {
       button.dataset.controllerProfileBound = 'true';
@@ -815,10 +866,11 @@ function bindControllerProgramming() {
         const profile = button.dataset.controllerProfile || '';
         button.disabled = true;
         try {
-          const data = await postJson('/api/actions/controllers-apply-profile', { profile });
-          panel.querySelectorAll('[data-controller-profile-action="apply"]').forEach((node) => node.classList.toggle('controller-profile-card--active', node === button));
+          const data = await postJson('/api/actions/controllers-apply-profile', scopedControllerBody(root, { profile }));
+          root.querySelectorAll('[data-controller-profile-action="apply"]').forEach((node) => node.classList.toggle('controller-profile-card--active', node === button));
           const state = button.querySelector('em');
           if (state) state.textContent = data.ok ? 'Active' : 'Apply';
+          if (data.ok) await refreshModalBindings(root);
           PopupManager.showToast(data.message || `${profile} profile applied`, data.ok ? 'success' : 'error');
         } catch (_) {
           PopupManager.showToast(`${profile} profile failed`, 'error');
@@ -880,7 +932,7 @@ function bindControllerProgramming() {
     if (selected) {
       const input = captureBinding();
       if (input) {
-        const result = await postJson('/api/actions/controllers-bind', { control: selected, binding: input });
+        const result = await postJson('/api/actions/controllers-bind', scopedControllerBody(root, { control: selected, binding: input }));
         root.querySelectorAll(`[data-controller-control="${selected}"], [data-binding-control="${selected}"]`).forEach((node) => {
           if (node.dataset.bindingControl) node.textContent = formatControllerBinding(result.stdout || input);
           const label = node.querySelector?.('span, em');
@@ -907,7 +959,7 @@ function bindControllerProgramming() {
         button.disabled = true;
         button.textContent = 'Running...';
         try {
-          const data = await postJson(endpoint, body);
+          const data = await postJson(endpoint, { ...body, ...scopedControllerBody(root) });
           const variant = data.ok ? 'success' : 'error';
           PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
         } catch (_) {
@@ -918,6 +970,39 @@ function bindControllerProgramming() {
         }
       });
     });
+  };
+
+  const openControllerModal = async (controllerId) => {
+    const targetId = controllerId || activeControllerId();
+    try {
+      if (targetId) {
+        const data = await postJson('/api/actions/controllers-select', { controllerId: targetId });
+        if (!data.ok) {
+          PopupManager.showToast(data.message || 'Could not select controller', 'error');
+          return;
+        }
+        updateControllerPoolSelection(targetId);
+      }
+      const state = await getJson('/api/controllers/state');
+      const template = document.getElementById('controller-programmer-template');
+      const body = template?.content?.firstElementChild?.cloneNode(true);
+      if (!body) return;
+      programmerPaused = false;
+      const activeId = targetId || state.activeControllerId || body.dataset.controllerId || '';
+      body.dataset.controllerId = activeId;
+      const entry = (state.controllerPool || []).find((item) => item.id === activeId);
+      hydrateControllerBindings(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
+      hydrateControllerGamepad(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
+      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true });
+      const root = document.querySelector('[data-controller-programmer-modal]');
+      if (root) {
+        const device = root.querySelector('[data-controller-programmer-device]');
+        if (device) device.textContent = entry?.name || state.primaryDevice || state.liveInput?.device || 'No controller detected';
+        startProgrammerLoop(root);
+      }
+    } catch (_) {
+      PopupManager.showToast('Could not open controller mapping', 'error');
+    }
   };
 
   const startProgrammerLoop = (root) => {
@@ -946,16 +1031,27 @@ function bindControllerProgramming() {
     }
   };
 
+  panel.querySelectorAll('[data-controller-select]:not([data-controller-select-bound])').forEach((button) => {
+    button.dataset.controllerSelectBound = 'true';
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const controllerId = button.dataset.controllerSelect || '';
+      if (!controllerId) return;
+      try {
+        const data = await postJson('/api/actions/controllers-select', { controllerId });
+        if (data.ok) updateControllerPoolSelection(controllerId);
+        PopupManager.showToast(data.message || (data.ok ? 'Controller selected' : 'Selection failed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        PopupManager.showToast('Could not select controller', 'error');
+      }
+    });
+  });
+
   panel.querySelectorAll('[data-controller-programmer-open]:not([data-controller-programmer-bound])').forEach((button) => {
     button.dataset.controllerProgrammerBound = 'true';
     button.addEventListener('click', () => {
-      const template = document.getElementById('controller-programmer-template');
-      const body = template?.content?.firstElementChild?.cloneNode(true);
-      if (!body) return;
-      programmerPaused = false;
-      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true });
-      const root = document.querySelector('[data-controller-programmer-modal]');
-      if (root) startProgrammerLoop(root);
+      const controllerId = button.dataset.controllerId || activeControllerId();
+      openControllerModal(controllerId);
     });
   });
 
