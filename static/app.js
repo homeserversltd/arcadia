@@ -1318,6 +1318,183 @@ function bindControllerProgramming() {
     });
   });
 
+  const tuningPercent = (ratio) => `${Math.round(Number(ratio || 0) * 100)}%`;
+  const tuningFromPercent = (percent, minRatio, maxRatio) => {
+    const ratio = Number(percent) / 100;
+    return Math.min(maxRatio, Math.max(minRatio, ratio));
+  };
+  const hydrateTunerSliders = (root, tuning = {}) => {
+    const apply = (side, deadzone, sensitivity) => {
+      const deadzoneInput = root.querySelector(`[data-controller-tuner-deadzone="${side}"]`);
+      const sensitivityInput = root.querySelector(`[data-controller-tuner-sensitivity="${side}"]`);
+      const deadzoneOut = root.querySelector(`[data-controller-tuner-deadzone-value="${side}"]`);
+      const sensitivityOut = root.querySelector(`[data-controller-tuner-sensitivity-value="${side}"]`);
+      if (deadzoneInput) {
+        deadzoneInput.value = String(Math.round((deadzone ?? 0.15) * 100));
+        if (deadzoneOut) deadzoneOut.textContent = tuningPercent(deadzone ?? 0.15);
+      }
+      if (sensitivityInput) {
+        sensitivityInput.value = String(Math.round((sensitivity ?? 1) * 100));
+        if (sensitivityOut) sensitivityOut.textContent = tuningPercent(sensitivity ?? 1);
+      }
+    };
+    apply('left', tuning.leftStickDeadzone, tuning.leftStickSensitivity);
+    apply('right', tuning.rightStickDeadzone, tuning.rightStickSensitivity);
+  };
+  const readTunerPayload = (root) => ({
+    leftStickDeadzone: tuningFromPercent(root.querySelector('[data-controller-tuner-deadzone="left"]')?.value, 0, 0.4),
+    rightStickDeadzone: tuningFromPercent(root.querySelector('[data-controller-tuner-deadzone="right"]')?.value, 0, 0.4),
+    leftStickSensitivity: tuningFromPercent(root.querySelector('[data-controller-tuner-sensitivity="left"]')?.value, 0.4, 1),
+    rightStickSensitivity: tuningFromPercent(root.querySelector('[data-controller-tuner-sensitivity="right"]')?.value, 0.4, 1),
+  });
+  const normalizeStickAxis = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    if (Math.abs(n) <= 1.05) return n;
+    return Math.max(-1, Math.min(1, n / 32767));
+  };
+  const applyStickFeel = (x, y, deadzone, sensitivity) => {
+    const shape = (v) => {
+      const abs = Math.abs(v);
+      if (abs <= deadzone) return 0;
+      const scaled = (abs - deadzone) / Math.max(0.01, 1 - deadzone);
+      return Math.sign(v) * Math.min(1, scaled * sensitivity);
+    };
+    return { x: shape(x), y: shape(y) };
+  };
+  const updateTunerPreview = (root, merged) => {
+    const payload = readTunerPayload(root);
+    const axisValue = (index) => {
+      const match = (merged.axes || []).find((axis) => String(axis.control || '').includes(String(index)));
+      return normalizeStickAxis(match?.binding);
+    };
+    const browser = readBrowserGamepadInput();
+    const browserAxis = (index) => normalizeStickAxis(browser.axes?.find((axis) => axis.index === index)?.value);
+    const left = applyStickFeel(
+      browserAxis(0) || axisValue(0),
+      browserAxis(1) || axisValue(1),
+      payload.leftStickDeadzone,
+      payload.leftStickSensitivity,
+    );
+    const right = applyStickFeel(
+      browserAxis(3) || axisValue(3),
+      browserAxis(4) || axisValue(4),
+      payload.rightStickDeadzone,
+      payload.rightStickSensitivity,
+    );
+    const paint = (side, vector) => {
+      const dot = root.querySelector(`[data-controller-tuner-dot="${side}"]`);
+      if (!dot) return;
+      dot.style.transform = `translate(${vector.x * 42}%, ${vector.y * 42}%)`;
+    };
+    paint('left', left);
+    paint('right', right);
+  };
+  let tunerTimer = null;
+  const bindTunerControls = (root) => {
+    root.querySelectorAll('[data-controller-tuner-deadzone], [data-controller-tuner-sensitivity]').forEach((input) => {
+      if (input.dataset.controllerTunerInputBound) return;
+      input.dataset.controllerTunerInputBound = 'true';
+      input.addEventListener('input', () => {
+        const side = input.dataset.controllerTunerDeadzone || input.dataset.controllerTunerSensitivity;
+        const deadzoneOut = root.querySelector(`[data-controller-tuner-deadzone-value="${side}"]`);
+        const sensitivityOut = root.querySelector(`[data-controller-tuner-sensitivity-value="${side}"]`);
+        const deadzoneInput = root.querySelector(`[data-controller-tuner-deadzone="${side}"]`);
+        const sensitivityInput = root.querySelector(`[data-controller-tuner-sensitivity="${side}"]`);
+        if (deadzoneOut && deadzoneInput) deadzoneOut.textContent = `${deadzoneInput.value}%`;
+        if (sensitivityOut && sensitivityInput) sensitivityOut.textContent = `${sensitivityInput.value}%`;
+      });
+    });
+    const apply = root.querySelector('[data-controller-tuner-apply]:not([data-controller-tuner-apply-bound])');
+    if (apply) {
+      apply.dataset.controllerTunerApplyBound = 'true';
+      apply.addEventListener('click', async () => {
+        apply.disabled = true;
+        try {
+          const data = await postJson('/api/actions/controllers-save-tuning', {
+            ...scopedControllerBody(root),
+            ...readTunerPayload(root),
+          });
+          PopupManager.showToast(data.message || 'Stick tuning applied', data.ok ? 'success' : 'error');
+          if (data.ok) PopupManager.closeModal();
+        } catch (_) {
+          PopupManager.showToast('Could not apply stick tuning', 'error');
+        } finally {
+          apply.disabled = false;
+        }
+      });
+    }
+    const cancel = root.querySelector('[data-controller-tuner-cancel]:not([data-controller-tuner-cancel-bound])');
+    if (cancel) {
+      cancel.dataset.controllerTunerCancelBound = 'true';
+      cancel.addEventListener('click', () => PopupManager.closeModal());
+    }
+  };
+  const startTunerLoop = (root) => {
+    if (tunerTimer) window.clearInterval(tunerTimer);
+    bindTunerControls(root);
+    tunerTimer = window.setInterval(async () => {
+      if (!document.querySelector('[data-controller-tuner-modal]')) {
+        window.clearInterval(tunerTimer);
+        tunerTimer = null;
+        return;
+      }
+      try {
+        const serverData = await getJson('/api/controllers/input');
+        const browserData = readBrowserGamepadInput();
+        updateTunerPreview(root, mergeControllerInput(serverData, browserData));
+      } catch (_) {}
+    }, intervalMs);
+  };
+  const openControllerTunerModal = async (controllerId) => {
+    const targetId = controllerId || activeControllerId();
+    const template = document.getElementById('controller-tuner-template');
+    const body = template?.content?.firstElementChild?.cloneNode(true);
+    if (!body) return;
+    try {
+      const currentId = activeControllerId();
+      if (targetId && targetId !== currentId) {
+        const data = await postJson('/api/actions/controllers-select', { controllerId: targetId });
+        if (!data.ok) {
+          PopupManager.showToast(data.message || 'Could not select controller', 'error');
+          return;
+        }
+        updateControllerPoolSelection(targetId);
+      }
+      const state = await getJson('/api/controllers/state');
+      const activeId = targetId || state.activeControllerId || '';
+      body.dataset.controllerId = activeId;
+      const entry = (state.controllerPool || []).find((item) => item.id === activeId);
+      hydrateTunerSliders(body, entry?.tuning || state.profile?.tuning || {});
+      const device = body.querySelector('[data-controller-tuner-device]');
+      if (device) device.textContent = entry?.name || state.primaryDevice || 'No controller selected';
+      PopupManager.showModal({ title: 'Tune sticks', body, hideDefaultAction: true });
+      const root = document.querySelector('[data-controller-tuner-modal]');
+      if (root) startTunerLoop(root);
+    } catch (_) {
+      PopupManager.showToast('Could not open stick tuning', 'error');
+    }
+  };
+
+  panel.querySelectorAll('[data-controller-tuner-open]:not([data-controller-tuner-bound])').forEach((button) => {
+    button.dataset.controllerTunerBound = 'true';
+    button.addEventListener('click', async () => {
+      if (button.dataset.loading === 'true') return;
+      const controllerId = button.dataset.controllerId || activeControllerId();
+      const original = button.textContent;
+      button.dataset.loading = 'true';
+      button.disabled = true;
+      button.textContent = 'Opening…';
+      try {
+        await openControllerTunerModal(controllerId);
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+        delete button.dataset.loading;
+      }
+    });
+  });
+
   panel.querySelectorAll('[data-controller-programmer-open]:not([data-controller-programmer-bound])').forEach((button) => {
     button.dataset.controllerProgrammerBound = 'true';
     button.addEventListener('click', async () => {
@@ -1365,7 +1542,7 @@ function bindControllerLiveInput() {
   if (!root) return;
   const poll = async () => {
     const active = document.querySelector('[data-view-panel="controllers"].is-active, [data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
-    if (!active || document.querySelector('[data-controller-programmer-modal]')) return;
+    if (!active || document.querySelector('[data-controller-programmer-modal]') || document.querySelector('[data-controller-tuner-modal]')) return;
     try {
       const serverData = await getJson('/api/controllers/input');
       const browserData = readBrowserGamepadInput();

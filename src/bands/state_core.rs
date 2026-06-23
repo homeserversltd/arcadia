@@ -103,6 +103,26 @@ pub struct SystemServiceStatus {
     pub endpoint: Option<String>,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ControllerTuningStatus {
+    pub left_stick_deadzone: f32,
+    pub right_stick_deadzone: f32,
+    pub left_stick_sensitivity: f32,
+    pub right_stick_sensitivity: f32,
+}
+
+impl ControllerTuningStatus {
+    pub fn defaults() -> Self {
+        Self {
+            left_stick_deadzone: 0.15,
+            right_stick_deadzone: 0.15,
+            left_stick_sensitivity: 1.0,
+            right_stick_sensitivity: 1.0,
+        }
+    }
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControllerPoolEntry {
@@ -117,6 +137,7 @@ pub struct ControllerPoolEntry {
     pub layout_style: String,
     pub tuple_count: usize,
     pub bindings: Vec<ControllerBindingStatus>,
+    pub tuning: ControllerTuningStatus,
     pub last_seen: String,
     pub selected: bool,
 }
@@ -193,6 +214,7 @@ pub struct ControllerProfileStatus {
     pub name: String,
     pub path: String,
     pub bindings: Vec<ControllerBindingStatus>,
+    pub tuning: ControllerTuningStatus,
 }
 
 #[derive(Clone, Serialize)]
