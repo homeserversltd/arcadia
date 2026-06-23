@@ -1096,9 +1096,11 @@ function bindControllerProgramming() {
 }
 
 function bindControllerLiveInput() {
+  const panel = document.querySelector('[data-view-panel="controllers"]');
+  if (!panel) return;
+  bindControllerProgramming();
   const root = document.querySelector('[data-controller-live-input]');
   if (!root) return;
-  bindControllerProgramming();
   const poll = async () => {
     const active = document.querySelector('[data-view-panel="controllers"].is-active, [data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
     if (!active || document.querySelector('[data-controller-programmer-modal]')) return;
