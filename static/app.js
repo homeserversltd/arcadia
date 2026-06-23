@@ -467,6 +467,9 @@ function confirmationFor(action) {
   if (action === 'restart-gamescope') return window.confirm('Restarting GameScope may close the active game session.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
   if (action === 'restart-arcadia') return window.confirm('Restart Arcadia web GUI only? The page may reconnect.') ? { confirm: 'RESTART_ARCADIA' } : null;
   if (action === 'controllers-rescan' || action === 'controllers-test') return {};
+  if (action === 'controllers-ramrod-all') {
+    return window.confirm('Push your saved button layout to every game emulator on this console?') ? {} : null;
+  }
   if (action === 'enable-ssh') return { mode: 'enable' };
   if (action === 'disable-ssh') return window.confirm('Disable SSH service? Current remote SSH access may disconnect.') ? { mode: 'disable', confirm: 'DISABLE_SSH' } : null;
   if (action === 'enable-ssh-password') return window.confirm('Enable SSH password login? Key login remains available.') ? { mode: 'enable', confirm: 'ENABLE_SSH_PASSWORD' } : null;
@@ -774,7 +777,7 @@ function updateControllerLiveInput(data) {
     axes.innerHTML = '';
     if (!values.length) {
       const idle = document.createElement('span');
-      idle.textContent = 'Move a stick or hold a button to light this pane.';
+      idle.textContent = 'Move a stick or press a button to see activity here.';
       axes.appendChild(idle);
     } else {
       values.forEach((axis) => {
@@ -834,10 +837,10 @@ function bindControllerProgramming() {
         const control = button.dataset.controllerControl || '';
         if (!control || control === 'D-pad') return;
         selected = control;
-        root.querySelectorAll('[data-controller-control]').forEach((node) => node.classList.toggle('is-selected', node === button));
+        root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.toggle('is-selected', node === button));
         const state = root.querySelector('[data-controller-programmer-state]');
-        if (state) state.textContent = `Press controller for ${control}`;
-        PopupManager.showToast(`Press controller input for ${control}`, 'info');
+        if (state) state.textContent = `Press ${control} on your gamepad`;
+        PopupManager.showToast(`Now press ${control} on your gamepad`, 'info');
       });
     });
   };
@@ -862,15 +865,31 @@ function bindControllerProgramming() {
         axes.appendChild(pill);
       });
     }
-    if (selected && data.pressed && data.pressed.length) {
-      const input = data.pressed[0].binding || data.pressed[0].input || data.pressed[0].control;
+    const captureBinding = () => {
+      if (data.pressed && data.pressed.length) {
+        return data.pressed[0].binding || data.pressed[0].input || null;
+      }
+      if (data.axes && data.axes.length) {
+        const axis = data.axes[0];
+        const number = String(axis.control || '').match(/(\d+)/);
+        if (number) return `axis ${number[1]}`;
+        if (axis.binding) return `axis ${axis.binding}`;
+      }
+      return null;
+    };
+    if (selected) {
+      const input = captureBinding();
       if (input) {
         const result = await postJson('/api/actions/controllers-bind', { control: selected, binding: input });
-        const selectedButton = root.querySelector(`[data-controller-control="${selected}"]`);
-        const label = selectedButton?.querySelector('span, em');
-        if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
+        root.querySelectorAll(`[data-controller-control="${selected}"], [data-binding-control="${selected}"]`).forEach((node) => {
+          if (node.dataset.bindingControl) node.textContent = formatControllerBinding(result.stdout || input);
+          const label = node.querySelector?.('span, em');
+          if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
+        });
         PopupManager.showToast(result.message || `${selected} mapped`, result.ok ? 'success' : 'error');
         selected = null;
+        const state = root.querySelector('[data-controller-programmer-state]');
+        if (state) state.textContent = 'Listening';
       }
     }
   };
@@ -879,14 +898,14 @@ function bindControllerProgramming() {
     if (programmerTimer) window.clearInterval(programmerTimer);
     bindControlButtons(root);
     const readout = root.querySelector('[data-controller-broadcast-readout]');
-    if (readout) readout.textContent = `${intervalMs}ms`;
+    if (readout) readout.textContent = 'Live';
     programmerTimer = window.setInterval(async () => {
       if (programmerPaused || !document.querySelector('[data-controller-programmer-modal]')) return;
       try { await ingestProgrammerInput(root, await getJson('/api/controllers/input')); } catch (_) {}
     }, intervalMs);
     root.querySelector('[data-controller-broadcast-toggle]')?.addEventListener('click', (event) => {
       programmerPaused = !programmerPaused;
-      event.currentTarget.textContent = programmerPaused ? 'Resume broadcast' : 'Pause broadcast';
+      event.currentTarget.textContent = programmerPaused ? 'Resume live preview' : 'Pause live preview';
     });
   };
 
@@ -898,7 +917,7 @@ function bindControllerProgramming() {
       const template = document.getElementById('controller-programmer-template');
       const body = template?.content?.firstElementChild?.cloneNode(true);
       if (!body) return;
-      PopupManager.showModal({ title: 'Controller programmer', body, hideDefaultAction: true });
+      PopupManager.showModal({ title: 'Map your buttons', body, hideDefaultAction: true });
       const root = document.querySelector('[data-controller-programmer-modal]');
       if (root) startProgrammerLoop(root);
     });

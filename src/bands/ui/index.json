@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "schema_version": "arcadia.ui-bands.v1",
+    "doctrine": "infinite-infinite",
+    "intent": "Decompose the Arcadia Maud viewport renderer into ordered child bands while preserving ui::layout as the thin face."
+  },
+  "children": [
+    "shell",
+    "home",
+    "sync",
+    "storage",
+    "local-ai",
+    "controllers",
+    "network",
+    "access-pin",
+    "updates",
+    "system",
+    "primitives"
+  ]
+}
