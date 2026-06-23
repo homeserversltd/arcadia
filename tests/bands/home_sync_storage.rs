@@ -88,8 +88,12 @@
             r#"aria-label="Network""#,
             "home-topology",
             "Console URL",
-            r#"aria-label="Local AI""#,
-            r#"data-label="LAN""#,
+            r#"aria-label="AI Model""#,
+            "local-ai-home-card",
+            "local-ai-home-details",
+            ">Model:</span>",
+            ">Load:</span>",
+            ">State:</span>",
             r#"data-label="Available ROMs""#,
             r#"aria-label="Updates""#,
             r#"aria-label="System Health""#,
@@ -99,7 +103,7 @@
             ">Games</h3>",
             ">Network</h3>",
             ">Updates</h3>",
-            ">Local AI</h3>",
+            ">AI Model</h3>",
             ">Health</h3>",
             ">Appliance</h3>",
         ] {
@@ -252,7 +256,7 @@
             ">Check</button>",
             ">Last ran:</span>",
             ">updates available:</span>",
-            "updates-detail-row",
+            "home-detail-row",
         ] {
             assert!(home_html.contains(required), "home updates card missing {required}");
         }
@@ -290,6 +294,44 @@
                     .split_whitespace()
                     .any(|part| part.len() == 4 && part.chars().all(|c| c.is_ascii_digit())),
                 "last ran should include a four-digit year, got: {last_ran}"
+            );
+        }
+    }
+
+    #[test]
+    fn home_ai_model_card_surfaces_model_load_and_activity() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.local_ai.load_state = "hot".to_string();
+        status.local_ai.loaded_model_name = Some("Hermes 8B".to_string());
+        status.local_ai.lan_inference_enabled = true;
+        let rendered = ui::layout(&status).into_string();
+        let card_start = rendered
+            .find("local-ai-home-card")
+            .expect("local ai home card");
+        let card_end = card_start
+            + rendered[card_start..]
+                .find("</article>")
+                .expect("local ai home card closes");
+        let card_html = &rendered[card_start..card_start + card_end];
+
+        for required in [
+            ">AI Model</h3>",
+            ">Model:</span><strong>Hermes 8B</strong>",
+            ">Load:</span><strong>Hot</strong>",
+            ">State:</span><strong>Actively working</strong>",
+            "data-home-ai-load-state=\"hot\"",
+        ] {
+            assert!(card_html.contains(required), "home ai model card missing {required}");
+        }
+        for forbidden in ["data-label=\"LAN\"", "data-label=\"Models\"", "data-label=\"Accelerator\"", "gpu-bar"] {
+            assert!(
+                !card_html.contains(forbidden),
+                "home ai model card leaked legacy surface: {forbidden}"
             );
         }
     }
