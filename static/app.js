@@ -967,7 +967,7 @@ function updateControllerLiveInput(data) {
 function auditGamepadControlLayout(root, gapPx = 2) {
   const host = root || document.querySelector('[data-controller-gamepad-programmer]');
   if (!host) return { ok: false, error: 'gamepad programmer not found', overlaps: [], boxes: [] };
-  const nodes = [...host.querySelectorAll('[data-gamepad-slot]')].filter((node) => {
+  const nodes = [...host.querySelectorAll('.ux-gamepad-cublet[data-gamepad-slot]')].filter((node) => {
     const rect = node.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   });
