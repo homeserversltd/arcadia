@@ -228,6 +228,8 @@
             "data-controller-select",
             "controls-hub",
             "controls-status",
+            "controller-map-instruction",
+            "controller-map-stage__pad",
             "Button pairs",
             "Game systems",
             "Push to all games",
@@ -288,7 +290,13 @@
         assert!(APP_CSS.contains(".controller-button-dot--active"));
         assert!(UX_CSS.contains(".ux-controller-silhouette"));
         assert!(UX_CSS.contains(".ux-gamepad-body"));
+        assert!(UX_CSS.contains(".ux-gamepad-wing"));
         assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));
+        assert!(APP_CSS.contains(".controller-pool-scroll"));
+        assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
+        assert!(APP_CSS.contains("modal-card--controller-map"));
+        assert!(APP_JS.contains("variant: 'controller-map'"));
+        assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
         assert!(controller_backend.contains("/proc/bus/input/devices"));
         assert!(controller_backend.contains("Keyboard") || controller_backend.contains("keyboard"));
@@ -322,7 +330,8 @@
         assert!(APP_JS.contains("hydrateControllerBindings"));
         assert!(APP_JS.contains("updateControllerPoolSelection"));
         assert!(APP_JS.contains("openControllerModal"));
-        assert!(VIEWPORT_CSS.contains(".controller-pool-scroll { max-height: 280px; }"));
+        assert!(VIEWPORT_CSS.contains(".controller-pool-scroll"));
+        assert!(VIEWPORT_CSS.contains("max-height: 280px"));
         assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("arcadia.controller_library.v1"));
         assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("controller_library"));
         assert!(controller_backend.contains("action_controllers_select"));

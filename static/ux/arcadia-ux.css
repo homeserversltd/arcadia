@@ -125,18 +125,44 @@
   height: 210px;
   margin: 0 auto;
   border: 1px solid color-mix(in srgb, var(--line) 90%, var(--orange-strong));
-  border-radius: 44px 44px 58px 58px;
+  border-radius: 52px 52px 64px 64px;
   background:
-    radial-gradient(circle at 18% 68%, color-mix(in srgb, var(--theme-bg-raised) 94%, #000 6%) 0 66px, transparent 68px),
-    radial-gradient(circle at 82% 68%, color-mix(in srgb, var(--theme-bg-raised) 94%, #000 6%) 0 66px, transparent 68px),
+    radial-gradient(circle at 18% 68%, color-mix(in srgb, var(--theme-bg-raised) 94%, #000 6%) 0 72px, transparent 74px),
+    radial-gradient(circle at 82% 68%, color-mix(in srgb, var(--theme-bg-raised) 94%, #000 6%) 0 72px, transparent 74px),
     linear-gradient(180deg, color-mix(in srgb, var(--theme-button-surface) 86%, #000 14%), color-mix(in srgb, var(--theme-bg-raised) 72%, #000 28%));
   box-shadow: inset 0 10px 26px rgba(255,255,255,.035), inset 0 -14px 34px rgba(0,0,0,.38), 0 18px 40px rgba(0,0,0,.22);
   overflow: visible;
 }
-.ux-gamepad-shell { position: absolute; bottom: 2px; width: 168px; height: 136px; border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.22)); z-index: 0; }
+.ux-gamepad-wing {
+  position: absolute;
+  bottom: 10px;
+  width: 154px;
+  height: 128px;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  background:
+    radial-gradient(circle at 42% 28%, rgba(255,255,255,.05), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-button-surface) 82%, #000 18%), color-mix(in srgb, var(--theme-bg-raised) 70%, #000 30%));
+  z-index: 0;
+}
+.ux-gamepad-wing--left { left: 8px; border-radius: 58px 34px 78px 70px; transform: rotate(-5deg); }
+.ux-gamepad-wing--right { right: 8px; border-radius: 34px 58px 70px 78px; transform: rotate(5deg); }
+.ux-gamepad-bridge {
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translateX(-50%);
+  width: 196px;
+  height: 108px;
+  border-radius: 28px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--theme-button-surface) 90%, #000 10%), color-mix(in srgb, var(--theme-bg-raised) 78%, #000 22%));
+  box-shadow: inset 0 8px 18px rgba(255,255,255,.03);
+  z-index: 1;
+}
+.ux-gamepad-shell { position: absolute; bottom: 2px; width: 168px; height: 136px; border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.22)); z-index: 0; opacity: .55; }
 .ux-gamepad-shell--left { left: -8px; border-radius: 58px 30px 80px 74px; transform: rotate(-7deg); }
 .ux-gamepad-shell--right { right: -8px; border-radius: 30px 58px 74px 80px; transform: rotate(7deg); }
-.ux-gamepad-top-row { position: absolute; left: 42px; right: 42px; top: -13px; display: grid; grid-template-columns: 70px 70px minmax(90px,1fr) 70px 70px; gap: 8px; align-items: end; z-index: 3; }
+.ux-gamepad-top-row { position: absolute; left: 36px; right: 36px; top: -16px; display: grid; grid-template-columns: 74px 74px minmax(96px,1fr) 74px 74px; gap: 8px; align-items: end; z-index: 4; }
 .ux-gamepad-control { border: 1px solid var(--line); color: var(--cream); background: var(--theme-button-surface); min-width: 0; cursor: pointer; transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
 .ux-gamepad-control strong, .ux-gamepad-control span { display: block; pointer-events: none; }
 .ux-gamepad-control strong { font-size: 13px; font-weight: 950; line-height: 1; }
@@ -146,10 +172,10 @@
 .ux-gamepad-shoulder { height: 34px; padding: 4px 8px; border-radius: 18px 18px 10px 10px; }
 .ux-gamepad-shoulder--trigger { transform: translateY(-6px); opacity: .9; }
 .ux-gamepad-status { align-self: center; justify-self: center; min-width: 120px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: color-mix(in srgb, var(--theme-field-surface) 78%, transparent); text-align: center; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
-.ux-gamepad-left, .ux-gamepad-right { position: absolute; top: 48px; bottom: 22px; width: 252px; z-index: 2; }
-.ux-gamepad-left { left: 34px; display: grid; grid-template-columns: 116px 116px; align-items: center; gap: 16px; }
-.ux-gamepad-right { right: 34px; display: grid; grid-template-columns: 132px 106px; align-items: center; gap: 14px; }
-.ux-gamepad-center { position: absolute; left: 50%; top: 88px; transform: translateX(-50%); display: grid; grid-template-columns: 48px 42px 48px; gap: 8px; align-items: center; z-index: 4; }
+.ux-gamepad-left, .ux-gamepad-right { position: absolute; top: 52px; bottom: 20px; width: 258px; z-index: 3; }
+.ux-gamepad-left { left: 30px; display: grid; grid-template-columns: 118px 118px; align-items: center; gap: 14px; }
+.ux-gamepad-right { right: 30px; display: grid; grid-template-columns: 136px 110px; align-items: center; gap: 12px; }
+.ux-gamepad-center { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); display: grid; grid-template-columns: 50px 44px 50px; gap: 8px; align-items: center; z-index: 5; }
 .ux-gamepad-system { height: 30px; border-radius: 999px; padding: 3px 6px; }
 .ux-gamepad-home { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--theme-field-surface) 82%, transparent); color: var(--orange-strong); font-size: 16px; font-weight: 950; }
 .ux-gamepad-stick { position: relative; width: 96px; height: 96px; border: 1px solid color-mix(in srgb, var(--line) 85%, var(--orange-strong)); border-radius: 999px; background: radial-gradient(circle, color-mix(in srgb, var(--theme-button-surface) 88%, #000 12%) 0 42%, color-mix(in srgb, var(--theme-field-surface) 86%, #000 14%) 44% 100%); color: var(--cream); cursor: pointer; }
@@ -164,12 +190,12 @@
 .ux-gamepad-dpad-arm--right { grid-column: 3; grid-row: 2; border-radius: 4px 10px 10px 4px; }
 .ux-gamepad-dpad-arm--down { grid-column: 2; grid-row: 3; border-radius: 4px 4px 10px 10px; }
 .ux-gamepad-dpad span { grid-column: 1 / -1; grid-row: 4; color: var(--muted); font-size: 9px; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ux-gamepad-face-diamond { width: 124px; height: 124px; position: relative; }
-.ux-gamepad-face { position: absolute; width: 48px; height: 48px; border-radius: 999px; padding: 5px; }
-.ux-gamepad-face--y { left: 38px; top: 0; }
-.ux-gamepad-face--x { left: 0; top: 38px; }
-.ux-gamepad-face--b { right: 0; top: 38px; }
-.ux-gamepad-face--a { left: 38px; bottom: 0; background: color-mix(in srgb, var(--orange-strong) 18%, var(--theme-button-surface)); }
+.ux-gamepad-face-diamond { width: 132px; height: 132px; position: relative; }
+.ux-gamepad-face { position: absolute; width: 52px; height: 52px; border-radius: 999px; padding: 6px; box-shadow: inset 0 -4px 10px rgba(0,0,0,.22), 0 4px 10px rgba(0,0,0,.18); }
+.ux-gamepad-face--y { left: 40px; top: 0; background: color-mix(in srgb, var(--good) 14%, var(--theme-button-surface)); }
+.ux-gamepad-face--x { left: 0; top: 40px; background: color-mix(in srgb, var(--theme-accent) 14%, var(--theme-button-surface)); }
+.ux-gamepad-face--b { right: 0; top: 40px; background: color-mix(in srgb, var(--orange-strong) 14%, var(--theme-button-surface)); }
+.ux-gamepad-face--a { left: 40px; bottom: 0; background: color-mix(in srgb, var(--orange-strong) 22%, var(--theme-button-surface)); }
 
 /* Controller programmer selected target. */
 .ux-gamepad-control.is-selected,

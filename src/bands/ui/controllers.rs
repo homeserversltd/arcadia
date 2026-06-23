@@ -134,17 +134,24 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
 
                 template id="controller-programmer-template" {
                     div class="controller-programmer-modal" data-controller-programmer-modal data-controller-id=(status.controllers.active_controller_id) data-controller-broadcast-ms="60" data-controller-rapid-fire-ms="60" {
+                        header class="controller-map-header" {
+                            p class="controller-map-instruction" {
+                                "Tap a control on the virtual gamepad, then press the matching button on your real controller."
+                            }
+                            span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Ready — pick a control" }
+                        }
                         div class="controller-map-stage" {
-                            (controller_silhouette(status, connected))
+                            div class="controller-map-stage__pad" {
+                                (controller_silhouette(status, connected))
+                            }
                         }
                         div class="controller-map-workbench" {
                             section class="controller-map-bindings" aria-label="Button layout" {
                                 div class="controls-card__head" {
                                     div {
                                         strong { "Button pairs" }
-                                        p { "Tap a control on the gamepad or a row below, then press the matching button on your controller." }
+                                        p { "Each control keeps its own Linux signal. Rows mirror the gamepad above." }
                                     }
-                                    span class="system-status system-status--starting" data-controller-programmer-state { "Listening" }
                                 }
                                 (controller_bindings_grid(&status.controllers.profile.bindings, connected))
                             }
@@ -229,6 +236,9 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
     html! {
         div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer data-controller-mapping-editor="default" {
             div class="ux-gamepad-body" {
+                div class="ux-gamepad-wing ux-gamepad-wing--left" aria-hidden="true" {}
+                div class="ux-gamepad-wing ux-gamepad-wing--right" aria-hidden="true" {}
+                div class="ux-gamepad-bridge" aria-hidden="true" {}
                 div class="ux-gamepad-shell ux-gamepad-shell--left" aria-hidden="true" {}
                 div class="ux-gamepad-shell ux-gamepad-shell--right" aria-hidden="true" {}
                 div class="ux-gamepad-top-row" aria-label="Shoulder and trigger mapping" {
@@ -320,13 +330,14 @@ fn controller_pool_card(entry: &crate::ControllerPoolEntry) -> Markup {
     html! {
         article class=(if entry.selected { "controller-pool-card controller-pool-card--selected" } else { "controller-pool-card" }) data-controller-id=(entry.id) data-controller-state=(entry.state) {
             button class="controller-pool-card__select" type="button" data-controller-select=(entry.id) aria-label=(format!("Select {}", entry.name)) {
-                div class="controller-pool-card__glyph" aria-hidden="true" { (entry.glyph) }
-                div class="controller-pool-card__copy" {
-                    strong { (entry.name) }
-                    span { (entry.transport) " · " (entry.layout_style) " · " (entry.tuple_count) " pairs" }
-                    em { (entry.last_seen) }
+                div class="controller-pool-card__head" {
+                    span class="controller-pool-card__glyph" aria-hidden="true" { (entry.glyph) }
+                    span class=(format!("controller-pool-card__status system-status system-status--{}", state_class)) { (state_label) }
                 }
-                span class=(format!("controller-pool-card__status system-status system-status--{}", state_class)) { (state_label) }
+                strong class="controller-pool-card__name" { (entry.name) }
+                span class="controller-pool-card__meta" {
+                    (entry.transport) " · " (entry.layout_style) " · " (entry.tuple_count) " pairs"
+                }
             }
             button class="btn btn--secondary controller-pool-card__map" type="button" data-controller-programmer-open data-controller-id=(entry.id) { "Map" }
         }
