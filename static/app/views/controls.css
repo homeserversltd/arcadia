@@ -74,57 +74,90 @@
 }
 .controller-pool-scroll {
   min-height: 0;
-  max-height: min(220px, 28vh);
+  max-height: min(240px, 32vh);
   overflow: auto;
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 8px;
   padding-right: 2px;
+  align-content: start;
 }
 .controller-pool-card {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: stretch;
+  grid-template-rows: minmax(0, 1fr) auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+}
+.controller-pool-card--selected {
+  border-color: color-mix(in srgb, var(--good) 55%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--good) 28%, transparent);
 }
 .controller-pool-card__select {
   appearance: none;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 10px;
+  gap: 4px;
+  align-content: start;
+  padding: 8px 9px 6px;
 }
 .controller-pool-card--selected .controller-pool-card__select {
-  border-color: color-mix(in srgb, var(--good) 55%, var(--line));
-  background: color-mix(in srgb, var(--good) 12%, var(--theme-field-surface));
+  background: color-mix(in srgb, var(--good) 10%, transparent);
+}
+.controller-pool-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
 }
 .controller-pool-card__glyph {
-  width: 34px;
-  height: 34px;
-  border-radius: 13px;
+  width: 30px;
+  height: 30px;
+  border-radius: 11px;
   display: grid;
   place-items: center;
   background: var(--theme-button-surface);
   color: var(--orange-strong);
   font-weight: 950;
-  font-size: 12px;
+  font-size: 11px;
+  flex: 0 0 auto;
 }
-.controller-pool-card__copy { min-width: 0; display: grid; gap: 1px; }
-.controller-pool-card__copy strong { color: var(--cream); font-size: var(--ux-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.controller-pool-card__copy span { color: var(--muted); font-size: var(--ux-text-xs); line-height: 1.15; }
-.controller-pool-card__copy em { color: var(--muted); font-size: 10px; font-style: normal; opacity: .8; }
-.controller-pool-card__status { font-size: var(--ux-text-xs); white-space: nowrap; }
+.controller-pool-card__name {
+  color: var(--cream);
+  font-size: var(--ux-text-sm);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.controller-pool-card__meta {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.controller-pool-card__status {
+  font-size: 10px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
 .controller-pool-card__map {
-  min-height: var(--ux-compact-button-min-height);
-  padding: var(--ux-compact-button-padding-block) 12px;
+  width: 100%;
+  border-radius: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  min-height: 30px;
+  padding: 5px 8px;
   font-size: var(--ux-text-xs);
-  align-self: center;
 }
 .controls-card {
   min-width: 0;
@@ -301,23 +334,71 @@
 }
 .controller-programmer-modal {
   display: grid;
-  grid-template-columns: minmax(260px, .95fr) minmax(320px, 1.05fr);
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(420px, 1.2fr) minmax(300px, .8fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
-  min-width: min(960px, calc(100vw - 80px));
-  max-height: min(78vh, 720px);
+  min-width: min(1040px, calc(100vw - 48px));
+  max-height: min(86vh, 860px);
   color: var(--cream);
+}
+.controller-map-header {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--theme-field-surface) 74%, transparent);
+}
+.controller-map-instruction {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--ux-text-sm);
+  line-height: 1.35;
+  max-width: 62ch;
+}
+.controller-map-bind-state { flex: 0 0 auto; white-space: nowrap; }
+.controller-map-bind-state--active,
+.controller-programmer-modal.is-binding .controller-map-bind-state {
+  color: var(--orange-strong);
+  border-color: color-mix(in srgb, var(--orange-strong) 45%, var(--line));
+  background: color-mix(in srgb, var(--orange-strong) 10%, var(--theme-field-surface));
+}
+.controller-programmer-modal.is-binding .controller-map-stage {
+  border-color: color-mix(in srgb, var(--orange-strong) 42%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--orange-strong) 18%, transparent);
 }
 .controller-map-stage {
   min-height: 0;
   display: grid;
-  align-items: center;
-  padding: 8px;
+  align-items: stretch;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--ux-controls-card-radius);
-  background: color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
+  background:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--theme-accent) 8%, transparent), transparent 42%),
+    color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
 }
-.controller-programmer-modal .ux-gamepad-stage { min-height: 280px; height: 100%; }
+.controller-map-stage__pad {
+  display: grid;
+  place-items: center;
+  min-height: 400px;
+  width: 100%;
+  overflow: visible;
+  padding: 8px 4px 14px;
+}
+.controller-map-stage__pad .ux-gamepad-stage {
+  width: 100%;
+  max-width: 920px;
+  min-height: 360px;
+  padding: 14px 18px 20px;
+}
+.controller-map-stage__pad .ux-gamepad-body {
+  width: min(100%, 820px);
+  height: 280px;
+}
 .controller-map-workbench {
   min-height: 0;
   display: grid;

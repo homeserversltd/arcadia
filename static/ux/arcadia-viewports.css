@@ -88,7 +88,10 @@
   .controls-games-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .controls-live-feed { max-height: none; }
-  .controller-pool-scroll { max-height: 280px; }
+  .controller-pool-scroll {
+    max-height: 280px;
+    grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+  }
 }
 @media (max-width: 980px) {
   .controls-games-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -99,10 +102,17 @@
   .controls-status__title, .controls-status__detail { white-space: normal; }
   .controls-bindings { grid-template-columns: 1fr; max-height: none; }
   .controls-games-grid { grid-template-columns: 1fr; }
+  .modal-card--controller-map {
+    inline-size: calc(100vw - 16px);
+    max-block-size: calc(100dvh - 16px);
+  }
   .controller-programmer-modal {
     min-width: 0;
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     max-height: none;
   }
+  .controller-map-stage__pad { min-height: 300px; }
+  .controller-map-stage__pad .ux-gamepad-body { height: 230px; }
   .controller-map-presets .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

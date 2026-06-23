@@ -34,6 +34,15 @@
   backdrop-filter: blur(10px);
 }
 .modal-overlay[hidden] { display: none; }
+.modal-card--controller-map {
+  inline-size: min(calc(100vw - (var(--ux-modal-viewport-gap) * 2)), 1080px);
+  max-block-size: min(90vh, 900px);
+  max-block-size: min(90dvh, 900px);
+}
+.modal-card--controller-map .modal-content {
+  overflow: hidden;
+  min-height: 0;
+}
 .modal-card {
   position: relative;
   display: grid;

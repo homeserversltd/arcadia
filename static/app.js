@@ -6,11 +6,13 @@ const PopupManager = (() => {
   const toasts = () => document.getElementById('toast-container');
   let previousFocus = null;
 
-  function showModal({ title: modalTitle, body, hideDefaultAction = false }) {
+  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '' }) {
     const el = overlay();
     if (!el) return;
     previousFocus = document.activeElement;
     title().textContent = modalTitle || 'Arcadia Console';
+    const card = el.querySelector('.modal-card');
+    if (card) card.className = variant ? `modal-card modal-card--${variant}` : 'modal-card';
     const target = content();
     target.textContent = '';
     if (body instanceof Node) target.appendChild(body);
@@ -25,6 +27,8 @@ const PopupManager = (() => {
     const el = overlay();
     if (!el) return;
     el.hidden = true;
+    const card = el.querySelector('.modal-card');
+    if (card) card.className = 'modal-card';
     content().textContent = '';
     actions()?.removeAttribute('hidden');
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
@@ -881,6 +885,21 @@ function bindControllerProgramming() {
     });
   };
 
+  const setBindingListenState = (root, control) => {
+    root.classList.toggle('is-binding', Boolean(control));
+    if (control) root.dataset.bindingTarget = control;
+    else delete root.dataset.bindingTarget;
+    const state = root.querySelector('[data-controller-programmer-state]');
+    if (!state) return;
+    if (control) {
+      state.textContent = `Step 2 — press ${control} on your gamepad`;
+      state.classList.add('controller-map-bind-state--active');
+    } else {
+      state.textContent = 'Ready — pick a control';
+      state.classList.remove('controller-map-bind-state--active');
+    }
+  };
+
   const bindControlButtons = (root) => {
     root.querySelectorAll('button[data-controller-control]:not([data-controller-control-bound])').forEach((button) => {
       button.dataset.controllerControlBound = 'true';
@@ -890,9 +909,20 @@ function bindControllerProgramming() {
         if (!control || control === 'D-pad') return;
         selected = control;
         root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.toggle('is-selected', node === button));
-        const state = root.querySelector('[data-controller-programmer-state]');
-        if (state) state.textContent = `Press ${control} on your gamepad`;
-        PopupManager.showToast(`Now press ${control} on your gamepad`, 'info');
+        setBindingListenState(root, control);
+        PopupManager.showToast(`Tap detected — now press ${control} on your real controller`, 'info');
+      });
+    });
+    root.querySelectorAll('[data-controller-bind-row]:not([data-controller-bind-row-bound])').forEach((button) => {
+      button.dataset.controllerBindRowBound = 'true';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        const control = button.dataset.controllerControl || '';
+        if (!control) return;
+        selected = control;
+        root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.toggle('is-selected', node === button));
+        setBindingListenState(root, control);
+        PopupManager.showToast(`Now press ${control} on your real controller`, 'info');
       });
     });
   };
@@ -940,8 +970,8 @@ function bindControllerProgramming() {
         });
         PopupManager.showToast(result.message || `${selected} mapped`, result.ok ? 'success' : 'error');
         selected = null;
-        const state = root.querySelector('[data-controller-programmer-state]');
-        if (state) state.textContent = 'Listening';
+        setBindingListenState(root, null);
+        root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.remove('is-selected'));
       }
     }
   };
@@ -993,7 +1023,7 @@ function bindControllerProgramming() {
       const entry = (state.controllerPool || []).find((item) => item.id === activeId);
       hydrateControllerBindings(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
       hydrateControllerGamepad(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
-      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true });
+      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true, variant: 'controller-map' });
       const root = document.querySelector('[data-controller-programmer-modal]');
       if (root) {
         const device = root.querySelector('[data-controller-programmer-device]');
