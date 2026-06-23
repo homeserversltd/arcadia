@@ -343,15 +343,11 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_updates_card(status: &ConsoleStatus) -> Markup {
-    let headline = harmonia_state_label(&status.updates.state);
-    let needs_attention = matches!(
-        status.updates.state.as_str(),
-        "available" | "repair_pending" | "error" | "checking" | "installing" | "unknown"
-    ) || (!status.updates.suite_ok && status.updates.first_missing_signal != "none");
+    let toggle_line = harmonia_module_toggle_line(&status.updates.modules);
+    let pressure_line = harmonia_update_pressure_label(&status.updates);
+    let needs_attention = pressure_line != "No pressure";
     let (ready, enabled) = harmonia_module_readiness(&status.updates.modules);
-    let modules_line = format!("{ready}/{enabled} ready");
-    let check_line = harmonia_check_status_label(&status.updates);
-    let suite_line = harmonia_suite_status_label(&status.updates);
+    let ready_line = format!("{ready}/{enabled} installed");
     let show_blocker = status.updates.first_missing_signal != "none"
         && status.updates.first_missing_signal != "not-checked";
     let attention_modules: Vec<_> = status
@@ -362,15 +358,14 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
         .take(2)
         .collect();
     html! {
-        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) {
+        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) data-home-update-pressure=(pressure_line.as_str()) {
             div class="card-head" aria-label="Updates" {
                 h3 { "Updates" }
-                strong { (headline) }
+                strong { (toggle_line) }
             }
             div class="state-rows state-rows--compact" {
-                (state_row("Modules", &modules_line))
-                (state_row("Check", &check_line))
-                (state_row("Suite", &suite_line))
+                (state_row("Pressure", &pressure_line))
+                (state_row("Ready", &ready_line))
                 @if show_blocker {
                     (state_row("Blocker", &harmonia_missing_signal_label(&status.updates.first_missing_signal)))
                 }
