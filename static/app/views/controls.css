@@ -395,6 +395,7 @@
   background:
     radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--theme-accent) 8%, transparent), transparent 42%),
     color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
+  overflow: visible;
 }
 .controller-map-stage__pad {
   display: grid;
@@ -407,28 +408,34 @@
 }
 .controller-map-stage__pad .ux-gamepad-stage {
   width: 100%;
-  max-width: 980px;
-  min-height: 0;
+  max-width: none;
+  min-height: min(48dvh, 380px);
   height: 100%;
-  padding: 14px 18px 20px;
+  padding: 10px 8px 14px;
+  overflow: visible;
 }
 .controller-map-stage__pad .ux-gamepad-body {
-  width: min(100%, 900px);
-  height: auto;
-  aspect-ratio: 2.35 / 1;
-  max-height: min(100%, 380px);
+  width: 100%;
+  height: 100%;
+  min-height: min(44dvh, 340px);
+  max-height: none;
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-stage {
   width: 100%;
-  max-width: 1080px;
-  min-height: min(68dvh, 500px);
-  padding: 18px 14px 22px;
+  max-width: none;
+  min-height: min(62dvh, 520px);
+  padding: 12px 10px 16px;
+  overflow: visible;
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
-  width: min(100%, 1040px);
-  height: auto;
-  aspect-ratio: 2.35 / 1;
-  max-height: min(72dvh, 480px);
+  width: 100%;
+  height: 100%;
+  min-height: min(58dvh, 480px);
+  max-height: none;
+}
+.modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
+  --ux-gamepad-stick-size: min(108px, 22vw, 100%);
+  --ux-gamepad-face-size: min(168px, 24vw, 100%);
 }
 .controller-map-workbench {
   min-height: 0;
