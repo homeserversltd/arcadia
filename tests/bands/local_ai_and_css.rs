@@ -415,6 +415,16 @@
         assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-select"));
         assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-save-tuning"));
         assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("save_tuning_for_controller"));
+        assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("forget_controller_from_library"));
+        assert!(APP_JS.contains("showConfirm"));
+        assert!(APP_JS.contains("confirmationBodyFor"));
+        assert!(APP_JS.contains("data-controller-forget"));
+        assert!(APP_JS.contains("/api/actions/controllers-forget"));
+        assert!(APP_JS.contains("removeControllerPoolCard"));
+        assert!(APP_CSS.contains(".controller-pool-card__forget"));
+        assert!(APP_CSS.contains(".modal-confirm__actions"));
+        assert!(controller_backend.contains("action_controllers_forget"));
+        assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-forget"));
     }
 
 

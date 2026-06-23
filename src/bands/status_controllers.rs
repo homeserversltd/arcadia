@@ -770,6 +770,44 @@ async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>)
     }
 }
 
+async fn action_controllers_forget(Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let controller_id = payload.controller_id.trim();
+    if controller_id.is_empty() {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "controllers-forget",
+            "/api/actions/controllers-forget",
+            "Choose a controller to forget.",
+        );
+    }
+    match forget_controller_from_library(controller_id) {
+        Ok((removed_name, next_active_id)) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "controllers-forget",
+                command: "/var/lib/arcadia/controller-profiles/library.json",
+                exit_code: Some(0),
+                message: format!("{removed_name} removed from your controllers."),
+                stdout: next_active_id,
+                stderr: String::new(),
+            }),
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => console_action_error(
+            StatusCode::NOT_FOUND,
+            "controllers-forget",
+            "/api/actions/controllers-forget",
+            "That controller is not in your library.",
+        ),
+        Err(error) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "controllers-forget",
+            "/api/actions/controllers-forget",
+            &format!("Could not forget controller: {error}"),
+        ),
+    }
+}
+
 async fn action_controllers_assign_retroarch(
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
