@@ -158,7 +158,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
             .unwrap_or(if connected { "Tap to bind" } else { "Waiting" })
     };
     html! {
-        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer data-controller-mapping-editor="default" {
+        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer data-controller-mapping-editor="default" data-gamepad-layout-version="1" data-gamepad-layout-gap=(format!("{:.3}", GAMEPAD_LAYOUT_MIN_GAP)) {
             div class="ux-gamepad-body" {
                 div class="ux-gamepad-wing ux-gamepad-wing--left" aria-hidden="true" {}
                 div class="ux-gamepad-wing ux-gamepad-wing--right" aria-hidden="true" {}
@@ -222,8 +222,11 @@ fn gamepad_control(
     active: bool,
     class_name: &str,
 ) -> Markup {
+    let slot_id = gamepad_slot_for_control(label)
+        .map(|slot| slot.id)
+        .unwrap_or("unslotted");
     html! {
-        button class=(format!("ux-gamepad-control {}{}", class_name, if active { " is-active" } else { "" })) type="button" data-controller-control=(label) aria-label=(format!("{} mapped to {}", name, binding)) {
+        button class=(format!("ux-gamepad-control {}{}", class_name, if active { " is-active" } else { "" })) type="button" data-controller-control=(label) data-gamepad-slot=(slot_id) aria-label=(format!("{} mapped to {}", name, binding)) {
             strong { (label) }
             span { (gamepad_binding_label(binding)) }
         }
@@ -232,8 +235,11 @@ fn gamepad_control(
 
 fn gamepad_stick(label: &str, binding: &str, active: bool) -> Markup {
     let display = label.replace(" X", "").replace(" Y", "");
+    let slot_id = gamepad_slot_for_control(label)
+        .map(|slot| slot.id)
+        .unwrap_or("unslotted");
     html! {
-        button class=(if active { "ux-gamepad-stick is-active" } else { "ux-gamepad-stick" }) type="button" data-controller-control=(label) aria-label=(format!("{} mapped to {}", label, binding)) {
+        button class=(if active { "ux-gamepad-stick is-active" } else { "ux-gamepad-stick" }) type="button" data-controller-control=(label) data-gamepad-slot=(slot_id) aria-label=(format!("{} mapped to {}", label, binding)) {
             span class="ux-gamepad-stick-cap" aria-hidden="true" {}
             strong { (display) }
             em { (gamepad_binding_label(binding)) }
@@ -244,7 +250,7 @@ fn gamepad_stick(label: &str, binding: &str, active: bool) -> Markup {
 fn gamepad_dpad(active: bool, connected: bool) -> Markup {
     let binding = if connected { "hat 0" } else { "Waiting" };
     html! {
-        div class=(if active { "ux-gamepad-dpad is-active" } else { "ux-gamepad-dpad" }) aria-label=(format!("D-pad mapped to {}", binding)) data-controller-control="D-pad" {
+        div class=(if active { "ux-gamepad-dpad is-active" } else { "ux-gamepad-dpad" }) aria-label=(format!("D-pad mapped to {}", binding)) data-controller-control="D-pad" data-gamepad-slot="dpad" {
             button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--up" data-controller-control="D-pad Up" { "▲" }
             button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--left" data-controller-control="D-pad Left" { "◀" }
             button type="button" class="ux-gamepad-dpad-center" tabindex="-1" { "D" }
