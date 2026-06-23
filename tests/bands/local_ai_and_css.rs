@@ -223,8 +223,12 @@
             "data-view=\"controllers\"",
             "data-view-panel=\"controllers\"",
             "Controller manager",
-            "Controller",
-            "Profiles",
+            "controls-hub",
+            "controls-status",
+            "Button layout",
+            "Game systems",
+            "Push to all games",
+            "Map on gamepad",
             "RetroArch",
             "Dolphin",
             "DuckStation",
@@ -233,6 +237,7 @@
             "data-action=\"controllers-rescan\"",
             "data-action=\"controllers-test\"",
             "data-action=\"controllers-save-profile\"",
+            "data-action=\"controllers-ramrod-all\"",
             "data-action=\"controllers-assign-retroarch\"",
             "data-action=\"controllers-assign-dolphin\"",
             "data-action=\"controllers-assign-duckstation\"",
@@ -267,7 +272,8 @@
         }
         assert!(APP_JS.contains("bindControllerLiveInput"));
         assert!(APP_JS.contains("/api/controllers/input"));
-        assert!(APP_CSS.contains(".controllers-command-deck"));
+        assert!(APP_CSS.contains(".controls-hub"));
+        assert!(APP_CSS.contains(".controls-status"));
         assert!(APP_CSS.contains(".emulator-controller-grid"));
         assert!(APP_CSS.contains(".controller-button-dot--active"));
         assert!(UX_CSS.contains(".ux-controller-silhouette"));
@@ -290,6 +296,9 @@
         assert!(controller_backend.contains("ControllerBindRequest"));
         assert!(controller_backend.contains("ControllerProfileApplyRequest"));
         assert!(controller_backend.contains("action_controllers_apply_profile"));
+        assert!(controller_backend.contains("action_controllers_ramrod_all"));
+        assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-ramrod-all"));
+        assert!(APP_JS.contains("controllers-ramrod-all"));
         assert!(APP_JS.contains("bindControllerProgramming"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
         assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));

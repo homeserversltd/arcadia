@@ -34,6 +34,7 @@
     "storage-diagnostics",
     "storage-cleanup",
     "api-root",
-    "anyhow-free"
+    "anyhow-free",
+    "ui"
   ]
 }
