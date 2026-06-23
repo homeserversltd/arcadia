@@ -22,6 +22,8 @@ const PopupManager = (() => {
     if (variant) card.classList.add(`modal-card--${variant}`);
   }
 
+  let pendingConfirmResolve = null;
+
   function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '' }) {
     const el = overlay();
     if (!el) return;
@@ -41,7 +43,7 @@ const PopupManager = (() => {
     focusable?.focus();
   }
 
-  function closeModal() {
+  function closeModalSurface() {
     const el = overlay();
     if (!el) return;
     el.hidden = true;
@@ -52,6 +54,55 @@ const PopupManager = (() => {
     content().textContent = '';
     actions()?.removeAttribute('hidden');
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+  }
+
+  function finishConfirm(accepted) {
+    const resolver = pendingConfirmResolve;
+    pendingConfirmResolve = null;
+    closeModalSurface();
+    if (resolver) resolver(accepted);
+  }
+
+  function closeModal() {
+    if (pendingConfirmResolve) {
+      finishConfirm(false);
+      return;
+    }
+    closeModalSurface();
+  }
+
+  function showConfirm({
+    title = 'Are you sure?',
+    message = '',
+    confirmLabel = 'Confirm',
+    cancelLabel = 'Cancel',
+    danger = false,
+    variant = 'confirm',
+  } = {}) {
+    return new Promise((resolve) => {
+      pendingConfirmResolve = resolve;
+      const body = document.createElement('div');
+      body.className = 'modal-confirm';
+      const messageNode = document.createElement('p');
+      messageNode.className = 'modal-confirm__message';
+      messageNode.textContent = message;
+      const confirmActions = document.createElement('footer');
+      confirmActions.className = 'modal-confirm__actions';
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'btn btn--secondary';
+      cancel.textContent = cancelLabel;
+      cancel.addEventListener('click', () => finishConfirm(false));
+      const confirm = document.createElement('button');
+      confirm.type = 'button';
+      confirm.className = danger ? 'btn btn--danger' : 'btn btn--primary';
+      confirm.textContent = confirmLabel;
+      confirm.addEventListener('click', () => finishConfirm(true));
+      confirmActions.append(cancel, confirm);
+      body.append(messageNode, confirmActions);
+      showModal({ title, body, hideDefaultAction: true, variant });
+      cancel.focus();
+    });
   }
 
   function trapFocus(event) {
@@ -87,7 +138,7 @@ const PopupManager = (() => {
     setTimeout(() => node.remove(), 3600);
   }
 
-  return { showModal, closeModal, showToast, trapFocus };
+  return { showModal, closeModal, showConfirm, showToast, trapFocus };
 })();
 
 const ArcadiaLoading = (() => {
@@ -541,9 +592,6 @@ function confirmationFor(action) {
   if (action === 'restart-gamescope') return window.confirm('Restarting GameScope may close the active game session.') ? { confirm: 'RESTART_GAMESCOPE' } : null;
   if (action === 'restart-arcadia') return window.confirm('Restart Arcadia web GUI only? The page may reconnect.') ? { confirm: 'RESTART_ARCADIA' } : null;
   if (action === 'controllers-rescan' || action === 'controllers-test') return {};
-  if (action === 'controllers-ramrod-all') {
-    return window.confirm('Push your saved button layout to every game emulator on this console?') ? {} : null;
-  }
   if (action === 'enable-ssh') return { mode: 'enable' };
   if (action === 'disable-ssh') return window.confirm('Disable SSH service? Current remote SSH access may disconnect.') ? { mode: 'disable', confirm: 'DISABLE_SSH' } : null;
   if (action === 'enable-ssh-password') return window.confirm('Enable SSH password login? Key login remains available.') ? { mode: 'enable', confirm: 'ENABLE_SSH_PASSWORD' } : null;
@@ -557,6 +605,18 @@ function confirmationFor(action) {
   if (action === 'clear-old-updates') return window.confirm('Clear old update packages? Current installed software is not removed.') ? { confirm: 'CLEAR_OLD_UPDATES' } : null;
   if (action === 'prune-logs') return window.confirm('Prune managed logs? Games, artwork, and models are not affected.') ? { confirm: 'PRUNE_LOGS' } : null;
   return {};
+}
+
+async function confirmationBodyFor(action) {
+  if (action === 'controllers-ramrod-all') {
+    const ok = await PopupManager.showConfirm({
+      title: 'Push mapping to all games?',
+      message: 'Push your saved button layout to every game emulator on this console?',
+      confirmLabel: 'Push to all',
+    });
+    return ok ? {} : null;
+  }
+  return confirmationFor(action);
 }
 
 function bindConsoleActions() {
@@ -575,7 +635,7 @@ function bindConsoleActions() {
         catch (_) { PopupManager.showToast('Rescan failed', 'error'); button.disabled = false; button.textContent = original; }
         return;
       }
-      const body = confirmationFor(action);
+      const body = await confirmationBodyFor(action);
       if (body === null) return;
       clearMessage('console-action-message');
       button.disabled = true;
@@ -1055,6 +1115,22 @@ function updateControllerPoolSelection(controllerId) {
   });
 }
 
+function updateControllerPoolCount() {
+  const pool = document.querySelector('[data-controller-pool]');
+  if (!pool) return 0;
+  const remaining = pool.querySelectorAll('.controller-pool-card').length;
+  const badge = pool.querySelector('.controls-card__head-actions .system-status');
+  if (badge) badge.textContent = `${remaining} saved`;
+  return remaining;
+}
+
+function removeControllerPoolCard(controllerId) {
+  const card = document.querySelector(`[data-controller-pool] .controller-pool-card[data-controller-id="${CSS.escape(controllerId)}"]`);
+  if (card) card.remove();
+  const remaining = updateControllerPoolCount();
+  if (remaining === 0) window.location.reload();
+}
+
 function controllerProgrammerRoot() {
   return document.querySelector('[data-controller-programmer-modal]') || document.querySelector('[data-view-panel="controllers"]');
 }
@@ -1301,6 +1377,44 @@ function bindControllerProgramming() {
       });
     }
   };
+
+  panel.querySelectorAll('[data-controller-forget]:not([data-controller-forget-bound])').forEach((button) => {
+    button.dataset.controllerForgetBound = 'true';
+    button.addEventListener('click', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const controllerId = button.dataset.controllerForget || '';
+      if (!controllerId) return;
+      const card = button.closest('.controller-pool-card');
+      const name = card?.querySelector('.controller-pool-card__name')?.textContent?.trim() || 'this controller';
+      const ok = await PopupManager.showConfirm({
+        title: 'Forget controller?',
+        message: `Remove ${name} from your controllers? Saved button mappings for this gamepad will be forgotten.`,
+        confirmLabel: 'Forget',
+        cancelLabel: 'Keep',
+        danger: true,
+      });
+      if (!ok) return;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Removing…';
+      try {
+        const data = await postJson('/api/actions/controllers-forget', { controllerId });
+        PopupManager.showToast(data.message || (data.ok ? 'Controller forgotten' : 'Could not forget controller'), data.ok ? 'success' : 'error');
+        if (data.ok) {
+          removeControllerPoolCard(controllerId);
+          const nextId = (data.stdout || '').trim();
+          if (nextId) updateControllerPoolSelection(nextId);
+          else updateControllerPoolSelection('');
+        }
+      } catch (_) {
+        PopupManager.showToast('Could not forget controller', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    });
+  });
 
   panel.querySelectorAll('[data-controller-select]:not([data-controller-select-bound])').forEach((button) => {
     button.dataset.controllerSelectBound = 'true';

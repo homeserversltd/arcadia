@@ -286,6 +286,7 @@ fn controller_pool_card(entry: &crate::ControllerPoolEntry) -> Markup {
             div class="controller-pool-card__actions" {
                 button class="btn btn--secondary controller-pool-card__map" type="button" data-controller-programmer-open data-controller-id=(entry.id) { "Map" }
                 button class="btn btn--secondary controller-pool-card__tune" type="button" data-controller-tuner-open data-controller-id=(entry.id) { "Dampen" }
+                button class="btn btn--secondary controller-pool-card__forget" type="button" data-controller-forget=(entry.id) aria-label=(format!("Forget {}", entry.name)) { "Forget" }
             }
         }
     }

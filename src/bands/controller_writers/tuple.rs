@@ -328,6 +328,39 @@ fn set_active_controller_id(controller_id: &str) -> std::io::Result<()> {
     save_controller_library(&library)
 }
 
+fn forget_controller_from_library(controller_id: &str) -> std::io::Result<(String, String)> {
+    let mut library = load_controller_library();
+    let Some(record) = library.controllers.remove(controller_id) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "controller not in library",
+        ));
+    };
+    let removed_name = record.name;
+    if library.active_id == controller_id {
+        library.active_id = library
+            .controllers
+            .keys()
+            .next()
+            .cloned()
+            .unwrap_or_default();
+    }
+    save_controller_library(&library)?;
+    if library.active_id.is_empty() {
+        return Ok((removed_name, String::new()));
+    }
+    if let Some(active) = library.controllers.get(&library.active_id) {
+        let bindings = bindings_from_tuples(&active.tuples);
+        let _ = write_controller_profile(
+            &controller_profile_path(),
+            &active.name,
+            &active.handler,
+            &bindings,
+        );
+    }
+    Ok((removed_name, library.active_id))
+}
+
 fn bindings_for_controller_id(controller_id: &str) -> Vec<ControllerBindingStatus> {
     let library = load_controller_library();
     library

@@ -160,11 +160,12 @@
 }
 .controller-pool-card__actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--line);
 }
 .controller-pool-card__map,
-.controller-pool-card__tune {
+.controller-pool-card__tune,
+.controller-pool-card__forget {
   width: 100%;
   border-radius: 0;
   border: 0;
@@ -172,8 +173,12 @@
   padding: 5px 8px;
   font-size: var(--ux-text-xs);
 }
-.controller-pool-card__tune {
+.controller-pool-card__tune,
+.controller-pool-card__forget {
   border-left: 1px solid var(--line);
+}
+.controller-pool-card__forget {
+  color: color-mix(in srgb, var(--theme-bad) 82%, var(--cream));
 }
 .controller-tuner-modal {
   display: grid;

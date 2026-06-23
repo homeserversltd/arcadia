@@ -256,6 +256,10 @@ async fn main() -> anyhow_free::Result<()> {
             post(action_controllers_select),
         )
         .route(
+            "/api/actions/controllers-forget",
+            post(action_controllers_forget),
+        )
+        .route(
             "/api/actions/controllers-save-tuning",
             post(action_controllers_save_tuning),
         )
