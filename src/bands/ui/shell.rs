@@ -16,7 +16,7 @@ fn header(status: &ConsoleStatus) -> Markup {
         )
     } else if !sync_has_history(status) {
         (
-            format!("{} ROMs", status.library.total_detected_games),
+            status.library.total_detected_games.to_string(),
             "idle",
             format!(
                 "No verified sync receipt; current folders contain {} playable ROM files",
@@ -25,7 +25,7 @@ fn header(status: &ConsoleStatus) -> Markup {
         )
     } else if status.library.last_sync_state == "success" {
         (
-            format!("{} ROMs", status.library.total_detected_games),
+            status.library.total_detected_games.to_string(),
             "idle",
             format!(
                 "Last sync counted {} playable ROM files",
