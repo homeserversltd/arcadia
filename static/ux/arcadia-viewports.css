@@ -88,6 +88,7 @@
   .controls-games-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .controls-live-feed { max-height: none; }
+  .controller-pool-scroll { max-height: 280px; }
 }
 @media (max-width: 980px) {
   .controls-games-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

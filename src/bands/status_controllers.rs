@@ -5,24 +5,44 @@ fn controller_status() -> ControllerStatus {
     let detected_count = devices.len();
     let recovery = controller_recovery_status(&devices);
     let state = if detected_count > 0 { "connected".to_string() } else { recovery.state.clone() };
-    let primary_device = devices
-        .first()
-        .map(|device| device.name.clone())
-        .unwrap_or_else(|| recovery.title.clone());
-    let profile = controller_profile_status(devices.first());
-    let live_input = read_controller_input(devices.first());
+    let controller_pool = controller_pool_entries(&devices);
+    let active_controller_id = active_controller_id();
+    let (active_name, _, _, active_bindings) = active_controller_device_tuple();
+    let primary_device = if active_name.is_empty() || active_name == "No controller selected" {
+        devices
+            .first()
+            .map(|device| device.name.clone())
+            .unwrap_or_else(|| recovery.title.clone())
+    } else {
+        active_name
+    };
+    let active_device = active_connected_device(&devices, &active_controller_id);
+    let profile = controller_profile_status(active_device.as_ref(), &primary_device, &active_bindings);
+    let live_input = read_controller_input(active_device.as_ref().or(devices.first()));
     ControllerStatus {
         state,
         detected_count,
         primary_device,
+        active_controller_id,
         last_scan: human_now_label(),
         recovery,
         devices,
+        controller_pool,
         profile,
         profile_presets: controller_profile_presets(),
         live_input,
         emulators: emulator_controller_statuses(),
     }
+}
+
+fn active_connected_device(
+    devices: &[ControllerDeviceStatus],
+    active_controller_id: &str,
+) -> Option<ControllerDeviceStatus> {
+    devices
+        .iter()
+        .find(|device| controller_id_for_device(device) == active_controller_id)
+        .cloned()
 }
 
 fn controller_devices() -> Vec<ControllerDeviceStatus> {
@@ -212,14 +232,22 @@ fn controller_display_name(raw: &str) -> String {
         .replace(['_', '-'], " ")
 }
 
-fn controller_profile_status(device: Option<&ControllerDeviceStatus>) -> ControllerProfileStatus {
-    let path = controller_profile_path().display().to_string();
+fn controller_profile_status(
+    device: Option<&ControllerDeviceStatus>,
+    active_name: &str,
+    bindings: &[ControllerBindingStatus],
+) -> ControllerProfileStatus {
+    let path = controller_library_path().display().to_string();
     let exists = Path::new(&path).exists();
     ControllerProfileStatus {
         state: if exists { "saved" } else if device.is_some() { "ready to save" } else { "waiting for controller" }.to_string(),
-        name: device.map(|d| format!("Default · {}", d.name)).unwrap_or_else(|| "Default".to_string()),
+        name: if active_name.is_empty() {
+            "No controller selected".to_string()
+        } else {
+            active_name.to_string()
+        },
         path,
-        bindings: saved_or_default_controller_bindings(),
+        bindings: bindings.to_vec(),
     }
 }
 
@@ -228,12 +256,51 @@ fn controller_profile_status(device: Option<&ControllerDeviceStatus>) -> Control
 struct ControllerBindRequest {
     control: String,
     binding: Option<String>,
+    controller_id: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ControllerProfileApplyRequest {
     profile: String,
+    controller_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControllerSelectRequest {
+    controller_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControllerScopedRequest {
+    controller_id: Option<String>,
+}
+
+fn resolve_controller_id(explicit: Option<String>) -> String {
+    explicit
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(active_controller_id)
+}
+
+fn controller_device_for_id(status: &ControllerStatus, controller_id: &str) -> (String, String) {
+    if let Some(entry) = status
+        .controller_pool
+        .iter()
+        .find(|entry| entry.id == controller_id)
+    {
+        return (entry.name.clone(), entry.handler.clone());
+    }
+    if let Some(device) = status
+        .devices
+        .iter()
+        .find(|device| controller_id_for_device(device) == controller_id)
+    {
+        return (device.name.clone(), device.handler.clone());
+    }
+    let (_, name, handler, _) = active_controller_device_tuple();
+    (name, handler)
 }
 
 fn capture_or_default_binding(status: &ControllerStatus, control: &str, explicit: Option<String>) -> String {
@@ -249,10 +316,8 @@ fn capture_or_default_binding(status: &ControllerStatus, control: &str, explicit
         .unwrap_or_else(|| binding_for_control(control))
 }
 
-fn virtual_controller_device(status: &ControllerStatus) -> (String, String) {
-    status.devices.first()
-        .map(|device| (device.name.clone(), device.handler.clone()))
-        .unwrap_or_else(|| (status.primary_device.clone(), "virtual-arcadia-gamepad".to_string()))
+fn virtual_controller_device(status: &ControllerStatus, controller_id: &str) -> (String, String) {
+    controller_device_for_id(status, controller_id)
 }
 
 fn read_controller_input(device: Option<&ControllerDeviceStatus>) -> ControllerInputStatus {
@@ -444,19 +509,25 @@ async fn action_controllers_test() -> (StatusCode, Json<ConsoleActionResponse>) 
     )
 }
 
-async fn action_controllers_save_profile() -> (StatusCode, Json<ConsoleActionResponse>) {
+async fn action_controllers_save_profile(
+    Json(payload): Json<ControllerScopedRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
     let status = controller_status();
-    let (device_name, handler) = virtual_controller_device(&status);
-    let path = controller_profile_path();
-    let bindings = saved_or_default_controller_bindings();
-    if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
-        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-save-profile", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not save controller profile: {}", error));
+    let controller_id = resolve_controller_id(payload.controller_id);
+    if controller_id.is_empty() {
+        return console_action_error(StatusCode::BAD_REQUEST, "controllers-save-profile", "/api/actions/controllers-save-profile", "Choose a controller before saving.");
+    }
+    let (device_name, handler) = virtual_controller_device(&status, &controller_id);
+    let bindings = bindings_for_controller_id(&controller_id);
+    let path = controller_library_path();
+    if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, None) {
+        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-save-profile", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not save controller profile: {}", error));
     }
     let ramrod_detail = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
         Ok(receipt) => ramrod_stdout(&receipt),
         Err(error) => format!("profile saved; ramrod deferred: {error}"),
     };
-    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-save-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: "Controller profile saved and ramrodded.".to_string(), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-save-profile", command: "/var/lib/arcadia/controller-profiles/library.json", exit_code: Some(0), message: format!("{} layout saved and ramrodded.", device_name), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
 }
 
 async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileApplyRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -465,17 +536,21 @@ async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileA
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-apply-profile", "/api/actions/controllers-apply-profile", "Choose a controller profile.");
     }
     let status = controller_status();
-    let (device_name, handler) = virtual_controller_device(&status);
-    let path = controller_profile_path();
+    let controller_id = resolve_controller_id(payload.controller_id);
+    if controller_id.is_empty() {
+        return console_action_error(StatusCode::BAD_REQUEST, "controllers-apply-profile", "/api/actions/controllers-apply-profile", "Choose a controller before applying a layout style.");
+    }
+    let (device_name, handler) = virtual_controller_device(&status, &controller_id);
     let bindings = controller_bindings_for_profile(profile);
-    if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
-        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-apply-profile", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not apply controller profile: {}", error));
+    let path = controller_library_path();
+    if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, Some(profile)) {
+        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-apply-profile", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not apply controller profile: {}", error));
     }
     let ramrod_detail = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
         Ok(receipt) => ramrod_stdout(&receipt),
         Err(error) => format!("profile applied; ramrod deferred: {error}"),
     };
-    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-apply-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} profile applied and ramrodded.", profile), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-apply-profile", command: "/var/lib/arcadia/controller-profiles/library.json", exit_code: Some(0), message: format!("{} layout applied to {}.", profile, device_name), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
 }
 
 async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -484,19 +559,58 @@ async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> 
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-bind", "/api/actions/controllers-bind", "Choose a controller button before binding.");
     }
     let status = controller_status();
-    let (device_name, handler) = virtual_controller_device(&status);
+    let controller_id = resolve_controller_id(payload.controller_id);
+    if controller_id.is_empty() {
+        return console_action_error(StatusCode::BAD_REQUEST, "controllers-bind", "/api/actions/controllers-bind", "Choose a controller before binding.");
+    }
+    let (device_name, handler) = virtual_controller_device(&status, &controller_id);
     let binding = capture_or_default_binding(&status, control, payload.binding);
-    let mut bindings = saved_or_default_controller_bindings();
+    let mut bindings = bindings_for_controller_id(&controller_id);
     upsert_binding(&mut bindings, control, &binding);
-    let path = controller_profile_path();
-    if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
-        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-bind", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not write controller binding: {}", error));
+    if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, None) {
+        return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-bind", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not write controller binding: {}", error));
     }
     let ramrod_note = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
         Ok(_) => " Tuple ramrodded to emulator strata.".to_string(),
         Err(_) => String::new(),
     };
-    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-bind", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} mapped to {}.{ramrod_note}", control, binding), stdout: binding, stderr: String::new() }))
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-bind", command: "/var/lib/arcadia/controller-profiles/library.json", exit_code: Some(0), message: format!("{} mapped to {} on {}.{ramrod_note}", control, binding, device_name), stdout: binding, stderr: String::new() }))
+}
+
+async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let controller_id = payload.controller_id.trim();
+    if controller_id.is_empty() {
+        return console_action_error(StatusCode::BAD_REQUEST, "controllers-select", "/api/actions/controllers-select", "Choose a controller from your library.");
+    }
+    match set_active_controller_id(controller_id) {
+        Ok(()) => {
+            let status = controller_status();
+            let entry = status
+                .controller_pool
+                .iter()
+                .find(|entry| entry.id == controller_id)
+                .map(|entry| entry.name.clone())
+                .unwrap_or_else(|| controller_id.to_string());
+            (
+                StatusCode::OK,
+                Json(ConsoleActionResponse {
+                    ok: true,
+                    action: "controllers-select",
+                    command: "/var/lib/arcadia/controller-profiles/library.json",
+                    exit_code: Some(0),
+                    message: format!("{entry} selected for mapping."),
+                    stdout: controller_id.to_string(),
+                    stderr: String::new(),
+                }),
+            )
+        }
+        Err(error) => console_action_error(
+            StatusCode::NOT_FOUND,
+            "controllers-select",
+            "/api/actions/controllers-select",
+            &format!("Could not select controller: {error}"),
+        ),
+    }
 }
 
 async fn action_controllers_assign_retroarch() -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -521,8 +635,9 @@ async fn action_controllers_assign_ppsspp() -> (StatusCode, Json<ConsoleActionRe
 
 async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionResponse>) {
     let status = controller_status();
-    let (device_name, handler) = virtual_controller_device(&status);
-    let bindings = saved_or_default_controller_bindings();
+    let controller_id = active_controller_id();
+    let (device_name, handler) = virtual_controller_device(&status, &controller_id);
+    let bindings = bindings_for_controller_id(&controller_id);
     match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
         Ok(receipt) => (
             StatusCode::OK,
@@ -550,8 +665,9 @@ async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionRespo
 
 fn action_controllers_assign_emulator(emulator: &str) -> (StatusCode, Json<ConsoleActionResponse>) {
     let status = controller_status();
-    let (device_name, handler) = virtual_controller_device(&status);
-    let bindings = saved_or_default_controller_bindings();
+    let controller_id = active_controller_id();
+    let (device_name, handler) = virtual_controller_device(&status, &controller_id);
+    let bindings = bindings_for_controller_id(&controller_id);
     let installed = status.emulators.iter().find(|e| e.emulator == emulator).map(|e| e.state != "not installed").unwrap_or(false);
     match write_emulator_profile(emulator, &device_name, &handler, &bindings, installed, &controller_profile_root()) {
         Ok(path) => {

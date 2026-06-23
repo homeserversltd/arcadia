@@ -105,13 +105,33 @@ pub struct SystemServiceStatus {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ControllerPoolEntry {
+    pub id: String,
+    pub name: String,
+    pub handler: String,
+    pub path: String,
+    pub glyph: String,
+    pub transport: String,
+    pub kind: String,
+    pub state: String,
+    pub layout_style: String,
+    pub tuple_count: usize,
+    pub bindings: Vec<ControllerBindingStatus>,
+    pub last_seen: String,
+    pub selected: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ControllerStatus {
     pub state: String,
     pub detected_count: usize,
     pub primary_device: String,
+    pub active_controller_id: String,
     pub last_scan: String,
     pub recovery: ControllerRecoveryStatus,
     pub devices: Vec<ControllerDeviceStatus>,
+    pub controller_pool: Vec<ControllerPoolEntry>,
     pub profile: ControllerProfileStatus,
     pub profile_presets: Vec<ControllerProfilePresetStatus>,
     pub live_input: ControllerInputStatus,

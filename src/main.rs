@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::Infallible,
     env, fs,
     fs::OpenOptions,
@@ -250,6 +250,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route(
             "/api/actions/controllers-bind",
             post(action_controllers_bind),
+        )
+        .route(
+            "/api/actions/controllers-select",
+            post(action_controllers_select),
         )
         .route(
             "/api/actions/controllers-assign-retroarch",
