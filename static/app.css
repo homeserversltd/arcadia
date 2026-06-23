@@ -1261,11 +1261,18 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .controls-status__actions .btn { min-height: var(--ux-compact-button-min-height); padding: var(--ux-compact-button-padding-block) var(--ux-compact-button-padding-inline); font-size: var(--ux-text-sm); }
 .controls-main {
   display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(240px, .88fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--ux-controls-gap);
   min-height: 0;
   overflow: hidden;
 }
+.controls-mapping-teaser {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--ux-text-sm);
+  line-height: 1.35;
+}
+.controls-mapping-teaser strong { color: var(--cream); }
 .controls-card {
   min-width: 0;
   min-height: 0;
@@ -1441,16 +1448,68 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 }
 .controller-programmer-modal {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(260px, .95fr) minmax(320px, 1.05fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
-  min-width: min(920px, calc(100vw - 80px));
+  min-width: min(960px, calc(100vw - 80px));
+  max-height: min(78vh, 720px);
   color: var(--cream);
 }
-.controller-programmer-modal .ux-gamepad-stage { min-height: 300px; }
-.controller-programmer-side {
+.controller-map-stage {
+  min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--ux-controls-card-radius);
+  background: color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
+}
+.controller-programmer-modal .ux-gamepad-stage { min-height: 280px; height: 100%; }
+.controller-map-workbench {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 8px;
+  overflow: hidden;
+}
+.controller-map-bindings {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+  padding: var(--ux-compact-card-padding);
+  border: 1px solid var(--line);
+  border-radius: var(--ux-controls-card-radius);
+  background: linear-gradient(160deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 55%, transparent));
+}
+.controller-map-bindings .controls-bindings {
+  max-height: 100%;
+  overflow: auto;
+}
+.controller-map-presets {
+  display: grid;
+  gap: 4px;
+}
+.controller-map-presets .controls-preset-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.controller-map-live {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+}
+.controller-map-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ux-control-gap);
+  padding-top: 4px;
+  border-top: var(--ux-card-divider);
 }
 .controls-map-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .controls-map-readout { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }

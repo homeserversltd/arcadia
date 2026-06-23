@@ -894,30 +894,66 @@ function bindControllerProgramming() {
     }
   };
 
-  const startProgrammerLoop = (root) => {
-    if (programmerTimer) window.clearInterval(programmerTimer);
-    bindControlButtons(root);
-    const readout = root.querySelector('[data-controller-broadcast-readout]');
-    if (readout) readout.textContent = 'Live';
-    programmerTimer = window.setInterval(async () => {
-      if (programmerPaused || !document.querySelector('[data-controller-programmer-modal]')) return;
-      try { await ingestProgrammerInput(root, await getJson('/api/controllers/input')); } catch (_) {}
-    }, intervalMs);
-    root.querySelector('[data-controller-broadcast-toggle]')?.addEventListener('click', (event) => {
-      programmerPaused = !programmerPaused;
-      event.currentTarget.textContent = programmerPaused ? 'Resume live preview' : 'Pause live preview';
+  const bindModalActions = (root) => {
+    root.querySelectorAll('.btn[data-action][data-endpoint]:not([data-modal-action-bound])').forEach((button) => {
+      button.dataset.modalActionBound = 'true';
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        const action = button.dataset.action;
+        const endpoint = button.dataset.endpoint;
+        const original = button.textContent;
+        const body = confirmationFor(action);
+        if (body === null) return;
+        button.disabled = true;
+        button.textContent = 'Running...';
+        try {
+          const data = await postJson(endpoint, body);
+          const variant = data.ok ? 'success' : 'error';
+          PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
+        } catch (_) {
+          PopupManager.showToast('Action request failed', 'error');
+        } finally {
+          button.disabled = false;
+          button.textContent = original;
+        }
+      });
     });
   };
 
-  bindProfileCards(panel);
-  bindControlButtons(panel);
+  const startProgrammerLoop = (root) => {
+    if (programmerTimer) window.clearInterval(programmerTimer);
+    bindProfileCards(root);
+    bindControlButtons(root);
+    bindModalActions(root);
+    const readout = root.querySelector('[data-controller-broadcast-readout]');
+    if (readout) readout.textContent = 'Live';
+    programmerTimer = window.setInterval(async () => {
+      if (!document.querySelector('[data-controller-programmer-modal]')) {
+        window.clearInterval(programmerTimer);
+        programmerTimer = null;
+        return;
+      }
+      if (programmerPaused) return;
+      try { await ingestProgrammerInput(root, await getJson('/api/controllers/input')); } catch (_) {}
+    }, intervalMs);
+    const toggle = root.querySelector('[data-controller-broadcast-toggle]:not([data-controller-broadcast-bound])');
+    if (toggle) {
+      toggle.dataset.controllerBroadcastBound = 'true';
+      toggle.addEventListener('click', (event) => {
+        programmerPaused = !programmerPaused;
+        event.currentTarget.textContent = programmerPaused ? 'Resume live preview' : 'Pause live preview';
+      });
+    }
+  };
+
   panel.querySelectorAll('[data-controller-programmer-open]:not([data-controller-programmer-bound])').forEach((button) => {
     button.dataset.controllerProgrammerBound = 'true';
     button.addEventListener('click', () => {
       const template = document.getElementById('controller-programmer-template');
       const body = template?.content?.firstElementChild?.cloneNode(true);
       if (!body) return;
-      PopupManager.showModal({ title: 'Map your buttons', body, hideDefaultAction: true });
+      programmerPaused = false;
+      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true });
       const root = document.querySelector('[data-controller-programmer-modal]');
       if (root) startProgrammerLoop(root);
     });
