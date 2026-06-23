@@ -435,7 +435,7 @@
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
   --ux-gamepad-stick-size: min(108px, 22vw, 100%);
-  --ux-gamepad-face-size: min(168px, 24vw, 100%);
+  --ux-gamepad-face-btn-size: min(60px, 8vw, 100%);
 }
 .controller-map-workbench {
   min-height: 0;

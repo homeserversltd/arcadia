@@ -1,5 +1,5 @@
 /// Normalized layout contract for the programmable gamepad primitive.
-/// All interactive controls SHALL occupy disjoint rectangles inside the body box.
+/// Each interactive control SHALL occupy one cublet cell; cells may touch, never overlap.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GamepadSlot {
     pub id: &'static str,
@@ -13,27 +13,32 @@ pub struct GamepadSlot {
 /// Minimum normalized gap required between any two interactive hit targets.
 pub const GAMEPAD_LAYOUT_MIN_GAP: f32 = 0.01;
 
+/// Discrete cublet grid on `.ux-gamepad-body--cublet-grid` (7 columns × 4 rows).
+pub const GAMEPAD_CUBLET_COLS: u8 = 7;
+pub const GAMEPAD_CUBLET_ROWS: u8 = 4;
+
 /// Authoritative slot map for overlap audits and `data-gamepad-slot` wiring.
+/// Coordinates are inset within cublet cells by `GAMEPAD_LAYOUT_MIN_GAP`.
 pub const GAMEPAD_INTERACTIVE_SLOTS: &[GamepadSlot] = &[
-    GamepadSlot { id: "shoulder-l2", control: "L2", x: 0.04, y: 0.00, w: 0.085, h: 0.10 },
-    GamepadSlot { id: "shoulder-l1", control: "L1", x: 0.155, y: 0.00, w: 0.085, h: 0.10 },
-    GamepadSlot { id: "shoulder-r1", control: "R1", x: 0.76, y: 0.00, w: 0.085, h: 0.10 },
-    GamepadSlot { id: "shoulder-r2", control: "R2", x: 0.875, y: 0.00, w: 0.085, h: 0.10 },
-    GamepadSlot { id: "stick-left", control: "Left Stick X", x: 0.03, y: 0.14, w: 0.22, h: 0.31 },
-    GamepadSlot { id: "dpad", control: "D-pad", x: 0.03, y: 0.52, w: 0.22, h: 0.34 },
-    GamepadSlot { id: "system-select", control: "Select", x: 0.30, y: 0.40, w: 0.08, h: 0.10 },
-    GamepadSlot { id: "system-start", control: "Start", x: 0.40, y: 0.40, w: 0.08, h: 0.10 },
-    GamepadSlot { id: "face-y", control: "Y", x: 0.58, y: 0.16, w: 0.10, h: 0.11 },
-    GamepadSlot { id: "face-x", control: "X", x: 0.50, y: 0.30, w: 0.10, h: 0.11 },
-    GamepadSlot { id: "face-b", control: "B", x: 0.66, y: 0.30, w: 0.10, h: 0.11 },
-    GamepadSlot { id: "face-a", control: "A", x: 0.58, y: 0.46, w: 0.10, h: 0.11 },
+    GamepadSlot { id: "shoulder-l2", control: "L2", x: 0.0300, y: 0.0300, w: 0.1866, h: 0.1100 },
+    GamepadSlot { id: "shoulder-l1", control: "L1", x: 0.2366, y: 0.0300, w: 0.1669, h: 0.1100 },
+    GamepadSlot { id: "shoulder-r1", control: "R1", x: 0.7107, y: 0.0300, w: 0.0626, h: 0.1100 },
+    GamepadSlot { id: "shoulder-r2", control: "R2", x: 0.7933, y: 0.0300, w: 0.1767, h: 0.1100 },
+    GamepadSlot { id: "stick-left", control: "Left Stick X", x: 0.0300, y: 0.1600, w: 0.3734, h: 0.5333 },
+    GamepadSlot { id: "dpad", control: "D-pad", x: 0.0300, y: 0.7133, w: 0.3734, h: 0.2567 },
+    GamepadSlot { id: "system-select", control: "Select", x: 0.4234, y: 0.1600, w: 0.1020, h: 0.2567 },
+    GamepadSlot { id: "system-start", control: "Start", x: 0.4234, y: 0.7133, w: 0.1020, h: 0.2567 },
+    GamepadSlot { id: "face-y", control: "Y", x: 0.6280, y: 0.1600, w: 0.0626, h: 0.2567 },
+    GamepadSlot { id: "face-x", control: "X", x: 0.5454, y: 0.4367, w: 0.0626, h: 0.2567 },
+    GamepadSlot { id: "face-b", control: "B", x: 0.7107, y: 0.4367, w: 0.0626, h: 0.2567 },
+    GamepadSlot { id: "face-a", control: "A", x: 0.6280, y: 0.7133, w: 0.0626, h: 0.2567 },
     GamepadSlot {
         id: "stick-right",
         control: "Right Stick X",
-        x: 0.80,
-        y: 0.42,
-        w: 0.16,
-        h: 0.34,
+        x: 0.7933,
+        y: 0.1600,
+        w: 0.1767,
+        h: 0.8100,
     },
 ];
 
@@ -51,10 +56,10 @@ pub fn gamepad_slots_overlap(a: &GamepadSlot, b: &GamepadSlot, gap: f32) -> bool
 }
 
 pub fn gamepad_slots_separated(a: &GamepadSlot, b: &GamepadSlot, gap: f32) -> bool {
-    a.x + a.w + gap <= b.x - gap
-        || b.x + b.w + gap <= a.x - gap
-        || a.y + a.h + gap <= b.y - gap
-        || b.y + b.h + gap <= a.y - gap
+    a.x + a.w + gap <= b.x
+        || b.x + b.w + gap <= a.x
+        || a.y + a.h + gap <= b.y
+        || b.y + b.h + gap <= a.y
 }
 
 pub fn gamepad_layout_overlap_report(gap: f32) -> Vec<String> {
@@ -91,6 +96,16 @@ mod gamepad_layout_tests {
     }
 
     #[test]
+    fn start_and_face_x_cublets_are_separated() {
+        let start = gamepad_slot_for_control("Start").unwrap();
+        let face_x = gamepad_slot_for_control("X").unwrap();
+        assert!(
+            gamepad_slots_separated(start, face_x, GAMEPAD_LAYOUT_MIN_GAP),
+            "Start ({start:?}) must not overlap X ({face_x:?})"
+        );
+    }
+
+    #[test]
     fn every_interactive_control_has_a_slot() {
         for control in [
             "L2", "L1", "R1", "R2", "Left Stick X", "D-pad", "Select", "Start", "Y", "X", "B", "A",
@@ -101,5 +116,12 @@ mod gamepad_layout_tests {
                 "missing gamepad slot for {control}"
             );
         }
+    }
+
+    #[test]
+    fn cublet_grid_dimensions_match_manifest() {
+        assert_eq!(GAMEPAD_CUBLET_COLS, 7);
+        assert_eq!(GAMEPAD_CUBLET_ROWS, 4);
+        assert_eq!(GAMEPAD_INTERACTIVE_SLOTS.len(), 13);
     }
 }

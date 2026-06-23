@@ -260,20 +260,22 @@
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
             "data-controller-gamepad-programmer",
-            "data-gamepad-layout-version=\"2\"",
+            "data-gamepad-layout-version=\"3\"",
+            "data-gamepad-cublet-cols=\"7\"",
             "data-gamepad-slot=\"face-a\"",
+            "data-gamepad-slot=\"system-start\"",
+            "data-gamepad-slot=\"face-x\"",
             "data-gamepad-slot=\"stick-left\"",
             "data-gamepad-slot=\"dpad\"",
-            "ux-gamepad-body",
+            "ux-gamepad-body--cublet-grid",
+            "ux-gamepad-cublet",
+            "ux-gamepad-cublet--start",
+            "ux-gamepad-cublet--face-x",
             "ux-gamepad-stick",
             "ux-gamepad-dpad",
-            "ux-gamepad-face-diamond",
             "ux-gamepad-shoulder",
             "ux-gamepad-wing",
             "ux-gamepad-bridge",
-            "ux-gamepad-left__stick",
-            "ux-gamepad-face-zone",
-            "ux-gamepad-stick-zone--right",
             "controller-profile-card",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
@@ -328,13 +330,15 @@
         assert!(APP_CSS.contains(".controller-map-bindings .controls-binding-row"));
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_LAYOUT_MIN_GAP"));
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("gamepad_layout_overlap_report"));
+        assert!(UX_CSS.contains(".ux-gamepad-cublet"));
         assert!(UX_CSS.contains("[data-gamepad-slot]"));
-        assert!(UX_CSS.contains("grid-template-columns: repeat(3, minmax(0, 1fr))"));
-        assert!(UX_CSS.contains(".ux-gamepad-face-zone"));
-        assert!(UX_CSS.contains("overflow: visible"));
+        assert!(UX_CSS.contains(".ux-gamepad-body--cublet-grid"));
+        assert!(UX_CSS.contains("grid-template-areas:"));
+        assert!(UX_CSS.contains(".ux-gamepad-cublet--start"));
+        assert!(UX_CSS.contains(".ux-gamepad-cublet--face-x"));
         assert!(APP_CSS.contains("max-height: none"));
         assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
-        assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));
+        assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_CUBLET_COLS"));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
         assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
         assert!(APP_CSS.contains("modal-card--fullscreen"));
