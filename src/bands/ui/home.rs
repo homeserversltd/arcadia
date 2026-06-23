@@ -357,8 +357,8 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
                 strong { (ratio) }
             }
             div class="state-rows state-rows--compact updates-home-details" {
-                (updates_detail_row("Last ran:", &status.updates.last_update_run))
-                (updates_detail_row("updates available:", &available_line))
+                (updates_detail_row("Last ran:", &status.updates.last_update_run, false))
+                (updates_detail_row("updates available:", &available_line, true))
             }
             div class="inline-actions inline-actions--compact updates-home-actions" {
                 (action_button(ButtonVariant::Primary, "Check", "check-updates", "/api/actions/check-updates"))
@@ -367,9 +367,14 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
     }
 }
 
-fn updates_detail_row(label: &str, value: &str) -> Markup {
+fn updates_detail_row(label: &str, value: &str, inline_count: bool) -> Markup {
+    let row_class = if inline_count {
+        "state-row updates-detail-row updates-detail-row--count"
+    } else {
+        "state-row updates-detail-row"
+    };
     html! {
-        div class="state-row updates-detail-row" aria-label=(format!("{label} {value}")) {
+        div class=(row_class) aria-label=(format!("{label} {value}")) {
             span { (label) }
             strong { (value) }
         }
