@@ -91,6 +91,7 @@
   align-content: start;
 }
 .controller-pool-card {
+  position: relative;
   min-width: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
@@ -107,6 +108,7 @@
   appearance: none;
   border: 0;
   border-radius: 0;
+  padding-inline-end: 28px;
   background: transparent;
   color: inherit;
   text-align: left;
@@ -158,14 +160,34 @@
   white-space: nowrap;
   flex: 0 0 auto;
 }
+.controller-pool-card__forget {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--theme-bad) 35%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-bad) 8%, transparent);
+  color: color-mix(in srgb, var(--theme-bad) 88%, var(--cream));
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.controller-pool-card__forget:hover,
+.controller-pool-card__forget:focus-visible {
+  border-color: color-mix(in srgb, var(--theme-bad) 55%, var(--line));
+  background: color-mix(in srgb, var(--theme-bad) 16%, transparent);
+}
 .controller-pool-card__actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--line);
 }
 .controller-pool-card__map,
-.controller-pool-card__tune,
-.controller-pool-card__forget {
+.controller-pool-card__tune {
   width: 100%;
   border-radius: 0;
   border: 0;
@@ -173,12 +195,8 @@
   padding: 5px 8px;
   font-size: var(--ux-text-xs);
 }
-.controller-pool-card__tune,
-.controller-pool-card__forget {
+.controller-pool-card__tune {
   border-left: 1px solid var(--line);
-}
-.controller-pool-card__forget {
-  color: color-mix(in srgb, var(--theme-bad) 82%, var(--cream));
 }
 .controller-tuner-modal {
   display: grid;
@@ -222,9 +240,9 @@
   color: var(--muted);
   font-size: var(--ux-text-xs);
 }
-.controller-tuner-field--primary .controller-tuner-field__head span:first-child {
+.controller-tuner-field__head span:first-child {
   color: var(--cream);
-  font-weight: 800;
+  font-weight: 700;
 }
 .controller-tuner-field__hint {
   color: var(--muted);
