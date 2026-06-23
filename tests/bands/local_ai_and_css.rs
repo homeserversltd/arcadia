@@ -277,6 +277,8 @@
             assert!(!controllers_html.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
         assert!(APP_JS.contains("bindControllerLiveInput"));
+        assert!(APP_JS.contains("const panel = document.querySelector('[data-view-panel=\"controllers\"]')"));
+        assert!(APP_JS.contains("openControllerModal"));
         assert!(APP_JS.contains("/api/controllers/input"));
         assert!(APP_CSS.contains(".controls-hub"));
         assert!(APP_CSS.contains(".controls-status"));
