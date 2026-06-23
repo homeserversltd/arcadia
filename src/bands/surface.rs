@@ -105,9 +105,17 @@ fn updates_status() -> UpdatesStatus {
                 "receipt-missing".to_string()
             }
         });
+    let suite_changed = suite
+        .as_ref()
+        .and_then(|v| receipt_bool(v, "changed"))
+        .unwrap_or(false);
     let check_ok = check
         .as_ref()
         .and_then(|v| receipt_bool(v, "suite_ok").or_else(|| receipt_bool(v, "ok")))
+        .unwrap_or(false);
+    let check_changed = check
+        .as_ref()
+        .and_then(|v| receipt_bool(v, "changed"))
         .unwrap_or(false);
     let check_missing_signal = check
         .as_ref()
@@ -153,7 +161,9 @@ fn updates_status() -> UpdatesStatus {
         profile_id,
         identity,
         suite_ok,
+        suite_changed,
         check_ok,
+        check_changed,
         check_missing_signal,
         first_missing_signal,
         module_count,

@@ -53,6 +53,39 @@ fn harmonia_module_readiness(modules: &[crate::HarmoniaModuleStatus]) -> (usize,
     (ready, enabled)
 }
 
+fn harmonia_module_toggle_line(modules: &[crate::HarmoniaModuleStatus]) -> String {
+    let on = modules.iter().filter(|module| module.enabled).count();
+    let off = modules.iter().filter(|module| !module.enabled).count();
+    format!("{on} on · {off} off")
+}
+
+fn harmonia_update_pressure_label(status: &crate::UpdatesStatus) -> String {
+    let (ready, enabled) = harmonia_module_readiness(&status.modules);
+    let missing = enabled.saturating_sub(ready);
+    if status.check_missing_signal == "not-checked" {
+        return "Check not run".to_string();
+    }
+    if !status.check_ok {
+        if missing > 0 {
+            return format!("Drift · {missing} missing");
+        }
+        if status.check_changed {
+            return "Drift detected".to_string();
+        }
+        return "Check found work".to_string();
+    }
+    if !status.suite_ok {
+        if status.suite_changed {
+            return "Apply needed".to_string();
+        }
+        return "Suite stale".to_string();
+    }
+    if missing > 0 {
+        return format!("{missing} module(s) missing");
+    }
+    "No pressure".to_string()
+}
+
 fn harmonia_check_status_label(status: &crate::UpdatesStatus) -> String {
     if status.check_missing_signal == "not-checked" {
         "Not run".to_string()
