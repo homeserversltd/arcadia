@@ -20,10 +20,13 @@
   --ux-sidebar-padding-inline: 10px;
   --ux-sidebar-radius: 26px;
   --ux-launcher-min-height: 40px;
+  --ux-launcher-max-height: 56px;
   --ux-launcher-padding-block: 3px;
   --ux-launcher-padding-inline: 4px;
   --ux-launcher-radius: 15px;
+  --ux-launcher-icon-min-size: 20px;
   --ux-launcher-icon-size: 22px;
+  --ux-launcher-icon-max-size: 22px;
   --ux-launcher-icon-radius: 12px;
 
   --ux-viewport-radius: 30px;
