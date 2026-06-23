@@ -274,6 +274,12 @@
         assert!(APP_JS.contains("/api/controllers/input"));
         assert!(APP_CSS.contains(".controls-hub"));
         assert!(APP_CSS.contains(".controls-status"));
+        assert!(APP_CSS.contains(".view[data-view-panel=\"controllers\"].is-active"));
+        assert!(APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto"));
+        assert!(APP_CSS.contains("--ux-controls-gap"));
+        assert!(APP_CSS.contains("repeat(var(--ux-controls-binding-cols)"));
+        assert!(VIEWPORT_CSS.contains(".view[data-view-panel=\"controllers\"].is-active"));
+        assert!(VIEWPORT_CSS.contains("controls-bindings"));
         assert!(APP_CSS.contains(".emulator-controller-grid"));
         assert!(APP_CSS.contains(".controller-button-dot--active"));
         assert!(UX_CSS.contains(".ux-controller-silhouette"));

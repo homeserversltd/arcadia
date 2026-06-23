@@ -61,6 +61,14 @@
   --ux-text-lg: 18px;
   --ux-text-xl: 20px;
   --ux-text-max: 22px;
+
+  --ux-controls-gap: 7px;
+  --ux-controls-status-radius: 18px;
+  --ux-controls-card-radius: 18px;
+  --ux-controls-binding-cols: 3;
+  --ux-controls-binding-row-min: 24px;
+  --ux-controls-games-cols: 5;
+  --ux-controls-preset-cols: 4;
 }
 
 .ux-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ux-grid-gap); }
