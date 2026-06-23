@@ -21,6 +21,7 @@
 .network-detail-row span { display: grid; gap: 3px; }
 .modal-actions[hidden] { display: none; }
 
+body.modal-fullscreen-open { overflow: hidden; }
 [data-popup-root] { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
 .modal-overlay {
   position: fixed;
@@ -34,26 +35,6 @@
   backdrop-filter: blur(10px);
 }
 .modal-overlay[hidden] { display: none; }
-.modal-overlay--controller-map {
-  padding: 0;
-  place-items: stretch;
-}
-.modal-card--controller-map {
-  inline-size: 100%;
-  block-size: 100%;
-  max-block-size: none;
-  border-radius: 0;
-  border: 0;
-  gap: 10px;
-  padding: 12px 14px 14px;
-  box-shadow: none;
-}
-.modal-card--controller-map .modal-title { font-size: var(--ux-text-lg); }
-.modal-card--controller-map .modal-content {
-  overflow: hidden;
-  min-height: 0;
-  block-size: 100%;
-}
 .modal-card {
   position: relative;
   display: grid;
@@ -68,6 +49,33 @@
   border-radius: var(--ux-modal-radius);
   background: var(--aubergine-1);
   box-shadow: 0 25px 90px var(--theme-shadow-strong);
+}
+/* Fullscreen variant — PopupManager.showModal({ variant: 'fullscreen' }). Rules follow .modal-card so capped width/height do not win. */
+.modal-overlay--fullscreen {
+  padding: 0;
+  place-items: stretch;
+  align-items: stretch;
+  justify-items: stretch;
+}
+.modal-card.modal-card--fullscreen {
+  inline-size: 100%;
+  block-size: 100%;
+  width: 100%;
+  height: 100%;
+  max-inline-size: none;
+  max-block-size: none;
+  border-radius: 0;
+  border: 0;
+  gap: var(--ux-modal-fullscreen-gap);
+  padding: var(--ux-modal-fullscreen-padding);
+  box-shadow: none;
+}
+.modal-card.modal-card--fullscreen .modal-title { font-size: var(--ux-text-lg); }
+.modal-card.modal-card--fullscreen .modal-content {
+  overflow: hidden;
+  min-height: 0;
+  block-size: 100%;
+  height: 100%;
 }
 .modal-title { min-width: 0; margin: 0; padding-inline-end: calc(var(--ux-modal-header-action-size) + 8px); font-size: var(--ux-text-xl); line-height: 1.15; }
 .modal-content { min-height: 0; overflow: auto; color: var(--muted); white-space: pre-wrap; line-height: 1.5; overscroll-behavior: contain; }

@@ -6,9 +6,20 @@ const PopupManager = (() => {
   const toasts = () => document.getElementById('toast-container');
   let previousFocus = null;
 
+  function clearOverlayVariants(el) {
+    for (const cls of [...el.classList]) {
+      if (cls.startsWith('modal-overlay--')) el.classList.remove(cls);
+    }
+  }
+
   function setOverlayVariant(el, variant) {
-    el.classList.remove('modal-overlay--controller-map');
+    clearOverlayVariants(el);
     if (variant) el.classList.add(`modal-overlay--${variant}`);
+  }
+
+  function setCardVariant(card, variant) {
+    card.className = 'modal-card';
+    if (variant) card.classList.add(`modal-card--${variant}`);
   }
 
   function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '' }) {
@@ -18,7 +29,8 @@ const PopupManager = (() => {
     title().textContent = modalTitle || 'Arcadia Console';
     setOverlayVariant(el, variant);
     const card = el.querySelector('.modal-card');
-    if (card) card.className = variant ? `modal-card modal-card--${variant}` : 'modal-card';
+    if (card) setCardVariant(card, variant);
+    document.body.classList.toggle('modal-fullscreen-open', variant === 'fullscreen');
     const target = content();
     target.textContent = '';
     if (body instanceof Node) target.appendChild(body);
@@ -35,7 +47,8 @@ const PopupManager = (() => {
     el.hidden = true;
     setOverlayVariant(el, '');
     const card = el.querySelector('.modal-card');
-    if (card) card.className = 'modal-card';
+    if (card) setCardVariant(card, '');
+    document.body.classList.remove('modal-fullscreen-open');
     content().textContent = '';
     actions()?.removeAttribute('hidden');
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
@@ -1033,7 +1046,7 @@ function bindControllerProgramming() {
       const entry = (state.controllerPool || []).find((item) => item.id === activeId);
       hydrateControllerBindings(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
       hydrateControllerGamepad(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
-      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true, variant: 'controller-map' });
+      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true, variant: 'fullscreen' });
       const root = document.querySelector('[data-controller-programmer-modal]');
       if (root) {
         const device = root.querySelector('[data-controller-programmer-device]');

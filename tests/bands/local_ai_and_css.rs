@@ -166,6 +166,17 @@
         assert!(VIEWPORT_CSS.contains(".modal-overlay { align-items: stretch; justify-items: stretch; padding: 8px; }"));
         assert!(VIEWPORT_CSS.contains("max-block-size: calc(100dvh - 16px);"));
         assert!(VIEWPORT_CSS.contains(".sync-kind-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }"));
+        assert!(UX_CSS.contains("--ux-modal-fullscreen-padding:"));
+        assert!(APP_CSS.contains(".modal-card.modal-card--fullscreen {"));
+        let modal_card_pos = APP_CSS.find(".modal-card {").expect("base modal card");
+        let fullscreen_pos = APP_CSS
+            .find(".modal-card.modal-card--fullscreen {")
+            .expect("fullscreen modal card");
+        assert!(
+            fullscreen_pos > modal_card_pos,
+            "fullscreen modal rules must follow base .modal-card so capped width does not win"
+        );
+        assert!(APP_CSS.contains("max-inline-size: none;"));
     }
 
     #[test]
@@ -296,11 +307,12 @@
         assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
         assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
-        assert!(APP_CSS.contains("modal-card--controller-map"));
-        assert!(APP_CSS.contains("modal-overlay--controller-map"));
-        assert!(APP_JS.contains("modal-overlay--controller-map"));
+        assert!(APP_CSS.contains("modal-card--fullscreen"));
+        assert!(APP_CSS.contains("modal-overlay--fullscreen"));
+        assert!(APP_JS.contains("clearOverlayVariants"));
         assert!(APP_JS.contains("setOverlayVariant"));
-        assert!(APP_JS.contains("variant: 'controller-map'"));
+        assert!(APP_JS.contains("variant: 'fullscreen'"));
+        assert!(APP_JS.contains("modal-fullscreen-open"));
         assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
         assert!(controller_backend.contains("/proc/bus/input/devices"));
