@@ -267,10 +267,29 @@
             "receipt-missing",
             " ago</strong>",
             ">None</strong>",
+            ">Last ran:</span><strong>--:--</strong>",
         ] {
             assert!(
                 !home_html.contains(forbidden),
                 "home updates card leaked internal surface: {forbidden}"
+            );
+        }
+
+        let last_ran_prefix = ">Last ran:</span><strong>";
+        let last_ran_start = home_html
+            .find(last_ran_prefix)
+            .expect("last ran detail row");
+        let last_ran_value_start = last_ran_start + last_ran_prefix.len();
+        let last_ran_end = home_html[last_ran_value_start..]
+            .find("</strong>")
+            .expect("last ran value");
+        let last_ran = &home_html[last_ran_value_start..last_ran_value_start + last_ran_end];
+        if last_ran != "—" {
+            assert!(
+                last_ran
+                    .split_whitespace()
+                    .any(|part| part.len() == 4 && part.chars().all(|c| c.is_ascii_digit())),
+                "last ran should include a four-digit year, got: {last_ran}"
             );
         }
     }
