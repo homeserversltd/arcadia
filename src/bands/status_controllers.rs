@@ -1,6 +1,14 @@
 include!("controller_writers/mod.rs");
 
 fn controller_status() -> ControllerStatus {
+    controller_status_options(true, true)
+}
+
+fn controller_status_api() -> ControllerStatus {
+    controller_status_options(false, false)
+}
+
+fn controller_status_options(include_live_input: bool, include_emulators: bool) -> ControllerStatus {
     let devices = controller_devices();
     let detected_count = devices.len();
     let recovery = controller_recovery_status(&devices);
@@ -18,7 +26,16 @@ fn controller_status() -> ControllerStatus {
     };
     let active_device = active_connected_device(&devices, &active_controller_id);
     let profile = controller_profile_status(active_device.as_ref(), &primary_device, &active_bindings);
-    let live_input = read_controller_input(active_device.as_ref().or(devices.first()));
+    let live_input = if include_live_input {
+        read_controller_input(active_device.as_ref().or(devices.first()))
+    } else {
+        controller_live_input_idle(&primary_device)
+    };
+    let emulators = if include_emulators {
+        emulator_controller_statuses()
+    } else {
+        Vec::new()
+    };
     ControllerStatus {
         state,
         detected_count,
@@ -31,7 +48,17 @@ fn controller_status() -> ControllerStatus {
         profile,
         profile_presets: controller_profile_presets(),
         live_input,
-        emulators: emulator_controller_statuses(),
+        emulators,
+    }
+}
+
+fn controller_live_input_idle(device_label: &str) -> ControllerInputStatus {
+    ControllerInputStatus {
+        state: "idle".to_string(),
+        device: device_label.to_string(),
+        sample_path: String::new(),
+        pressed: Vec::new(),
+        axes: Vec::new(),
     }
 }
 
@@ -446,9 +473,8 @@ fn human_now_label() -> String {
     format!("unix {}", secs)
 }
 
-async fn controllers_state_route(State(state): State<Arc<AppState>>) -> Json<ControllerStatus> {
-    let status = console_status(&state);
-    Json(status.controllers)
+async fn controllers_state_route() -> Json<ControllerStatus> {
+    Json(controller_status_api())
 }
 
 async fn controllers_input_route() -> Json<ControllerInputStatus> {
@@ -584,7 +610,7 @@ async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>)
     }
     match set_active_controller_id(controller_id) {
         Ok(()) => {
-            let status = controller_status();
+            let status = controller_status_api();
             let entry = status
                 .controller_pool
                 .iter()

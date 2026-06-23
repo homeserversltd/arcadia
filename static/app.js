@@ -90,6 +90,56 @@ const PopupManager = (() => {
   return { showModal, closeModal, showToast, trapFocus };
 })();
 
+const ArcadiaLoading = (() => {
+  let overlaySeq = 0;
+
+  function spinner({ label = 'Loading', size = 'md' } = {}) {
+    const node = document.createElement('div');
+    node.className = `ux-arcadia-spinner ux-arcadia-spinner--${size}`;
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-live', 'polite');
+    node.innerHTML = '<div class="ux-arcadia-spinner__visual"><span class="ux-arcadia-spinner__ring" aria-hidden="true"></span><span class="ux-arcadia-spinner__mark" aria-hidden="true">H</span></div><span class="ux-arcadia-spinner__label"></span>';
+    node.querySelector('.ux-arcadia-spinner__label').textContent = label;
+    return node;
+  }
+
+  function showIn(target, { label = 'Loading', size = 'lg' } = {}) {
+    if (!target) return () => {};
+    const previous = target.innerHTML;
+    target.classList.add('ux-loading-host');
+    target.replaceChildren(spinner({ label, size }));
+    return () => {
+      target.classList.remove('ux-loading-host');
+      target.innerHTML = previous;
+    };
+  }
+
+  function showOverlay({ label = 'Loading', size = 'lg' } = {}) {
+    const id = ++overlaySeq;
+    const host = document.createElement('div');
+    host.className = 'ux-loading-overlay';
+    host.dataset.loadingOverlay = String(id);
+    host.appendChild(spinner({ label, size }));
+    document.body.appendChild(host);
+    return () => host.remove();
+  }
+
+  async function during(promise, options = {}) {
+    const hide = options.target
+      ? showIn(options.target, options)
+      : options.overlay
+        ? showOverlay(options)
+        : () => {};
+    try {
+      return await promise;
+    } finally {
+      hide();
+    }
+  }
+
+  return { spinner, showIn, showOverlay, during };
+})();
+
 
 function arcadiaThemeNames() {
   const declared = Array.isArray(window.ARCADIA_THEMES) ? window.ARCADIA_THEMES : [];
@@ -1027,26 +1077,36 @@ function bindControllerProgramming() {
 
   const openControllerModal = async (controllerId) => {
     const targetId = controllerId || activeControllerId();
+    const template = document.getElementById('controller-programmer-template');
+    const body = template?.content?.firstElementChild?.cloneNode(true);
+    if (!body) return;
+    const loadingHost = document.createElement('div');
+    loadingHost.className = 'ux-loading-host ux-loading-host--fullscreen-modal';
+    loadingHost.appendChild(ArcadiaLoading.spinner({ label: 'Opening controller map…', size: 'lg' }));
+    PopupManager.showModal({ title: 'Map buttons', body: loadingHost, hideDefaultAction: true, variant: 'fullscreen' });
     try {
-      if (targetId) {
+      const currentId = activeControllerId();
+      if (targetId && targetId !== currentId) {
         const data = await postJson('/api/actions/controllers-select', { controllerId: targetId });
         if (!data.ok) {
+          PopupManager.closeModal();
           PopupManager.showToast(data.message || 'Could not select controller', 'error');
           return;
         }
         updateControllerPoolSelection(targetId);
       }
       const state = await getJson('/api/controllers/state');
-      const template = document.getElementById('controller-programmer-template');
-      const body = template?.content?.firstElementChild?.cloneNode(true);
-      if (!body) return;
       programmerPaused = false;
       const activeId = targetId || state.activeControllerId || body.dataset.controllerId || '';
       body.dataset.controllerId = activeId;
       const entry = (state.controllerPool || []).find((item) => item.id === activeId);
       hydrateControllerBindings(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
       hydrateControllerGamepad(body, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
-      PopupManager.showModal({ title: 'Map buttons', body, hideDefaultAction: true, variant: 'fullscreen' });
+      const content = document.getElementById('modal-content');
+      if (content) {
+        content.textContent = '';
+        content.appendChild(body);
+      }
       const root = document.querySelector('[data-controller-programmer-modal]');
       if (root) {
         const device = root.querySelector('[data-controller-programmer-device]');
@@ -1054,6 +1114,7 @@ function bindControllerProgramming() {
         startProgrammerLoop(root);
       }
     } catch (_) {
+      PopupManager.closeModal();
       PopupManager.showToast('Could not open controller mapping', 'error');
     }
   };
@@ -1102,9 +1163,20 @@ function bindControllerProgramming() {
 
   panel.querySelectorAll('[data-controller-programmer-open]:not([data-controller-programmer-bound])').forEach((button) => {
     button.dataset.controllerProgrammerBound = 'true';
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
+      if (button.dataset.loading === 'true') return;
       const controllerId = button.dataset.controllerId || activeControllerId();
-      openControllerModal(controllerId);
+      const original = button.textContent;
+      button.dataset.loading = 'true';
+      button.disabled = true;
+      button.textContent = 'Opening…';
+      try {
+        await openControllerModal(controllerId);
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+        delete button.dataset.loading;
+      }
     });
   });
 
