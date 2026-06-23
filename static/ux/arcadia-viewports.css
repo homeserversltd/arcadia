@@ -102,17 +102,14 @@
   .controls-status__title, .controls-status__detail { white-space: normal; }
   .controls-bindings { grid-template-columns: 1fr; max-height: none; }
   .controls-games-grid { grid-template-columns: 1fr; }
-  .modal-card--controller-map {
-    inline-size: calc(100vw - 16px);
-    max-block-size: calc(100dvh - 16px);
-  }
-  .controller-programmer-modal {
-    min-width: 0;
+  .modal-overlay--controller-map { padding: 0; }
+  .controller-programmer-modal,
+  .modal-card--controller-map .controller-programmer-modal {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
-    max-height: none;
+    grid-template-rows: auto minmax(220px, 1fr) minmax(0, 1fr) auto;
   }
-  .controller-map-stage__pad { min-height: 300px; }
-  .controller-map-stage__pad .ux-gamepad-body { height: 230px; }
+  .modal-card--controller-map .controller-map-stage__pad .ux-gamepad-body {
+    height: min(42dvh, 320px);
+  }
   .controller-map-presets .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

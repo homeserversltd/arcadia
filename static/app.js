@@ -6,11 +6,17 @@ const PopupManager = (() => {
   const toasts = () => document.getElementById('toast-container');
   let previousFocus = null;
 
+  function setOverlayVariant(el, variant) {
+    el.classList.remove('modal-overlay--controller-map');
+    if (variant) el.classList.add(`modal-overlay--${variant}`);
+  }
+
   function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '' }) {
     const el = overlay();
     if (!el) return;
     previousFocus = document.activeElement;
     title().textContent = modalTitle || 'Arcadia Console';
+    setOverlayVariant(el, variant);
     const card = el.querySelector('.modal-card');
     if (card) card.className = variant ? `modal-card modal-card--${variant}` : 'modal-card';
     const target = content();
@@ -27,6 +33,7 @@ const PopupManager = (() => {
     const el = overlay();
     if (!el) return;
     el.hidden = true;
+    setOverlayVariant(el, '');
     const card = el.querySelector('.modal-card');
     if (card) card.className = 'modal-card';
     content().textContent = '';
