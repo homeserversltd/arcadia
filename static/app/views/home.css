@@ -18,7 +18,7 @@
 .updates-home-details { margin-bottom: 4px; }
 .updates-home-card .updates-detail-row { grid-template-columns: minmax(118px, 1fr) auto; }
 .updates-home-card .updates-detail-row span { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.updates-home-card .updates-detail-row strong { font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+.updates-home-card .updates-detail-row strong { font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .updates-home-actions { margin: auto 0 0; }
 .updates-home-actions .btn { width: 100%; }
 .home-service-list, .home-module-list { display: grid; gap: 5px; margin-top: 8px; }

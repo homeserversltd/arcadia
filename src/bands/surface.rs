@@ -203,14 +203,23 @@ fn harmonia_last_run_label(suite_path: &str, check_path: &str) -> String {
         .max();
     latest
         .map(format_local_clock)
-        .unwrap_or_else(|| "--:--".to_string())
+        .unwrap_or_else(|| "—".to_string())
 }
 
 fn format_local_clock(run_unix: u64) -> String {
-    command_stdout("date", &["-d", &format!("@{run_unix}"), "+%H:%M"])
+    command_stdout("date", &["-d", &format!("@{run_unix}"), "+%b %d %Y %H:%M"])
         .map(|value| value.trim().to_string())
-        .filter(|value| value.len() == 5 && value.as_bytes().get(2) == Some(&b':'))
-        .unwrap_or_else(|| "--:--".to_string())
+        .filter(|value| full_datetime_label(value))
+        .unwrap_or_else(|| "—".to_string())
+}
+
+fn full_datetime_label(value: &str) -> bool {
+    let parts: Vec<&str> = value.split_whitespace().collect();
+    parts.len() == 4
+        && parts[2].len() == 4
+        && parts[2].chars().all(|c| c.is_ascii_digit())
+        && parts[3].len() == 5
+        && parts[3].as_bytes().get(2) == Some(&b':')
 }
 
 fn harmonia_pending_updates(
