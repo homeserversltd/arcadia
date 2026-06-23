@@ -719,7 +719,7 @@ async fn action_controllers_save_tuning(
                     action: "controllers-save-tuning",
                     command: "/var/lib/arcadia/controller-profiles/library.json",
                     exit_code: Some(0),
-                    message: format!("{device_name} stick tuning applied."),
+                    message: format!("{device_name} stick dampening applied."),
                     stdout: ramrod_detail,
                     stderr: String::new(),
                 }),
