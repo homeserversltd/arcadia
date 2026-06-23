@@ -55,6 +55,23 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
+                template id="controller-tuner-template" {
+                    div class="controller-tuner-modal" data-controller-tuner-modal data-controller-broadcast-ms="60" {
+                        p class="controller-tuner-intro" {
+                            "Adjust how far sticks must move before games react, and how strong they feel. Move your sticks to preview the change."
+                        }
+                        p class="controls-live-device controller-tuner-device" data-controller-tuner-device { (status.controllers.primary_device) }
+                        div class="controller-tuner-grid" {
+                            (controller_tuner_stick_panel("left", "Left stick"))
+                            (controller_tuner_stick_panel("right", "Right stick"))
+                        }
+                        footer class="controller-tuner-footer controllers-actions" {
+                            button class="btn btn--primary" type="button" data-controller-tuner-apply { "Apply tuning" }
+                            button class="btn btn--secondary" type="button" data-controller-tuner-cancel { "Cancel" }
+                        }
+                    }
+                }
+
                 template id="controller-programmer-template" {
                     div class="controller-programmer-modal" data-controller-programmer-modal data-controller-id=(status.controllers.active_controller_id) data-controller-broadcast-ms="60" data-controller-rapid-fire-ms="60" {
                         div class="controller-map-stage" {
@@ -266,7 +283,36 @@ fn controller_pool_card(entry: &crate::ControllerPoolEntry) -> Markup {
                     (entry.transport) " · " (entry.layout_style) " · " (entry.tuple_count) " mapped"
                 }
             }
-            button class="btn btn--secondary controller-pool-card__map" type="button" data-controller-programmer-open data-controller-id=(entry.id) { "Map" }
+            div class="controller-pool-card__actions" {
+                button class="btn btn--secondary controller-pool-card__map" type="button" data-controller-programmer-open data-controller-id=(entry.id) { "Map" }
+                button class="btn btn--secondary controller-pool-card__tune" type="button" data-controller-tuner-open data-controller-id=(entry.id) { "Tune" }
+            }
+        }
+    }
+}
+
+fn controller_tuner_stick_panel(side: &str, label: &str) -> Markup {
+    html! {
+        section class="controller-tuner-stick" data-controller-tuner-stick=(side) {
+            strong class="controller-tuner-stick__label" { (label) }
+            label class="controller-tuner-field" {
+                span class="controller-tuner-field__head" {
+                    span { "Deadzone" }
+                    output class="controller-tuner-field__value" data-controller-tuner-deadzone-value=(side) { "15%" }
+                }
+                input type="range" class="controller-tuner-range" min="0" max="40" value="15" data-controller-tuner-deadzone=(side) aria-label=(format!("{label} deadzone")) {}
+            }
+            label class="controller-tuner-field" {
+                span class="controller-tuner-field__head" {
+                    span { "Response" }
+                    output class="controller-tuner-field__value" data-controller-tuner-sensitivity-value=(side) { "100%" }
+                }
+                input type="range" class="controller-tuner-range" min="40" max="100" value="100" data-controller-tuner-sensitivity=(side) aria-label=(format!("{label} response")) {}
+            }
+            div class="controller-tuner-preview" data-controller-tuner-preview=(side) aria-hidden="true" {
+                span class="controller-tuner-preview__ring" {}
+                span class="controller-tuner-preview__dot" data-controller-tuner-dot=(side) {}
+            }
         }
     }
 }

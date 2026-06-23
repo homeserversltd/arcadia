@@ -21,6 +21,7 @@ fn emulator_profile_body(
     device_name: &str,
     handler: &str,
     bindings: &[ControllerBindingStatus],
+    tuning: &ControllerTuningStatus,
     installed: bool,
 ) -> String {
     let mut lines = vec![
@@ -39,6 +40,7 @@ fn emulator_profile_body(
     match emulator {
         "RetroArch" => {
             lines.push("analog_dpad_mode = \"0\"".to_string());
+            lines.extend(retroarch_tuning_lines(tuning));
             lines.extend(retroarch_lines_from_bindings(bindings));
         }
         "Dolphin" => lines.extend(dolphin_lines_from_bindings(device_name, bindings)),
@@ -59,17 +61,18 @@ fn write_emulator_profile(
     device_name: &str,
     handler: &str,
     bindings: &[ControllerBindingStatus],
+    tuning: &ControllerTuningStatus,
     installed: bool,
     root: &Path,
 ) -> std::io::Result<PathBuf> {
     let dir = root.join("emulators").join(safe_file_stem(emulator));
     fs::create_dir_all(&dir)?;
     let staged = dir.join("default-profile.txt");
-    let body = emulator_profile_body(emulator, device_name, handler, bindings, installed);
+    let body = emulator_profile_body(emulator, device_name, handler, bindings, tuning, installed);
     fs::write(&staged, &body)?;
     if installed {
         if emulator == "RetroArch" {
-            let autoconfig = retroarch_autoconfig_from_bindings(device_name, bindings);
+            let autoconfig = retroarch_autoconfig_from_bindings(device_name, bindings, tuning);
             let staged_autoconfig = dir.join(format!("{}.cfg", safe_file_stem(device_name)));
             fs::write(&staged_autoconfig, &autoconfig)?;
             for deploy_path in retroarch_deploy_paths(device_name) {
@@ -89,6 +92,7 @@ fn ramrod_controller_profiles(
     device_name: &str,
     handler: &str,
     bindings: &[ControllerBindingStatus],
+    tuning: &ControllerTuningStatus,
     emulators: &[EmulatorControllerStatus],
 ) -> std::io::Result<RamrodReceipt> {
     let root = controller_profile_root();
@@ -99,8 +103,15 @@ fn ramrod_controller_profiles(
             .find(|entry| entry.emulator == *emulator)
             .map(|entry| entry.state != "not installed")
             .unwrap_or(false);
-        let staged_path =
-            write_emulator_profile(emulator, device_name, handler, bindings, installed, &root)?;
+        let staged_path = write_emulator_profile(
+            emulator,
+            device_name,
+            handler,
+            bindings,
+            tuning,
+            installed,
+            &root,
+        )?;
         entries.push(RamrodEmulatorReceipt {
             emulator: (*emulator).to_string(),
             staged_path,

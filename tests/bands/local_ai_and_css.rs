@@ -245,6 +245,10 @@
             "Game systems",
             "Push mapping",
             "data-controller-programmer-open",
+            "data-controller-tuner-open",
+            "controller-tuner-template",
+            "Apply tuning",
+            "data-controller-tuner-apply",
             "RetroArch",
             "Dolphin",
             "DuckStation",
@@ -311,7 +315,10 @@
         assert!(APP_JS.contains("bindControllerLiveInput"));
         assert!(APP_JS.contains("const panel = document.querySelector('[data-view-panel=\"controllers\"]')"));
         assert!(APP_JS.contains("openControllerModal"));
+        assert!(APP_JS.contains("openControllerTunerModal"));
+        assert!(APP_JS.contains("/api/actions/controllers-save-tuning"));
         assert!(APP_JS.contains("/api/controllers/input"));
+        assert!(APP_CSS.contains(".controller-pool-card__tune"));
         assert!(APP_CSS.contains(".controls-hub"));
         assert!(APP_CSS.contains(".controls-status"));
         assert!(APP_CSS.contains(".view[data-view-panel=\"controllers\"].is-active"));
@@ -402,7 +409,10 @@
         assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("arcadia.controller_library.v1"));
         assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("controller_library"));
         assert!(controller_backend.contains("action_controllers_select"));
+        assert!(controller_backend.contains("action_controllers_save_tuning"));
         assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-select"));
+        assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-save-tuning"));
+        assert!(include_str!("../../src/bands/controller_writers/tuple.rs").contains("save_tuning_for_controller"));
     }
 
 
@@ -423,8 +433,17 @@
         assert!(profile_text.contains("\"input\":\"button 9\""));
         assert!(!profile_text.contains("\"bindings\""));
 
+        let tuning = ControllerTuningStatus::defaults();
         for emulator in ["RetroArch", "Dolphin", "DuckStation", "PCSX2", "PPSSPP"] {
-            let path = write_emulator_profile(emulator, "Virtual Arcadia Gamepad", "virtual0", &bindings, false, &root)
+            let path = write_emulator_profile(
+                emulator,
+                "Virtual Arcadia Gamepad",
+                "virtual0",
+                &bindings,
+                &tuning,
+                false,
+                &root,
+            )
                 .unwrap_or_else(|error| panic!("{emulator} writer failed: {error}"));
             let body = std::fs::read_to_string(&path).expect("emulator profile text");
             assert!(body.contains("Virtual Arcadia Gamepad"));
@@ -438,8 +457,10 @@
         assert!(retroarch_body.contains("input_l_x_plus_axis = \"+0\""));
         assert!(retroarch_body.contains("input_l_y_plus_axis = \"+1\""));
         assert!(retroarch_body.contains("analog_dpad_mode = \"0\""));
+        assert!(retroarch_body.contains("input_axis_threshold"));
 
-        let autoconfig = retroarch_autoconfig_from_bindings("Virtual Arcadia Gamepad", &bindings);
+        let autoconfig = retroarch_autoconfig_from_bindings("Virtual Arcadia Gamepad", &bindings, &tuning);
+        assert!(autoconfig.contains("input_axis_sensitivity"));
         assert!(autoconfig.contains("input_l3_btn"));
         assert!(!autoconfig.contains("input_l_x_plus_axis = \"axis 0\""));
 
@@ -501,6 +522,7 @@
             "Virtual Arcadia Gamepad",
             "virtual0",
             &bindings,
+            &ControllerTuningStatus::defaults(),
             &emulators,
         )
         .expect("ramrod spine");

@@ -16,6 +16,7 @@ fn controller_status_options(include_live_input: bool, include_emulators: bool) 
     let controller_pool = controller_pool_entries(&devices);
     let active_controller_id = active_controller_id();
     let (active_name, _, _, active_bindings) = active_controller_device_tuple();
+    let active_tuning = tuning_for_active_controller();
     let primary_device = if active_name.is_empty() || active_name == "No controller selected" {
         devices
             .first()
@@ -25,7 +26,12 @@ fn controller_status_options(include_live_input: bool, include_emulators: bool) 
         active_name
     };
     let active_device = active_connected_device(&devices, &active_controller_id);
-    let profile = controller_profile_status(active_device.as_ref(), &primary_device, &active_bindings);
+    let profile = controller_profile_status(
+        active_device.as_ref(),
+        &primary_device,
+        &active_bindings,
+        active_tuning,
+    );
     let live_input = if include_live_input {
         read_controller_input(active_device.as_ref().or(devices.first()))
     } else {
@@ -293,6 +299,7 @@ fn controller_profile_status(
     device: Option<&ControllerDeviceStatus>,
     active_name: &str,
     bindings: &[ControllerBindingStatus],
+    tuning: ControllerTuningStatus,
 ) -> ControllerProfileStatus {
     let path = controller_library_path().display().to_string();
     let exists = Path::new(&path).exists();
@@ -305,6 +312,7 @@ fn controller_profile_status(
         },
         path,
         bindings: bindings.to_vec(),
+        tuning,
     }
 }
 
@@ -333,6 +341,16 @@ struct ControllerSelectRequest {
 #[serde(rename_all = "camelCase")]
 struct ControllerScopedRequest {
     controller_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControllerTuningSaveRequest {
+    controller_id: Option<String>,
+    left_stick_deadzone: Option<f32>,
+    right_stick_deadzone: Option<f32>,
+    left_stick_sensitivity: Option<f32>,
+    right_stick_sensitivity: Option<f32>,
 }
 
 fn resolve_controller_id(explicit: Option<String>) -> String {
@@ -581,7 +599,14 @@ async fn action_controllers_save_profile(
     if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, None) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-save-profile", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not save controller profile: {}", error));
     }
-    let ramrod_detail = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+    let tuning = tuning_for_controller_id(&controller_id);
+    let ramrod_detail = match ramrod_controller_profiles(
+        &device_name,
+        &handler,
+        &bindings,
+        &tuning,
+        &status.emulators,
+    ) {
         Ok(receipt) => ramrod_stdout(&receipt),
         Err(error) => format!("profile saved; ramrod deferred: {error}"),
     };
@@ -604,7 +629,14 @@ async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileA
     if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, Some(profile)) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-apply-profile", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not apply controller profile: {}", error));
     }
-    let ramrod_detail = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+    let tuning = tuning_for_controller_id(&controller_id);
+    let ramrod_detail = match ramrod_controller_profiles(
+        &device_name,
+        &handler,
+        &bindings,
+        &tuning,
+        &status.emulators,
+    ) {
         Ok(receipt) => ramrod_stdout(&receipt),
         Err(error) => format!("profile applied; ramrod deferred: {error}"),
     };
@@ -628,11 +660,78 @@ async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> 
     if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, None) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-bind", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not write controller binding: {}", error));
     }
-    let ramrod_note = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+    let tuning = tuning_for_controller_id(&controller_id);
+    let ramrod_note = match ramrod_controller_profiles(
+        &device_name,
+        &handler,
+        &bindings,
+        &tuning,
+        &status.emulators,
+    ) {
         Ok(_) => " Tuple ramrodded to emulator strata.".to_string(),
         Err(_) => String::new(),
     };
     (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-bind", command: "/var/lib/arcadia/controller-profiles/library.json", exit_code: Some(0), message: format!("{} mapped to {} on {}.{ramrod_note}", control, binding, device_name), stdout: binding, stderr: String::new() }))
+}
+
+async fn action_controllers_save_tuning(
+    Json(payload): Json<ControllerTuningSaveRequest>,
+) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let status = controller_status();
+    let controller_id = resolve_controller_id(payload.controller_id);
+    if controller_id.is_empty() {
+        return console_action_error(
+            StatusCode::BAD_REQUEST,
+            "controllers-save-tuning",
+            "/api/actions/controllers-save-tuning",
+            "Choose a controller before saving stick tuning.",
+        );
+    }
+    let mut tuning = tuning_for_controller_id(&controller_id);
+    if let Some(value) = payload.left_stick_deadzone {
+        tuning.left_stick_deadzone = value;
+    }
+    if let Some(value) = payload.right_stick_deadzone {
+        tuning.right_stick_deadzone = value;
+    }
+    if let Some(value) = payload.left_stick_sensitivity {
+        tuning.left_stick_sensitivity = value;
+    }
+    if let Some(value) = payload.right_stick_sensitivity {
+        tuning.right_stick_sensitivity = value;
+    }
+    match save_tuning_for_controller(&controller_id, tuning) {
+        Ok((device_name, handler, bindings, saved_tuning)) => {
+            let ramrod_detail = match ramrod_controller_profiles(
+                &device_name,
+                &handler,
+                &bindings,
+                &saved_tuning,
+                &status.emulators,
+            ) {
+                Ok(receipt) => ramrod_stdout(&receipt),
+                Err(error) => format!("tuning saved; ramrod deferred: {error}"),
+            };
+            (
+                StatusCode::OK,
+                Json(ConsoleActionResponse {
+                    ok: true,
+                    action: "controllers-save-tuning",
+                    command: "/var/lib/arcadia/controller-profiles/library.json",
+                    exit_code: Some(0),
+                    message: format!("{device_name} stick tuning applied."),
+                    stdout: ramrod_detail,
+                    stderr: String::new(),
+                }),
+            )
+        }
+        Err(error) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "controllers-save-tuning",
+            "/api/actions/controllers-save-tuning",
+            &format!("Could not save controller tuning: {error}"),
+        ),
+    }
 }
 
 async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -706,7 +805,14 @@ async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionRespo
     let controller_id = active_controller_id();
     let (device_name, handler) = virtual_controller_device(&status, &controller_id);
     let bindings = bindings_for_controller_id(&controller_id);
-    match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+    let tuning = tuning_for_controller_id(&controller_id);
+    match ramrod_controller_profiles(
+        &device_name,
+        &handler,
+        &bindings,
+        &tuning,
+        &status.emulators,
+    ) {
         Ok(receipt) => (
             StatusCode::OK,
             Json(ConsoleActionResponse {
@@ -747,6 +853,7 @@ fn action_controllers_assign_emulator(
     }
     let (device_name, handler) = virtual_controller_device(&status, &controller_id);
     let bindings = bindings_for_controller_id(&controller_id);
+    let tuning = tuning_for_controller_id(&controller_id);
     let installed = status
         .emulators
         .iter()
@@ -758,6 +865,7 @@ fn action_controllers_assign_emulator(
         &device_name,
         &handler,
         &bindings,
+        &tuning,
         installed,
         &controller_profile_root(),
     ) {

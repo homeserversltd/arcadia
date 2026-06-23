@@ -74,12 +74,30 @@ fn retroarch_lines_from_bindings(bindings: &[ControllerBindingStatus]) -> Vec<St
     lines
 }
 
-fn retroarch_autoconfig_from_bindings(name: &str, bindings: &[ControllerBindingStatus]) -> String {
+fn retroarch_tuning_lines(tuning: &ControllerTuningStatus) -> Vec<String> {
+    let deadzone = tuning
+        .left_stick_deadzone
+        .max(tuning.right_stick_deadzone);
+    let sensitivity = tuning
+        .left_stick_sensitivity
+        .min(tuning.right_stick_sensitivity);
+    vec![
+        format!("input_axis_threshold = \"{deadzone:.5}\""),
+        format!("input_axis_sensitivity = \"{sensitivity:.5}\""),
+    ]
+}
+
+fn retroarch_autoconfig_from_bindings(
+    name: &str,
+    bindings: &[ControllerBindingStatus],
+    tuning: &ControllerTuningStatus,
+) -> String {
     let mut lines = vec![
         format!("input_device = \"{name}\""),
         "input_driver = \"udev\"".to_string(),
         "analog_dpad_mode = \"0\"".to_string(),
     ];
+    lines.extend(retroarch_tuning_lines(tuning));
     lines.extend(retroarch_lines_from_bindings(bindings));
     format!("{}\n", lines.join("\n"))
 }

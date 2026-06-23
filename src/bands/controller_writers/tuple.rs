@@ -81,6 +81,12 @@ struct ControllerRecord {
     first_seen: String,
     last_seen: String,
     tuples: Vec<ControllerTupleRecord>,
+    #[serde(default = "default_controller_tuning_record")]
+    tuning: ControllerTuningStatus,
+}
+
+fn default_controller_tuning_record() -> ControllerTuningStatus {
+    ControllerTuningStatus::defaults()
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -236,19 +242,20 @@ fn migrate_legacy_default_profile(library: &mut ControllerLibrary) {
     let now = human_now_label();
     library.controllers.insert(
         id.clone(),
-        ControllerRecord {
-            id: id.clone(),
-            name: device_name.to_string(),
-            handler: handler.to_string(),
-            path: format!("/dev/input/{handler}"),
-            glyph: controller_glyph_from_name(device_name),
-            transport: controller_transport_from_name(device_name, handler),
-            kind: "gamepad".to_string(),
-            layout_style: "Default".to_string(),
-            first_seen: now.clone(),
-            last_seen: now,
-            tuples,
-        },
+            ControllerRecord {
+                id: id.clone(),
+                name: device_name.to_string(),
+                handler: handler.to_string(),
+                path: format!("/dev/input/{handler}"),
+                glyph: controller_glyph_from_name(device_name),
+                transport: controller_transport_from_name(device_name, handler),
+                kind: "gamepad".to_string(),
+                layout_style: "Default".to_string(),
+                first_seen: now.clone(),
+                last_seen: now,
+                tuples,
+                tuning: ControllerTuningStatus::defaults(),
+            },
     );
     if library.active_id.is_empty() {
         library.active_id = id;
@@ -276,6 +283,7 @@ fn remember_controller_devices(devices: &[ControllerDeviceStatus]) -> Controller
                 first_seen: now.clone(),
                 last_seen: now.clone(),
                 tuples: tuples_from_bindings(&default_controller_bindings()),
+                tuning: ControllerTuningStatus::defaults(),
             });
         entry.name = device.name.clone();
         entry.handler = device.handler.clone();
@@ -335,6 +343,62 @@ fn bindings_for_active_controller() -> Vec<ControllerBindingStatus> {
         return default_controller_bindings();
     }
     bindings_for_controller_id(&library.active_id)
+}
+
+fn tuning_for_controller_id(controller_id: &str) -> ControllerTuningStatus {
+    let library = load_controller_library();
+    library
+        .controllers
+        .get(controller_id)
+        .map(|record| record.tuning)
+        .unwrap_or_else(ControllerTuningStatus::defaults)
+}
+
+fn tuning_for_active_controller() -> ControllerTuningStatus {
+    let library = load_controller_library();
+    if library.active_id.is_empty() {
+        return ControllerTuningStatus::defaults();
+    }
+    tuning_for_controller_id(&library.active_id)
+}
+
+fn clamp_tuning_value(value: f32, min: f32, max: f32) -> f32 {
+    value.clamp(min, max)
+}
+
+fn normalize_tuning(mut tuning: ControllerTuningStatus) -> ControllerTuningStatus {
+    tuning.left_stick_deadzone = clamp_tuning_value(tuning.left_stick_deadzone, 0.0, 0.4);
+    tuning.right_stick_deadzone = clamp_tuning_value(tuning.right_stick_deadzone, 0.0, 0.4);
+    tuning.left_stick_sensitivity = clamp_tuning_value(tuning.left_stick_sensitivity, 0.4, 1.0);
+    tuning.right_stick_sensitivity = clamp_tuning_value(tuning.right_stick_sensitivity, 0.4, 1.0);
+    tuning
+}
+
+fn save_tuning_for_controller(
+    controller_id: &str,
+    tuning: ControllerTuningStatus,
+) -> std::io::Result<(String, String, Vec<ControllerBindingStatus>, ControllerTuningStatus)> {
+    let mut library = load_controller_library();
+    let Some(record) = library.controllers.get_mut(controller_id) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "controller not in library",
+        ));
+    };
+    record.tuning = normalize_tuning(tuning);
+    record.last_seen = human_now_label();
+    let device_name = record.name.clone();
+    let handler = record.handler.clone();
+    let bindings = bindings_from_tuples(&record.tuples);
+    let tuning = record.tuning;
+    save_controller_library(&library)?;
+    let _ = write_controller_profile(
+        &controller_profile_path(),
+        &device_name,
+        &handler,
+        &bindings,
+    );
+    Ok((device_name, handler, bindings, tuning))
 }
 
 fn save_bindings_for_controller(
@@ -408,6 +472,7 @@ fn controller_pool_entries(devices: &[ControllerDeviceStatus]) -> Vec<Controller
                 layout_style: record.layout_style.clone(),
                 tuple_count: record.tuples.len(),
                 bindings,
+                tuning: record.tuning,
                 last_seen: record.last_seen.clone(),
                 selected: record.id == library.active_id,
             }

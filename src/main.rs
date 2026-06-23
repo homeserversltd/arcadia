@@ -256,6 +256,10 @@ async fn main() -> anyhow_free::Result<()> {
             post(action_controllers_select),
         )
         .route(
+            "/api/actions/controllers-save-tuning",
+            post(action_controllers_save_tuning),
+        )
+        .route(
             "/api/actions/controllers-assign-retroarch",
             post(action_controllers_assign_retroarch),
         )
