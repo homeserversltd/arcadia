@@ -117,6 +117,23 @@
 
 
 /* Literal gamepad programming primitive: Xbox-style silhouette — grips, waist bridge, stacked sticks. */
+.ux-controller-silhouette.ux-gamepad-stage,
+.ux-gamepad-stage.ux-controller-silhouette {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  align-items: center;
+  gap: 0;
+  min-height: 240px;
+  padding: 12px 10px 16px;
+  border: 0;
+  border-radius: 40px;
+  background:
+    radial-gradient(ellipse 42% 58% at 24% 58%, color-mix(in srgb, var(--theme-accent) 12%, transparent), transparent 70%),
+    radial-gradient(ellipse 42% 58% at 76% 58%, color-mix(in srgb, var(--theme-accent) 12%, transparent), transparent 70%),
+    color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
+}
 .ux-gamepad-stage {
   min-height: 240px;
   display: grid;

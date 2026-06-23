@@ -240,8 +240,6 @@
             "controls-hub",
             "controller-map-stage__pad",
             "Your mappings",
-            "Game control",
-            "Your button",
             "Button label style",
             "data-tooltip",
             "Game systems",
@@ -296,6 +294,10 @@
             "Button pairs",
             "tuple pairs",
             "Linux signal",
+            "Game control",
+            "Your button",
+            "Physical button",
+            "Each row is a game control",
         ] {
             assert!(!controllers_html.contains(forbidden) && !rendered.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
@@ -314,7 +316,10 @@
         assert!(APP_CSS.contains(".emulator-controller-grid"));
         assert!(APP_CSS.contains(".controller-button-dot--active"));
         assert!(UX_CSS.contains(".ux-controller-silhouette"));
+        assert!(UX_CSS.contains(".ux-controller-silhouette.ux-gamepad-stage"));
         assert!(UX_CSS.contains(".ux-gamepad-body"));
+        assert!(APP_JS.contains("compactGamepadBinding"));
+        assert!(APP_CSS.contains(".controller-map-bindings .controls-binding-row"));
         assert!(UX_CSS.contains("aspect-ratio: 2.35 / 1"));
         assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
         assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));
