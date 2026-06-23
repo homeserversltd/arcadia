@@ -158,7 +158,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
             .unwrap_or(if connected { "Tap to bind" } else { "Waiting" })
     };
     html! {
-        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer data-controller-mapping-editor="default" data-gamepad-layout-version="1" data-gamepad-layout-gap=(format!("{:.3}", GAMEPAD_LAYOUT_MIN_GAP)) {
+        div class="ux-controller-silhouette ux-gamepad-stage" aria-label="Programmable gamepad face" data-controller-face data-controller-gamepad-programmer data-controller-mapping-editor="default" data-gamepad-layout-version="2" data-gamepad-layout-gap=(format!("{:.3}", GAMEPAD_LAYOUT_MIN_GAP)) {
             div class="ux-gamepad-body" {
                 div class="ux-gamepad-wing ux-gamepad-wing--left" aria-hidden="true" {}
                 div class="ux-gamepad-wing ux-gamepad-wing--right" aria-hidden="true" {}
@@ -190,18 +190,16 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
                     div class="ux-gamepad-home" aria-hidden="true" { "⌂" }
                     (gamepad_control("Start", "Start", binding_for("Start"), active.contains(&"Start"), "ux-gamepad-system"))
                 }
-                div class="ux-gamepad-right" {
-                    div class="ux-gamepad-right__face" {
-                        div class="ux-gamepad-face-diamond" aria-label="Face button mapping" {
-                            (gamepad_control("Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face ux-gamepad-face--y"))
-                            (gamepad_control("X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face ux-gamepad-face--x"))
-                            (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
-                            (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
-                        }
+                div class="ux-gamepad-face-zone" {
+                    div class="ux-gamepad-face-diamond" aria-label="Face button mapping" {
+                        (gamepad_control("Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face ux-gamepad-face--y"))
+                        (gamepad_control("X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face ux-gamepad-face--x"))
+                        (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
+                        (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
                     }
-                    div class="ux-gamepad-right__stick" {
-                        (gamepad_stick("Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3")))
-                    }
+                }
+                div class="ux-gamepad-stick-zone ux-gamepad-stick-zone--right" {
+                    (gamepad_stick("Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3")))
                 }
             }
         }
