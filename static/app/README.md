@@ -7,6 +7,10 @@
 - **Tokens and theme aliases** live in `base/`.
 - **Shell chrome** (header, sidebar, workspace) lives in `shell/`.
 - **Reusable composables** (buttons, modals, pin gate) live in `components/`.
+
+### Fullscreen modal variant
+
+Use `PopupManager.showModal({ variant: 'fullscreen', ... })` for edge-to-edge viewport takeovers (controller map, future workbench modals). Tokens: `--ux-modal-fullscreen-padding`, `--ux-modal-fullscreen-gap`. Pane-specific layout hooks target `.modal-card--fullscreen .<pane-block>` in `views/`.
 - **Viewport pane composition** lives in `views/` — one file per major pane where practical.
 - **Desktop single-pane fit overrides** live in `desktop-fit/` — not `@media` bands (those stay in `ux/arcadia-viewports.css`).
 

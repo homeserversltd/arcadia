@@ -54,6 +54,8 @@
   --ux-modal-viewport-gap: 18px;
   --ux-modal-radius: 24px;
   --ux-modal-header-action-size: 34px;
+  --ux-modal-fullscreen-padding: 12px 14px 14px;
+  --ux-modal-fullscreen-gap: 10px;
 
   --ux-text-xs: 11px;
   --ux-text-sm: 12px;

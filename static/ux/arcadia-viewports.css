@@ -102,13 +102,13 @@
   .controls-status__title, .controls-status__detail { white-space: normal; }
   .controls-bindings { grid-template-columns: 1fr; max-height: none; }
   .controls-games-grid { grid-template-columns: 1fr; }
-  .modal-overlay--controller-map { padding: 0; }
+  .modal-overlay--fullscreen { padding: 0; }
   .controller-programmer-modal,
-  .modal-card--controller-map .controller-programmer-modal {
+  .modal-card--fullscreen .controller-programmer-modal {
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(220px, 1fr) minmax(0, 1fr) auto;
   }
-  .modal-card--controller-map .controller-map-stage__pad .ux-gamepad-body {
+  .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
     height: min(42dvh, 320px);
   }
   .controller-map-presets .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
