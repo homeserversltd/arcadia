@@ -161,19 +161,28 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
             div class="ux-gamepad-body" {
                 div class="ux-gamepad-wing ux-gamepad-wing--left" aria-hidden="true" {}
                 div class="ux-gamepad-wing ux-gamepad-wing--right" aria-hidden="true" {}
-                div class="ux-gamepad-bridge" aria-hidden="true" {}
-                div class="ux-gamepad-shell ux-gamepad-shell--left" aria-hidden="true" {}
-                div class="ux-gamepad-shell ux-gamepad-shell--right" aria-hidden="true" {}
+                div class="ux-gamepad-bridge" aria-hidden="true" {
+                    span class="ux-gamepad-bridge__seam" aria-hidden="true" {}
+                    span class="ux-gamepad-bridge__logo" aria-hidden="true" { "H" }
+                }
                 div class="ux-gamepad-top-row" aria-label="Shoulder and trigger mapping" {
-                    (gamepad_control("L2", "Left trigger", binding_for("L2"), active.contains(&"L2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
-                    (gamepad_control("L1", "Left shoulder", binding_for("L1"), active.contains(&"L1"), "ux-gamepad-shoulder"))
+                    div class="ux-gamepad-shoulder-group ux-gamepad-shoulder-group--left" {
+                        (gamepad_control("L2", "Left trigger", binding_for("L2"), active.contains(&"L2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
+                        (gamepad_control("L1", "Left shoulder", binding_for("L1"), active.contains(&"L1"), "ux-gamepad-shoulder"))
+                    }
                     div class="ux-gamepad-status" { (if connected { "Connected" } else { title_case_state_like(&status.controllers.state) }) }
-                    (gamepad_control("R1", "Right shoulder", binding_for("R1"), active.contains(&"R1"), "ux-gamepad-shoulder"))
-                    (gamepad_control("R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
+                    div class="ux-gamepad-shoulder-group ux-gamepad-shoulder-group--right" {
+                        (gamepad_control("R1", "Right shoulder", binding_for("R1"), active.contains(&"R1"), "ux-gamepad-shoulder"))
+                        (gamepad_control("R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
+                    }
                 }
                 div class="ux-gamepad-left" {
-                    (gamepad_stick("Left Stick X", binding_for("Left Stick X"), active.contains(&"Left Stick X") || active.contains(&"Axis 0")))
-                    (gamepad_dpad(active.contains(&"D-pad"), connected))
+                    div class="ux-gamepad-left__stick" {
+                        (gamepad_stick("Left Stick X", binding_for("Left Stick X"), active.contains(&"Left Stick X") || active.contains(&"Axis 0")))
+                    }
+                    div class="ux-gamepad-left__dpad" {
+                        (gamepad_dpad(active.contains(&"D-pad"), connected))
+                    }
                 }
                 div class="ux-gamepad-center" {
                     (gamepad_control("Select", "Select", binding_for("Select"), active.contains(&"Select"), "ux-gamepad-system"))
@@ -181,13 +190,17 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
                     (gamepad_control("Start", "Start", binding_for("Start"), active.contains(&"Start"), "ux-gamepad-system"))
                 }
                 div class="ux-gamepad-right" {
-                    div class="ux-gamepad-face-diamond" aria-label="Face button mapping" {
-                        (gamepad_control("Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face ux-gamepad-face--y"))
-                        (gamepad_control("X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face ux-gamepad-face--x"))
-                        (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
-                        (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
+                    div class="ux-gamepad-right__face" {
+                        div class="ux-gamepad-face-diamond" aria-label="Face button mapping" {
+                            (gamepad_control("Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face ux-gamepad-face--y"))
+                            (gamepad_control("X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face ux-gamepad-face--x"))
+                            (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
+                            (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
+                        }
                     }
-                    (gamepad_stick("Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3")))
+                    div class="ux-gamepad-right__stick" {
+                        (gamepad_stick("Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3")))
+                    }
                 }
             }
         }
