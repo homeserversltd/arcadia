@@ -21,7 +21,7 @@
             r#"aria-label="Storage""#,
             r#"aria-label="Network""#,
             r#"aria-label="AI Model""#,
-            r#"aria-label="Game library""#,
+            r#"aria-label="Games""#,
             "storage-bar",
         ] {
             assert!(home_html.contains(required), "missing home {required}");

@@ -84,7 +84,7 @@
             "storage-bar",
             r#"aria-label="Storage""#,
             r#"aria-label="Load""#,
-            r#"aria-label="Game library""#,
+
             r#"aria-label="Network""#,
             "home-topology",
             "Console URL",
@@ -94,7 +94,11 @@
             ">Model:</span>",
             ">Load:</span>",
             ">State:</span>",
-            r#"data-label="Available ROMs""#,
+            "sync-home-card",
+            "sync-home-details",
+            ">GameScope:</span>",
+            ">Added:</span>",
+            r#"aria-label="Games""#,
             r#"aria-label="Updates""#,
             ">Storage</h3>",
             ">Load</h3>",
@@ -130,6 +134,11 @@
             ">Synced<",
             ">Current<",
             "playable ROMs ·",
+            "Available ROMs",
+            "ROMs",
+            "data-label=\"Last scan\"",
+            "data-label=\"Folder changes\"",
+            "data-label=\"Library gap\"",
             "modules ·",
             "Machine ",
             "health-home-card",
@@ -332,6 +341,42 @@
             assert!(
                 !card_html.contains(forbidden),
                 "home ai model card leaked legacy surface: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn home_games_card_surfaces_gamescope_and_added_counts() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.gamescope_entries = 2;
+        status.library.total_detected_games = 5;
+        let rendered = ui::layout(&status).into_string();
+        let card_start = rendered
+            .find("sync-home-card")
+            .expect("games home card");
+        let card_end = card_start
+            + rendered[card_start..]
+                .find("</article>")
+                .expect("games home card closes");
+        let card_html = &rendered[card_start..card_start + card_end];
+
+        for required in [
+            ">Games</h3><strong>7</strong>",
+            ">GameScope:</span><strong>2</strong>",
+            ">Added:</span><strong>5</strong>",
+            "data-home-games-total=\"7\"",
+        ] {
+            assert!(card_html.contains(required), "home games card missing {required}");
+        }
+        for forbidden in ["ROM", "Available ROMs", "data-label=\"Last scan\""] {
+            assert!(
+                !card_html.contains(forbidden),
+                "home games card leaked legacy surface: {forbidden}"
             );
         }
     }

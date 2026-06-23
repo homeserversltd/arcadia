@@ -279,33 +279,31 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
     let pending_changes = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let state = if status.library.last_sync_state == "error" {
-        "Needs attention"
-    } else if status.library.last_sync_state == "running" {
-        "Scanning"
-    } else if pending_changes > 0 || status.library.sync_needed {
-        "Sync needed"
-    } else if !sync_has_history(status) {
-        "First sync waiting"
-    } else {
-        "Synced"
-    };
-    let sync_delta = status
-        .library
-        .total_detected_games
-        .saturating_sub(status.library.total_synced_entries);
+    let native = status.library.gamescope_entries;
+    let added = status.library.total_detected_games;
+    let total = home_games_total(native, added);
+    let native_line = native.to_string();
+    let added_line = added.to_string();
+    let total_line = total.to_string();
+    let needs_attention = status.library.last_sync_state == "error"
+        || pending_changes > 0
+        || status.library.sync_needed;
     html! {
-        article class=(if status.library.last_sync_state == "error" || pending_changes > 0 || status.library.sync_needed { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) data-home-sync-state=(state) {
-            div class="card-head" aria-label="Game library" { h3 { "Games" } strong { (status.library.total_detected_games) " / " (status.library.total_synced_entries) } }
-            div class="state-rows state-rows--compact" {
-                (state_row("Available ROMs", &status.library.total_detected_games.to_string()))
-                (state_row("Last scan", &status.library.last_sync))
-                (state_row("Folder changes", &pending_changes.to_string()))
-                (state_row("Library gap", &sync_delta.to_string()))
-                (state_row("Artwork", &status.library.artwork_status))
+        article class=(if needs_attention { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) data-home-games-total=(total_line) {
+            div class="card-head" aria-label="Games" {
+                h3 { "Games" }
+                strong { (total_line) }
+            }
+            div class="state-rows state-rows--compact sync-home-details" {
+                (home_detail_row("GameScope:", &native_line, true))
+                (home_detail_row("Added:", &added_line, true))
             }
         }
     }
+}
+
+fn home_games_total(native: u64, added: u64) -> u64 {
+    native.saturating_add(added)
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
