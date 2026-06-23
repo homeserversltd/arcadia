@@ -7,19 +7,6 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
     } else {
         "disabled"
     };
-    let selected = status
-        .controllers
-        .controller_pool
-        .iter()
-        .find(|entry| entry.selected);
-    let device_glyph = selected
-        .map(|entry| entry.glyph.as_str())
-        .or_else(|| status.controllers.devices.first().map(|device| device.glyph.as_str()))
-        .unwrap_or("◈");
-    let transport = selected
-        .map(|entry| entry.transport.as_str())
-        .or_else(|| status.controllers.devices.first().map(|device| device.transport.as_str()))
-        .unwrap_or("Waiting for gamepad");
     view_shell(
         "controllers",
         "",
@@ -27,49 +14,24 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
         "",
         html! {
             div class=(format!("controls-hub controllers-command-deck controllers-command-deck--{}", hero_class)) data-controller-state=(status.controllers.state) data-active-controller-id=(status.controllers.active_controller_id) {
-                header class=(format!("controls-status controls-status--{}", hero_class)) aria-label="Controller manager" {
-                    div class="controls-status__identity" {
-                        div class="controls-status__glyph" aria-hidden="true" { (device_glyph) }
-                        div class="controls-status__copy" {
-                            span class="controls-status__eyebrow" { "Gamepad" }
-                            strong class="controls-status__title" { (status.controllers.primary_device) }
-                            p class="controls-status__detail" {
-                                (transport)
-                                " · "
-                                (status.controllers.recovery.detail)
-                            }
-                        }
-                    }
-                    div class="controls-status__badge" {
-                        span class=(format!("system-status system-status--{}", hero_class)) {
-                            (if connected { "Connected" } else { title_case_state_like(&status.controllers.state) })
-                        }
-                    }
-                    div class="controls-status__actions controllers-actions" {
-                        (action_button(ButtonVariant::Secondary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
-                        @if connected {
-                            (action_button(ButtonVariant::Secondary, "Test buttons", "controllers-test", "/api/actions/controllers-test"))
-                            button class="btn btn--primary" type="button" data-controller-programmer-open { "Map buttons" }
-                        } @else {
-                            button class="btn btn--secondary" type="button" disabled title="Connect a gamepad before testing buttons." { "Test buttons" }
-                            button class="btn btn--primary" type="button" disabled title="Connect a gamepad before mapping buttons." { "Map buttons" }
-                        }
-                        (action_button(ButtonVariant::Primary, "Push to all games", "controllers-ramrod-all", "/api/actions/controllers-ramrod-all"))
-                    }
-                }
-
                 section class="controls-card controls-card--pool" aria-label="Your controllers" data-controller-pool {
-                    div class="controls-card__head" {
+                    div class="controls-card__head controls-card__head--pool" {
                         div {
                             strong { "Your controllers" }
-                            p { "Every gamepad HomeConsole has seen. Each one keeps its own button pairs." }
+                            p { "Every gamepad HomeConsole has seen. Select one, map its buttons, then push that layout to each game system." }
                         }
-                        span class="system-status system-status--available" {
-                            (format!("{} saved", status.controllers.controller_pool.len()))
+                        div class="controls-card__head-actions controllers-actions" {
+                            span class=(format!("system-status system-status--{}", hero_class)) {
+                                (format!("{} saved", status.controllers.controller_pool.len()))
+                            }
+                            (action_button(ButtonVariant::Secondary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
                         }
                     }
                     @if status.controllers.controller_pool.is_empty() {
-                        p class="controls-pool-empty" { "Connect or scan a gamepad to start your controller library." }
+                        p class="controls-pool-empty" {
+                            (status.controllers.recovery.detail)
+                            " Scan to add the first gamepad to your library."
+                        }
                     } @else {
                         div class="controller-pool-scroll" {
                             @for entry in &status.controllers.controller_pool {
@@ -79,51 +41,12 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
-                div class="controls-main" {
-                    section class="controls-card controls-card--live controllers-live-test" aria-label="Live input" data-controller-live-input {
-                        div class="controls-card__head" {
-                            strong { "Live input" }
-                            span class=(format!("system-status system-status--{}", if status.controllers.live_input.state == "active" { "available" } else { "starting" })) data-controller-input-state {
-                                (title_case_state_like(&status.controllers.live_input.state))
-                            }
-                        }
-                        p class="controls-live-device" data-controller-input-device=(status.controllers.live_input.device) {
-                            (status.controllers.live_input.device)
-                        }
-                        div class="controller-axis-strip controls-live-feed" data-controller-axes {
-                            @if status.controllers.live_input.axes.is_empty() && status.controllers.live_input.pressed.is_empty() {
-                                span class="controls-live-idle" { "Move a stick or press a button to see activity here." }
-                            }
-                            @for axis in &status.controllers.live_input.axes {
-                                span class="controller-axis-pill" { (axis.control) " " (axis.binding) }
-                            }
-                            @for pressed in &status.controllers.live_input.pressed {
-                                span class="controller-axis-pill controller-button-dot--active" { (pressed.control) }
-                            }
-                        }
-                        p class="controls-mapping-teaser" {
-                            "Button mapping opens in a dedicated window — tap "
-                            strong { "Map buttons" }
-                            " to pair controls with your gamepad."
-                        }
-                    }
-                }
-
-                @if !connected {
-                    aside class="controls-recovery" data-controller-recovery=(status.controllers.recovery.state) {
-                        strong { (status.controllers.recovery.title) }
-                        span { (status.controllers.recovery.detail) }
-                        em { (status.controllers.recovery.action) }
-                    }
-                }
-
                 section class="controls-card controls-card--games" aria-label="Game systems" {
                     div class="controls-card__head controls-card__head--games" {
                         div {
                             strong { "Game systems" }
-                            p { "Your saved layout is translated for each emulator HomeConsole uses." }
+                            p { "Push the selected controller's mapping into each emulator's live mapper." }
                         }
-                        (action_button(ButtonVariant::Primary, "Push to all games", "controllers-ramrod-all", "/api/actions/controllers-ramrod-all"))
                     }
                     div class="emulator-controller-grid controls-games-grid" {
                         @for emulator in &status.controllers.emulators {
@@ -175,7 +98,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         }
                         footer class="controller-map-footer controllers-actions" {
                             (action_button(ButtonVariant::Primary, "Save layout", "controllers-save-profile", "/api/actions/controllers-save-profile"))
-                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole keeps a library of every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Choose a layout style (Xbox, Nintendo, PlayStation, or Arcade).\n3. Tap a control on the gamepad or a row, then press the matching button.\n4. Save layout, then Push to all games so every emulator stays in sync."))
+                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole keeps a library of every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Tap Map and pair each virtual control with your real gamepad.\n3. Save layout.\n4. Use Push mapping on each game system to write that controller into the emulator mapper."))
                         }
                     }
                 }
@@ -421,7 +344,11 @@ fn emulator_controller_card(emulator: &crate::EmulatorControllerStatus, connecte
             div class="controls-game-card__actions controllers-actions" {
                 @let action = format!("controllers-assign-{}", emulator_action_slug(&emulator.emulator));
                 @let endpoint = format!("/api/actions/{}", action);
-                (action_button(ButtonVariant::Secondary, if connected { "Sync one" } else { "Prepare" }, &action, &endpoint))
+                @if emulator.state == "not installed" {
+                    button class="btn btn--secondary" type="button" disabled data-action=(action) data-endpoint=(endpoint) title="This emulator is not installed on this console." { "Not installed" }
+                } @else {
+                    (action_button(ButtonVariant::Primary, "Push mapping", &action, &endpoint))
+                }
             }
         }
     }
