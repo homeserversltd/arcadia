@@ -245,12 +245,14 @@
 
         for required in [
             "updates-home-card",
+            "updates-home-details",
             "updates-home-actions",
             "data-action=\"check-updates\"",
             "data-endpoint=\"/api/actions/check-updates\"",
             ">Check</button>",
-            "data-label=\"Last run\"",
-            "data-label=\"Pending\"",
+            ">Last ran:</span>",
+            ">updates available:</span>",
+            "updates-detail-row",
         ] {
             assert!(home_html.contains(required), "home updates card missing {required}");
         }
@@ -263,6 +265,8 @@
             " on · ",
             "installed",
             "receipt-missing",
+            " ago</strong>",
+            ">None</strong>",
         ] {
             assert!(
                 !home_html.contains(forbidden),

@@ -202,25 +202,15 @@ fn harmonia_last_run_label(suite_path: &str, check_path: &str) -> String {
         .flatten()
         .max();
     latest
-        .map(format_relative_age)
-        .unwrap_or_else(|| "Never".to_string())
+        .map(format_local_clock)
+        .unwrap_or_else(|| "--:--".to_string())
 }
 
-fn format_relative_age(run_unix: u64) -> String {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or(run_unix);
-    let age = now.saturating_sub(run_unix);
-    if age < 60 {
-        "Just now".to_string()
-    } else if age < 3_600 {
-        format!("{}m ago", age / 60)
-    } else if age < 86_400 {
-        format!("{}h ago", age / 3_600)
-    } else {
-        format!("{}d ago", age / 86_400)
-    }
+fn format_local_clock(run_unix: u64) -> String {
+    command_stdout("date", &["-d", &format!("@{run_unix}"), "+%H:%M"])
+        .map(|value| value.trim().to_string())
+        .filter(|value| value.len() == 5 && value.as_bytes().get(2) == Some(&b':'))
+        .unwrap_or_else(|| "--:--".to_string())
 }
 
 fn harmonia_pending_updates(
