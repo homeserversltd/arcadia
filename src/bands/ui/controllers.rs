@@ -65,10 +65,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         div class="controller-map-workbench" {
                             section class="controller-map-bindings" aria-label="Your mappings" {
                                 div class="controls-card__head controls-card__head--compact" {
-                                    div {
-                                        strong { "Your mappings" }
-                                        p { "Each row is a game control and the physical button that drives it. Tap a row or the gamepad to remap." }
-                                    }
+                                    strong { "Your mappings" }
                                 }
                                 (controller_bindings_grid(&status.controllers.profile.bindings, connected))
                             }
@@ -87,7 +84,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                                 span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Tap a control on the gamepad to begin" }
                                 p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
                                 div class="controller-axis-strip" data-controller-programmer-axes {}
-                                p class="controls-map-hint" { "Press buttons on your real controller to see them light up here. If a game is running, pause it first — games can block controller input until you map from the browser." }
+                                p class="controls-map-hint" { "Press your controller to light up controls here." }
                                 div class="controls-card__actions controllers-actions" {
                                     button class="btn btn--secondary" type="button" data-controller-broadcast-toggle { "Pause live preview" }
                                     output class="controls-map-readout" data-controller-broadcast-readout { "Live" }
@@ -111,10 +108,10 @@ fn friendly_binding_label(binding: &str) -> String {
     }
     if let Some(index) = binding.strip_prefix("button ") {
         let number = index.trim().parse::<u32>().unwrap_or(0).saturating_add(1);
-        return format!("Physical button {number}");
+        return format!("#{number}");
     }
     if let Some(index) = binding.strip_prefix("axis ") {
-        return format!("Stick input {index}");
+        return format!("AX{index}");
     }
     if binding.contains("hat") {
         return "D-pad".to_string();
@@ -128,10 +125,6 @@ fn controller_bindings_grid(bindings: &[crate::ControllerBindingStatus], connect
             @if bindings.is_empty() {
                 p class="controls-bindings__empty" { "No mappings yet. Tap a control on the gamepad, then press the matching button on your controller." }
             } @else {
-                div class="controls-bindings-columns" aria-hidden="true" {
-                    span { "Game control" }
-                    span { "Your button" }
-                }
                 @for binding in bindings {
                     button class="controls-binding-row" type="button" data-controller-control=(binding.control) data-controller-bind-row="true" aria-label=(format!("{} mapped to {}", binding.control, friendly_binding_label(&binding.binding))) {
                         span class="controls-binding-name" { (binding.control) }

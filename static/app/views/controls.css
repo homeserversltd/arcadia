@@ -415,6 +415,7 @@
 .controller-map-stage__pad .ux-gamepad-body {
   width: min(100%, 900px);
   height: auto;
+  aspect-ratio: 2.35 / 1;
   max-height: min(100%, 380px);
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-stage {
@@ -426,6 +427,7 @@
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
   width: min(100%, 1040px);
   height: auto;
+  aspect-ratio: 2.35 / 1;
   max-height: min(72dvh, 480px);
 }
 .controller-map-workbench {
@@ -446,9 +448,38 @@
   border-radius: var(--ux-controls-card-radius);
   background: linear-gradient(160deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 55%, transparent));
 }
+.controller-map-bindings .controls-card__head p,
+.controller-map-bindings .controls-bindings-columns,
+.controller-map-presets .controls-presets__hint {
+  display: none;
+}
 .controller-map-bindings .controls-bindings {
+  --ux-controls-binding-cols: 2;
   max-height: 100%;
   overflow: auto;
+  gap: 3px;
+}
+.controller-map-bindings .controls-binding-row {
+  grid-template-columns: minmax(2.4em, auto) auto minmax(0, 1fr);
+  min-height: 22px;
+  padding: 2px 5px;
+  border-radius: 8px;
+  gap: 5px;
+}
+.controller-map-bindings .controls-binding-name {
+  font-size: var(--ux-text-xs);
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+.controller-map-bindings .controls-binding-arrow {
+  font-size: 10px;
+  opacity: .55;
+}
+.controller-map-bindings .controls-binding-value {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  padding: 1px 5px;
 }
 .controller-map-presets {
   display: grid;

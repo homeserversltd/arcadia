@@ -964,14 +964,26 @@ function updateControllerLiveInput(data) {
 }
 
 
+function compactGamepadBinding(binding) {
+  const raw = String(binding || '').trim();
+  if (!raw || raw === 'Waiting' || raw === 'Tap to bind') return raw || '—';
+  if (raw.startsWith('button ')) {
+    const index = Number.parseInt(raw.slice('button '.length), 10);
+    return Number.isFinite(index) ? `B${index}` : raw;
+  }
+  if (raw.startsWith('axis ')) return `AX${raw.slice('axis '.length)}`;
+  if (raw.includes('hat')) return 'Hat';
+  return raw;
+}
+
 function formatControllerBinding(binding) {
   const raw = String(binding || '').trim();
   if (!raw || raw === 'Waiting' || raw === 'Tap to bind') return raw || 'Not set';
   if (raw.startsWith('button ')) {
     const index = Number.parseInt(raw.slice('button '.length), 10);
-    return Number.isFinite(index) ? `Physical button ${index + 1}` : raw;
+    return Number.isFinite(index) ? `#${index + 1}` : raw;
   }
-  if (raw.startsWith('axis ')) return `Stick input ${raw.slice('axis '.length)}`;
+  if (raw.startsWith('axis ')) return `AX${raw.slice('axis '.length)}`;
   if (raw.includes('hat')) return 'D-pad';
   return raw;
 }
@@ -999,7 +1011,7 @@ function hydrateControllerBindings(root, bindings) {
     const binding = map.get(control);
     if (!binding) return;
     const label = node.querySelector('span, em');
-    if (label) label.textContent = formatControllerBinding(binding);
+    if (label) label.textContent = compactGamepadBinding(binding);
   });
 }
 
