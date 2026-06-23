@@ -245,20 +245,21 @@
 
         for required in [
             "updates-home-card",
-            "data-home-harmonia-state",
-            "data-home-update-pressure",
-            "data-label=\"Pressure\"",
-            "data-label=\"Ready\"",
-            " on · ",
-            " off",
+            "updates-home-actions",
+            "data-action=\"check-updates\"",
+            "data-endpoint=\"/api/actions/check-updates\"",
+            ">Check</button>",
         ] {
             assert!(home_html.contains(required), "home updates card missing {required}");
         }
         for forbidden in [
             "homeconsole-latest/run.json",
             "data-label=\"Receipt\"",
-            "data-label=\"Missing\"",
-            "data-label=\"Check\"",
+            "data-label=\"Pressure\"",
+            "data-label=\"Ready\"",
+            "data-home-update-pressure",
+            " on · ",
+            "installed",
             "receipt-missing",
         ] {
             assert!(

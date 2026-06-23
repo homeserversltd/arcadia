@@ -15,6 +15,8 @@
 .home-topology i { color: var(--orange-strong); font-style: normal; }
 .home-code-line { margin-top: 7px; padding: 6px 8px; border-radius: 12px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); border: 1px solid var(--line); }
 .home-code-line code { color: var(--cream); font-size: 12px; overflow-wrap: anywhere; }
+.updates-home-actions { margin: auto 0 0; }
+.updates-home-actions .btn { width: 100%; }
 .home-service-list, .home-module-list { display: grid; gap: 5px; margin-top: 8px; }
 .home-service-row, .home-module-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 5px 0; border-top: var(--ux-card-divider); }
 .home-service-row span, .home-module-row span { min-width: 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
