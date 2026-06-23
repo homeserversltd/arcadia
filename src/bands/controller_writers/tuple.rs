@@ -369,8 +369,8 @@ fn clamp_tuning_value(value: f32, min: f32, max: f32) -> f32 {
 fn normalize_tuning(mut tuning: ControllerTuningStatus) -> ControllerTuningStatus {
     tuning.left_stick_deadzone = clamp_tuning_value(tuning.left_stick_deadzone, 0.0, 0.4);
     tuning.right_stick_deadzone = clamp_tuning_value(tuning.right_stick_deadzone, 0.0, 0.4);
-    tuning.left_stick_sensitivity = clamp_tuning_value(tuning.left_stick_sensitivity, 0.4, 1.0);
-    tuning.right_stick_sensitivity = clamp_tuning_value(tuning.right_stick_sensitivity, 0.4, 1.0);
+    tuning.left_stick_sensitivity = clamp_tuning_value(tuning.left_stick_sensitivity, 0.1, 1.0);
+    tuning.right_stick_sensitivity = clamp_tuning_value(tuning.right_stick_sensitivity, 0.1, 1.0);
     tuning
 }
 

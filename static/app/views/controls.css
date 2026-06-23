@@ -217,6 +217,15 @@
   color: var(--muted);
   font-size: var(--ux-text-xs);
 }
+.controller-tuner-field--primary .controller-tuner-field__head span:first-child {
+  color: var(--cream);
+  font-weight: 800;
+}
+.controller-tuner-field__hint {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.2;
+}
 .controller-tuner-range {
   width: 100%;
 }

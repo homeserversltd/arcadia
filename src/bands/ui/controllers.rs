@@ -58,7 +58,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                 template id="controller-tuner-template" {
                     div class="controller-tuner-modal" data-controller-tuner-modal data-controller-broadcast-ms="60" {
                         p class="controller-tuner-intro" {
-                            "Adjust how far sticks must move before games react, and how strong they feel. Move your sticks to preview the change."
+                            "Stick too twitchy? Raise Dampen to soften how far the stick travels in games. Move your sticks to preview."
                         }
                         p class="controls-live-device controller-tuner-device" data-controller-tuner-device { (status.controllers.primary_device) }
                         div class="controller-tuner-grid" {
@@ -66,7 +66,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                             (controller_tuner_stick_panel("right", "Right stick"))
                         }
                         footer class="controller-tuner-footer controllers-actions" {
-                            button class="btn btn--primary" type="button" data-controller-tuner-apply { "Apply tuning" }
+                            button class="btn btn--primary" type="button" data-controller-tuner-apply { "Apply dampening" }
                             button class="btn btn--secondary" type="button" data-controller-tuner-cancel { "Cancel" }
                         }
                     }
@@ -285,7 +285,7 @@ fn controller_pool_card(entry: &crate::ControllerPoolEntry) -> Markup {
             }
             div class="controller-pool-card__actions" {
                 button class="btn btn--secondary controller-pool-card__map" type="button" data-controller-programmer-open data-controller-id=(entry.id) { "Map" }
-                button class="btn btn--secondary controller-pool-card__tune" type="button" data-controller-tuner-open data-controller-id=(entry.id) { "Tune" }
+                button class="btn btn--secondary controller-pool-card__tune" type="button" data-controller-tuner-open data-controller-id=(entry.id) { "Dampen" }
             }
         }
     }
@@ -295,19 +295,20 @@ fn controller_tuner_stick_panel(side: &str, label: &str) -> Markup {
     html! {
         section class="controller-tuner-stick" data-controller-tuner-stick=(side) {
             strong class="controller-tuner-stick__label" { (label) }
-            label class="controller-tuner-field" {
+            label class="controller-tuner-field controller-tuner-field--primary" {
                 span class="controller-tuner-field__head" {
-                    span { "Deadzone" }
+                    span { "Dampen" }
+                    output class="controller-tuner-field__value" data-controller-tuner-dampen-value=(side) { "0%" }
+                }
+                input type="range" class="controller-tuner-range" min="0" max="90" value="0" data-controller-tuner-dampen=(side) aria-label=(format!("{label} dampen")) {}
+                span class="controller-tuner-field__hint" { "Higher = softer stick in games" }
+            }
+            label class="controller-tuner-field controller-tuner-field--secondary" {
+                span class="controller-tuner-field__head" {
+                    span { "Drift gate" }
                     output class="controller-tuner-field__value" data-controller-tuner-deadzone-value=(side) { "15%" }
                 }
-                input type="range" class="controller-tuner-range" min="0" max="40" value="15" data-controller-tuner-deadzone=(side) aria-label=(format!("{label} deadzone")) {}
-            }
-            label class="controller-tuner-field" {
-                span class="controller-tuner-field__head" {
-                    span { "Response" }
-                    output class="controller-tuner-field__value" data-controller-tuner-sensitivity-value=(side) { "100%" }
-                }
-                input type="range" class="controller-tuner-range" min="40" max="100" value="100" data-controller-tuner-sensitivity=(side) aria-label=(format!("{label} response")) {}
+                input type="range" class="controller-tuner-range" min="0" max="40" value="15" data-controller-tuner-deadzone=(side) aria-label=(format!("{label} drift gate")) {}
             }
             div class="controller-tuner-preview" data-controller-tuner-preview=(side) aria-hidden="true" {
                 span class="controller-tuner-preview__ring" {}
