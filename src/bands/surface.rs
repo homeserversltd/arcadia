@@ -84,23 +84,67 @@ fn updates_status() -> UpdatesStatus {
     let check_receipt = "/var/lib/harmonia/receipts/homeconsole-check-latest/run.json";
     let arcadia_receipt = "/var/lib/harmonia/receipts/arcadia-gui-latest/run.json";
     let profile = harmonia_profile_modules();
-    let receipt = read_json_value(suite_receipt)
-        .or_else(|| read_json_value(check_receipt))
+    let suite = read_json_value(suite_receipt);
+    let check = read_json_value(check_receipt);
+    let receipt = suite
+        .clone()
+        .or_else(|| check.clone())
         .unwrap_or(serde_json::Value::Null);
     let arcadia = read_json_value(arcadia_receipt);
-    let suite_ok = receipt_bool(&receipt, "suite_ok").or_else(|| receipt_bool(&receipt, "ok")).unwrap_or(false);
-    let first_missing_signal = receipt_string(&receipt, "first_missing_signal").unwrap_or_else(|| "receipt-missing".to_string());
+    let suite_ok = suite
+        .as_ref()
+        .and_then(|v| receipt_bool(v, "suite_ok").or_else(|| receipt_bool(v, "ok")))
+        .unwrap_or(false);
+    let suite_signal = suite
+        .as_ref()
+        .and_then(|v| receipt_string(v, "first_missing_signal"))
+        .unwrap_or_else(|| {
+            if suite.is_some() {
+                "unknown".to_string()
+            } else {
+                "receipt-missing".to_string()
+            }
+        });
+    let check_ok = check
+        .as_ref()
+        .and_then(|v| receipt_bool(v, "suite_ok").or_else(|| receipt_bool(v, "ok")))
+        .unwrap_or(false);
+    let check_missing_signal = check
+        .as_ref()
+        .and_then(|v| receipt_string(v, "first_missing_signal"))
+        .unwrap_or_else(|| {
+            if check.is_some() {
+                "unknown".to_string()
+            } else {
+                "not-checked".to_string()
+            }
+        });
+    let first_missing_signal = if check.is_some() && !check_ok && check_missing_signal != "none" {
+        check_missing_signal.clone()
+    } else if suite.is_some() && !suite_ok && suite_signal != "none" {
+        suite_signal.clone()
+    } else if check_ok || suite_ok {
+        "none".to_string()
+    } else if check.is_none() && suite.is_none() {
+        "receipt-missing".to_string()
+    } else {
+        suite_signal.clone()
+    };
     let profile_id = receipt_string(&receipt, "profile_id").unwrap_or_else(|| "homeconsole".to_string());
     let identity = receipt_string(&receipt, "identity").unwrap_or_else(|| "homeconsole".to_string());
     let module_count = receipt_usize(&receipt, "module_count").unwrap_or(profile.len());
     let operation_count = receipt_usize(&receipt, "operation_count").unwrap_or(0);
     let arcadia_ok = arcadia.as_ref().and_then(|v| receipt_bool(v, "ok")).unwrap_or(false);
-    let state = if !suite_ok && first_missing_signal != "none" {
+    let state = if check.is_some() && !check_ok && check_missing_signal != "none" {
         "repair_pending"
-    } else if arcadia_ok || suite_ok {
+    } else if suite.is_some() && !suite_ok && suite_signal != "none" {
+        "repair_pending"
+    } else if check_ok || suite_ok || arcadia_ok {
         "current"
-    } else {
+    } else if check.is_none() && suite.is_none() {
         "unknown"
+    } else {
+        "repair_pending"
     };
     UpdatesStatus {
         state: state.to_string(),
@@ -109,6 +153,8 @@ fn updates_status() -> UpdatesStatus {
         profile_id,
         identity,
         suite_ok,
+        check_ok,
+        check_missing_signal,
         first_missing_signal,
         module_count,
         operation_count,

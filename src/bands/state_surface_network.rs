@@ -49,6 +49,8 @@ pub struct UpdatesStatus {
     pub profile_id: String,
     pub identity: String,
     pub suite_ok: bool,
+    pub check_ok: bool,
+    pub check_missing_signal: String,
     pub first_missing_signal: String,
     pub module_count: usize,
     pub operation_count: usize,

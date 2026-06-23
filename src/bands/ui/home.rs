@@ -343,26 +343,47 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_updates_card(status: &ConsoleStatus) -> Markup {
-    let (state_label, state_tone) = if status.updates.state == "available" {
-        ("Available", "warn")
-    } else if status.updates.suite_ok {
-        ("Current", "ok")
-    } else {
-        ("Repair pending", "warn")
-    };
-    let missing = if status.updates.first_missing_signal.is_empty() {
-        "None"
-    } else {
-        status.updates.first_missing_signal.as_str()
-    };
-    let receipt = receipt_short_name(&status.updates.latest_receipt);
+    let headline = harmonia_state_label(&status.updates.state);
+    let needs_attention = matches!(
+        status.updates.state.as_str(),
+        "available" | "repair_pending" | "error" | "checking" | "installing" | "unknown"
+    ) || (!status.updates.suite_ok && status.updates.first_missing_signal != "none");
+    let (ready, enabled) = harmonia_module_readiness(&status.updates.modules);
+    let modules_line = format!("{ready}/{enabled} ready");
+    let check_line = harmonia_check_status_label(&status.updates);
+    let suite_line = harmonia_suite_status_label(&status.updates);
+    let show_blocker = status.updates.first_missing_signal != "none"
+        && status.updates.first_missing_signal != "not-checked";
+    let attention_modules: Vec<_> = status
+        .updates
+        .modules
+        .iter()
+        .filter(|module| module.enabled && !module.present)
+        .take(2)
+        .collect();
     html! {
-        article class=(if state_tone == "warn" { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) {
-            div class="card-head" aria-label="Updates" { h3 { "Updates" } strong { (status.updates.module_count) " / " (status.updates.operation_count) } }
+        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) {
+            div class="card-head" aria-label="Updates" {
+                h3 { "Updates" }
+                strong { (headline) }
+            }
             div class="state-rows state-rows--compact" {
-                @if state_tone == "warn" { (state_row("Update state", state_label)) }
-                (state_row("Receipt", &receipt))
-                (state_row("Missing", missing))
+                (state_row("Modules", &modules_line))
+                (state_row("Check", &check_line))
+                (state_row("Suite", &suite_line))
+                @if show_blocker {
+                    (state_row("Blocker", &harmonia_missing_signal_label(&status.updates.first_missing_signal)))
+                }
+            }
+            @if !attention_modules.is_empty() {
+                div class="home-module-list" aria-label="Harmonia modules needing attention" {
+                    @for module in attention_modules {
+                        div class="home-module-row" aria-label=(format!("{} missing", module.label)) {
+                            span { (module.label) }
+                            b class="system-status system-status--error" { "!" }
+                        }
+                    }
+                }
             }
         }
     }
