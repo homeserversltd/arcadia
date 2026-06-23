@@ -44,6 +44,16 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
+fn harmonia_pending_label(count: usize) -> String {
+    if count == 0 {
+        "None".to_string()
+    } else if count == 1 {
+        "1 update".to_string()
+    } else {
+        format!("{count} updates")
+    }
+}
+
 fn harmonia_module_readiness(modules: &[crate::HarmoniaModuleStatus]) -> (usize, usize) {
     let enabled = modules.iter().filter(|module| module.enabled).count();
     let ready = modules

@@ -56,6 +56,8 @@ pub struct UpdatesStatus {
     pub first_missing_signal: String,
     pub module_count: usize,
     pub operation_count: usize,
+    pub last_update_run: String,
+    pub pending_updates: usize,
     pub latest_receipt: String,
     pub latest_check_receipt: String,
     pub module_root: String,

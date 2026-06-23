@@ -154,6 +154,15 @@ fn updates_status() -> UpdatesStatus {
     } else {
         "repair_pending"
     };
+    let modules = harmonia_module_statuses(&profile);
+    let last_update_run = harmonia_last_run_label(suite_receipt, check_receipt);
+    let pending_updates = harmonia_pending_updates(
+        &modules,
+        check.as_ref(),
+        suite.as_ref(),
+        check_ok,
+        suite_ok,
+    );
     UpdatesStatus {
         state: state.to_string(),
         current_version: current,
@@ -168,11 +177,80 @@ fn updates_status() -> UpdatesStatus {
         first_missing_signal,
         module_count,
         operation_count,
+        last_update_run,
+        pending_updates,
         latest_receipt: suite_receipt.to_string(),
         latest_check_receipt: check_receipt.to_string(),
         module_root: format!("{}/modules", HOMECONSOLE_PROFILE.trim_end_matches("/index.json")),
-        modules: harmonia_module_statuses(&profile),
+        modules,
     }
+}
+
+fn file_mtime_unix(path: &str) -> Option<u64> {
+    fs::metadata(path)
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+}
+
+fn harmonia_last_run_label(suite_path: &str, check_path: &str) -> String {
+    let latest = [file_mtime_unix(suite_path), file_mtime_unix(check_path)]
+        .into_iter()
+        .flatten()
+        .max();
+    latest
+        .map(format_relative_age)
+        .unwrap_or_else(|| "Never".to_string())
+}
+
+fn format_relative_age(run_unix: u64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(run_unix);
+    let age = now.saturating_sub(run_unix);
+    if age < 60 {
+        "Just now".to_string()
+    } else if age < 3_600 {
+        format!("{}m ago", age / 60)
+    } else if age < 86_400 {
+        format!("{}h ago", age / 3_600)
+    } else {
+        format!("{}d ago", age / 86_400)
+    }
+}
+
+fn harmonia_pending_updates(
+    modules: &[HarmoniaModuleStatus],
+    check: Option<&serde_json::Value>,
+    suite: Option<&serde_json::Value>,
+    check_ok: bool,
+    suite_ok: bool,
+) -> usize {
+    let enabled = modules.iter().filter(|module| module.enabled).count();
+    let ready = modules
+        .iter()
+        .filter(|module| module.enabled && module.present)
+        .count();
+    let missing = enabled.saturating_sub(ready);
+    if let Some(check) = check {
+        if !check_ok {
+            return receipt_usize(check, "operation_count")
+                .unwrap_or(0)
+                .max(missing);
+        }
+    }
+    if let Some(suite) = suite {
+        if !suite_ok {
+            return receipt_usize(suite, "operation_count")
+                .unwrap_or(0)
+                .max(missing);
+        }
+    }
+    missing
 }
 
 fn read_json_value(path: &str) -> Option<serde_json::Value> {

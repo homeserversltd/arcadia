@@ -249,6 +249,8 @@
             "data-action=\"check-updates\"",
             "data-endpoint=\"/api/actions/check-updates\"",
             ">Check</button>",
+            "data-label=\"Last run\"",
+            "data-label=\"Pending\"",
         ] {
             assert!(home_html.contains(required), "home updates card missing {required}");
         }
