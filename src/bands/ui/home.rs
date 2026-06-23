@@ -345,7 +345,7 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
 fn home_updates_card(status: &ConsoleStatus) -> Markup {
     let (ready, enabled) = harmonia_module_readiness(&status.updates.modules);
     let ratio = format!("{ready}/{enabled}");
-    let pending_line = harmonia_pending_label(status.updates.pending_updates);
+    let available_line = status.updates.pending_updates.to_string();
     let needs_attention = status.updates.pending_updates > 0
         || ready < enabled
         || !status.updates.check_ok && status.updates.check_missing_signal != "not-checked"
@@ -356,13 +356,22 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
                 h3 { "Updates" }
                 strong { (ratio) }
             }
-            div class="state-rows state-rows--compact" {
-                (state_row("Last run", &status.updates.last_update_run))
-                (state_row("Pending", &pending_line))
+            div class="state-rows state-rows--compact updates-home-details" {
+                (updates_detail_row("Last ran:", &status.updates.last_update_run))
+                (updates_detail_row("updates available:", &available_line))
             }
             div class="inline-actions inline-actions--compact updates-home-actions" {
                 (action_button(ButtonVariant::Primary, "Check", "check-updates", "/api/actions/check-updates"))
             }
+        }
+    }
+}
+
+fn updates_detail_row(label: &str, value: &str) -> Markup {
+    html! {
+        div class="state-row updates-detail-row" aria-label=(format!("{label} {value}")) {
+            span { (label) }
+            strong { (value) }
         }
     }
 }
