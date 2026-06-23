@@ -205,7 +205,7 @@
   color: inherit;
   cursor: pointer;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   min-height: var(--ux-controls-binding-row-min);
@@ -223,9 +223,11 @@
 }
 .controls-binding-name { color: var(--cream); font-size: var(--ux-text-sm); font-weight: 800; }
 .controls-binding-value {
+  justify-self: end;
+  text-align: right;
   color: var(--muted);
   font-size: var(--ux-text-xs);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 800;
   padding: 2px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--theme-button-surface) 80%, transparent);
@@ -343,7 +345,7 @@
 .controller-programmer-modal {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
   min-width: 0;
   width: 100%;
@@ -354,25 +356,24 @@
 .modal-card--fullscreen .controller-programmer-modal {
   grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
 }
-.controller-map-header {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--theme-field-surface) 74%, transparent);
-}
-.controller-map-instruction {
-  margin: 0;
+.controls-card__head--compact p { max-width: 42ch; }
+.controls-bindings-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 6px 4px;
   color: var(--muted);
-  font-size: var(--ux-text-sm);
-  line-height: 1.35;
-  max-width: 62ch;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
-.controller-map-bind-state { flex: 0 0 auto; white-space: nowrap; }
+.controls-bindings-columns span:last-child { text-align: right; }
+.controls-binding-arrow { color: var(--muted); font-size: 12px; font-weight: 900; opacity: .72; }
+.controls-presets__head { display: grid; gap: 3px; margin-bottom: 4px; }
+.controls-presets__hint { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.controller-map-bind-state { display: block; width: 100%; text-align: center; white-space: normal; }
+.controller-map-live .controller-map-bind-state { margin-bottom: 6px; }
 .controller-map-bind-state--active,
 .controller-programmer-modal.is-binding .controller-map-bind-state {
   color: var(--orange-strong);

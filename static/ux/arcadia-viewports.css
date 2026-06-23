@@ -118,7 +118,7 @@
   .controller-programmer-modal,
   .modal-card--fullscreen .controller-programmer-modal {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(220px, 1fr) minmax(0, 1fr) auto;
+    grid-template-rows: minmax(220px, 1fr) minmax(0, 1fr) auto;
   }
   .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
     height: min(42dvh, 320px);
