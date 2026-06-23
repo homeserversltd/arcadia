@@ -260,6 +260,10 @@
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
             "data-controller-gamepad-programmer",
+            "data-gamepad-layout-version=\"1\"",
+            "data-gamepad-slot=\"face-a\"",
+            "data-gamepad-slot=\"stick-left\"",
+            "data-gamepad-slot=\"dpad\"",
             "ux-gamepad-body",
             "ux-gamepad-stick",
             "ux-gamepad-dpad",
@@ -319,7 +323,12 @@
         assert!(UX_CSS.contains(".ux-controller-silhouette.ux-gamepad-stage"));
         assert!(UX_CSS.contains(".ux-gamepad-body"));
         assert!(APP_JS.contains("compactGamepadBinding"));
+        assert!(APP_JS.contains("auditGamepadControlLayout"));
         assert!(APP_CSS.contains(".controller-map-bindings .controls-binding-row"));
+        assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_LAYOUT_MIN_GAP"));
+        assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("gamepad_layout_overlap_report"));
+        assert!(UX_CSS.contains("[data-gamepad-slot]"));
+        assert!(UX_CSS.contains("grid-template-columns: repeat(3, minmax(0, 1fr))"));
         assert!(UX_CSS.contains("aspect-ratio: 2.35 / 1"));
         assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
         assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));

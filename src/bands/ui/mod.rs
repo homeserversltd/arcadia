@@ -22,6 +22,7 @@ include!("home.rs");
 include!("sync.rs");
 include!("storage.rs");
 include!("local_ai.rs");
+include!("gamepad_layout.rs");
 include!("controllers.rs");
 include!("network.rs");
 include!("access_pin.rs");

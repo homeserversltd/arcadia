@@ -964,6 +964,33 @@ function updateControllerLiveInput(data) {
 }
 
 
+function auditGamepadControlLayout(root, gapPx = 2) {
+  const host = root || document.querySelector('[data-controller-gamepad-programmer]');
+  if (!host) return { ok: false, error: 'gamepad programmer not found', overlaps: [], boxes: [] };
+  const nodes = [...host.querySelectorAll('[data-gamepad-slot]')].filter((node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+  const boxes = nodes.map((node) => ({
+    slot: node.dataset.gamepadSlot || '',
+    control: node.dataset.controllerControl || node.getAttribute('aria-label') || '',
+    rect: node.getBoundingClientRect(),
+  }));
+  const overlaps = [];
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i].rect;
+      const b = boxes[j].rect;
+      const separated = a.right + gapPx <= b.left
+        || b.right + gapPx <= a.left
+        || a.bottom + gapPx <= b.top
+        || b.bottom + gapPx <= a.top;
+      if (!separated) overlaps.push({ a: boxes[i], b: boxes[j] });
+    }
+  }
+  return { ok: overlaps.length === 0, gapPx, overlaps, boxes };
+}
+
 function compactGamepadBinding(binding) {
   const raw = String(binding || '').trim();
   if (!raw || raw === 'Waiting' || raw === 'Tap to bind') return raw || '—';
@@ -1326,6 +1353,7 @@ function bindControllerProgramming() {
     modalOpen: () => Boolean(document.querySelector('[data-controller-programmer-modal]')),
     readBrowserGamepadInput,
     mergeControllerInput,
+    auditGamepadControlLayout,
   };
 }
 
