@@ -120,6 +120,8 @@
   min-height: 0;
   overflow: hidden;
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: var(--ux-control-gap);
   padding: var(--ux-sidebar-padding-block) var(--ux-sidebar-padding-inline);
   border: 1px solid var(--line);
@@ -130,8 +132,10 @@
 .launcher-button {
   display: grid;
   justify-items: center;
+  align-content: center;
   gap: 5px;
   min-height: var(--ux-launcher-min-height);
+  max-height: var(--ux-launcher-max-height);
   padding: var(--ux-launcher-padding-block) var(--ux-launcher-padding-inline);
   border: 1px solid transparent;
   border-radius: var(--ux-launcher-radius);
@@ -142,7 +146,20 @@
 }
 .launcher-button:hover, .launcher-button:focus-visible { transform: translateX(2px); border-color: color-mix(in srgb, var(--theme-accent) 28%, transparent); background: var(--theme-glass); outline: none; color: var(--cream); }
 .launcher-button.is-active { color: var(--cream); background: linear-gradient(145deg, color-mix(in srgb, var(--theme-accent) 25%, transparent), var(--theme-button-surface)); border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent); box-shadow: inset 4px 0 0 var(--orange); }
-.launcher-icon { width: var(--ux-launcher-icon-size); height: var(--ux-launcher-icon-size); display: grid; place-items: center; border-radius: var(--ux-launcher-icon-radius); background: var(--theme-button-surface); font-size: var(--ux-text-xl); font-weight: 900; }
+.launcher-icon {
+  width: clamp(var(--ux-launcher-icon-min-size), var(--ux-launcher-icon-size), var(--ux-launcher-icon-max-size));
+  height: clamp(var(--ux-launcher-icon-min-size), var(--ux-launcher-icon-size), var(--ux-launcher-icon-max-size));
+  min-width: var(--ux-launcher-icon-min-size);
+  max-width: var(--ux-launcher-icon-max-size);
+  min-height: var(--ux-launcher-icon-min-size);
+  max-height: var(--ux-launcher-icon-max-size);
+  display: grid;
+  place-items: center;
+  border-radius: var(--ux-launcher-icon-radius);
+  background: var(--theme-button-surface);
+  font-size: var(--ux-text-xl);
+  font-weight: 900;
+}
 .launcher-button.is-active .launcher-icon { background: linear-gradient(145deg, var(--orange), var(--theme-danger-strong)); color: var(--theme-fg-inverse); }
 .launcher-label { font-size: 11px; font-weight: 800; line-height: 1.05; text-align: center; white-space: pre-line; }
 

@@ -6,12 +6,18 @@
 }
 
 @media (max-width: 980px) {
+  :root {
+    --ux-launcher-min-height: 56px;
+    --ux-launcher-max-height: 72px;
+    --ux-launcher-icon-min-size: 22px;
+    --ux-launcher-icon-size: 28px;
+    --ux-launcher-icon-max-size: 34px;
+  }
   .app-shell { padding: 10px; }
   .top-header { align-items: flex-start; flex-direction: column; }
   .header-indicators { margin-left: 0; justify-content: flex-start; }
   .workspace { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
   .sidebar-launcher { padding: 8px; }
-  .launcher-button { min-height: 72px; }
   .launcher-label { font-size: 11px; }
   .status-card-grid, .model-grid, .home-operational-grid, .storage-category-grid, .system-field-grid, .system-endpoints, .system-port-list, .cleanup-grid, .access-pin-panel, .pin-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .access-pin-panel { grid-template-columns: minmax(0, 1fr); }
@@ -29,6 +35,13 @@
   .sync-orb-actions { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
+  :root {
+    --ux-launcher-min-height: 48px;
+    --ux-launcher-max-height: 62px;
+    --ux-launcher-icon-min-size: 28px;
+    --ux-launcher-icon-size: 34px;
+    --ux-launcher-icon-max-size: 34px;
+  }
   html, body { height: auto; overflow-y: auto; }
   .app-shell { height: auto; min-height: 100vh; }
   .view { height: auto; overflow: visible; }
@@ -37,9 +50,8 @@
   .viewport { overflow: visible; }
   .network-row { grid-template-columns: 1fr; align-items: start; }
   .workspace { grid-template-columns: 1fr; padding-bottom: var(--ux-shell-padding); }
-  .sidebar-launcher { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .launcher-button { min-height: 62px; }
-  .launcher-icon { width: 34px; height: 34px; font-size: 20px; }
+  .sidebar-launcher { position: static; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: max-content; align-content: start; }
+  .launcher-icon { font-size: 20px; }
   .view { padding: 20px; }
   .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid, .access-pin-panel, .pin-form-row, .sync-rom-panel, .sync-running-panel { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
