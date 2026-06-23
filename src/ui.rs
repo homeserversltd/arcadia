@@ -1782,7 +1782,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
                     (gamepad_control("R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-shoulder ux-gamepad-shoulder--trigger"))
                 }
                 div class="ux-gamepad-left" {
-                    (gamepad_stick("Left Stick", binding_for("Left Stick"), active.contains(&"Left Stick")))
+                    (gamepad_stick("Left Stick X", binding_for("Left Stick X"), active.contains(&"Left Stick X") || active.contains(&"Axis 0")))
                     (gamepad_dpad(active.contains(&"D-pad"), connected))
                 }
                 div class="ux-gamepad-center" {
@@ -1797,7 +1797,7 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
                         (gamepad_control("B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face ux-gamepad-face--b"))
                         (gamepad_control("A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face ux-gamepad-face--a"))
                     }
-                    (gamepad_stick("Right Stick", binding_for("Right Stick"), active.contains(&"Right Stick")))
+                    (gamepad_stick("Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3")))
                 }
             }
         }

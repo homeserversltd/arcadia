@@ -272,6 +272,10 @@ async fn main() -> anyhow_free::Result<()> {
             post(action_controllers_assign_ppsspp),
         )
         .route(
+            "/api/actions/controllers-ramrod-all",
+            post(action_controllers_ramrod_all),
+        )
+        .route(
             "/api/actions/clear-artwork-cache",
             post(action_clear_artwork_cache),
         )

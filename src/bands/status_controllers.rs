@@ -1,3 +1,5 @@
+include!("controller_writers/mod.rs");
+
 fn controller_status() -> ControllerStatus {
     let devices = controller_devices();
     let detected_count = devices.len();
@@ -221,59 +223,6 @@ fn controller_profile_status(device: Option<&ControllerDeviceStatus>) -> Control
     }
 }
 
-fn default_controller_bindings() -> Vec<ControllerBindingStatus> {
-    [
-        ("A", "button 0"),
-        ("B", "button 1"),
-        ("X", "button 2"),
-        ("Y", "button 3"),
-        ("L1", "button 4"),
-        ("R1", "button 5"),
-        ("L2", "axis 2"),
-        ("R2", "axis 5"),
-        ("Select", "button 6"),
-        ("Start", "button 7"),
-        ("D-pad Up", "hat 0 up"),
-        ("D-pad Down", "hat 0 down"),
-        ("D-pad Left", "hat 0 left"),
-        ("D-pad Right", "hat 0 right"),
-        ("Left Stick", "axis 0"),
-        ("Right Stick", "axis 2"),
-    ]
-    .into_iter()
-    .map(|(control, binding)| ControllerBindingStatus { control: control.to_string(), binding: binding.to_string(), pressed: false })
-    .collect()
-}
-
-fn controller_bindings_for_profile(profile: &str) -> Vec<ControllerBindingStatus> {
-    let mut bindings = default_controller_bindings();
-    match profile.trim().to_ascii_lowercase().as_str() {
-        "nintendo" => {
-            upsert_binding(&mut bindings, "A", "button 1");
-            upsert_binding(&mut bindings, "B", "button 0");
-            upsert_binding(&mut bindings, "X", "button 3");
-            upsert_binding(&mut bindings, "Y", "button 2");
-        }
-        "playstation" => {
-            upsert_binding(&mut bindings, "A", "button 1");
-            upsert_binding(&mut bindings, "B", "button 2");
-            upsert_binding(&mut bindings, "X", "button 0");
-            upsert_binding(&mut bindings, "Y", "button 3");
-        }
-        "arcade" => {
-            upsert_binding(&mut bindings, "A", "button 0");
-            upsert_binding(&mut bindings, "B", "button 1");
-            upsert_binding(&mut bindings, "X", "button 4");
-            upsert_binding(&mut bindings, "Y", "button 5");
-            upsert_binding(&mut bindings, "L1", "button 2");
-            upsert_binding(&mut bindings, "R1", "button 3");
-        }
-        _ => {}
-    }
-    bindings
-}
-
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ControllerBindRequest {
@@ -287,64 +236,6 @@ struct ControllerProfileApplyRequest {
     profile: String,
 }
 
-fn saved_or_default_controller_bindings() -> Vec<ControllerBindingStatus> {
-    let path = controller_profile_path();
-    let Ok(text) = fs::read_to_string(&path) else { return default_controller_bindings(); };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { return default_controller_bindings(); };
-    let items = value
-        .get("tuples")
-        .and_then(|v| v.as_array())
-        .or_else(|| value.get("bindings").and_then(|v| v.as_array()));
-    let Some(items) = items else { return default_controller_bindings(); };
-    let mut bindings = default_controller_bindings();
-    for item in items {
-        let Some(control) = item.get("control").and_then(|v| v.as_str()) else { continue; };
-        let input = item
-            .get("input")
-            .and_then(|v| v.as_str())
-            .or_else(|| item.get("binding").and_then(|v| v.as_str()));
-        let Some(input) = input else { continue; };
-        upsert_binding(&mut bindings, control, input);
-    }
-    bindings
-}
-
-fn upsert_binding(bindings: &mut Vec<ControllerBindingStatus>, control: &str, input: &str) {
-    let canonical = canonical_control_name(control);
-    if let Some(existing) = bindings.iter_mut().find(|b| canonical_control_name(&b.control) == canonical) {
-        existing.control = canonical;
-        existing.binding = input.to_string();
-        existing.pressed = false;
-    } else {
-        bindings.push(ControllerBindingStatus { control: canonical, binding: input.to_string(), pressed: false });
-    }
-}
-
-fn canonical_control_name(control: &str) -> String {
-    match control.trim().to_ascii_lowercase().as_str() {
-        "left stick" | "left stick x" | "leftstick" => "Left Stick".to_string(),
-        "right stick" | "right stick x" | "rightstick" => "Right Stick".to_string(),
-        "d-pad up" | "dpad up" | "up" => "D-pad Up".to_string(),
-        "d-pad down" | "dpad down" | "down" => "D-pad Down".to_string(),
-        "d-pad left" | "dpad left" | "left" => "D-pad Left".to_string(),
-        "d-pad right" | "dpad right" | "right" => "D-pad Right".to_string(),
-        other => other.split_whitespace().map(|part| {
-            if part.eq_ignore_ascii_case("d-pad") { "D-pad".to_string() }
-            else if part.len() <= 2 { part.to_ascii_uppercase() }
-            else { let mut chars = part.chars(); match chars.next() { Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(), None => String::new() } }
-        }).collect::<Vec<_>>().join(" "),
-    }
-}
-
-fn binding_for_control(control: &str) -> String {
-    let canonical = canonical_control_name(control);
-    default_controller_bindings()
-        .into_iter()
-        .find(|b| b.control == canonical)
-        .map(|b| b.binding)
-        .unwrap_or_else(|| format!("virtual:{}", safe_file_stem(&canonical)))
-}
-
 fn capture_or_default_binding(status: &ControllerStatus, control: &str, explicit: Option<String>) -> String {
     if let Some(input) = explicit.filter(|value| !value.trim().is_empty()) {
         return input;
@@ -356,32 +247,6 @@ fn capture_or_default_binding(status: &ControllerStatus, control: &str, explicit
         .or_else(|| status.live_input.axes.first())
         .map(|event| event.binding.clone())
         .unwrap_or_else(|| binding_for_control(control))
-}
-
-fn write_controller_profile(path: &Path, device_name: &str, handler: &str, bindings: &[ControllerBindingStatus]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() { fs::create_dir_all(parent)?; }
-    let body = controller_profile_json(device_name, handler, bindings);
-    fs::write(path, body)
-}
-
-fn controller_profile_json(device_name: &str, handler: &str, bindings: &[ControllerBindingStatus]) -> String {
-    let tuples_json = bindings
-        .iter()
-        .map(|b| format!("    {{\"control\":\"{}\",\"input\":\"{}\"}}", json_escape(&canonical_control_name(&b.control)), json_escape(&b.binding)))
-        .collect::<Vec<_>>()
-        .join(",\n");
-    format!("{{\n  \"schema\": \"arcadia.controller_profile.v1\",\n  \"name\": \"Default\",\n  \"device\": \"{}\",\n  \"handler\": \"{}\",\n  \"tuples\": [\n{}\n  ]\n}}\n", json_escape(device_name), json_escape(handler), tuples_json)
-}
-
-fn controller_profile_root() -> PathBuf {
-    if let Ok(root) = env::var("ARCADIA_CONTROLLER_PROFILE_ROOT") {
-        return PathBuf::from(root);
-    }
-    let primary = PathBuf::from("/var/lib/arcadia/controller-profiles");
-    if primary.exists() || primary.parent().map(|p| p.exists() && is_writable_dir(p)).unwrap_or(false) {
-        return primary;
-    }
-    PathBuf::from("/tmp/arcadia/controller-profiles")
 }
 
 fn virtual_controller_device(status: &ControllerStatus) -> (String, String) {
@@ -587,7 +452,11 @@ async fn action_controllers_save_profile() -> (StatusCode, Json<ConsoleActionRes
     if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-save-profile", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not save controller profile: {}", error));
     }
-    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-save-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: "Controller profile saved.".to_string(), stdout: path.display().to_string(), stderr: String::new() }))
+    let ramrod_detail = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+        Ok(receipt) => ramrod_stdout(&receipt),
+        Err(error) => format!("profile saved; ramrod deferred: {error}"),
+    };
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-save-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: "Controller profile saved and ramrodded.".to_string(), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
 }
 
 async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileApplyRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -602,7 +471,11 @@ async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileA
     if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-apply-profile", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not apply controller profile: {}", error));
     }
-    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-apply-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} profile applied.", profile), stdout: path.display().to_string(), stderr: String::new() }))
+    let ramrod_detail = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+        Ok(receipt) => ramrod_stdout(&receipt),
+        Err(error) => format!("profile applied; ramrod deferred: {error}"),
+    };
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-apply-profile", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} profile applied and ramrodded.", profile), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
 }
 
 async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -619,7 +492,11 @@ async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> 
     if let Err(error) = write_controller_profile(&path, &device_name, &handler, &bindings) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-bind", "/var/lib/arcadia/controller-profiles/default.json", &format!("Could not write controller binding: {}", error));
     }
-    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-bind", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} mapped to {}.", control, binding), stdout: binding, stderr: String::new() }))
+    let ramrod_note = match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+        Ok(_) => " Tuple ramrodded to emulator strata.".to_string(),
+        Err(_) => String::new(),
+    };
+    (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-bind", command: "/var/lib/arcadia/controller-profiles/default.json", exit_code: Some(0), message: format!("{} mapped to {}.{ramrod_note}", control, binding), stdout: binding, stderr: String::new() }))
 }
 
 async fn action_controllers_assign_retroarch() -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -642,6 +519,35 @@ async fn action_controllers_assign_ppsspp() -> (StatusCode, Json<ConsoleActionRe
     action_controllers_assign_emulator("PPSSPP")
 }
 
+async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionResponse>) {
+    let status = controller_status();
+    let (device_name, handler) = virtual_controller_device(&status);
+    let bindings = saved_or_default_controller_bindings();
+    match ramrod_controller_profiles(&device_name, &handler, &bindings, &status.emulators) {
+        Ok(receipt) => (
+            StatusCode::OK,
+            Json(ConsoleActionResponse {
+                ok: true,
+                action: "controllers-ramrod-all",
+                command: "controller-profile-ramrod",
+                exit_code: Some(0),
+                message: format!(
+                    "Tuple profile ramrodded across {} emulator strata.",
+                    receipt.entries.len()
+                ),
+                stdout: ramrod_stdout(&receipt),
+                stderr: String::new(),
+            }),
+        ),
+        Err(error) => console_action_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "controllers-ramrod-all",
+            "controller-profile-ramrod",
+            &format!("Could not ramrod controller profile: {error}"),
+        ),
+    }
+}
+
 fn action_controllers_assign_emulator(emulator: &str) -> (StatusCode, Json<ConsoleActionResponse>) {
     let status = controller_status();
     let (device_name, handler) = virtual_controller_device(&status);
@@ -656,84 +562,4 @@ fn action_controllers_assign_emulator(emulator: &str) -> (StatusCode, Json<Conso
     }
 }
 
-fn write_emulator_profile(emulator: &str, device_name: &str, handler: &str, bindings: &[ControllerBindingStatus], installed: bool, root: &Path) -> std::io::Result<PathBuf> {
-    let dir = root.join("emulators").join(safe_file_stem(emulator));
-    fs::create_dir_all(&dir)?;
-    let staged = dir.join("default-profile.txt");
-    let body = emulator_profile_body(emulator, device_name, handler, bindings, installed);
-    fs::write(&staged, &body)?;
-    if installed {
-        if emulator == "RetroArch" {
-            let autoconfig = dir.join(format!("{}.cfg", safe_file_stem(device_name)));
-            fs::write(&autoconfig, retroarch_autoconfig_from_bindings(device_name, bindings))?;
-        } else {
-            fs::write(dir.join("applied.ini"), &body)?;
-        }
-    }
-    Ok(staged)
-}
 
-fn emulator_profile_body(emulator: &str, device_name: &str, handler: &str, bindings: &[ControllerBindingStatus], installed: bool) -> String {
-    let mut lines = vec![
-        format!("# Arcadia controller profile for {}", emulator),
-        format!("device={}", device_name),
-        format!("handler={}", handler),
-        format!("mode={}", if installed { "assigned" } else { "staged-for-install" }),
-    ];
-    match emulator {
-        "RetroArch" => lines.extend(bindings.iter().map(|b| format!("{}={}", retroarch_key_for_control(&b.control), retroarch_value_for_binding(&b.binding)))),
-        "Dolphin" => lines.extend(bindings.iter().map(|b| format!("Arcadia/{}/{} = {}", device_name, b.control, dolphin_value_for_binding(&b.binding)))),
-        "DuckStation" => lines.extend(bindings.iter().map(|b| format!("Pad1/{} = {}", b.control.replace(' ', ""), duckstation_value_for_binding(&b.binding)))),
-        "PCSX2" => lines.extend(bindings.iter().map(|b| format!("Pad1_{} = {}", b.control.replace(' ', ""), pcsx2_value_for_binding(&b.binding)))),
-        "PPSSPP" => lines.extend(bindings.iter().map(|b| format!("{} = {}", b.control.replace(' ', "_"), ppsspp_value_for_binding(&b.binding)))),
-        _ => lines.extend(bindings.iter().map(|b| format!("{}={}", b.control, b.binding))),
-    }
-    format!("{}\n", lines.join("\n"))
-}
-
-fn retroarch_autoconfig_from_bindings(name: &str, bindings: &[ControllerBindingStatus]) -> String {
-    let mut lines = vec![format!("input_device = \"{}\"", name), "input_driver = \"udev\"".to_string()];
-    lines.extend(bindings.iter().map(|b| format!("{} = \"{}\"", retroarch_key_for_control(&b.control), retroarch_value_for_binding(&b.binding))));
-    format!("{}\n", lines.join("\n"))
-}
-
-fn retroarch_key_for_control(control: &str) -> &'static str {
-    match control {
-        "A" => "input_a_btn", "B" => "input_b_btn", "X" => "input_x_btn", "Y" => "input_y_btn",
-        "L1" => "input_l_btn", "R1" => "input_r_btn", "L2" => "input_l2_axis", "R2" => "input_r2_axis",
-        "Start" => "input_start_btn", "Select" => "input_select_btn", "Left Stick" => "input_l3_btn", "Right Stick" => "input_r3_btn",
-        "D-pad Up" => "input_up_btn", "D-pad Down" => "input_down_btn", "D-pad Left" => "input_left_btn", "D-pad Right" => "input_right_btn",
-        _ => "input_menu_toggle_btn",
-    }
-}
-
-fn binding_number(binding: &str) -> String {
-    binding.split_whitespace().last().unwrap_or(binding).to_string()
-}
-fn retroarch_value_for_binding(binding: &str) -> String { if binding.starts_with("button ") { binding_number(binding) } else if binding.contains("up") { "h0up".to_string() } else if binding.contains("down") { "h0down".to_string() } else if binding.contains("left") { "h0left".to_string() } else if binding.contains("right") { "h0right".to_string() } else { binding.to_string() } }
-fn dolphin_value_for_binding(binding: &str) -> String { format!("SDL/0/{}", binding.replace(' ', "_")) }
-fn duckstation_value_for_binding(binding: &str) -> String { format!("SDL-0/{}", binding.replace(' ', "_")) }
-fn pcsx2_value_for_binding(binding: &str) -> String { format!("SDL-0:{}", binding.replace(' ', "_")) }
-fn ppsspp_value_for_binding(binding: &str) -> String { format!("SDL.{}", binding.replace(' ', "_")) }
-
-
-fn controller_profile_path() -> PathBuf {
-    controller_profile_root().join("default.json")
-}
-
-fn is_writable_dir(path: &Path) -> bool {
-    let probe = path.join(format!(".arcadia-write-probe-{}", std::process::id()));
-    match fs::write(&probe, b"probe") {
-        Ok(()) => {
-            let _ = fs::remove_file(probe);
-            true
-        }
-        Err(_) => false,
-    }
-}
-
-fn json_escape(value: &str) -> String { value.replace('\\', "\\\\").replace('"', "\\\"") }
-
-fn safe_file_stem(value: &str) -> String {
-    value.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect::<String>().trim_matches('-').to_string()
-}
