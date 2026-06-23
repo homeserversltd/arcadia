@@ -9,8 +9,6 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                 (home_network_card(status))
                 (home_updates_card(status))
                 (home_local_ai_card(status))
-                (home_system_health_card(status))
-                (home_identity_card(status))
                 @if status.arcadia.service != "running" {
                     (home_gamescope_card(status))
                 }
@@ -404,52 +402,6 @@ fn home_detail_row(label: &str, value: &str, inline_count: bool) -> Markup {
         div class=(row_class) aria-label=(format!("{label} {value}")) {
             span { (label) }
             strong { (value) }
-        }
-    }
-}
-
-fn home_system_health_card(status: &ConsoleStatus) -> Markup {
-    let service_total = status.system.services.len();
-    let running = status
-        .system
-        .services
-        .iter()
-        .filter(|svc| matches!(svc.state.as_str(), "running" | "available" | "enabled"))
-        .count();
-    let failed = service_total.saturating_sub(running);
-    html! {
-        article class=(if failed > 0 { "operational-card health-home-card attention" } else { "operational-card health-home-card" }) {
-            div class="card-head" aria-label="System Health" { h3 { "Health" } strong { (running) "/" (service_total) } }
-            div class="home-service-list" aria-label="Appliance services" {
-                @for svc in status.system.services.iter().take(2) {
-                    div class="home-service-row" data-label=(&svc.name) aria-label=(format!("{} {}", svc.name, title_case_state_like(&svc.state))) {
-                        b class=(status_class(&svc.state)) data-state=(&svc.state) { (if matches!(svc.state.as_str(), "running" | "available" | "enabled") { "✓" } else { "!" }) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn home_identity_card(status: &ConsoleStatus) -> Markup {
-    let lock_state = if status.gui_pin.pin_required {
-        "PIN required"
-    } else {
-        "Open"
-    };
-    let trust_state = if status.system.trust.mode == "https" {
-        "Secure web"
-    } else {
-        "Local HTTP"
-    };
-    html! {
-        article class="operational-card identity-home-card" {
-            div class="card-head" aria-label="Appliance" { h3 { "Appliance" } strong { (&status.identity.hostname) } }
-            div class="state-rows state-rows--compact" {
-                (state_row("Address", &status.network.ip_address))
-                @if status.gui_pin.pin_required { (state_row("Access", lock_state)) }
-                @if status.system.trust.mode == "https" { (state_row("Trust", trust_state)) }
-            }
         }
     }
 }

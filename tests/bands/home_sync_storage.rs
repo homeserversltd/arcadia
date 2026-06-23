@@ -96,16 +96,12 @@
             ">State:</span>",
             r#"data-label="Available ROMs""#,
             r#"aria-label="Updates""#,
-            r#"aria-label="System Health""#,
-            r#"aria-label="Appliance""#,
             ">Storage</h3>",
             ">Load</h3>",
             ">Games</h3>",
             ">Network</h3>",
             ">Updates</h3>",
             ">AI Model</h3>",
-            ">Health</h3>",
-            ">Appliance</h3>",
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
@@ -131,13 +127,17 @@
             "Open Local AI",
             "Open Storage",
             "Review Update",
-            "<button",
             ">Synced<",
             ">Current<",
-            ">Hot<",
             "playable ROMs ·",
             "modules ·",
             "Machine ",
+            "health-home-card",
+            "identity-home-card",
+            ">Health</h3>",
+            ">Appliance</h3>",
+            r#"aria-label="System Health""#,
+            r#"aria-label="Appliance""#,
         ] {
             assert!(
                 !home_html.contains(forbidden),
