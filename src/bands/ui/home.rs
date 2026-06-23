@@ -343,42 +343,19 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_updates_card(status: &ConsoleStatus) -> Markup {
-    let toggle_line = harmonia_module_toggle_line(&status.updates.modules);
-    let pressure_line = harmonia_update_pressure_label(&status.updates);
-    let needs_attention = pressure_line != "No pressure";
     let (ready, enabled) = harmonia_module_readiness(&status.updates.modules);
-    let ready_line = format!("{ready}/{enabled} installed");
-    let show_blocker = status.updates.first_missing_signal != "none"
-        && status.updates.first_missing_signal != "not-checked";
-    let attention_modules: Vec<_> = status
-        .updates
-        .modules
-        .iter()
-        .filter(|module| module.enabled && !module.present)
-        .take(2)
-        .collect();
+    let ratio = format!("{ready}/{enabled}");
+    let needs_attention = ready < enabled
+        || !status.updates.check_ok && status.updates.check_missing_signal != "not-checked"
+        || !status.updates.suite_ok;
     html! {
-        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) data-home-update-pressure=(pressure_line.as_str()) {
+        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) {
             div class="card-head" aria-label="Updates" {
                 h3 { "Updates" }
-                strong { (toggle_line) }
+                strong { (ratio) }
             }
-            div class="state-rows state-rows--compact" {
-                (state_row("Pressure", &pressure_line))
-                (state_row("Ready", &ready_line))
-                @if show_blocker {
-                    (state_row("Blocker", &harmonia_missing_signal_label(&status.updates.first_missing_signal)))
-                }
-            }
-            @if !attention_modules.is_empty() {
-                div class="home-module-list" aria-label="Harmonia modules needing attention" {
-                    @for module in attention_modules {
-                        div class="home-module-row" aria-label=(format!("{} missing", module.label)) {
-                            span { (module.label) }
-                            b class="system-status system-status--error" { "!" }
-                        }
-                    }
-                }
+            div class="inline-actions inline-actions--compact updates-home-actions" {
+                (action_button(ButtonVariant::Primary, "Check", "check-updates", "/api/actions/check-updates"))
             }
         }
     }
