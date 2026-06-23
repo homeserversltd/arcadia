@@ -264,6 +264,10 @@
             "ux-gamepad-dpad",
             "ux-gamepad-face-diamond",
             "ux-gamepad-shoulder",
+            "ux-gamepad-wing",
+            "ux-gamepad-bridge",
+            "ux-gamepad-left__stick",
+            "ux-gamepad-right__stick",
             "controller-profile-card",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
@@ -303,7 +307,8 @@
         assert!(APP_CSS.contains(".controller-button-dot--active"));
         assert!(UX_CSS.contains(".ux-controller-silhouette"));
         assert!(UX_CSS.contains(".ux-gamepad-body"));
-        assert!(UX_CSS.contains(".ux-gamepad-wing"));
+        assert!(UX_CSS.contains("aspect-ratio: 2.35 / 1"));
+        assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
         assert!(UX_CSS.contains(".ux-gamepad-face-diamond"));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
         assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
