@@ -46,35 +46,22 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         (action_button(ButtonVariant::Secondary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
                         @if connected {
                             (action_button(ButtonVariant::Secondary, "Test buttons", "controllers-test", "/api/actions/controllers-test"))
+                            button class="btn btn--primary" type="button" data-controller-programmer-open { "Map buttons" }
                         } @else {
                             button class="btn btn--secondary" type="button" disabled title="Connect a gamepad before testing buttons." { "Test buttons" }
+                            button class="btn btn--primary" type="button" disabled title="Connect a gamepad before mapping buttons." { "Map buttons" }
                         }
                         (action_button(ButtonVariant::Primary, "Push to all games", "controllers-ramrod-all", "/api/actions/controllers-ramrod-all"))
                     }
                 }
 
                 div class="controls-main" {
-                    section class="controls-card controls-card--layout" aria-label="Button layout" {
-                        div class="controls-card__head" {
-                            div {
-                                strong { "Button layout" }
-                                p { "One map for every game. Tap a control, then press it on your gamepad." }
-                            }
-                            button class="btn btn--primary" type="button" data-controller-programmer-open { "Map on gamepad" }
-                        }
-                        (controller_bindings_grid(&status.controllers.profile.bindings, connected))
-                    }
-
                     section class="controls-card controls-card--live controllers-live-test" aria-label="Live input" data-controller-live-input {
                         div class="controls-card__head" {
                             strong { "Live input" }
                             span class=(format!("system-status system-status--{}", if status.controllers.live_input.state == "active" { "available" } else { "starting" })) data-controller-input-state {
                                 (title_case_state_like(&status.controllers.live_input.state))
                             }
-                        }
-                        div class="controls-live-meter" aria-hidden="true" {
-                            span class="controls-live-meter__ring" {}
-                            span class="controls-live-meter__core" {}
                         }
                         p class="controls-live-device" data-controller-input-device=(status.controllers.live_input.device) {
                             (status.controllers.live_input.device)
@@ -90,17 +77,10 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                                 span class="controller-axis-pill controller-button-dot--active" { (pressed.control) }
                             }
                         }
-                        div class="controls-presets" aria-label="Layout presets" {
-                            span class="controls-presets__label" { "Layout style" }
-                            div class="controller-profile-cards controls-preset-grid" {
-                                @for preset in &status.controllers.profile_presets {
-                                    (controller_profile_preset_card(preset, connected))
-                                }
-                            }
-                        }
-                        div class="controls-card__actions controllers-actions" {
-                            (action_button(ButtonVariant::Primary, "Save layout", "controllers-save-profile", "/api/actions/controllers-save-profile"))
-                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole remembers one button layout for your gamepad.\n\n1. Choose a layout style (Xbox, Nintendo, PlayStation, or Arcade).\n2. Tap Map on gamepad or any button row, then press the matching control.\n3. Save layout, then Push to all games so RetroArch, Dolphin, and other emulators stay in sync."))
+                        p class="controls-mapping-teaser" {
+                            "Button mapping opens in a dedicated window — tap "
+                            strong { "Map buttons" }
+                            " to pair controls with your gamepad."
                         }
                     }
                 }
@@ -139,23 +119,41 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
 
                 template id="controller-programmer-template" {
                     div class="controller-programmer-modal" data-controller-programmer-modal data-controller-broadcast-ms="60" data-controller-rapid-fire-ms="60" {
-                        (controller_silhouette(status, connected))
-                        div class="controller-programmer-side" {
-                            div class="controls-card__head" {
-                                strong { "Live preview" }
-                                span class="system-status system-status--starting" data-controller-programmer-state { "Listening" }
+                        div class="controller-map-stage" {
+                            (controller_silhouette(status, connected))
+                        }
+                        div class="controller-map-workbench" {
+                            section class="controller-map-bindings" aria-label="Button layout" {
+                                div class="controls-card__head" {
+                                    div {
+                                        strong { "Button pairs" }
+                                        p { "Tap a control on the gamepad or a row below, then press the matching button on your controller." }
+                                    }
+                                    span class="system-status system-status--starting" data-controller-programmer-state { "Listening" }
+                                }
+                                (controller_bindings_grid(&status.controllers.profile.bindings, connected))
                             }
-                            p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
-                            div class="controller-axis-strip" data-controller-programmer-axes {
-                                @for axis in &status.controllers.live_input.axes {
-                                    span class="controller-axis-pill" { (axis.control) " " (axis.binding) }
+                            section class="controller-map-presets" aria-label="Layout presets" {
+                                span class="controls-presets__label" { "Layout style" }
+                                div class="controller-profile-cards controls-preset-grid" {
+                                    @for preset in &status.controllers.profile_presets {
+                                        (controller_profile_preset_card(preset, connected))
+                                    }
                                 }
                             }
-                            p class="controls-map-hint" { "Select a button on the gamepad, then press the matching control on your physical controller." }
-                            div class="controls-card__actions" {
-                                button class="btn btn--secondary" type="button" data-controller-broadcast-toggle { "Pause live preview" }
-                                output class="controls-map-readout" data-controller-broadcast-readout { "Live" }
+                            section class="controller-map-live" aria-label="Live preview" {
+                                p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
+                                div class="controller-axis-strip" data-controller-programmer-axes {}
+                                p class="controls-map-hint" { "Physical presses light up on the gamepad and update the tuple pairs." }
+                                div class="controls-card__actions controllers-actions" {
+                                    button class="btn btn--secondary" type="button" data-controller-broadcast-toggle { "Pause live preview" }
+                                    output class="controls-map-readout" data-controller-broadcast-readout { "Live" }
+                                }
                             }
+                        }
+                        footer class="controller-map-footer controllers-actions" {
+                            (action_button(ButtonVariant::Primary, "Save layout", "controllers-save-profile", "/api/actions/controllers-save-profile"))
+                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole remembers one button layout for your gamepad.\n\n1. Choose a layout style (Xbox, Nintendo, PlayStation, or Arcade).\n2. Tap a control on the gamepad or a row, then press the matching button.\n3. Save layout, then Push to all games so every emulator stays in sync."))
                         }
                     }
                 }
@@ -180,7 +178,7 @@ fn controller_bindings_grid(bindings: &[crate::ControllerBindingStatus], connect
     html! {
         div class="controls-bindings" data-controller-mapping-editor="default" {
             @if bindings.is_empty() {
-                p class="controls-bindings__empty" { "No button layout saved yet. Connect a gamepad and tap Map on gamepad to begin." }
+                p class="controls-bindings__empty" { "No button layout saved yet. Connect a gamepad and tap Map buttons to begin." }
             } @else {
                 @for binding in bindings {
                     button class="controls-binding-row" type="button" data-controller-control=(binding.control) data-controller-bind-row="true" aria-label=(format!("{} mapped to {}", binding.control, binding.binding)) {

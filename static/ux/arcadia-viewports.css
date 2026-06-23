@@ -98,6 +98,10 @@
   .controls-status__title, .controls-status__detail { white-space: normal; }
   .controls-bindings { grid-template-columns: 1fr; max-height: none; }
   .controls-games-grid { grid-template-columns: 1fr; }
-  .controller-programmer-modal { min-width: 0; }
-  .controller-programmer-side { grid-template-columns: 1fr; }
+  .controller-programmer-modal {
+    min-width: 0;
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+  .controller-map-presets .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
