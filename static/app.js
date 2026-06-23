@@ -1437,27 +1437,25 @@ function bindControllerProgramming() {
     const ratio = Number(percent) / 100;
     return Math.min(maxRatio, Math.max(minRatio, ratio));
   };
-  const dampenToSensitivity = (dampenPercent) => {
-    const dampen = Math.min(90, Math.max(0, Number(dampenPercent) || 0));
-    return Math.max(0.1, 1 - (dampen / 100) * 0.9);
-  };
-  const sensitivityToDampen = (sensitivity) => {
-    const value = Math.min(1, Math.max(0.1, Number(sensitivity) || 1));
-    return Math.round(((1 - value) / 0.9) * 100);
-  };
+  const defaultTuning = () => ({
+    leftStickDeadzone: 0.15,
+    rightStickDeadzone: 0.15,
+    leftStickSensitivity: 1,
+    rightStickSensitivity: 1,
+  });
   const hydrateTunerSliders = (root, tuning = {}) => {
     const apply = (side, deadzone, sensitivity) => {
       const deadzoneInput = root.querySelector(`[data-controller-tuner-deadzone="${side}"]`);
-      const dampenInput = root.querySelector(`[data-controller-tuner-dampen="${side}"]`);
+      const sensitivityInput = root.querySelector(`[data-controller-tuner-sensitivity="${side}"]`);
       const deadzoneOut = root.querySelector(`[data-controller-tuner-deadzone-value="${side}"]`);
-      const dampenOut = root.querySelector(`[data-controller-tuner-dampen-value="${side}"]`);
+      const sensitivityOut = root.querySelector(`[data-controller-tuner-sensitivity-value="${side}"]`);
       if (deadzoneInput) {
         deadzoneInput.value = String(Math.round((deadzone ?? 0.15) * 100));
         if (deadzoneOut) deadzoneOut.textContent = tuningPercent(deadzone ?? 0.15);
       }
-      if (dampenInput) {
-        dampenInput.value = String(sensitivityToDampen(sensitivity ?? 1));
-        if (dampenOut) dampenOut.textContent = `${dampenInput.value}%`;
+      if (sensitivityInput) {
+        sensitivityInput.value = String(Math.round((sensitivity ?? 1) * 100));
+        if (sensitivityOut) sensitivityOut.textContent = tuningPercent(sensitivity ?? 1);
       }
     };
     apply('left', tuning.leftStickDeadzone, tuning.leftStickSensitivity);
@@ -1466,8 +1464,8 @@ function bindControllerProgramming() {
   const readTunerPayload = (root) => ({
     leftStickDeadzone: tuningFromPercent(root.querySelector('[data-controller-tuner-deadzone="left"]')?.value, 0, 0.4),
     rightStickDeadzone: tuningFromPercent(root.querySelector('[data-controller-tuner-deadzone="right"]')?.value, 0, 0.4),
-    leftStickSensitivity: dampenToSensitivity(root.querySelector('[data-controller-tuner-dampen="left"]')?.value),
-    rightStickSensitivity: dampenToSensitivity(root.querySelector('[data-controller-tuner-dampen="right"]')?.value),
+    leftStickSensitivity: tuningFromPercent(root.querySelector('[data-controller-tuner-sensitivity="left"]')?.value, 0.1, 1),
+    rightStickSensitivity: tuningFromPercent(root.querySelector('[data-controller-tuner-sensitivity="right"]')?.value, 0.1, 1),
   });
   const normalizeStickAxis = (value) => {
     const n = Number(value);
@@ -1514,19 +1512,26 @@ function bindControllerProgramming() {
   };
   let tunerTimer = null;
   const bindTunerControls = (root) => {
-    root.querySelectorAll('[data-controller-tuner-deadzone], [data-controller-tuner-dampen]').forEach((input) => {
+    root.querySelectorAll('[data-controller-tuner-deadzone], [data-controller-tuner-sensitivity]').forEach((input) => {
       if (input.dataset.controllerTunerInputBound) return;
       input.dataset.controllerTunerInputBound = 'true';
       input.addEventListener('input', () => {
-        const side = input.dataset.controllerTunerDeadzone || input.dataset.controllerTunerDampen;
+        const side = input.dataset.controllerTunerDeadzone || input.dataset.controllerTunerSensitivity;
         const deadzoneOut = root.querySelector(`[data-controller-tuner-deadzone-value="${side}"]`);
-        const dampenOut = root.querySelector(`[data-controller-tuner-dampen-value="${side}"]`);
+        const sensitivityOut = root.querySelector(`[data-controller-tuner-sensitivity-value="${side}"]`);
         const deadzoneInput = root.querySelector(`[data-controller-tuner-deadzone="${side}"]`);
-        const dampenInput = root.querySelector(`[data-controller-tuner-dampen="${side}"]`);
+        const sensitivityInput = root.querySelector(`[data-controller-tuner-sensitivity="${side}"]`);
         if (deadzoneOut && deadzoneInput) deadzoneOut.textContent = `${deadzoneInput.value}%`;
-        if (dampenOut && dampenInput) dampenOut.textContent = `${dampenInput.value}%`;
+        if (sensitivityOut && sensitivityInput) sensitivityOut.textContent = `${sensitivityInput.value}%`;
       });
     });
+    const reset = root.querySelector('[data-controller-tuner-reset]:not([data-controller-tuner-reset-bound])');
+    if (reset) {
+      reset.dataset.controllerTunerResetBound = 'true';
+      reset.addEventListener('click', () => {
+        hydrateTunerSliders(root, defaultTuning());
+      });
+    }
     const apply = root.querySelector('[data-controller-tuner-apply]:not([data-controller-tuner-apply-bound])');
     if (apply) {
       apply.dataset.controllerTunerApplyBound = 'true';
@@ -1537,10 +1542,10 @@ function bindControllerProgramming() {
             ...scopedControllerBody(root),
             ...readTunerPayload(root),
           });
-          PopupManager.showToast(data.message || 'Stick dampening applied', data.ok ? 'success' : 'error');
+          PopupManager.showToast(data.message || 'Controller tuning applied', data.ok ? 'success' : 'error');
           if (data.ok) PopupManager.closeModal();
         } catch (_) {
-          PopupManager.showToast('Could not apply stick dampening', 'error');
+          PopupManager.showToast('Could not apply controller tuning', 'error');
         } finally {
           apply.disabled = false;
         }
@@ -1590,11 +1595,11 @@ function bindControllerProgramming() {
       hydrateTunerSliders(body, entry?.tuning || state.profile?.tuning || {});
       const device = body.querySelector('[data-controller-tuner-device]');
       if (device) device.textContent = entry?.name || state.primaryDevice || 'No controller selected';
-      PopupManager.showModal({ title: 'Dampen sticks', body, hideDefaultAction: true });
+      PopupManager.showModal({ title: 'Tune controller', body, hideDefaultAction: true });
       const root = document.querySelector('[data-controller-tuner-modal]');
       if (root) startTunerLoop(root);
     } catch (_) {
-      PopupManager.showToast('Could not open stick dampening', 'error');
+      PopupManager.showToast('Could not open controller tuning', 'error');
     }
   };
 
