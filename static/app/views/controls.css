@@ -93,6 +93,7 @@
 .controller-pool-card {
   position: relative;
   min-width: 0;
+  min-height: var(--ux-controller-pool-card-min-height);
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   border: 1px solid var(--line);
@@ -108,15 +109,15 @@
   appearance: none;
   border: 0;
   border-radius: 0;
-  padding-inline-end: 28px;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
   display: grid;
-  gap: 4px;
-  align-content: start;
-  padding: 8px 9px 6px;
+  gap: 5px;
+  align-content: center;
+  min-height: 0;
+  padding: 10px 28px 10px 11px;
 }
 .controller-pool-card--selected .controller-pool-card__select {
   background: color-mix(in srgb, var(--good) 10%, transparent);
@@ -191,8 +192,8 @@
   width: 100%;
   border-radius: 0;
   border: 0;
-  min-height: 30px;
-  padding: 5px 8px;
+  min-height: var(--ux-controller-pool-action-min-height);
+  padding: 6px 8px;
   font-size: var(--ux-text-xs);
 }
 .controller-pool-card__tune {

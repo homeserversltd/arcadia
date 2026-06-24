@@ -351,6 +351,9 @@
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_CUBLET_COLS"));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
         assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
+        assert!(UX_CSS.contains("--ux-controller-pool-card-min-height:"));
+        assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-card-min-height)"));
+        assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-action-min-height)"));
         assert!(APP_CSS.contains("modal-card--fullscreen"));
         assert!(APP_CSS.contains("modal-overlay--fullscreen"));
         assert!(APP_JS.contains("clearOverlayVariants"));
