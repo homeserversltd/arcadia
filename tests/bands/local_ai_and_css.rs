@@ -354,6 +354,9 @@
         assert!(UX_CSS.contains("--ux-controller-pool-card-min-height:"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-card-min-height)"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-action-min-height)"));
+        assert!(UX_CSS.contains("--ux-gamepad-programmer-scale:"));
+        assert!(APP_CSS.contains("calc(min(62dvh, 520px) * var(--ux-gamepad-programmer-scale))"));
+        assert!(APP_CSS.contains("calc(52px * var(--ux-gamepad-programmer-scale))"));
         assert!(APP_CSS.contains("modal-card--fullscreen"));
         assert!(APP_CSS.contains("modal-overlay--fullscreen"));
         assert!(APP_JS.contains("clearOverlayVariants"));

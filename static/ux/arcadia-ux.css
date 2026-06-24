@@ -73,6 +73,8 @@
   --ux-controls-gap: 7px;
   --ux-controller-pool-card-min-height: 128px;
   --ux-controller-pool-action-min-height: 36px;
+  /* Map modal gamepad scale — 0.34 = 66% smaller than full programmer size. */
+  --ux-gamepad-programmer-scale: 0.34;
   --ux-controls-status-radius: 18px;
   --ux-controls-card-radius: 18px;
   --ux-controls-binding-cols: 3;
