@@ -1267,6 +1267,13 @@
         assert!(source.contains("Event::default().event(\"expired\")"));
         assert!(source.contains("const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 1;"));
         assert!(source.contains("tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS))"));
+        assert!(source.contains("fn api_root_telemetry_tick"));
+        assert!(source.contains("let root = api_root_telemetry_tick(&state);"));
+        assert!(
+            !source.contains("let root = api_root_object(&state);"),
+            "sse root ticks must not rebuild full console_status each second"
+        );
+        assert!(source.contains("let snapshot = api_root_object(&state);"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
     }
