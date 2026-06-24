@@ -9,8 +9,9 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
     let artwork_paired = status.library.artwork_paired_total;
     let artwork_missing = status.library.artwork_missing;
     let rejected = status.library.failed_games + status.library.skipped_games;
+    let games_total = library_games_total(status);
     let orb_state = sync_orb_state(status);
-    let orb_number = added.to_string();
+    let orb_number = games_total.to_string();
     let art_progress = sync_art_progress_pct(status);
     let artwork_line = sync_artwork_lane_label(artwork_paired, added);
     let primary_label = sync_primary_action_label(status, pending_changes, rejected);
@@ -33,7 +34,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         html! {
             section class="sync-admission-board sync-orb-board" data-sync-root="true" data-sync-orb-state=(orb_state) data-sync-debt=(sync_debt) data-beauty-debt=(beauty_debt) data-sync-games-total=(orb_number) data-sync-art-progress=(art_progress.to_string()) data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync orb" {
                 div class="sync-orb-stage ux-sync-orb-stage" data-sync-result=(sync_result_kind(status)) {
-                    div class=(format!("ux-sync-orb ux-sync-orb--{}", orb_state)) style=(format!("--sync-art-pct:{};", art_progress)) aria-label=(format!("{added} games, {art_progress} percent artwork paired")) {
+                    div class=(format!("ux-sync-orb ux-sync-orb--{}", orb_state)) style=(format!("--sync-art-pct:{};", art_progress)) aria-label=(format!("{games_total} games total ({native} GameScope + {added} ROMs), {art_progress} percent ROM artwork paired")) {
                         span class="ux-sync-orb-track" aria-hidden="true" {}
                         span class="ux-sync-orb-sweep" aria-hidden="true" {}
                         span class="ux-sync-orb-ring" aria-hidden="true" {}
@@ -94,7 +95,7 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
 fn sync_orb_state(status: &ConsoleStatus) -> &'static str {
     if status.library.last_sync_state == "running" {
         "syncing"
-    } else if status.library.total_detected_games == 0 {
+    } else if library_games_total(status) == 0 {
         "idle"
     } else if status.library.artwork_missing > 0 {
         "caveat"
@@ -225,6 +226,20 @@ fn sync_admitted_shelf(status: &ConsoleStatus) -> Markup {
             }
         }
     }
+}
+
+fn library_games_total(status: &ConsoleStatus) -> u64 {
+    status
+        .library
+        .gamescope_entries
+        .saturating_add(status.library.total_detected_games)
+}
+
+fn library_games_total_tip(status: &ConsoleStatus, detail: &str) -> String {
+    let total = library_games_total(status);
+    let native = status.library.gamescope_entries;
+    let roms = status.library.total_detected_games;
+    format!("{total} games total · {native} GameScope + {roms} ROMs · {detail}")
 }
 
 fn sync_has_history(status: &ConsoleStatus) -> bool {

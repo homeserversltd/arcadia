@@ -2,45 +2,31 @@ fn header(status: &ConsoleStatus) -> Markup {
     let sync_delta = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let games_total = status.library.total_detected_games;
+    let games_total = library_games_total(status);
     let games_total_label = games_total.to_string();
     let (sync_class, sync_tip) = if status.library.last_sync_state == "running" {
-        (
-            "warn",
-            format!("{games_total} games total · syncing now"),
-        )
+        ("warn", library_games_total_tip(status, "syncing now"))
     } else if status.library.last_sync_state == "error" {
-        (
-            "bad",
-            format!("{games_total} games total · last sync failed"),
-        )
+        ("bad", library_games_total_tip(status, "last sync failed"))
     } else if !sync_has_history(status) {
         (
             "idle",
-            format!(
-                "{games_total} games total · no verified sync receipt; current folders contain {games_total} playable ROM files"
-            ),
+            library_games_total_tip(status, "no verified sync receipt yet"),
         )
     } else if status.library.last_sync_state == "success" {
-        (
-            "idle",
-            format!("{games_total} games total · last sync counted {games_total} playable ROM files"),
-        )
+        ("idle", library_games_total_tip(status, "library current"))
     } else if status.library.sync_needed || sync_delta > 0 {
         (
             "warn",
-            format!("{games_total} games total · folder changes are queued for sync"),
+            library_games_total_tip(status, "folder changes are queued for sync"),
         )
     } else if status.library.sync_state == "unknown" {
         (
             "idle",
-            format!("{games_total} games total · sync state is unavailable"),
+            library_games_total_tip(status, "sync state is unavailable"),
         )
     } else {
-        (
-            "good",
-            format!("{games_total} games total · no queued sync changes"),
-        )
+        ("good", library_games_total_tip(status, "no queued sync changes"))
     };
     let sync_label = games_total_label;
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {

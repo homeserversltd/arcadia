@@ -385,10 +385,10 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         for required in [
-            ">Games</h3><strong>5</strong>",
+            ">Games</h3><strong>7</strong>",
             ">GameScope:</span><strong>2</strong>",
             ">Added:</span><strong>5</strong>",
-            "data-home-games-total=\"5\"",
+            "data-home-games-total=\"7\"",
         ] {
             assert!(card_html.contains(required), "home games card missing {required}");
         }
@@ -401,7 +401,7 @@
     }
 
     #[test]
-    fn header_games_chip_always_shows_playable_rom_total_not_sync_status_words() {
+    fn header_games_chip_always_shows_library_total_not_sync_status_words() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -412,10 +412,12 @@
         status.library.last_sync_state = "success".to_string();
         status.library.sync_state = "idle".to_string();
         status.library.sync_needed = false;
-        status.library.total_detected_games = 103;
+        status.library.gamescope_entries = 40;
+        status.library.total_detected_games = 63;
         let rendered = ui::layout(&status).into_string();
         assert!(rendered.contains(r#"data-games-total="103""#));
         assert!(rendered.contains("103 games total"));
+        assert!(rendered.contains("40 GameScope + 63 ROMs"));
         assert!(!rendered.contains(">Synced</strong>"));
         assert!(!rendered.contains(">Sync needed</strong>"));
 
@@ -428,7 +430,7 @@
     }
 
     #[test]
-    fn home_games_card_total_matches_header_sync_chip_not_gamescope_sum() {
+    fn home_games_card_total_matches_header_sync_chip_as_gamescope_plus_roms() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -449,16 +451,16 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         assert!(
-            card_html.contains(">Games</h3><strong>103</strong>"),
-            "home games card total should match playable ROM count"
+            card_html.contains(">Games</h3><strong>206</strong>"),
+            "home games card total should be GameScope plus ROMs"
         );
         assert!(
-            !card_html.contains(">Games</h3><strong>206</strong>"),
-            "home games card must not sum GameScope and Added into the header total"
+            rendered.contains(r#"data-games-total="206""#),
+            "header sync chip should use the same library total"
         );
         assert!(
-            rendered.contains(r#"data-tooltip="Last sync counted 103 playable ROM files""#),
-            "header sync chip should use the same playable ROM count"
+            rendered.contains("206 games total · 103 GameScope + 103 ROMs"),
+            "header tooltip should explain GameScope plus ROM breakdown"
         );
     }
 
@@ -794,6 +796,7 @@
         status.library.last_sync = "Never".to_string();
         status.library.sync_state = "idle".to_string();
         status.library.sync_needed = false;
+        status.library.gamescope_entries = 0;
         status.library.total_detected_games = 0;
         status.library.total_synced_entries = 0;
         status.library.unsynced_added = 0;
@@ -829,13 +832,14 @@
         assert!(during.contains(r#"data-sync-orb-state="syncing""#));
         assert!(during.contains("sync-running-panel"));
         assert!(during.contains("disabled"));
-        assert!(!during.contains("GameScope"));
+        assert!(during.contains("Native"));
         assert!(!during.contains("games folders"));
 
         status.library.last_sync_state = "success".to_string();
         status.library.last_sync = "Receipt found".to_string();
         status.library.sync_state = "idle".to_string();
         status.library.sync_needed = false;
+        status.library.gamescope_entries = 0;
         status.library.total_detected_games = 3;
         status.library.total_synced_entries = 3;
         status.library.unsynced_added = 0;
@@ -912,7 +916,7 @@
             "ux-sync-orb",
             "ux-sync-orb-track",
             "ux-sync-orb-sweep",
-            r#"<span class="ux-sync-orb-core">4</span>"#,
+            r#"<span class="ux-sync-orb-core">7</span>"#,
             "Native",
             "Added",
             "Artwork",
@@ -951,7 +955,7 @@
     }
 
     #[test]
-    fn sync_orb_core_shows_playable_rom_count_not_admission_debt() {
+    fn sync_orb_core_shows_library_total_not_admission_debt() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -961,6 +965,7 @@
         status.library.first_sync_completed = true;
         status.library.last_sync_state = "success".to_string();
         status.library.sync_state = "idle".to_string();
+        status.library.gamescope_entries = 25;
         status.library.total_detected_games = 100;
         status.library.total_synced_entries = 99;
         status.library.unsynced_added = 1;
@@ -969,9 +974,10 @@
         let rendered = ui::layout(&status).into_string();
         let sync_html = sync_slice(&rendered);
         assert!(sync_html.contains(r#"data-sync-debt="admission""#));
-        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">100</span>"#));
-        assert!(sync_html.contains(r#"data-sync-games-total="100""#));
+        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">125</span>"#));
+        assert!(sync_html.contains(r#"data-sync-games-total="125""#));
         assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">1</span>"#));
+        assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">100</span>"#));
         assert!(!sync_html.contains("Waiting"));
         assert!(!sync_html.contains("games waiting"));
     }
@@ -1094,6 +1100,7 @@
         status.library.last_sync = "Receipt found".to_string();
         status.library.sync_state = "idle".to_string();
         status.library.sync_needed = false;
+        status.library.gamescope_entries = 0;
         status.library.total_detected_games = 3;
         status.library.total_synced_entries = 3;
         status.library.artwork_paired_total = 2;
@@ -1115,6 +1122,7 @@
         assert!(!sync_html.contains("Games current"));
         assert!(!sync_html.contains(">Admitted</em>"));
 
+        status.library.gamescope_entries = 0;
         status.library.total_detected_games = 0;
         status.library.total_synced_entries = 0;
         status.library.admitted_games.clear();
