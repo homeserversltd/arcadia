@@ -110,6 +110,7 @@ pub struct NetworkStatus {
     pub internet_reachable: Option<bool>,
     pub timezone: Option<String>,
     pub ntp_synchronized: Option<bool>,
+    pub connection_session_detail: String,
 }
 
 #[derive(Serialize)]

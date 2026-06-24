@@ -47,6 +47,95 @@ fn split_nmcli_line(line: &str) -> Vec<String> {
     line.split(':').map(|v| v.replace("\\:", ":")).collect()
 }
 
+fn nmcli_active_connection_rows() -> Vec<Vec<String>> {
+    command_stdout(
+        NETWORK_MANAGER_BIN,
+        &[
+            "-t",
+            "-f",
+            "NAME,TYPE,DEVICE,TIMESTAMP",
+            "connection",
+            "show",
+            "--active",
+        ],
+    )
+    .map(|text| {
+        text.lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(split_nmcli_line)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn connection_session_detail(active_type: &str, ssid: Option<&str>) -> String {
+    let duration = active_connection_duration(active_type);
+    match active_type {
+        "ethernet" => format!(
+            "Ethernet · {}",
+            duration.as_deref().unwrap_or("just now")
+        ),
+        "wifi" => format!(
+            "Wi-Fi · {} · {}",
+            ssid.unwrap_or("Wi-Fi"),
+            duration.as_deref().unwrap_or("just now")
+        ),
+        "limited" => format!(
+            "Limited · {}",
+            duration.as_deref().unwrap_or("just now")
+        ),
+        "offline" => "Offline".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+fn active_connection_duration(active_type: &str) -> Option<String> {
+    let want_type = match active_type {
+        "ethernet" => "802-3-ethernet",
+        "wifi" => "802-11-wireless",
+        _ => return None,
+    };
+    let timestamp = nmcli_active_connection_rows().into_iter().find_map(|parts| {
+        let conn_type = parts.get(1).map(String::as_str).unwrap_or("");
+        let device = parts.get(2).map(String::as_str).unwrap_or("");
+        if device == "lo" || conn_type != want_type {
+            return None;
+        }
+        parts.get(3).and_then(|value| value.parse::<u64>().ok())
+    })?;
+    Some(format_connection_duration(timestamp))
+}
+
+fn format_connection_duration(connected_since_unix: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(connected_since_unix);
+    let seconds = now.saturating_sub(connected_since_unix);
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+    if seconds < 3600 {
+        return format!("{}m", seconds / 60);
+    }
+    if seconds < 86_400 {
+        let hours = seconds / 3600;
+        let minutes = (seconds % 3600) / 60;
+        return if minutes == 0 {
+            format!("{hours}h")
+        } else {
+            format!("{hours}h {minutes}m")
+        };
+    }
+    let days = seconds / 86_400;
+    let hours = (seconds % 86_400) / 3600;
+    if hours == 0 {
+        format!("{days}d")
+    } else {
+        format!("{days}d {hours}h")
+    }
+}
+
 fn active_connection_from_nmcli(devices: &[Vec<String>]) -> ActiveNetInfo {
     for parts in devices {
         let dev = parts.get(0).cloned().unwrap_or_default();

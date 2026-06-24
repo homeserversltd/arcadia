@@ -122,6 +122,10 @@ fn network_status() -> NetworkStatus {
         internet_reachable: state.active_connection.internet_reachable,
         timezone,
         ntp_synchronized,
+        connection_session_detail: connection_session_detail(
+            &state.active_connection.connection_type,
+            state.wifi.connected_ssid.as_deref(),
+        ),
     }
 }
 
