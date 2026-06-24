@@ -97,6 +97,9 @@
         assert!(!network_html.contains("Test Game Folders"));
         assert!(APP_JS.contains("function openWifiNetworkPicker"));
         assert!(APP_JS.contains("function normalizeWifiNetworks"));
+        assert!(APP_JS.contains("function wifiNetworkCard"));
+        assert!(APP_JS.contains("wifi-modal--picker"));
+        assert!(APP_JS.contains("wifi-modal--join"));
         assert!(APP_JS.contains("input.type = event.target.checked ? 'text' : 'password'"));
         assert!(APP_JS.contains("/api/network/speed-test"));
         assert!(!network_html.contains(">Connected<"));

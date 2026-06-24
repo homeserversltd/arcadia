@@ -2041,82 +2041,169 @@ function wifiSignalText(percent) {
   return Number.isFinite(percent) && percent > 0 ? `${percent}% signal` : 'Signal unavailable';
 }
 
-function openWifiNetworkPicker(state, message = '') {
-  const body = document.createElement('div');
-  body.className = 'wifi-picker-modal';
-  const controls = document.createElement('div');
-  controls.className = 'modal-control-row';
-  const scan = document.createElement('button');
-  scan.type = 'button';
-  scan.className = 'btn btn--primary';
-  scan.textContent = 'Scan';
-  scan.addEventListener('click', () => requestWifiScan(true));
-  const hidden = document.createElement('button');
-  hidden.type = 'button';
-  hidden.className = 'btn btn--secondary';
-  hidden.textContent = 'Join Hidden Network';
-  hidden.addEventListener('click', () => openHiddenNetworkModal());
-  controls.append(scan, hidden);
-  body.appendChild(controls);
-  if (message) {
-    const note = document.createElement('p');
-    note.className = 'modal-note';
-    note.textContent = message;
-    body.appendChild(note);
-  }
-  const list = document.createElement('div');
-  list.className = 'wifi-network-list wifi-network-list--modal';
-  const groups = normalizeWifiNetworks(state || {});
-  if (groups.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.innerHTML = '<strong>No visible networks found</strong><p>Scan again or join a hidden network.</p>';
-    list.appendChild(empty);
-  }
-  groups.forEach((group) => list.appendChild(wifiGroupRow(group)));
-  body.appendChild(list);
-  PopupManager.showModal({ title: 'Choose Wi-Fi Network', body, hideDefaultAction: true });
+function wifiSignalBars(percent) {
+  if (!Number.isFinite(percent) || percent <= 0) return 1;
+  if (percent < 25) return 1;
+  if (percent < 50) return 2;
+  if (percent < 75) return 3;
+  return 4;
 }
 
-function wifiGroupRow(group) {
-  const row = document.createElement('div');
-  row.className = `network-row wifi-network-row ${group.connected ? 'network-row--active' : ''}`;
-  const summary = document.createElement('span');
+function wifiSignalMeter(percent) {
+  const meter = document.createElement('span');
+  meter.className = 'wifi-signal-bars';
+  meter.dataset.bars = String(wifiSignalBars(percent));
+  meter.setAttribute('aria-label', wifiSignalText(percent));
+  for (let i = 0; i < 4; i += 1) {
+    const bar = document.createElement('span');
+    bar.className = 'wifi-signal-bars__bar';
+    meter.appendChild(bar);
+  }
+  return meter;
+}
+
+function wifiNetworkMeta(group) {
+  return [securityLabel(group.security), group.known ? 'Saved' : 'Nearby', wifiSignalText(group.bestSignalPercent)]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function wifiNetworkCard(group) {
+  const card = document.createElement('article');
+  card.className = `wifi-network-card${group.connected ? ' wifi-network-card--connected' : ''}`;
+  const main = document.createElement('button');
+  main.type = 'button';
+  main.className = 'wifi-network-card__main';
+  const body = document.createElement('div');
+  body.className = 'wifi-network-card__body';
   const title = document.createElement('strong');
   title.textContent = group.ssid;
-  const meta = document.createElement('em');
-  meta.textContent = [wifiSignalText(group.bestSignalPercent), securityLabel(group.security), group.connected ? 'Connected' : '', group.known ? 'Saved' : ''].filter(Boolean).join(' · ');
-  summary.append(title, meta);
-  const connect = document.createElement('button');
-  connect.type = 'button';
-  connect.className = 'btn btn--secondary';
-  connect.textContent = group.connected ? 'Disconnect' : 'Connect';
-  connect.addEventListener('click', () => {
-    if (group.connected) return postNetworkAction('/api/network/wifi/disconnect', {}, 'wifi-disconnect');
-    openWifiConnectModal(group.ssid, group.security !== 'open', group.known);
+  const meta = document.createElement('span');
+  meta.className = 'wifi-network-card__meta';
+  meta.textContent = wifiNetworkMeta(group);
+  body.append(title, meta);
+  main.append(wifiSignalMeter(group.bestSignalPercent), body);
+  if (group.security && group.security !== 'open') {
+    const lock = document.createElement('span');
+    lock.className = 'wifi-network-card__lock';
+    lock.setAttribute('aria-hidden', 'true');
+    lock.textContent = '🔒';
+    main.appendChild(lock);
+  }
+  if (group.connected) {
+    const badge = document.createElement('span');
+    badge.className = 'wifi-network-card__badge';
+    badge.textContent = 'Connected';
+    main.appendChild(badge);
+  }
+  main.addEventListener('click', () => {
+    if (group.connected) return;
+    openWifiConnectModal(group.ssid, group.security !== 'open', group.known, group.bestSignalPercent, group.security);
   });
-  row.append(summary, connect);
-  if (group.known || group.connected) {
+  card.appendChild(main);
+  if (group.connected || group.known) {
+    const actions = document.createElement('div');
+    actions.className = 'wifi-network-card__actions';
+    if (group.connected) {
+      const disconnect = document.createElement('button');
+      disconnect.type = 'button';
+      disconnect.className = 'btn btn--secondary';
+      disconnect.textContent = 'Disconnect';
+      disconnect.addEventListener('click', () => postNetworkAction('/api/network/wifi/disconnect', {}, 'wifi-disconnect'));
+      actions.appendChild(disconnect);
+    }
     const forget = document.createElement('button');
     forget.type = 'button';
     forget.className = 'btn btn--secondary';
     forget.textContent = 'Forget';
     forget.addEventListener('click', () => postNetworkAction('/api/network/wifi/forget', { ssid: group.ssid }, 'wifi-forget'));
-    row.appendChild(forget);
+    actions.appendChild(forget);
+    card.appendChild(actions);
   }
-  const details = document.createElement('details');
-  details.className = 'wifi-ap-details';
-  const detailSummary = document.createElement('summary');
-  detailSummary.textContent = group.accessPoints.length > 1 ? `${group.accessPoints.length} access points` : 'Details';
-  details.appendChild(detailSummary);
-  group.accessPoints.forEach((ap) => {
-    const line = document.createElement('div');
-    line.className = 'wifi-ap-line';
-    line.textContent = [ap.bssid || 'BSSID unavailable', wifiSignalText(ap.signalPercent), securityLabel(ap.security), ap.channel ? `Channel ${ap.channel}` : ''].filter(Boolean).join(' · ');
-    details.appendChild(line);
-  });
-  row.appendChild(details);
-  return row;
+  return card;
+}
+
+function openWifiNetworkPicker(state, message = '') {
+  const body = document.createElement('div');
+  body.className = 'wifi-modal wifi-modal--picker';
+  const hero = document.createElement('header');
+  hero.className = 'wifi-modal__hero';
+  hero.innerHTML = `
+    <span class="wifi-modal__glyph" aria-hidden="true">◌</span>
+    <div class="wifi-modal__copy">
+      <p class="wifi-modal__eyebrow">Wireless</p>
+      <p class="wifi-modal__lede">Pick a network to join</p>
+    </div>`;
+  const scan = document.createElement('button');
+  scan.type = 'button';
+  scan.className = 'btn btn--primary wifi-modal__scan';
+  scan.textContent = 'Scan';
+  scan.addEventListener('click', () => requestWifiScan(true));
+  hero.appendChild(scan);
+  body.appendChild(hero);
+  if (message) {
+    const note = document.createElement('p');
+    note.className = 'wifi-modal__note';
+    note.textContent = message;
+    body.appendChild(note);
+  }
+  const list = document.createElement('div');
+  list.className = 'wifi-modal__list';
+  const groups = normalizeWifiNetworks(state || {});
+  if (groups.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'wifi-modal__empty';
+    empty.innerHTML = '<strong>No networks in range</strong><p>Scan again or join a hidden network.</p>';
+    list.appendChild(empty);
+  } else {
+    const connected = groups.filter((group) => group.connected);
+    const others = groups.filter((group) => !group.connected);
+    if (connected.length > 0) {
+      const label = document.createElement('p');
+      label.className = 'wifi-modal__section-label';
+      label.textContent = 'Connected';
+      list.appendChild(label);
+      connected.forEach((group) => list.appendChild(wifiNetworkCard(group)));
+    }
+    if (others.length > 0) {
+      const label = document.createElement('p');
+      label.className = 'wifi-modal__section-label';
+      label.textContent = connected.length > 0 ? 'Nearby' : 'Networks';
+      list.appendChild(label);
+      others.forEach((group) => list.appendChild(wifiNetworkCard(group)));
+    }
+  }
+  body.appendChild(list);
+  const foot = document.createElement('footer');
+  foot.className = 'wifi-modal__foot';
+  const hidden = document.createElement('button');
+  hidden.type = 'button';
+  hidden.className = 'btn btn--secondary';
+  hidden.textContent = 'Join hidden network';
+  hidden.addEventListener('click', () => openHiddenNetworkModal());
+  foot.appendChild(hidden);
+  body.appendChild(foot);
+  PopupManager.showModal({ title: 'Wi-Fi', body, hideDefaultAction: true });
+}
+
+function wifiJoinSteps() {
+  return ['Joining network', 'Authenticating', 'Getting IP address', 'Testing LAN', 'Testing Internet'];
+}
+
+function animateWifiJoinSteps(root) {
+  const steps = Array.from(root.querySelectorAll('.wifi-join-step'));
+  let index = 0;
+  const tick = () => {
+    steps.forEach((step, i) => {
+      step.classList.toggle('is-active', i === index);
+      step.classList.toggle('is-done', i < index);
+    });
+    if (index < steps.length - 1) {
+      index += 1;
+      window.setTimeout(tick, 650);
+    }
+  };
+  tick();
 }
 
 function securityLabel(value) {
@@ -2128,18 +2215,62 @@ function securityLabel(value) {
   return String(value).toUpperCase();
 }
 
-function openWifiConnectModal(ssid = '', secured = true, saved = false) {
+function openWifiConnectModal(ssid = '', secured = true, saved = false, signalPercent = null, security = '') {
   const form = document.createElement('form');
-  form.className = 'settings-form wifi-connect-panel';
+  form.className = 'wifi-modal wifi-modal--join';
   form.autocomplete = 'off';
-  form.innerHTML = `
-    <div class="selected-network"><span>Selected network</span><strong></strong></div>
-    <label ${ssid ? 'hidden' : ''}><span>Network name</span><input class="field" name="ssid" autocomplete="off"></label>
-    <label ${secured ? '' : 'hidden'}><span>Password</span><input class="field" type="password" name="password" autocomplete="new-password"></label>
-    <label class="wifi-show-password" ${secured ? '' : 'hidden'}><input type="checkbox" data-toggle-modal-password="password">Show password</label>
-    <div class="inline-actions"><button class="btn btn--primary" type="submit">Connect</button><button class="btn btn--secondary" type="button" data-modal-cancel>Cancel</button>${saved ? '<button class="btn btn--secondary" type="button" data-modal-forget>Forget network</button>' : ''}</div>
-    <div class="message" hidden></div>`;
-  form.querySelector('.selected-network strong').textContent = ssid || 'Hidden network';
+  const hero = document.createElement('div');
+  hero.className = 'wifi-join-hero';
+  const heroCopy = document.createElement('div');
+  const heroTitle = document.createElement('strong');
+  heroTitle.textContent = ssid || 'Hidden network';
+  const heroMeta = document.createElement('span');
+  heroMeta.className = 'wifi-join-hero__meta';
+  heroMeta.textContent = [
+    securityLabel(security) || (secured ? 'Secured' : 'Open'),
+    Number.isFinite(signalPercent) ? wifiSignalText(signalPercent) : '',
+    saved ? 'Saved network' : '',
+  ].filter(Boolean).join(' · ');
+  heroCopy.append(heroTitle, heroMeta);
+  hero.append(wifiSignalMeter(signalPercent ?? 0), heroCopy);
+  form.appendChild(hero);
+  if (!ssid) {
+    const ssidField = document.createElement('label');
+    ssidField.className = 'wifi-join-field';
+    ssidField.innerHTML = '<span>Network name</span><input class="field" name="ssid" autocomplete="off" placeholder="Enter network name">';
+    form.appendChild(ssidField);
+  }
+  if (secured) {
+    const passwordField = document.createElement('label');
+    passwordField.className = 'wifi-join-field';
+    passwordField.innerHTML = '<span>Password</span><input class="field" type="password" name="password" autocomplete="new-password" placeholder="Network password">';
+    form.appendChild(passwordField);
+    const show = document.createElement('label');
+    show.className = 'wifi-join-show';
+    show.innerHTML = '<input type="checkbox" data-toggle-modal-password="password">Show password';
+    form.appendChild(show);
+  }
+  const steps = document.createElement('div');
+  steps.className = 'wifi-join-steps';
+  steps.hidden = true;
+  wifiJoinSteps().forEach((label, index) => {
+    const step = document.createElement('div');
+    step.className = `wifi-join-step${index === 0 ? ' is-active' : ''}`;
+    step.textContent = label;
+    steps.appendChild(step);
+  });
+  form.appendChild(steps);
+  const msg = document.createElement('p');
+  msg.className = 'wifi-join-message message';
+  msg.hidden = true;
+  form.appendChild(msg);
+  const actions = document.createElement('footer');
+  actions.className = 'wifi-join-actions';
+  actions.innerHTML = `
+    <button class="btn btn--primary wifi-join-submit" type="submit">Connect</button>
+    <button class="btn btn--secondary" type="button" data-modal-cancel>Cancel</button>
+    ${saved ? '<button class="btn btn--secondary" type="button" data-modal-forget>Forget</button>' : ''}`;
+  form.appendChild(actions);
   const ssidInput = form.querySelector('input[name="ssid"]');
   if (ssidInput) ssidInput.value = ssid;
   form.querySelector('[data-toggle-modal-password]')?.addEventListener('change', (event) => {
@@ -2153,29 +2284,43 @@ function openWifiConnectModal(ssid = '', secured = true, saved = false) {
     const chosenSsid = form.querySelector('input[name="ssid"]')?.value || ssid;
     const passwordInput = form.querySelector('input[name="password"]');
     const password = passwordInput?.value || '';
-    const msg = form.querySelector('.message');
-    if (!chosenSsid.trim()) { msg.textContent = 'Wi-Fi network name is required.'; msg.className = 'message message--error'; msg.hidden = false; return; }
+    if (!chosenSsid.trim()) {
+      msg.textContent = 'Wi-Fi network name is required.';
+      msg.className = 'wifi-join-message message message--error';
+      msg.hidden = false;
+      return;
+    }
     const button = form.querySelector('button[type="submit"]');
     const old = button.textContent;
-    button.disabled = true; button.textContent = 'Joining…';
-    msg.textContent = 'Joining network…\nAuthenticating…\nRequesting IP address…\nTesting LAN…\nTesting Internet…';
-    msg.className = 'message message--info'; msg.hidden = false;
+    button.disabled = true;
+    button.textContent = 'Connecting…';
+    steps.hidden = false;
+    msg.hidden = true;
+    animateWifiJoinSteps(steps);
     try {
       const data = await postJson('/api/network/wifi/connect', { ssid: chosenSsid, password });
       if (passwordInput) passwordInput.value = '';
+      steps.querySelectorAll('.wifi-join-step').forEach((step) => {
+        step.classList.remove('is-active');
+        step.classList.add('is-done');
+      });
       msg.textContent = data.message || 'Wi-Fi connect complete.';
-      msg.className = `message message--${data.ok ? 'success' : 'error'}`;
+      msg.className = `wifi-join-message message message--${data.ok ? 'success' : 'error'}`;
+      msg.hidden = false;
       PopupManager.showToast(data.message || 'Wi-Fi connect complete.', data.ok ? 'success' : 'error');
-      if (data.ok) PopupManager.closeModal();
+      if (data.ok) window.setTimeout(() => PopupManager.closeModal(), 700);
     } catch (_) {
       if (passwordInput) passwordInput.value = '';
+      steps.hidden = true;
       msg.textContent = 'Wi-Fi connect request failed.';
-      msg.className = 'message message--error';
+      msg.className = 'wifi-join-message message message--error';
+      msg.hidden = false;
     } finally {
-      button.disabled = false; button.textContent = old;
+      button.disabled = false;
+      button.textContent = old;
     }
   });
-  PopupManager.showModal({ title: ssid ? 'Connect Wi-Fi' : 'Join Hidden Network', body: form, hideDefaultAction: true });
+  PopupManager.showModal({ title: ssid ? 'Connect' : 'Hidden network', body: form, hideDefaultAction: true });
   (secured ? form.querySelector('input[name="password"]') : ssidInput)?.focus();
 }
 

@@ -156,9 +156,7 @@
 .network-compact-grid .system-field strong { font-size: var(--ux-text-sm); line-height: 1.2; }
 .empty-state { padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
 .empty-state p { margin: 4px 0 0; color: var(--muted); font-size: var(--ux-text-sm); }
-.wifi-connect-panel { display: grid; gap: 10px; margin: 12px 0; }
-.wifi-connect-panel label { display: grid; gap: 6px; color: var(--muted); font-weight: 800; }
-.wifi-show-password { display: flex !important; align-items: center; gap: 8px; }
+
 .system-status--available { color: var(--good); }
 .system-status--disabled { color: var(--idle); }
 .system-status--error { color: var(--bad); }

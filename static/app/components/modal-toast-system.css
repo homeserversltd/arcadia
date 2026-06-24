@@ -3,13 +3,7 @@
 .network-service-row .system-status--disabled, .system-status--disabled { color: var(--muted); border-color: var(--theme-line); opacity: .72; }
 .modal-control-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .modal-note { margin: 0 0 10px; color: var(--muted); }
-.wifi-network-list--modal { margin-top: 0; max-height: min(58vh, 480px); overflow: auto; padding-right: 4px; }
-.wifi-network-row { grid-template-columns: minmax(0, 1fr) auto auto; }
-.wifi-ap-details { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
-.wifi-ap-details summary { cursor: pointer; width: fit-content; padding: 4px 0; }
-.wifi-ap-line { padding: 6px 0; border-top: 1px solid var(--theme-glass); }
-.selected-network { display: grid; gap: 4px; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); }
-.selected-network span, .network-detail-row em { color: var(--muted); font-style: normal; font-size: 12px; }
+.network-detail-row em { color: var(--muted); font-style: normal; font-size: 12px; }
 .network-detail-modal { display: grid; gap: 8px; }
 .network-detail-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); }
 .network-detail-row span { display: grid; gap: 3px; }
