@@ -303,10 +303,9 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
         + status.library.unsynced_removed;
     let native = status.library.gamescope_entries;
     let added = status.library.total_detected_games;
-    let total = home_games_total(native, added);
     let native_line = native.to_string();
     let added_line = added.to_string();
-    let total_line = total.to_string();
+    let total_line = added.to_string();
     let needs_attention = status.library.last_sync_state == "error"
         || pending_changes > 0
         || status.library.sync_needed;
@@ -322,10 +321,6 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
             }
         }
     }
-}
-
-fn home_games_total(native: u64, added: u64) -> u64 {
-    native.saturating_add(added)
 }
 
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
