@@ -62,16 +62,7 @@
   min-height: var(--ux-compact-button-min-height);
   padding: var(--ux-compact-button-padding-block) var(--ux-compact-button-padding-inline);
 }
-.wifi-modal__note {
-  margin: 0;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent);
-  color: var(--muted);
-  font-size: var(--ux-text-sm);
-  line-height: 1.35;
-}
+
 .wifi-modal__list {
   display: grid;
   gap: var(--ux-wifi-list-gap);
