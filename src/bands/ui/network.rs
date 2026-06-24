@@ -8,9 +8,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
     let lan_ai_url_port = lan_ai_ip_port
         .as_ref()
         .map(|_| endpoint_url_port(lan_ip, lan_ai_port, "http"));
-    let lan_ai_detail = lan_ai_ip_port
-        .clone()
-        .unwrap_or_else(|| format!(":{lan_ai_port}"));
+    let lan_ai_detail = format!(":{lan_ai_port}");
     view_shell(
         "network",
         "",
