@@ -152,15 +152,9 @@ async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
 
 
 async fn action_check_updates() -> (StatusCode, Json<ConsoleActionResponse>) {
-    run_console_command(
+    run_caduceus_http_mutation(
         "check-updates",
-        HARMONIA_BIN,
-        &[
-            "homeconsole-update",
-            HOMECONSOLE_PROFILE,
-            "--receipt-dir",
-            "/var/lib/harmonia/receipts/homeconsole-check-latest",
-        ],
+        "/api/v1/update/check",
         "Harmonia check complete.",
         "Harmonia check failed. Read /var/lib/harmonia/receipts/homeconsole-check-latest.",
     )
@@ -288,24 +282,55 @@ async fn harmonia_ledger_route(
 ) -> (StatusCode, Json<HarmoniaLedgerResponse>) {
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 25);
-    let text = fs::read_to_string(HARMONIA_HOMECONSOLE_LEDGER).unwrap_or_default();
-    let mut parsed = Vec::new();
-    for (idx, line) in text.lines().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            redact_json_value(&mut value);
-            parsed.push(harmonia_ledger_entry(idx + 1, value));
-        }
-    }
-    parsed.reverse();
-    let total_entries = parsed.len();
-    let total_pages = total_entries.div_ceil(per_page).max(1);
-    let bounded_page = page.min(total_pages);
-    let start = (bounded_page - 1) * per_page;
-    let entries = parsed.into_iter().skip(start).take(per_page).collect::<Vec<_>>();
+    let path = format!("/api/v1/receipts/ledger?page={page}&per_page={per_page}");
+    let Ok(value) = caduceus_fetch_json(&path) else {
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(HarmoniaLedgerResponse {
+                ok: false,
+                action: "harmonia-ledger-page",
+                profile_id: "homeconsole",
+                ledger_path: HARMONIA_HOMECONSOLE_LEDGER,
+                page,
+                per_page,
+                total_entries: 0,
+                total_pages: 1,
+                entries: Vec::new(),
+                message: "Caduceus ledger route is unreachable.".to_string(),
+            }),
+        );
+    };
+    let _ledger_path = value
+        .get("ledgerPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or(HARMONIA_HOMECONSOLE_LEDGER);
+    let total_entries = value
+        .get("totalEntries")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    let total_pages = value
+        .get("totalPages")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1) as usize;
+    let bounded_page = value
+        .get("page")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(page as u64) as usize;
+    let entries = value
+        .get("entries")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let ordinal = item.get("ordinal").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+                    let mut entry = item.get("entry").cloned().unwrap_or(serde_json::Value::Null);
+                    redact_json_value(&mut entry);
+                    Some(harmonia_ledger_entry(ordinal, entry))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let message = if total_entries == 0 {
         "No Harmonia ledger entries found.".to_string()
     } else {
@@ -377,10 +402,9 @@ fn redact_json_value(value: &mut serde_json::Value) {
 }
 
 async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
-    run_console_command(
+    run_caduceus_http_mutation(
         "sync-games",
-        CADUCEUS_BIN,
-        &["sync", "now"],
+        "/api/v1/sync/now",
         "Games synced. Receipt ready.",
         "Sync failed. Open the ledger for the reason and fix action.",
     )

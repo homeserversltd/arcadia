@@ -1157,12 +1157,14 @@
 
     #[test]
     fn sync_action_routes_through_caduceus_membrane() {
-        let constants = include_str!("../../src/bands/constants.rs");
+        let routes = include_str!("../../src/bands/routes_caduceus.rs");
         let source = include_str!("../../src/bands/console_system_actions.rs");
-        assert!(constants.contains("const CADUCEUS_BIN: &str = \"/usr/local/bin/caduceus\";"));
-        assert!(source.contains("CADUCEUS_BIN"));
-        assert!(source.contains("&[\"sync\", \"now\"]"));
-        assert!(!source.contains("async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {\n    run_console_command(\n        \"sync-games\",\n        HARMONIA_BIN,"));
+        assert!(routes.contains("caduceus_post_json"));
+        assert!(routes.contains("/api/v1/sync/now"));
+        assert!(source.contains("run_caduceus_http_mutation"));
+        assert!(source.contains("/api/v1/sync/now"));
+        assert!(source.contains("/api/v1/update/check"));
+        assert!(!source.contains("async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {\n    run_console_command(\n        \"sync-games\",\n        CADUCEUS_BIN,"));
     }
 
     #[test]
@@ -1174,9 +1176,14 @@
         assert!(routes.contains("/api/v1/identity"));
         assert!(routes.contains("/api/v1/profile"));
         assert!(routes.contains("/api/v1/health"));
+        assert!(routes.contains("/api/v1/update/now"));
+        assert!(routes.contains("/api/v1/sync/now"));
+        assert!(routes.contains("/api/v1/receipts/ledger"));
         assert!(main_rs.contains("/api/caduceus/v1/identity"));
         assert!(main_rs.contains("/api/caduceus/v1/profile"));
         assert!(main_rs.contains("/api/caduceus/v1/health"));
+        assert!(main_rs.contains("/api/caduceus/v1/update/now"));
+        assert!(main_rs.contains("/api/caduceus/v1/sync/now"));
         assert!(main_rs.contains("/api/caduceus/health"));
     }
 
