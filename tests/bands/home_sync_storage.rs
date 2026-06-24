@@ -247,7 +247,7 @@
 
         assert!(home_html.contains("aria-label=\"Updates\""));
         assert!(home_html.contains("Update available"));
-        assert!(!home_html.contains("homeconsole-latest/run.json"));
+        assert!(!home_html.contains("homeconsole-update-latest/run.json"));
         assert!(!home_html.contains(">Receipt<"));
         assert!(home_html.contains(">✓<"));
         assert!(home_html.contains("aria-label=\"Game Session\""));
@@ -289,7 +289,7 @@
             assert!(home_html.contains(required), "home updates card missing {required}");
         }
         for forbidden in [
-            "homeconsole-latest/run.json",
+            "homeconsole-update-latest/run.json",
             "data-label=\"Receipt\"",
             "data-label=\"Pressure\"",
             "data-label=\"Ready\"",
@@ -1422,7 +1422,7 @@
             "data-harmonia-module-menu=\"true\"",
             "data-harmonia-module-grid=\"true\"",
             "data-harmonia-module=\"identity\"",
-            "/var/lib/harmonia/receipts/homeconsole-latest/run.json",
+            "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json",
             "/api/actions/check-updates",
             "/api/actions/update-gui",
         ] {
