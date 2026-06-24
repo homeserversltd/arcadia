@@ -93,9 +93,12 @@
             r#"aria-label="Load""#,
 
             r#"aria-label="Network""#,
-            "home-network-stack",
-            "home-network-node",
-            "Console URL",
+            "home-network-chip-row",
+            "home-network-chip",
+            "home-network-copy-row",
+            "Copy URL",
+            "Copy IP",
+            "Copy AI",
             r#"aria-label="AI Model""#,
             "local-ai-home-card",
             "local-ai-home-details",
@@ -518,7 +521,7 @@
     }
 
     #[test]
-    fn home_network_card_surfaces_vertical_modem_lan_console_stack() {
+    fn home_network_card_surfaces_copy_actions_and_status_chiplets() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -528,6 +531,8 @@
         status.network.online = true;
         status.network.ip_address = "192.168.123.42".to_string();
         status.network.internet_reachable = Some(true);
+        status.network.lan_ai_reachable = true;
+        status.local_ai.lan_inference_port = Some(7777);
         let rendered = ui::layout(&status).into_string();
         let card_start = rendered
             .find("network-home-card")
@@ -539,21 +544,33 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         for required in [
-            "home-network-stack",
-            ">Modem</strong>",
-            ">Home LAN</strong>",
-            "home-network-link",
-            ">Online</span>",
-            "192.168.123.42",
+            "home-network-chip-row",
+            "home-network-chip--ok",
+            "home-network-copy-row",
+            "Copy URL",
+            "Copy IP",
+            "Copy AI",
+            r#"data-copy-value="http://console.home.arpa""#,
+            r#"data-copy-value="192.168.123.42""#,
+            r#"data-copy-value="192.168.123.42:7777""#,
+            "aria-label=\"Console Online\"",
+            "aria-label=\"AI Online\"",
+            "aria-label=\"Internet Online\"",
         ] {
             assert!(card_html.contains(required), "home network card missing {required}");
         }
         for forbidden in [
+            "home-network-stack",
+            "home-network-node",
+            "home-network-link",
+            "home-code-line",
             "home-topology",
             "reachability-row",
             "Mbps",
             "→",
             "aria-label=\"Ethernet speed\"",
+            "Console URL",
+            "data-copy-value=\"\"",
         ] {
             assert!(
                 !card_html.contains(forbidden),

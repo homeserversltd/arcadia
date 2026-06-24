@@ -1978,7 +1978,7 @@ async function requestWifiScan(quiet = false) {
   clearMessage('wifi-message');
   try {
     const data = await postJson('/api/network/wifi/scan', {});
-    openWifiNetworkPicker(data.state, data.message || 'Wi-Fi scan complete.');
+    openWifiNetworkPicker(data.state);
     if (data.ok) clearMessage('wifi-message');
     else setMessage('wifi-message', data.message || 'Wi-Fi scan failed.', 'error');
     if (!quiet) PopupManager.showToast(data.message || 'Wi-Fi scan complete.', data.ok ? 'success' : 'error');
@@ -2123,7 +2123,7 @@ function wifiNetworkCard(group) {
   return card;
 }
 
-function openWifiNetworkPicker(state, message = '') {
+function openWifiNetworkPicker(state) {
   const body = document.createElement('div');
   body.className = 'wifi-modal wifi-modal--picker';
   const hero = document.createElement('header');
@@ -2141,12 +2141,6 @@ function openWifiNetworkPicker(state, message = '') {
   scan.addEventListener('click', () => requestWifiScan(true));
   hero.appendChild(scan);
   body.appendChild(hero);
-  if (message) {
-    const note = document.createElement('p');
-    note.className = 'wifi-modal__note';
-    note.textContent = message;
-    body.appendChild(note);
-  }
   const list = document.createElement('div');
   list.className = 'wifi-modal__list';
   const groups = normalizeWifiNetworks(state || {});

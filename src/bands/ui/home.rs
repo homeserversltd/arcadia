@@ -257,61 +257,63 @@ fn human_rate(bytes_per_sec: u64) -> String {
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {
+    let console_url = status.identity.web_origin.as_str();
+    let ip_copyable = home_network_ip_copyable(&status.network.ip_address);
+    let ai_copy = home_network_ai_copy_value(status);
+    let headline = if status.network.online { "Online" } else { "Offline" };
     html! {
         article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
             div class="card-head" aria-label="Network" {
                 h3 { "Network" }
-                strong { (if status.network.online { status.network.ip_address.as_str() } else { "Offline" }) }
+                strong { (headline) }
             }
-            (home_network_stack(status))
-            @if status.network.online {
-                div class="home-code-line" aria-label="Console URL" { code { (status.identity.web_origin) } }
+            div class="home-network-chip-row" aria-label="Network reachability" {
+                (home_network_chip("Console", status.network.online))
+                (home_network_chip("AI", status.network.lan_ai_reachable))
+                (home_network_chip(
+                    "Internet",
+                    matches!(status.network.internet_reachable, Some(true)),
+                ))
+            }
+            div class="inline-actions inline-actions--compact home-network-copy-row" aria-label="Network copy actions" {
+                (copy_button("Copy URL", console_url))
+                @if ip_copyable {
+                    (copy_button("Copy IP", &status.network.ip_address))
+                } @else {
+                    button class="btn btn--secondary" type="button" disabled title="No LAN IP is available yet." { "Copy IP" }
+                }
+                @if let Some(value) = ai_copy.as_deref() {
+                    (copy_button("Copy AI", value))
+                } @else {
+                    button class="btn btn--secondary" type="button" disabled title="LAN AI is not reachable on the saved port." { "Copy AI" }
+                }
             }
         }
     }
 }
 
-fn home_network_stack(status: &ConsoleStatus) -> Markup {
-    let modem_ok = status.network.internet_reachable == Some(true);
-    let modem_state = match status.network.internet_reachable {
-        Some(true) => "Online",
-        Some(false) => "Offline",
-        None => "Unknown",
-    };
-    let lan_ok = status.network.online
-        && !status.network.ip_address.is_empty()
-        && status.network.ip_address != "Unknown";
-    let lan_state = if lan_ok {
-        status.network.ip_address.as_str()
-    } else {
-        "Offline"
-    };
-    let us_ok = status.network.online;
-    let us_state = if us_ok {
-        match status.network.internet_reachable {
-            Some(true) => "Online",
-            Some(false) => "LAN only",
-            None => "On LAN",
-        }
-    } else {
-        "Offline"
-    };
-    html! {
-        div class="home-network-stack" aria-label="Network path from modem to console" {
-            (home_network_node("Modem", modem_state, modem_ok))
-            div class="home-network-link" aria-hidden="true" { "│" }
-            (home_network_node("Home LAN", lan_state, lan_ok))
-            div class="home-network-link" aria-hidden="true" { "│" }
-            (home_network_node(&status.identity.hostname, us_state, us_ok))
-        }
-    }
+fn home_network_ip_copyable(ip: &str) -> bool {
+    !ip.is_empty() && ip != "—" && ip != "Unknown"
 }
 
-fn home_network_node(label: &str, state: &str, ok: bool) -> Markup {
+fn home_network_ai_copy_value(status: &ConsoleStatus) -> Option<String> {
+    if !status.network.lan_ai_reachable {
+        return None;
+    }
+    let port = status.local_ai.lan_inference_port?;
+    let ip = status.network.ip_address.as_str();
+    if !home_network_ip_copyable(ip) {
+        return None;
+    }
+    Some(format!("{ip}:{port}"))
+}
+
+fn home_network_chip(label: &str, online: bool) -> Markup {
+    let state = if online { "Online" } else { "Offline" };
+    let tone = if online { "ok" } else { "warn" };
     html! {
-        div class=(format!("home-network-node home-network-node--{}", if ok { "ok" } else { "warn" })) aria-label=(format!("{label} {state}")) {
-            strong class="home-network-node__label" { (label) }
-            span class="home-network-node__state" { (state) }
+        span class=(format!("home-network-chip home-network-chip--{tone}")) aria-label=(format!("{label} {state}")) {
+            (label)
         }
     }
 }
