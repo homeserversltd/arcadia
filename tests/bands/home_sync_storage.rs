@@ -385,10 +385,10 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         for required in [
-            ">Games</h3><strong>7</strong>",
+            ">Games</h3><strong>5</strong>",
             ">GameScope:</span><strong>2</strong>",
             ">Added:</span><strong>5</strong>",
-            "data-home-games-total=\"7\"",
+            "data-home-games-total=\"5\"",
         ] {
             assert!(card_html.contains(required), "home games card missing {required}");
         }
@@ -398,6 +398,41 @@
                 "home games card leaked legacy surface: {forbidden}"
             );
         }
+    }
+
+    #[test]
+    fn home_games_card_total_matches_header_sync_chip_not_gamescope_sum() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.gamescope_entries = 103;
+        status.library.total_detected_games = 103;
+        status.library.last_sync_state = "success".to_string();
+        let rendered = ui::layout(&status).into_string();
+        let card_start = rendered
+            .find("sync-home-card")
+            .expect("games home card");
+        let card_end = card_start
+            + rendered[card_start..]
+                .find("</article>")
+                .expect("games home card closes");
+        let card_html = &rendered[card_start..card_start + card_end];
+
+        assert!(
+            card_html.contains(">Games</h3><strong>103</strong>"),
+            "home games card total should match playable ROM count"
+        );
+        assert!(
+            !card_html.contains(">Games</h3><strong>206</strong>"),
+            "home games card must not sum GameScope and Added into the header total"
+        );
+        assert!(
+            rendered.contains(r#"data-tooltip="Last sync counted 103 playable ROM files""#),
+            "header sync chip should use the same playable ROM count"
+        );
     }
 
     #[test]
