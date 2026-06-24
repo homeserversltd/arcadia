@@ -105,38 +105,30 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_storage_card(status: &ConsoleStatus) -> Markup {
-    let warning_count = status.storage.diagnostics.warnings.len()
-        + status.storage.diagnostics.missing_dirs.len()
-        + status.storage.diagnostics.permission_errors.len();
-    let cleanup_bytes = status.storage.cleanup.artwork_bytes_clearable
-        + status.storage.cleanup.temporary_bytes_clearable
-        + status.storage.cleanup.partial_downloads_bytes_clearable
-        + status.storage.cleanup.old_update_bytes_clearable
-        + status.storage.cleanup.logs_bytes_clearable;
-    let cleanup_label = human_size(cleanup_bytes);
+    let everything_else = home_storage_everything_else_size(status);
     html! {
         article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) {
-            div class="card-head" aria-label="Storage" { h3 { "Storage" } strong { (status.storage.free) " free" } }
-            div class="storage-bar storage-bar--home" aria-label="Storage usage by category" {
-                span class="storage-segment storage-segment--games" style=(format!("width: {}%", status.storage.games.percent_of_total.max(if status.storage.games.bytes > 0 { 1 } else { 0 }))) title=(format!("Games {}", status.storage.games.size)) {}
-                span class="storage-segment storage-segment--artwork" style=(format!("width: {}%", status.storage.artwork.percent_of_total.max(if status.storage.artwork.bytes > 0 { 1 } else { 0 }))) title=(format!("Artwork {}", status.storage.artwork.size)) {}
-                span class="storage-segment storage-segment--ai" style=(format!("width: {}%", status.storage.ai_models.percent_of_total.max(if status.storage.ai_models.bytes > 0 { 1 } else { 0 }))) title=(format!("AI Models {}", status.storage.ai_models.size)) {}
-                span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total.max(if status.storage.other.bytes > 0 { 1 } else { 0 }))) title=(format!("Other {}", status.storage.other.size)) {}
-                span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
+            div class="card-head" aria-label="Storage" {
+                h3 { "Storage" }
             }
-            div class="storage-mini-rows" {
-                (storage_mini_row("Games", &status.storage.games.size, status.storage.games.percent_of_total, status.storage.games.bytes))
-                (storage_mini_row("Artwork", &status.storage.artwork.size, status.storage.artwork.percent_of_total, status.storage.artwork.bytes))
-                (storage_mini_row("AI Models", &status.storage.ai_models.size, status.storage.ai_models.percent_of_total, status.storage.ai_models.bytes))
-                (storage_mini_row("Other", &status.storage.other.size, status.storage.other.percent_of_total, status.storage.other.bytes))
-            }
-            div class="home-signal-strip" aria-label="Storage signals" {
-                (home_signal("Volumes", &status.storage.volumes.len().to_string(), "idle"))
-                (home_signal("Cleanup", &cleanup_label, if cleanup_bytes > 0 { "warn" } else { "ok" }))
-                (home_signal("Warnings", &warning_count.to_string(), if warning_count > 0 { "warn" } else { "ok" }))
+            div class="state-rows state-rows--compact storage-home-details" {
+                (home_detail_row("Games used:", &status.storage.games.size, true))
+                (home_detail_row("AI used:", &status.storage.ai_models.size, true))
+                (home_detail_row("Everything else:", &everything_else, true))
+                (home_detail_row("Free:", &status.storage.free, true))
             }
         }
     }
+}
+
+fn home_storage_everything_else_size(status: &ConsoleStatus) -> String {
+    human_size(
+        status
+            .storage
+            .artwork
+            .bytes
+            .saturating_add(status.storage.other.bytes),
+    )
 }
 
 fn home_load_card() -> Markup {
@@ -470,10 +462,6 @@ fn title_case_state_like(state: &str) -> &'static str {
         "disconnected" => "Disconnected",
         _ => "Unknown",
     }
-}
-
-fn storage_mini_row(label: &str, value: &str, percent: u8, bytes: u64) -> Markup {
-    html! { div class="storage-mini-row" data-label=(label) aria-label=(format!("{} {} {}", label, value, percent_label(percent, bytes))) { strong { (value) } em { (percent_label(percent, bytes)) } } }
 }
 
 fn percent_label(percent: u8, bytes: u64) -> String {

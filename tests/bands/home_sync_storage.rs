@@ -81,7 +81,12 @@
             "data-load-chip-value",
             "CPU",
             "I/O",
-            "storage-bar",
+            "storage-home-card",
+            "storage-home-details",
+            ">Games used:</span>",
+            ">AI used:</span>",
+            ">Everything else:</span>",
+            ">Free:</span>",
             r#"aria-label="Storage""#,
             r#"aria-label="Load""#,
 
@@ -153,6 +158,13 @@
             "reachability--ok",
             "Mbps",
             "aria-label=\"Ethernet speed\"",
+            "storage-bar--home",
+            "storage-mini-row",
+            "storage-mini-rows",
+            "aria-label=\"Storage signals\"",
+            "data-label=\"Volumes\"",
+            "data-label=\"Cleanup\"",
+            "data-label=\"Warnings\"",
         ] {
             assert!(
                 !home_html.contains(forbidden),
@@ -383,6 +395,51 @@
             assert!(
                 !card_html.contains(forbidden),
                 "home games card leaked legacy surface: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn home_storage_card_surfaces_games_ai_other_and_free_rows() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.storage.games.size = "12 GB".to_string();
+        status.storage.ai_models.size = "48 GB".to_string();
+        status.storage.artwork.bytes = 2_000_000_000;
+        status.storage.other.bytes = 1_000_000_000;
+        status.storage.free = "400 GB".to_string();
+        let rendered = ui::layout(&status).into_string();
+        let card_start = rendered
+            .find("storage-home-card")
+            .expect("storage home card");
+        let card_end = card_start
+            + rendered[card_start..]
+                .find("</article>")
+                .expect("storage home card closes");
+        let card_html = &rendered[card_start..card_start + card_end];
+
+        for required in [
+            ">Games used:</span><strong>12 GB</strong>",
+            ">AI used:</span><strong>48 GB</strong>",
+            ">Everything else:</span><strong>3.0 GB</strong>",
+            ">Free:</span><strong>400 GB</strong>",
+        ] {
+            assert!(card_html.contains(required), "home storage card missing {required}");
+        }
+        for forbidden in [
+            "storage-bar--home",
+            "storage-mini-row",
+            "data-label=\"Artwork\"",
+            "data-label=\"Volumes\"",
+            "<1%",
+        ] {
+            assert!(
+                !card_html.contains(forbidden),
+                "home storage card leaked legacy surface: {forbidden}"
             );
         }
     }
