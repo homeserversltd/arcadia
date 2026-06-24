@@ -187,7 +187,7 @@ async fn api_root_events_route(
                 break;
             };
 
-            let root = api_root_object(&state);
+            let root = api_root_telemetry_tick(&state);
             let payload = serde_json::to_string(&root)
                 .unwrap_or_else(|_| "{}".to_string());
             yield Ok(Event::default()
@@ -211,6 +211,10 @@ async fn api_root_events_route(
 
 fn api_root_object(state: &AppState) -> ApiRootObject {
     let status = console_status(state);
+    api_root_object_from_status(state, &status)
+}
+
+fn api_root_object_from_status(_state: &AppState, status: &ConsoleStatus) -> ApiRootObject {
     ApiRootObject {
         schema: "arcadia.api.root.v1",
         kind: "arcadia-root",
@@ -219,11 +223,23 @@ fn api_root_object(state: &AppState) -> ApiRootObject {
         product: status.product.clone(),
         canonical_url: status.canonical_url.clone(),
         children: vec![
-            api_appliance_node(&status),
-            api_storage_node(&status),
+            api_appliance_node(status),
+            api_storage_node(status),
             api_telemetry_node(),
             api_routes_node(),
         ],
+    }
+}
+
+fn api_root_telemetry_tick(state: &AppState) -> ApiRootObject {
+    ApiRootObject {
+        schema: "arcadia.api.root.v1",
+        kind: "arcadia-root",
+        id: "arcadia",
+        generated_at_unix: now_unix_seconds(),
+        product: state.product.clone(),
+        canonical_url: state.canonical_url.clone(),
+        children: vec![api_telemetry_node()],
     }
 }
 
