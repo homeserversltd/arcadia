@@ -169,6 +169,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/network/ip/confirm", post(ip_confirm))
         .route("/api/network/ip/rollback", post(ip_rollback))
         .route("/api/network/diagnostics/run", post(diagnostics_run))
+        .route("/api/network/speed-test", post(speed_test_run))
         .route("/api/system/status", get(system_status_route))
         .route("/api/system/ssh/service", post(action_ssh_service))
         .route(

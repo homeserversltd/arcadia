@@ -89,6 +89,7 @@ fn parse_global_ipv4_address(text: &str) -> Option<String> {
 
 fn network_status() -> NetworkStatus {
     let state = network_state_from_parts("HomeConsole", None);
+    let (timezone, ntp_synchronized) = clock_status();
     let online = state.active_connection.connection_type != "offline";
     NetworkStatus {
         online,
@@ -119,6 +120,8 @@ fn network_status() -> NetworkStatus {
         samba_reachable: state.services.samba.state == "available",
         lan_ai_reachable: state.services.lan_inference.state == "available",
         internet_reachable: state.active_connection.internet_reachable,
+        timezone,
+        ntp_synchronized,
     }
 }
 

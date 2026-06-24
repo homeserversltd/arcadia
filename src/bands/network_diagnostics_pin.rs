@@ -1,3 +1,13 @@
+async fn speed_test_run() -> (StatusCode, Json<SpeedTestResponse>) {
+    let result = run_download_speed_test();
+    let status = if result.ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, Json(result))
+}
+
 async fn diagnostics_run(
     State(state): State<Arc<AppState>>,
     Json(body): Json<DiagnosticsRequest>,

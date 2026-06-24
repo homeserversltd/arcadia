@@ -2182,8 +2182,7 @@ function openWiredDetailsModal() {
     const e = state.ethernet || {};
     const a = state.activeConnection || {};
     const rows = [
-      ['Link state', e.connected ? 'Connected' : 'Cable disconnected'],
-      ['Speed', e.speedMbps ? `${e.speedMbps} Mbps` : 'Unknown'],
+      ['Link', e.connected ? (e.speedMbps ? `${e.speedMbps} Mbps negotiated` : 'Link up') : 'No cable'],
       ['IP address', e.ip || a.ip || 'Unavailable'],
       ['MAC address', e.macAddress || 'Unknown'],
       ['Mode', e.dhcp ? 'DHCP' : 'Manual'],
@@ -2265,6 +2264,37 @@ function bindNetworkControls() {
       if (action === 'forget-wifi') return postNetworkAction('/api/network/wifi/forget', { ssid: button.dataset.ssid || '' }, action);
       if (action === 'renew-dhcp') return postNetworkAction('/api/network/ethernet/renew-dhcp', {}, action);
       if (action === 'rollback-ip') return postNetworkAction('/api/network/ip/rollback', {}, action);
+      if (action === 'speed-test') {
+        const root = document.getElementById('speed-test-results');
+        const old = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Testing…';
+        if (root) {
+          root.hidden = false;
+          root.className = 'network-speed-result';
+          root.textContent = 'Measuring download speed…';
+        }
+        try {
+          const data = await postJson('/api/network/speed-test', {});
+          if (root) {
+            root.className = `network-speed-result ${data.ok ? 'network-speed-result--ok' : 'network-speed-result--error'}`;
+            root.textContent = data.ok
+              ? `${Number(data.downloadMbps || 0).toFixed(1)} Mbps down · ${data.durationMs || 0} ms`
+              : (data.message || 'Speed test failed.');
+          }
+          PopupManager.showToast(data.message || 'Speed test complete.', data.ok ? 'success' : 'error');
+        } catch (error) {
+          if (root) {
+            root.className = 'network-speed-result network-speed-result--error';
+            root.textContent = 'Speed test failed.';
+          }
+          PopupManager.showToast('Speed test failed.', 'error');
+        } finally {
+          button.disabled = false;
+          button.textContent = old;
+        }
+        return;
+      }
     });
   });
   document.querySelectorAll('[data-open-hidden-wifi]').forEach((button) => button.addEventListener('click', () => openHiddenNetworkModal()));

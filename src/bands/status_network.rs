@@ -320,5 +320,91 @@ fn read_speed_mbps(name: &str) -> Option<u64> {
         .trim()
         .parse()
         .ok()
+        .filter(|v| *v > 0)
+}
+
+fn clock_status() -> (Option<String>, Option<bool>) {
+    let timezone = command_stdout("timedatectl", &["show", "-p", "Timezone", "--value"]);
+    let ntp_synchronized = command_stdout("timedatectl", &["show", "-p", "NTPSynchronized", "--value"])
+        .map(|value| value.trim() == "yes");
+    (timezone, ntp_synchronized)
+}
+
+const SPEED_TEST_BYTES: u64 = 25_000_000;
+
+fn run_download_speed_test() -> SpeedTestResponse {
+    if !internet_reachable() {
+        return SpeedTestResponse {
+            ok: false,
+            action: "network-speed-test",
+            download_mbps: None,
+            duration_ms: None,
+            bytes: None,
+            message: "Internet unavailable. Connect to run a speed test.".to_string(),
+        };
+    }
+    let url = format!(
+        "https://speed.cloudflare.com/__down?bytes={SPEED_TEST_BYTES}"
+    );
+    let started = std::time::Instant::now();
+    let output = std::process::Command::new("curl")
+        .args([
+            "-fsS",
+            "-o",
+            "/dev/null",
+            "-w",
+            "%{size_download}",
+            "--max-time",
+            "30",
+            &url,
+        ])
+        .output();
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let Ok(output) = output else {
+        return SpeedTestResponse {
+            ok: false,
+            action: "network-speed-test",
+            download_mbps: None,
+            duration_ms: Some(duration_ms),
+            bytes: None,
+            message: "Speed test could not start.".to_string(),
+        };
+    };
+    if !output.status.success() {
+        return SpeedTestResponse {
+            ok: false,
+            action: "network-speed-test",
+            download_mbps: None,
+            duration_ms: Some(duration_ms),
+            bytes: None,
+            message: "Speed test failed. Check Internet and try again.".to_string(),
+        };
+    }
+    let bytes = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .map(|v| v as u64)
+        .filter(|v| *v > 0);
+    let Some(bytes) = bytes else {
+        return SpeedTestResponse {
+            ok: false,
+            action: "network-speed-test",
+            download_mbps: None,
+            duration_ms: Some(duration_ms),
+            bytes: None,
+            message: "Speed test returned no data.".to_string(),
+        };
+    };
+    let seconds = duration_ms.max(1) as f64 / 1000.0;
+    let download_mbps = (bytes as f64 * 8.0 / 1_000_000.0) / seconds;
+    SpeedTestResponse {
+        ok: true,
+        action: "network-speed-test",
+        download_mbps: Some((download_mbps * 10.0).round() / 10.0),
+        duration_ms: Some(duration_ms),
+        bytes: Some(bytes),
+        message: format!("{:.1} Mbps download", download_mbps),
+    }
 }
 
