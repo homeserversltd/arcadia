@@ -41,6 +41,14 @@ const HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS: u64 = 30;
 
 static HOME_TELEMETRY_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
 static HOME_TELEMETRY_LEASES: OnceLock<Mutex<HashMap<String, HomeTelemetryLease>>> = OnceLock::new();
+static LAST_DISK_IO_SAMPLE: OnceLock<Mutex<Option<DiskIoSample>>> = OnceLock::new();
+
+#[derive(Clone, Copy)]
+struct DiskIoSample {
+    sectors_read: u64,
+    sectors_written: u64,
+    sampled_at_millis: u128,
+}
 
 #[derive(Clone)]
 struct HomeTelemetryLease {
@@ -405,8 +413,8 @@ fn api_telemetry_node() -> ApiObjectNode {
         metrics: vec![
             api_metric_value("cpuTemperatureCelsius", "CPU temperature", serde_json::json!(cpu_temp), Some("celsius"), None),
             api_metric_value("load1", "Load average 1m", load.get("oneMinute").cloned().unwrap_or(serde_json::Value::Null), None, None),
-            api_metric_value("diskReads", "Disk reads", disk_io.get("readsCompleted").cloned().unwrap_or(serde_json::Value::Null), Some("count"), None),
-            api_metric_value("diskWrites", "Disk writes", disk_io.get("writesCompleted").cloned().unwrap_or(serde_json::Value::Null), Some("count"), None),
+            api_metric_value("diskReadRate", "Disk read rate", disk_io.get("readBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
+            api_metric_value("diskWriteRate", "Disk write rate", disk_io.get("writeBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
             api_metric_value("ioPressureAvg10", "I/O pressure", serde_json::json!(io_pressure), Some("percent"), None),
         ],
         data: serde_json::json!({
@@ -501,21 +509,60 @@ fn now_unix_seconds() -> u64 {
         .unwrap_or(0)
 }
 
+fn now_unix_millis() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0)
+}
+
+fn thermal_zone_priority(zone_type: &str) -> i32 {
+    match zone_type {
+        "x86_pkg_temp" => 100,
+        "tctl" => 95,
+        "k10temp" => 90,
+        "cpu-thermal" => 85,
+        "cpu" => 80,
+        "acpitz" => 10,
+        other if other.contains("pkg") => 70,
+        other if other.contains("cpu") => 60,
+        _ => -1,
+    }
+}
+
 fn cpu_temperature_celsius() -> Option<f64> {
     let thermal_root = Path::new("/sys/class/thermal");
     let entries = fs::read_dir(thermal_root).ok()?;
+    let mut best: Option<(i32, f64)> = None;
     for entry in entries.flatten() {
-        let path = entry.path().join("temp");
-        let Ok(raw) = fs::read_to_string(path) else {
+        let zone_path = entry.path();
+        let zone_type = fs::read_to_string(zone_path.join("type"))
+            .ok()
+            .map(|value| value.trim().to_string())
+            .unwrap_or_default();
+        let priority = thermal_zone_priority(&zone_type);
+        if priority < 0 {
+            continue;
+        }
+        let Ok(raw) = fs::read_to_string(zone_path.join("temp")) else {
             continue;
         };
-        if let Ok(milli_celsius) = raw.trim().parse::<f64>() {
-            if milli_celsius > 0.0 {
-                return Some((milli_celsius / 1000.0 * 10.0).round() / 10.0);
+        let Ok(milli_celsius) = raw.trim().parse::<f64>() else {
+            continue;
+        };
+        if milli_celsius <= 0.0 {
+            continue;
+        }
+        let celsius = (milli_celsius / 1000.0 * 10.0).round() / 10.0;
+        match best {
+            Some((best_priority, _)) if priority < best_priority => continue,
+            Some((best_priority, best_temp)) if priority == best_priority && celsius <= best_temp => {
+                continue
             }
+            _ => best = Some((priority, celsius)),
         }
     }
-    None
+    best.map(|(_, celsius)| celsius)
 }
 
 fn load_average() -> serde_json::Value {
@@ -546,6 +593,22 @@ fn pressure_avg10_percent(path: &str) -> Option<f64> {
     })
 }
 
+fn disk_device_counts_io(name: &str) -> bool {
+    if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("dm-") {
+        return false;
+    }
+    if name.starts_with("nvme") {
+        return !name.contains('p');
+    }
+    if name.starts_with("mmcblk") {
+        return !name.contains('p');
+    }
+    if name.starts_with("sd") || name.starts_with("vd") {
+        return name.len() == 3;
+    }
+    false
+}
+
 fn disk_io_counters() -> serde_json::Value {
     let Some(raw) = fs::read_to_string("/proc/diskstats").ok() else {
         return serde_json::json!({"available": false});
@@ -561,7 +624,7 @@ fn disk_io_counters() -> serde_json::Value {
             continue;
         }
         let name = parts[2];
-        if name.starts_with("loop") || name.starts_with("ram") {
+        if !disk_device_counts_io(name) {
             continue;
         }
         devices += 1;
@@ -570,14 +633,50 @@ fn disk_io_counters() -> serde_json::Value {
         writes_completed += parts[7].parse::<u64>().unwrap_or(0);
         sectors_written += parts[9].parse::<u64>().unwrap_or(0);
     }
-    serde_json::json!({
+    let sampled_at_millis = now_unix_millis();
+    let (read_bytes_per_sec, write_bytes_per_sec) = {
+        let store = LAST_DISK_IO_SAMPLE.get_or_init(|| Mutex::new(None));
+        let Ok(mut slot) = store.lock() else {
+            return serde_json::json!({
+                "available": true,
+                "devices": devices,
+                "readsCompleted": reads_completed,
+                "writesCompleted": writes_completed,
+                "sectorsRead": sectors_read,
+                "sectorsWritten": sectors_written,
+                "readBytesPerSec": 0,
+                "writeBytesPerSec": 0,
+            });
+        };
+        let rates = slot.as_ref().map(|previous| {
+            let elapsed_ms = sampled_at_millis
+                .saturating_sub(previous.sampled_at_millis)
+                .max(1);
+            let read_delta = sectors_read.saturating_sub(previous.sectors_read);
+            let write_delta = sectors_written.saturating_sub(previous.sectors_written);
+            (
+                read_delta.saturating_mul(512).saturating_mul(1000) / elapsed_ms as u64,
+                write_delta
+                    .saturating_mul(512)
+                    .saturating_mul(1000)
+                    / elapsed_ms as u64,
+            )
+        }).unwrap_or((0, 0));
+        *slot = Some(DiskIoSample {
+            sectors_read,
+            sectors_written,
+            sampled_at_millis,
+        });
+        rates
+    };
+    serde_json::Value::from(serde_json::json!({
         "available": true,
         "devices": devices,
         "readsCompleted": reads_completed,
         "writesCompleted": writes_completed,
         "sectorsRead": sectors_read,
         "sectorsWritten": sectors_written,
-        "readBytesApprox": sectors_read.saturating_mul(512),
-        "writtenBytesApprox": sectors_written.saturating_mul(512),
-    })
+        "readBytesPerSec": read_bytes_per_sec,
+        "writeBytesPerSec": write_bytes_per_sec,
+    }))
 }
