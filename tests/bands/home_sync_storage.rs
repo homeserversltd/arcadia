@@ -107,8 +107,8 @@
             ">State:</span>",
             "sync-home-card",
             "sync-home-details",
-            ">GameScope:</span>",
-            ">Added:</span>",
+            ">Games:</span>",
+            ">Artwork:</span>",
             r#"aria-label="Games""#,
             r#"aria-label="Updates""#,
             ">Storage</h3>",
@@ -374,7 +374,7 @@
     }
 
     #[test]
-    fn home_games_card_surfaces_gamescope_and_added_counts() {
+    fn home_games_card_surfaces_games_and_artwork_counts() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -383,6 +383,7 @@
         let mut status = console_status(&state);
         status.library.gamescope_entries = 2;
         status.library.total_detected_games = 5;
+        status.library.artwork_paired_total = 3;
         let rendered = ui::layout(&status).into_string();
         let card_start = rendered
             .find("sync-home-card")
@@ -391,17 +392,23 @@
             + rendered[card_start..]
                 .find("</article>")
                 .expect("games home card closes");
-        let card_html = &rendered[card_start..card_start + card_end];
+        let card_html = &rendered[card_start..card_end];
 
         for required in [
-            ">Games</h3><strong>7</strong>",
-            ">GameScope:</span><strong>2</strong>",
-            ">Added:</span><strong>5</strong>",
-            "data-home-games-total=\"7\"",
+            ">Games</h3><strong>5</strong>",
+            ">Games:</span><strong>5</strong>",
+            ">Artwork:</span><strong>3 / 5</strong>",
+            "data-home-games-total=\"5\"",
         ] {
             assert!(card_html.contains(required), "home games card missing {required}");
         }
-        for forbidden in ["ROM", "Available ROMs", "data-label=\"Last scan\""] {
+        for forbidden in [
+            "ROM",
+            "Available ROMs",
+            "data-label=\"Last scan\"",
+            ">GameScope:</span>",
+            ">Added:</span>",
+        ] {
             assert!(
                 !card_html.contains(forbidden),
                 "home games card leaked legacy surface: {forbidden}"
@@ -423,23 +430,23 @@
         status.library.sync_needed = false;
         status.library.gamescope_entries = 40;
         status.library.total_detected_games = 63;
+        status.library.artwork_paired_total = 50;
         let rendered = ui::layout(&status).into_string();
-        assert!(rendered.contains(r#"data-games-total="103""#));
-        assert!(rendered.contains("103 games total"));
-        assert!(rendered.contains("40 GameScope + 63 ROMs"));
+        assert!(rendered.contains(r#"data-games-total="63""#));
+        assert!(rendered.contains("63 games · 50 / 63 artwork"));
         assert!(!rendered.contains(">Synced</strong>"));
         assert!(!rendered.contains(">Sync needed</strong>"));
 
         status.library.sync_needed = true;
         status.library.unsynced_added = 2;
         let pending = ui::layout(&status).into_string();
-        assert!(pending.contains(r#"data-games-total="103""#));
+        assert!(pending.contains(r#"data-games-total="63""#));
         assert!(!pending.contains(">Sync needed</strong>"));
-        assert!(pending.contains(r#"<strong data-games-total-value>103</strong>"#));
+        assert!(pending.contains(r#"<strong data-games-total-value>63</strong>"#));
     }
 
     #[test]
-    fn home_games_card_total_matches_header_sync_chip_as_gamescope_plus_roms() {
+    fn home_games_card_total_matches_header_games_chip_as_detected_library_count() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -448,6 +455,7 @@
         let mut status = console_status(&state);
         status.library.gamescope_entries = 103;
         status.library.total_detected_games = 103;
+        status.library.artwork_paired_total = 88;
         status.library.last_sync_state = "success".to_string();
         let rendered = ui::layout(&status).into_string();
         let card_start = rendered
@@ -460,16 +468,20 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         assert!(
-            card_html.contains(">Games</h3><strong>206</strong>"),
-            "home games card total should be GameScope plus ROMs"
+            card_html.contains(">Games</h3><strong>103</strong>"),
+            "home games card total should be detected library count only"
         );
         assert!(
-            rendered.contains(r#"data-games-total="206""#),
-            "header sync chip should use the same library total"
+            rendered.contains(r#"data-games-total="103""#),
+            "header games chip should use the same library total"
         );
         assert!(
-            rendered.contains("206 games total · 103 GameScope + 103 ROMs"),
-            "header tooltip should explain GameScope plus ROM breakdown"
+            rendered.contains("103 games · 88 / 103 artwork"),
+            "header tooltip should explain games and artwork pairing"
+        );
+        assert!(
+            card_html.contains(">Artwork:</span><strong>88 / 103</strong>"),
+            "home games card should surface artwork pairing"
         );
     }
 
@@ -997,10 +1009,10 @@
         let rendered = ui::layout(&status).into_string();
         let sync_html = sync_slice(&rendered);
         assert!(sync_html.contains(r#"data-sync-debt="admission""#));
-        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">125</span>"#));
-        assert!(sync_html.contains(r#"data-sync-games-total="125""#));
+        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">100</span>"#));
+        assert!(sync_html.contains(r#"data-sync-games-total="100""#));
         assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">1</span>"#));
-        assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">100</span>"#));
+        assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">125</span>"#));
         assert!(!sync_html.contains("Waiting"));
         assert!(!sync_html.contains("games waiting"));
     }

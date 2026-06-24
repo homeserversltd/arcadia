@@ -229,17 +229,20 @@ fn sync_admitted_shelf(status: &ConsoleStatus) -> Markup {
 }
 
 fn library_games_total(status: &ConsoleStatus) -> u64 {
-    status
-        .library
-        .gamescope_entries
-        .saturating_add(status.library.total_detected_games)
+    status.library.total_detected_games
 }
 
 fn library_games_total_tip(status: &ConsoleStatus, detail: &str) -> String {
     let total = library_games_total(status);
-    let native = status.library.gamescope_entries;
-    let roms = status.library.total_detected_games;
-    format!("{total} games total · {native} GameScope + {roms} ROMs · {detail}")
+    let artwork = library_artwork_lane_label(status);
+    format!("{total} games · {artwork} artwork · {detail}")
+}
+
+fn library_artwork_lane_label(status: &ConsoleStatus) -> String {
+    sync_artwork_lane_label(
+        status.library.artwork_paired_total,
+        status.library.total_detected_games,
+    )
 }
 
 fn sync_has_history(status: &ConsoleStatus) -> bool {

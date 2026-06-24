@@ -322,11 +322,10 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
     let pending_changes = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let native = status.library.gamescope_entries;
-    let added = status.library.total_detected_games;
-    let native_line = native.to_string();
-    let added_line = added.to_string();
-    let total_line = library_games_total(status).to_string();
+    let games = library_games_total(status);
+    let games_line = games.to_string();
+    let artwork_line = library_artwork_lane_label(status);
+    let total_line = games_line.clone();
     let needs_attention = status.library.last_sync_state == "error"
         || pending_changes > 0
         || status.library.sync_needed;
@@ -337,8 +336,8 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
                 strong { (total_line) }
             }
             div class="state-rows state-rows--compact sync-home-details" {
-                (home_detail_row("GameScope:", &native_line, true))
-                (home_detail_row("Added:", &added_line, true))
+                (home_detail_row("Games:", &games_line, true))
+                (home_detail_row("Artwork:", &artwork_line, true))
             }
         }
     }
