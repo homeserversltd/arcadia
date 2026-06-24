@@ -4,13 +4,15 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
     let pending_changes = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let admitted = status.library.total_synced_entries;
+    let native = status.library.gamescope_entries;
+    let added = status.library.total_detected_games;
+    let artwork_paired = status.library.artwork_paired_total;
     let artwork_missing = status.library.artwork_missing;
     let rejected = status.library.failed_games + status.library.skipped_games;
-    let orb_state = sync_orb_state(status, pending_changes, rejected);
-    let orb_label = sync_orb_label(status, orb_state, pending_changes, rejected);
-    let orb_number = sync_orb_number(status, pending_changes, rejected);
-    let orb_subline = sync_orb_subline(status, pending_changes, rejected);
+    let orb_state = sync_orb_state(status);
+    let orb_number = added.to_string();
+    let art_progress = sync_art_progress_pct(status);
+    let artwork_line = sync_artwork_lane_label(artwork_paired, added);
     let primary_label = sync_primary_action_label(status, pending_changes, rejected);
     let primary_disabled = storage_blocked || status.library.last_sync_state == "running";
     let sync_debt = if pending_changes > 0 {
@@ -29,24 +31,20 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            section class="sync-admission-board sync-orb-board" data-sync-root="true" data-sync-orb-state=(orb_state) data-sync-debt=(sync_debt) data-beauty-debt=(beauty_debt) data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync orb" {
+            section class="sync-admission-board sync-orb-board" data-sync-root="true" data-sync-orb-state=(orb_state) data-sync-debt=(sync_debt) data-beauty-debt=(beauty_debt) data-sync-games-total=(orb_number) data-sync-art-progress=(art_progress.to_string()) data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync orb" {
                 div class="sync-orb-stage ux-sync-orb-stage" data-sync-result=(sync_result_kind(status)) {
-                    div class=(format!("ux-sync-orb ux-sync-orb--{}", orb_state)) aria-hidden="true" {
-                        span class="ux-sync-orb-ring" {}
+                    div class=(format!("ux-sync-orb ux-sync-orb--{}", orb_state)) style=(format!("--sync-art-pct:{};", art_progress)) aria-label=(format!("{added} games, {art_progress} percent artwork paired")) {
+                        span class="ux-sync-orb-track" aria-hidden="true" {}
+                        span class="ux-sync-orb-sweep" aria-hidden="true" {}
+                        span class="ux-sync-orb-ring" aria-hidden="true" {}
                         span class="ux-sync-orb-core" { (orb_number) }
-                        span class="ux-sync-orb-glint" {}
                     }
                     div class="sync-orb-copy" {
-                        strong class="sync-orb-verdict" { (orb_label) }
-                        span class="sync-orb-subline" { (orb_subline) }
-                        div class="sync-orb-lanes" aria-label="Sync debt lanes" {
-                            (sync_lane_chip("Waiting", pending_changes, if pending_changes > 0 { "warn" } else { "quiet" }))
-                            (sync_lane_chip("New", status.library.unsynced_added, if status.library.unsynced_added > 0 { "warn" } else { "quiet" }))
-                            (sync_lane_chip("Changed", status.library.unsynced_changed, if status.library.unsynced_changed > 0 { "warn" } else { "quiet" }))
-                            (sync_lane_chip("Ejected", status.library.unsynced_removed, if status.library.unsynced_removed > 0 { "bad" } else { "quiet" }))
-                            (sync_lane_chip("Admitted", admitted, "good"))
+                        div class="sync-orb-lanes" aria-label="Game library counts" {
+                            (sync_lane_chip("Native", native, "quiet"))
+                            (sync_lane_chip("Added", added, if added > 0 { "good" } else { "quiet" }))
+                            (sync_lane_chip_str("Artwork", &artwork_line, if artwork_missing > 0 { "caveat" } else if added > 0 { "good" } else { "quiet" }))
                             (sync_lane_chip("Artwork missing", artwork_missing, if artwork_missing > 0 { "caveat" } else { "good" }))
-                            (sync_lane_chip("Attention", rejected, if rejected > 0 { "bad" } else { "quiet" }))
                         }
                     }
                     div class="sync-orb-actions" aria-label="Sync actions" {
@@ -93,80 +91,32 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn sync_orb_state(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> &'static str {
+fn sync_orb_state(status: &ConsoleStatus) -> &'static str {
     if status.library.last_sync_state == "running" {
         "syncing"
-    } else if pending_changes > 0 {
-        "waiting"
-    } else if rejected > 0 {
-        "attention"
-    } else if status.library.artwork_missing > 0 && status.library.total_synced_entries > 0 {
+    } else if status.library.total_detected_games == 0 {
+        "idle"
+    } else if status.library.artwork_missing > 0 {
         "caveat"
     } else {
         "current"
     }
 }
 
-fn sync_orb_label(
-    status: &ConsoleStatus,
-    orb_state: &str,
-    pending_changes: u64,
-    rejected: u64,
-) -> String {
-    match orb_state {
-        "syncing" => format!(
-            "Syncing {} games",
-            pending_changes
-                .max(status.library.total_detected_games)
-                .max(1)
-        ),
-        "waiting" => format!("{} games waiting", pending_changes),
-        "attention" => format!("{} need attention", rejected),
-        "caveat" | "current" if status.library.total_synced_entries == 0 => "Add games".to_string(),
-        "caveat" | "current" => "Games current".to_string(),
-        _ => "Games current".to_string(),
+fn sync_art_progress_pct(status: &ConsoleStatus) -> u8 {
+    let added = status.library.total_detected_games;
+    if added == 0 {
+        return 0;
     }
+    ((status.library.artwork_paired_total.saturating_mul(100)) / added)
+        .min(100) as u8
 }
 
-fn sync_orb_number(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> String {
-    if status.library.last_sync_state == "running" {
-        pending_changes
-            .max(status.library.total_detected_games)
-            .max(1)
-            .to_string()
-    } else if pending_changes > 0 {
-        pending_changes.to_string()
-    } else if rejected > 0 {
-        rejected.to_string()
+fn sync_artwork_lane_label(artwork_paired: u64, added: u64) -> String {
+    if added == 0 {
+        "0".to_string()
     } else {
-        status.library.total_synced_entries.to_string()
-    }
-}
-
-fn sync_orb_subline(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> String {
-    if status.library.last_sync_state == "running" {
-        "Admitting games into the console library".to_string()
-    } else if pending_changes > 0 {
-        format!(
-            "{} new · {} changed · {} ejected",
-            status.library.unsynced_added,
-            status.library.unsynced_changed,
-            status.library.unsynced_removed
-        )
-    } else if rejected > 0 {
-        format!("{} rejected candidates need a fix", rejected)
-    } else if status.library.artwork_missing > 0 && status.library.total_synced_entries > 0 {
-        format!(
-            "{} admitted · {} missing artwork",
-            status.library.total_synced_entries, status.library.artwork_missing
-        )
-    } else if status.library.total_synced_entries > 0 {
-        format!(
-            "{} admitted · artwork complete",
-            status.library.total_synced_entries
-        )
-    } else {
-        "No games admitted yet".to_string()
+        format!("{artwork_paired} / {added}")
     }
 }
 
@@ -185,6 +135,10 @@ fn sync_primary_action_label(
 }
 
 fn sync_lane_chip(label: &str, value: u64, tone: &str) -> Markup {
+    html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong { (value) } } }
+}
+
+fn sync_lane_chip_str(label: &str, value: &str, tone: &str) -> Markup {
     html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong { (value) } } }
 }
 
@@ -288,4 +242,3 @@ fn sync_result_kind(status: &ConsoleStatus) -> &'static str {
         _ => "idle",
     }
 }
-
