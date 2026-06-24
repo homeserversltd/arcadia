@@ -103,15 +103,9 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .view[data-view-panel="local-ai"] .local-ai-card--config { grid-column: span 1; }
 .view[data-view-panel="local-ai"] #ai-message { grid-column: 1 / -1; }
 .view[data-view-panel="local-ai"] .system-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.view[data-view-panel="network"].is-active { display: grid; align-content: start; }
-.view[data-view-panel="network"] .network-dashboard { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.view[data-view-panel="network"] .network-section--summary, .view[data-view-panel="network"] .network-card--wide { grid-column: auto; }
-.view[data-view-panel="network"] .network-compact-grid, .view[data-view-panel="network"] .network-compact-grid--small { grid-template-columns: 1fr; }
-.view[data-view-panel="network"] .network-compact-grid .system-field:nth-child(n+4), .view[data-view-panel="network"] .network-service-row:nth-child(n+3) { display: none; }
-.view[data-view-panel="network"] .network-service-row { grid-template-columns: minmax(0,1fr); }
-.view[data-view-panel="network"] .network-service-row .system-row-actions { justify-content: flex-start; }
-.view[data-view-panel="network"] .network-service-row em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.view[data-view-panel="network"] .inline-actions--compact .btn:nth-child(n+3) { display: none; }
+.view[data-view-panel="network"] .network-compact-grid--summary .system-field:nth-child(n+5) { display: none; }
+.view[data-view-panel="network"] .network-card__actions .btn:nth-child(n+3) { display: none; }
+.view[data-view-panel="network"] .network-diagnostics-foot .inline-actions--compact .btn:nth-child(n+3) { display: none; }
 .view[data-view-panel="access-pin"].is-active { display: grid; align-content: start; }
 .view[data-view-panel="access-pin"] .access-pin-panel { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .view[data-view-panel="access-pin"] .access-pin-card--mode { grid-template-columns: minmax(0, 1fr) auto; }

@@ -82,6 +82,10 @@
   --ux-controls-binding-row-min: 24px;
   --ux-controls-games-cols: 5;
   --ux-controls-preset-cols: 4;
+
+  --ux-network-gap: 7px;
+  --ux-network-card-radius: 18px;
+  --ux-network-card-padding: 10px;
 }
 
 .ux-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ux-grid-gap); }

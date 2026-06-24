@@ -108,6 +108,19 @@ pub struct NetworkStatus {
     pub samba_reachable: bool,
     pub lan_ai_reachable: bool,
     pub internet_reachable: Option<bool>,
+    pub timezone: Option<String>,
+    pub ntp_synchronized: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpeedTestResponse {
+    ok: bool,
+    action: &'static str,
+    download_mbps: Option<f64>,
+    duration_ms: Option<u64>,
+    bytes: Option<u64>,
+    message: String,
 }
 
 #[derive(Clone, Serialize)]

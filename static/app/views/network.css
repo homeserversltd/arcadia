@@ -1,32 +1,114 @@
-/* Arcadia composable: views/network.css */
-.network-summary-card, .network-card { padding: 16px; margin: 12px 0; }
-.network-summary-main { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 14px; border-radius: 18px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); margin: 10px 0; }
-.network-summary-main strong { font-size: 20px; }
-.network-alt-copy { color: var(--muted); margin: 6px 0; }
-.network-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.network-card--wide { grid-column: 1 / -1; }
+/* Network hub — composable blocks; desktop single-pane fit via workbench grid + token density. */
+.view[data-view-panel="network"].is-active {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  padding: var(--ux-view-padding-block) var(--ux-view-padding-inline);
+  overflow: hidden;
+}
+.network-hub {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--ux-network-gap);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.network-workbench {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ux-network-gap);
+  min-height: 0;
+  align-items: stretch;
+}
+.network-section {
+  padding: var(--ux-network-card-padding);
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--ux-network-card-radius);
+  background: linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 50%, transparent));
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--theme-field-surface) 88%, transparent), inset 0 1px 0 var(--theme-glass);
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--ux-network-gap);
+}
+.network-summary-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "identity badge"
+    "grid grid"
+    "actions actions";
+  gap: 8px 10px;
+  align-items: center;
+}
+.network-summary-strip__identity { grid-area: identity; display: grid; gap: 2px; min-width: 0; }
+.network-summary-strip .system-status { grid-area: badge; align-self: center; }
+.network-summary-strip .network-compact-grid--summary { grid-area: grid; margin: 0; }
+.network-summary-strip__actions { grid-area: actions; margin: 0; }
+.network-summary-title { display: block; font-size: var(--ux-text-lg); line-height: 1.1; }
+.network-summary-strip__detail { color: var(--muted); font-size: var(--ux-text-sm); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.network-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.network-card__titleblock { display: grid; gap: 2px; min-width: 0; }
+.network-card__titleblock strong { font-size: var(--ux-text-md); }
+.network-wifi-ssid { color: var(--cream); font-size: var(--ux-text-sm); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.network-wifi-ssid--idle { color: var(--muted); }
+.network-wifi-signal { display: grid; gap: 5px; align-content: start; }
+.network-wifi-signal__track {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-field-surface) 82%, transparent);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.network-wifi-signal__fill {
+  display: block;
+  height: 100%;
+  width: var(--wifi-signal, 0%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--good) 70%, var(--theme-accent)), var(--good));
+}
+.network-wifi-signal em { color: var(--muted); font-style: normal; font-size: var(--ux-text-xs); }
+.network-card__actions { margin-top: auto; }
+.network-speed-panel { display: grid; gap: 6px; align-content: start; }
+.network-speed-result {
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent);
+  color: var(--cream);
+  font-size: var(--ux-text-sm);
+  line-height: 1.3;
+}
+.network-speed-result--error { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+.network-speed-result--ok { border-color: color-mix(in srgb, var(--good) 35%, var(--line)); }
+.network-diagnostics-foot { margin: 0; grid-template-rows: auto; }
+.network-service-list { display: grid; gap: 6px; align-content: start; }
+.network-service-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent);
+  border: 1px solid var(--line);
+}
+.network-service-row span { display: grid; gap: 2px; min-width: 0; }
+.network-service-row em { color: var(--muted); font-style: normal; font-size: var(--ux-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.network-service-row .system-row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+.network-compact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.network-compact-grid--summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.network-compact-grid--small { grid-template-columns: 1fr; }
+.network-compact-grid .system-field { padding: 6px 8px; border-radius: 12px; background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); }
+.network-compact-grid .system-field em { font-size: var(--ux-text-xs); }
+.network-compact-grid .system-field strong { font-size: var(--ux-text-sm); line-height: 1.2; }
+.empty-state { padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
+.empty-state p { margin: 4px 0 0; color: var(--muted); font-size: var(--ux-text-sm); }
 .wifi-connect-panel { display: grid; gap: 10px; margin: 12px 0; }
 .wifi-connect-panel label { display: grid; gap: 6px; color: var(--muted); font-weight: 800; }
 .wifi-show-password { display: flex !important; align-items: center; gap: 8px; }
-.network-service-list { display: grid; gap: 8px; }
-.network-service-row { display: grid; grid-template-columns: minmax(180px,1fr) auto auto; gap: 10px; align-items: center; padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
-.network-service-row span { display: grid; gap: 3px; }
-.network-service-row em { color: var(--muted); font-style: normal; }
-.network-service-spacer { min-width: 52px; }
-
-.network-section { padding: 14px; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 50%, transparent)); box-shadow: 0 15px 36px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass); }
-.network-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.network-summary-title { display: block; font-size: 20px; line-height: 1.15; }
-.network-summary-lines { display: grid; gap: 5px; margin-top: 8px; color: var(--muted); font-size: 14px; }
-.wifi-network-list, .diagnostics-results { display: grid; gap: 8px; margin-top: 10px; }
-.network-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
-.network-row--active { border-color: color-mix(in srgb, var(--theme-good) 42%, transparent); }
-.network-row span { display: grid; gap: 3px; }
-.network-row em { color: var(--muted); font-style: normal; font-size: 12px; }
-.empty-state { padding: 12px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
-.empty-state p { margin: 5px 0 0; color: var(--muted); }
-.command-box--folder { align-content: start; }
-.copy-choice-list { display: grid; gap: 8px; }
 .system-status--available { color: var(--good); }
 .system-status--disabled { color: var(--idle); }
 .system-status--error { color: var(--bad); }
