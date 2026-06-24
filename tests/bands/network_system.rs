@@ -60,7 +60,8 @@
         let network_html = &rendered[network_start..network_end];
         for required in [
             "Online",
-            "IP address",
+            "Nameservers",
+            "Search",
             "Wired LAN",
             "Run speed test",
             "Details",

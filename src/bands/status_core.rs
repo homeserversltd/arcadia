@@ -89,6 +89,7 @@ fn parse_global_ipv4_address(text: &str) -> Option<String> {
 
 fn network_status() -> NetworkStatus {
     let state = network_state_from_parts("HomeConsole", None);
+    let resolv = read_resolv_conf();
     let (timezone, ntp_synchronized) = clock_status();
     let online = state.active_connection.connection_type != "offline";
     NetworkStatus {
@@ -126,6 +127,8 @@ fn network_status() -> NetworkStatus {
             &state.active_connection.connection_type,
             state.wifi.connected_ssid.as_deref(),
         ),
+        resolv_nameservers: resolv_nameservers_label(&resolv),
+        resolv_search: resolv_search_label(&resolv),
     }
 }
 

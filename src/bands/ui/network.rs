@@ -123,7 +123,8 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                         @if status.network.ethernet_available {
                             div class="network-compact-grid network-compact-grid--small" {
                                 (system_field("Mode", if status.network.ethernet_dhcp { "DHCP" } else { "Manual" }))
-                                (system_field("IP address", &status.network.ip_address))
+                                (system_field("Nameservers", &status.network.resolv_nameservers))
+                                (system_field("Search", &status.network.resolv_search))
                                 (system_field("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown")))
                             }
                             div class="network-speed-panel" {

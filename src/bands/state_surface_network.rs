@@ -111,6 +111,8 @@ pub struct NetworkStatus {
     pub timezone: Option<String>,
     pub ntp_synchronized: Option<bool>,
     pub connection_session_detail: String,
+    pub resolv_nameservers: String,
+    pub resolv_search: String,
 }
 
 #[derive(Serialize)]
