@@ -164,6 +164,66 @@ async fn caduceus_update_service_toggle_proxy_route(
     }
 }
 
+async fn caduceus_gui_update_now_proxy_route() -> impl IntoResponse {
+    match caduceus_post_json("/api/v1/gui/update/now", "{}") {
+        Ok(value) => {
+            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let status = if ok {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/gui/update/now", signal),
+    }
+}
+
+async fn caduceus_local_ai_runtime_status_proxy_route() -> impl IntoResponse {
+    caduceus_json_proxy("/api/v1/local-ai/runtime/status").await
+}
+
+async fn caduceus_local_ai_runtime_check_proxy_route() -> impl IntoResponse {
+    match caduceus_post_json("/api/v1/local-ai/runtime/check", "{}") {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(signal) => caduceus_proxy_error("/api/v1/local-ai/runtime/check", signal),
+    }
+}
+
+async fn caduceus_local_ai_runtime_update_proxy_route() -> impl IntoResponse {
+    match caduceus_post_json("/api/v1/local-ai/runtime/update", "{}") {
+        Ok(value) => {
+            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let status = if ok {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/local-ai/runtime/update", signal),
+    }
+}
+
+async fn caduceus_profile_module_toggle_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let rendered =
+        serde_json::to_string(&body).unwrap_or_else(|_| "{\"module_id\":\"\",\"enabled\":false}".to_string());
+    match caduceus_post_json("/api/v1/profile/module/toggle", &rendered) {
+        Ok(value) => {
+            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let status = if ok {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/profile/module/toggle", signal),
+    }
+}
+
 fn run_caduceus_http_mutation(
     action: &'static str,
     path: &'static str,

@@ -122,29 +122,9 @@ async fn action_set_trust_mode(
 }
 
 async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
-    run_console_command(
+    run_caduceus_http_mutation(
         "update-gui",
-        SYSTEMD_RUN_BIN,
-        &[
-            "--unit=arcadia-gui-update",
-            "--collect",
-            HARMONIA_BIN,
-            "homeconsole-arcadia-gui-update",
-            HOMECONSOLE_PROFILE,
-            "--repo",
-            "git@git.home.arpa:HOMESERVERSLTD/arcadia.git",
-            "--branch",
-            "main",
-            "--source-dir",
-            "/opt/arcadia/source",
-            "--apply",
-            "--install-bin",
-            "/usr/local/bin/arcadia",
-            "--service",
-            "arcadia.service",
-            "--receipt-dir",
-            "/var/lib/harmonia/receipts/arcadia-gui-latest",
-        ],
+        "/api/v1/gui/update/now",
         "Update GUI started. Read /var/lib/harmonia/receipts/arcadia-gui-latest after Arcadia restarts.",
         "Update GUI could not start.",
     )
@@ -173,78 +153,44 @@ async fn action_harmonia_module_toggle(
             "Module id must be lowercase letters, numbers, and hyphens only.".to_string(),
         );
     }
-    let profile_path = Path::new(HOMECONSOLE_PROFILE);
-    let Ok(text) = fs::read_to_string(profile_path) else {
+    let payload = serde_json::json!({
+        "module_id": module_id,
+        "enabled": body.enabled,
+    });
+    let rendered = serde_json::to_string(&payload).unwrap_or_default();
+    let Ok(value) = caduceus_post_json("/api/v1/profile/module/toggle", &rendered) else {
         return harmonia_module_toggle_response(
-            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::BAD_GATEWAY,
             false,
             module_id.to_string(),
             body.enabled,
-            "Harmonia profile is not readable on this console.".to_string(),
+            "Caduceus module toggle route is unreachable.".to_string(),
         );
     };
-    let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return harmonia_module_toggle_response(
-            StatusCode::CONFLICT,
-            false,
-            module_id.to_string(),
-            body.enabled,
-            "Harmonia profile JSON is invalid; module state was not changed.".to_string(),
-        );
-    };
-    let modules_value = json
-        .get_mut("modules")
-        .and_then(|modules| modules.as_array_mut());
-    let Some(modules) = modules_value else {
-        return harmonia_module_toggle_response(
-            StatusCode::CONFLICT,
-            false,
-            module_id.to_string(),
-            body.enabled,
-            "Harmonia profile has no modules array; module state was not changed.".to_string(),
-        );
-    };
-
-    let had_module = modules.iter().any(|module| module.as_str() == Some(module_id));
-    if body.enabled && !had_module {
-        modules.push(serde_json::Value::String(module_id.to_string()));
-    } else if !body.enabled {
-        modules.retain(|module| module.as_str() != Some(module_id));
-    }
-
-    let rendered = match serde_json::to_string_pretty(&json) {
-        Ok(rendered) => rendered + "\n",
-        Err(_) => {
-            return harmonia_module_toggle_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                false,
-                module_id.to_string(),
-                body.enabled,
-                "Harmonia profile could not be rendered.".to_string(),
-            );
-        }
-    };
-    let backup_path = profile_path.with_extension("index.json.arcadia-bak");
-    let _ = fs::write(&backup_path, text.as_bytes());
-    if let Err(err) = fs::write(profile_path, rendered.as_bytes()) {
-        return harmonia_module_toggle_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            false,
-            module_id.to_string(),
-            body.enabled,
-            format!("Harmonia profile could not be saved: {err}"),
-        );
-    }
+    let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let message = value
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or(if ok {
+            if body.enabled {
+                "Module enabled for the next Harmonia run."
+            } else {
+                "Module disabled for the next Harmonia run."
+            }
+        } else {
+            "Caduceus could not update the Harmonia profile."
+        })
+        .to_string();
     harmonia_module_toggle_response(
-        StatusCode::OK,
-        true,
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::BAD_REQUEST
+        },
+        ok,
         module_id.to_string(),
         body.enabled,
-        if body.enabled {
-            format!("{} enabled for the next Harmonia run.", module_id)
-        } else {
-            format!("{} disabled for the next Harmonia run.", module_id)
-        },
+        message,
     )
 }
 
