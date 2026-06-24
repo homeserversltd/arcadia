@@ -239,38 +239,61 @@ fn json_u64(value: &serde_json::Value, key: &str) -> Option<u64> {
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {
-    let internet_label = match status.network.internet_reachable {
-        Some(true) => "Online".to_string(),
-        Some(false) => "No internet".to_string(),
-        None => "Unchecked".to_string(),
-    };
     html! {
         article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
-            @if status.network.online {
-                div class="card-head" aria-label="Network" { h3 { "Network" } strong { (status.network.ip_address) } }
-                @if status.network.active_type == "wifi" {
-                    div class="home-signal-strip" aria-label="Wi-Fi signal" { (home_signal("Wi-Fi", &status.network.signal_percent.map(|v| format!("{}%", v)).unwrap_or_else(|| "—".to_string()), "idle")) }
-                } @else {
-                    div class="home-signal-strip" aria-label="Ethernet speed" { (home_signal("Ethernet", &status.network.ethernet_speed_mbps.map(|v| format!("{} Mbps", v)).unwrap_or_else(|| "—".to_string()), "idle")) }
-                }
-                div class="home-topology" aria-label="Network topology" {
-                    span { "Console" }
-                    i { "→" }
-                    span { "Home LAN" }
-                    i { "→" }
-                    span { (internet_label) }
-                }
-                div class="reachability-row reachability-row--topology" {
-                    (reachability("Link", status.network.online))
-                    @if let Some(internet) = status.network.internet_reachable { (reachability("Internet", internet)) }
-                    (reachability("Samba", status.network.samba_reachable))
-                    (reachability("AI", status.network.lan_ai_reachable))
-                }
-                div class="home-code-line" aria-label="Console URL" { code { (status.identity.web_origin) } }
-            } @else {
-                div class="card-head" aria-label="Network" { h3 { "Network" } strong { "Offline" } }
-                div class="home-signal-strip" { (home_signal("Ethernet", if status.network.ethernet_available { "Present" } else { "Absent" }, if status.network.ethernet_available { "idle" } else { "warn" })) (home_signal("Wi-Fi", if status.network.wifi_adapter_available { "Present" } else { "Absent" }, if status.network.wifi_adapter_available { "idle" } else { "warn" })) }
+            div class="card-head" aria-label="Network" {
+                h3 { "Network" }
+                strong { (if status.network.online { status.network.ip_address.as_str() } else { "Offline" }) }
             }
+            (home_network_stack(status))
+            @if status.network.online {
+                div class="home-code-line" aria-label="Console URL" { code { (status.identity.web_origin) } }
+            }
+        }
+    }
+}
+
+fn home_network_stack(status: &ConsoleStatus) -> Markup {
+    let modem_ok = status.network.internet_reachable == Some(true);
+    let modem_state = match status.network.internet_reachable {
+        Some(true) => "Online",
+        Some(false) => "Offline",
+        None => "Unknown",
+    };
+    let lan_ok = status.network.online
+        && !status.network.ip_address.is_empty()
+        && status.network.ip_address != "Unknown";
+    let lan_state = if lan_ok {
+        status.network.ip_address.as_str()
+    } else {
+        "Offline"
+    };
+    let us_ok = status.network.online;
+    let us_state = if us_ok {
+        match status.network.internet_reachable {
+            Some(true) => "Online",
+            Some(false) => "LAN only",
+            None => "On LAN",
+        }
+    } else {
+        "Offline"
+    };
+    html! {
+        div class="home-network-stack" aria-label="Network path from modem to console" {
+            (home_network_node("Modem", modem_state, modem_ok))
+            div class="home-network-link" aria-hidden="true" { "│" }
+            (home_network_node("Home LAN", lan_state, lan_ok))
+            div class="home-network-link" aria-hidden="true" { "│" }
+            (home_network_node(&status.identity.hostname, us_state, us_ok))
+        }
+    }
+}
+
+fn home_network_node(label: &str, state: &str, ok: bool) -> Markup {
+    html! {
+        div class=(format!("home-network-node home-network-node--{}", if ok { "ok" } else { "warn" })) aria-label=(format!("{label} {state}")) {
+            strong class="home-network-node__label" { (label) }
+            span class="home-network-node__state" { (state) }
         }
     }
 }
@@ -465,7 +488,5 @@ fn state_row(label: &str, value: &str) -> Markup {
     html! { div class="state-row" data-label=(label) aria-label=(format!("{} {}", label, value)) { strong { (value) } } }
 }
 
-fn reachability(label: &str, ok: bool) -> Markup {
-    html! { span class=(if ok { "reachability reachability--ok" } else { "reachability" }) data-label=(label) aria-label=(format!("{} {}", label, if ok { "ok" } else { "unavailable" })) { (if ok { "✓" } else { "—" }) } }
-}
+
 

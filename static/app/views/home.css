@@ -11,8 +11,14 @@
 .home-signal--ok { border-color: color-mix(in srgb, var(--theme-good) 38%, var(--line)); }
 .home-signal--warn { border-color: color-mix(in srgb, var(--theme-warn) 44%, var(--line)); }
 .home-signal--idle { border-color: color-mix(in srgb, var(--theme-idle) 44%, var(--line)); }
-.home-topology { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 5px; align-items: center; margin: 8px 0 0; padding: 7px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); color: var(--cream); font-size: 12px; font-weight: 900; text-align: center; }
-.home-topology i { color: var(--orange-strong); font-style: normal; }
+.network-home-card { min-width: 0; overflow: hidden; }
+.home-network-stack { display: grid; justify-items: center; gap: 0; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); }
+.home-network-node { width: 100%; display: grid; gap: 1px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--theme-bg-raised) 72%, transparent); text-align: center; }
+.home-network-node__label { color: var(--cream); font-size: 11px; line-height: 1.2; overflow-wrap: anywhere; }
+.home-network-node__state { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.home-network-node--ok { border-color: color-mix(in srgb, var(--theme-good) 40%, var(--line)); }
+.home-network-node--warn { border-color: color-mix(in srgb, var(--theme-warn) 44%, var(--line)); }
+.home-network-link { color: var(--orange-strong); font-size: 13px; font-weight: 900; line-height: 1; padding: 1px 0; }
 .home-code-line { margin-top: 7px; padding: 6px 8px; border-radius: 12px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); border: 1px solid var(--line); }
 .home-code-line code { color: var(--cream); font-size: 12px; overflow-wrap: anywhere; }
 .updates-home-card, .local-ai-home-card, .sync-home-card { min-width: 0; overflow: hidden; }
