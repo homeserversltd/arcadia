@@ -214,19 +214,58 @@ fn default_gateway() -> Option<String> {
     })
 }
 
-fn dns_servers() -> Vec<String> {
-    fs::read_to_string("/etc/resolv.conf")
+#[derive(Default)]
+struct ResolvConf {
+    nameservers: Vec<String>,
+    search_domains: Vec<String>,
+}
+
+fn read_resolv_conf() -> ResolvConf {
+    let mut parsed = ResolvConf::default();
+    for line in fs::read_to_string("/etc/resolv.conf")
         .unwrap_or_default()
         .lines()
-        .filter_map(|line| {
-            let mut parts = line.split_whitespace();
-            if parts.next()? == "nameserver" {
-                parts.next().map(str::to_string)
-            } else {
-                None
+    {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        match parts.next() {
+            Some("nameserver") => parsed.nameservers.extend(parts.map(str::to_string)),
+            Some("search") => parsed.search_domains.extend(parts.map(str::to_string)),
+            Some("domain") => {
+                if let Some(domain) = parts.next() {
+                    parsed.search_domains.push(domain.to_string());
+                }
             }
-        })
-        .filter(|v| valid_ipv4(v))
+            _ => {}
+        }
+    }
+    parsed
+}
+
+fn resolv_nameservers_label(conf: &ResolvConf) -> String {
+    if conf.nameservers.is_empty() {
+        "Unknown".to_string()
+    } else {
+        conf.nameservers.join(" ")
+    }
+}
+
+fn resolv_search_label(conf: &ResolvConf) -> String {
+    if conf.search_domains.is_empty() {
+        "None".to_string()
+    } else {
+        conf.search_domains.join(" ")
+    }
+}
+
+fn dns_servers() -> Vec<String> {
+    read_resolv_conf()
+        .nameservers
+        .into_iter()
+        .filter(|value| valid_ipv4(value))
         .collect()
 }
 
