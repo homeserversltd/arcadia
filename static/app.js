@@ -1740,10 +1740,14 @@ function setSyncState(label, state = label) {
   }
   const root = document.querySelector('[data-sync-root]');
   if (root) root.dataset.syncState = value;
-  document.querySelectorAll('.status-badge').forEach((badge) => {
-    if (badge.dataset.chipKind !== 'games') return;
-    badge.setAttribute('aria-label', `Games: ${label}`);
-    badge.title = `Games: ${label}`;
+  document.querySelectorAll('.status-badge[data-chip-kind="sync"]').forEach((badge) => {
+    const total = badge.dataset.gamesTotal || badge.querySelector('[data-games-total-value]')?.textContent?.trim() || label;
+    const tip = /^\d+$/.test(String(total))
+      ? `${total} games total · ${String(label).toLowerCase()}`
+      : `Games: ${label}`;
+    badge.setAttribute('aria-label', `Games: ${total}`);
+    badge.dataset.tooltip = tip;
+    badge.title = tip;
   });
 }
 

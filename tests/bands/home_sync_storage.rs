@@ -401,6 +401,33 @@
     }
 
     #[test]
+    fn header_games_chip_always_shows_playable_rom_total_not_sync_status_words() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "success".to_string();
+        status.library.sync_state = "idle".to_string();
+        status.library.sync_needed = false;
+        status.library.total_detected_games = 103;
+        let rendered = ui::layout(&status).into_string();
+        assert!(rendered.contains(r#"data-games-total="103""#));
+        assert!(rendered.contains("103 games total"));
+        assert!(!rendered.contains(">Synced</strong>"));
+        assert!(!rendered.contains(">Sync needed</strong>"));
+
+        status.library.sync_needed = true;
+        status.library.unsynced_added = 2;
+        let pending = ui::layout(&status).into_string();
+        assert!(pending.contains(r#"data-games-total="103""#));
+        assert!(!pending.contains(">Sync needed</strong>"));
+        assert!(pending.contains(r#"<strong data-games-total-value>103</strong>"#));
+    }
+
+    #[test]
     fn home_games_card_total_matches_header_sync_chip_not_gamescope_sum() {
         let state = AppState {
             started_unix: 0,
