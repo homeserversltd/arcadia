@@ -104,6 +104,13 @@
         assert!(!network_html.contains("Scan</button>"));
         assert!(!network_html.contains("Copy IP:port"));
         assert!(!network_html.contains("Copy URL:port"));
+        assert!(
+            network_html.contains("network-services-hub__detail")
+                && (network_html.contains("Ethernet ·")
+                    || network_html.contains("Wi-Fi ·")
+                    || network_html.contains("Offline")),
+            "services hub detail must show active session duration"
+        );
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
         assert!(!home_html.contains("Game Library"));

@@ -21,7 +21,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                         div class="network-services-hub__identity" {
                             strong class="network-services-hub__title" { "Services" }
                             span class="network-services-hub__detail" {
-                                (status.network.connection_type) " · " (status.network.ip_address)
+                                (status.network.connection_session_detail)
                             }
                         }
                         span class=(format!("system-status system-status--{}", if status.network.online { "available" } else { "disabled" })) {
