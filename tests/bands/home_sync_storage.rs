@@ -82,6 +82,8 @@
             "CPU",
             "I/O",
             "storage-home-card",
+            "storage-bar--home",
+            "storage-segment--games",
             "storage-home-details",
             ">Games used:</span>",
             ">AI used:</span>",
@@ -158,7 +160,6 @@
             "reachability--ok",
             "Mbps",
             "aria-label=\"Ethernet speed\"",
-            "storage-bar--home",
             "storage-mini-row",
             "storage-mini-rows",
             "aria-label=\"Storage signals\"",
@@ -423,6 +424,9 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         for required in [
+            "storage-bar--home",
+            "storage-segment--games",
+            "storage-segment--free",
             ">Games used:</span><strong>12 GB</strong>",
             ">AI used:</span><strong>48 GB</strong>",
             ">Everything else:</span><strong>3.0 GB</strong>",
@@ -431,7 +435,6 @@
             assert!(card_html.contains(required), "home storage card missing {required}");
         }
         for forbidden in [
-            "storage-bar--home",
             "storage-mini-row",
             "data-label=\"Artwork\"",
             "data-label=\"Volumes\"",
