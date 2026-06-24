@@ -524,35 +524,32 @@
   padding: 8px 4px 14px;
 }
 .controller-map-stage__pad .ux-gamepad-stage {
-  width: 100%;
-  max-width: none;
-  min-height: min(48dvh, 380px);
-  height: 100%;
-  padding: 10px 8px 14px;
+  width: min(100%, calc(640px * var(--ux-gamepad-programmer-scale)));
+  max-width: 100%;
+  min-height: calc(min(48dvh, 380px) * var(--ux-gamepad-programmer-scale));
+  height: auto;
+  padding: calc(10px * var(--ux-gamepad-programmer-scale)) calc(8px * var(--ux-gamepad-programmer-scale)) calc(14px * var(--ux-gamepad-programmer-scale));
   overflow: visible;
 }
 .controller-map-stage__pad .ux-gamepad-body {
   width: 100%;
-  height: 100%;
-  min-height: min(44dvh, 340px);
+  height: auto;
+  min-height: calc(min(44dvh, 340px) * var(--ux-gamepad-programmer-scale));
   max-height: none;
+  --ux-gamepad-stick-size: min(calc(96px * var(--ux-gamepad-programmer-scale)), 100%);
+  --ux-gamepad-face-btn-size: min(calc(52px * var(--ux-gamepad-programmer-scale)), 100%);
+  --ux-gamepad-cublet-gap: max(2px, calc(6px * var(--ux-gamepad-programmer-scale)));
+  padding: calc(12px * var(--ux-gamepad-programmer-scale)) calc(14px * var(--ux-gamepad-programmer-scale)) calc(16px * var(--ux-gamepad-programmer-scale));
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-stage {
-  width: 100%;
-  max-width: none;
-  min-height: min(62dvh, 520px);
-  padding: 12px 10px 16px;
-  overflow: visible;
+  width: min(100%, calc(760px * var(--ux-gamepad-programmer-scale)));
+  min-height: calc(min(62dvh, 520px) * var(--ux-gamepad-programmer-scale));
+  padding: calc(12px * var(--ux-gamepad-programmer-scale)) calc(10px * var(--ux-gamepad-programmer-scale)) calc(16px * var(--ux-gamepad-programmer-scale));
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
-  width: 100%;
-  height: 100%;
-  min-height: min(58dvh, 480px);
-  max-height: none;
-}
-.modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
-  --ux-gamepad-stick-size: min(108px, 22vw, 100%);
-  --ux-gamepad-face-btn-size: min(60px, 8vw, 100%);
+  min-height: calc(min(58dvh, 480px) * var(--ux-gamepad-programmer-scale));
+  --ux-gamepad-stick-size: min(calc(108px * var(--ux-gamepad-programmer-scale)), 22vw, 100%);
+  --ux-gamepad-face-btn-size: min(calc(60px * var(--ux-gamepad-programmer-scale)), 8vw, 100%);
 }
 .controller-map-workbench {
   min-height: 0;

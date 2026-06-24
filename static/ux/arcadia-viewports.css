@@ -121,7 +121,7 @@
     grid-template-rows: minmax(220px, 1fr) minmax(0, 1fr) auto;
   }
   .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-body {
-    height: min(42dvh, 320px);
+    height: calc(min(42dvh, 320px) * var(--ux-gamepad-programmer-scale));
   }
   .controller-map-presets .controls-preset-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
