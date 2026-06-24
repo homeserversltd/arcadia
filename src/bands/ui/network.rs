@@ -1,5 +1,13 @@
 fn network_view(status: &ConsoleStatus) -> Markup {
     let console_url = status.identity.web_origin.as_str();
+    let ssh = &status.system.ssh;
+    let trust = &status.system.trust;
+    let lan_ai_port = 7777u16;
+    let lan_ai_endpoint = if status.network.lan_ai_reachable && status.network.ip_address != "—" {
+        format!("http://{}:{lan_ai_port}", status.network.ip_address)
+    } else {
+        format!(":{lan_ai_port}")
+    };
     view_shell(
         "network",
         "",
@@ -7,29 +15,62 @@ fn network_view(status: &ConsoleStatus) -> Markup {
         "",
         html! {
             div class="network-hub" {
-                article class="network-section network-summary-strip" data-network-current="true" {
-                    div class="network-summary-strip__identity" {
-                        strong class="network-summary-title" { (connection_summary_title(status)) }
-                        span class="network-summary-strip__detail" {
-                            (status.network.connection_type) " · " (status.network.ip_address)
+                article class="network-section network-services-hub" aria-label="Services" {
+                    div class="network-services-hub__head" {
+                        div class="network-services-hub__identity" {
+                            strong class="network-services-hub__title" { "Services" }
+                            span class="network-services-hub__detail" {
+                                (status.network.connection_type) " · " (status.network.ip_address)
+                            }
+                        }
+                        span class=(format!("system-status system-status--{}", if status.network.online { "available" } else { "disabled" })) {
+                            (if status.network.online { "Online" } else { "Offline" })
                         }
                     }
-                    span class=(format!("system-status system-status--{}", if status.network.online { "available" } else { "disabled" })) {
-                        (if status.network.online { "Online" } else { "Offline" })
-                    }
-                    div class="network-compact-grid network-compact-grid--summary" {
-                        (system_field("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown")))
-                        (system_field("Internet", internet_label(status.network.internet_reachable)))
-                        (system_field("DNS", &status.network.dns_status))
-                        (system_field("LAN", if status.network.console_reachable { "Reachable" } else { "Unavailable" }))
-                        @if let Some(label) = timezone_label(status) {
-                            (system_field("Time zone", &label))
+                    div class="network-access-list" {
+                        (network_access_row(
+                            "Web Console",
+                            console_url,
+                            "Available",
+                            html! { (copy_button("Copy URL", console_url)) },
+                        ))
+                        @if status.network.ip_address != "—" {
+                            (network_access_row(
+                                "LAN IP",
+                                &status.network.ip_address,
+                                "Reachable",
+                                html! { (copy_button("Copy IP", &status.network.ip_address)) },
+                            ))
                         }
-                        (system_field("Hostname", &status.identity.hostname))
-                    }
-                    div class="inline-actions inline-actions--compact network-summary-strip__actions" {
-                        (copy_button("Copy URL", console_url))
-                        @if status.network.ip_address != "—" { (copy_button("Copy IP", &status.network.ip_address)) }
+                        (network_access_row(
+                            "LAN AI",
+                            &lan_ai_endpoint,
+                            if status.network.lan_ai_reachable { "Available" } else { "Disabled" },
+                            html! {
+                                @if status.network.lan_ai_reachable && status.network.ip_address != "—" {
+                                    (copy_button("Copy URL", &lan_ai_endpoint))
+                                }
+                                (nav_focus_button("Open Local AI", "local-ai", "local-ai-inference"))
+                            },
+                        ))
+                        (network_access_row(
+                            "SSH",
+                            &format!(":22 · {}", ssh.command),
+                            ssh_service_label(&ssh.service_state),
+                            html! {
+                                (copy_button("Copy Command", &ssh.command))
+                                (nav_button("Open System", "system"))
+                            },
+                        ))
+                        (network_access_row(
+                            "Home Root CA",
+                            if trust.ca_installed { "Installed on this console" } else { "Import bundle from System" },
+                            if trust.ca_installed { "Installed" } else { "Needed" },
+                            html! {
+                                button class="btn btn--secondary" type="button" disabled title="Root CA import stays in System for now." { "Coming soon" }
+                                (nav_button("Open System", "system"))
+                            },
+                        ))
                     }
                 }
 
@@ -57,12 +98,13 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                                     em { (status.network.signal_percent.map(|v| format!("{v}% signal")).unwrap_or_else(|| "Signal unavailable".to_string())) }
                                 }
                             }
-                            div class="inline-actions inline-actions--compact network-card__actions" {
-                                button class="btn btn--primary" type="button" data-network-action="choose-wifi" { "Choose Network" }
-                                button class="btn btn--secondary" type="button" data-network-action="scan-wifi" { "Scan" }
-                                button class="btn btn--secondary" type="button" data-open-hidden-wifi="true" { "Hidden" }
-                                button class="btn btn--secondary" type="button" data-network-action="wifi-toggle" data-enabled=(if status.network.active_type == "wifi" { "false" } else { "true" }) {
-                                    (if status.network.active_type == "wifi" { "Turn Off" } else { "Turn On" })
+                            div class="network-wifi-actions" {
+                                button class="btn btn--primary network-wifi-choose" type="button" data-network-action="choose-wifi" { "Choose Network" }
+                                div class="network-wifi-actions__secondary" {
+                                    button class="btn btn--secondary" type="button" data-open-hidden-wifi="true" { "Hidden" }
+                                    button class="btn btn--secondary" type="button" data-network-action="wifi-toggle" data-enabled=(if status.network.active_type == "wifi" { "false" } else { "true" }) {
+                                        (if status.network.active_type == "wifi" { "Turn Off" } else { "Turn On" })
+                                    }
                                 }
                             }
                             div id="wifi-message" class="message" hidden {}
@@ -95,15 +137,6 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                             div class="empty-state" { strong { "No Ethernet adapter" } p { "Use Wi-Fi or check cabling." } }
                         }
                     }
-
-                    article class="network-section network-card network-card--services" aria-label="Services" {
-                        div class="network-section-head" { strong { "Services" } }
-                        div class="network-service-list" {
-                            (network_service_row("Web Console", "Available", console_url, html! { (copy_button("Copy URL", console_url)) }))
-                            (network_service_row("LAN AI", if status.network.lan_ai_reachable { "Available" } else { "Disabled" }, if status.network.lan_ai_reachable { ":7777" } else { "" }, html! { (nav_focus_button("Open Local AI", "local-ai", "local-ai-inference")) }))
-                            (network_service_row("SSH", "Disabled", "", html! { (nav_button("Open System", "system")) }))
-                        }
-                    }
                 }
 
                 details class="network-section network-diagnostics-foot sync-desktop-detail" {
@@ -121,13 +154,11 @@ fn network_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn timezone_label(status: &ConsoleStatus) -> Option<String> {
-    let tz = status.network.timezone.as_deref()?;
-    Some(match status.network.ntp_synchronized {
-        Some(true) => format!("{tz} · NTP synced"),
-        Some(false) => format!("{tz} · local clock"),
-        None => tz.to_string(),
-    })
+fn ssh_service_label(state: &str) -> &'static str {
+    match state {
+        "running" | "available" | "active" => "Available",
+        _ => "Disabled",
+    }
 }
 
 fn ethernet_head_badge(status: &ConsoleStatus) -> String {
@@ -151,21 +182,19 @@ fn wifi_status_label(status: &ConsoleStatus) -> &'static str {
     }
 }
 
-fn connection_summary_title(status: &ConsoleStatus) -> &'static str {
-    match status.network.active_type.as_str() {
-        "ethernet" => "Connected by Ethernet",
-        "wifi" => "Connected to Wi-Fi",
-        "limited" => "Connected to LAN",
-        "offline" => "Offline",
-        _ => "Unknown",
-    }
-}
-
-fn internet_label(value: Option<bool>) -> &'static str {
-    match value {
-        Some(true) => "Reachable",
-        Some(false) => "Unavailable",
-        None => "Unknown",
+fn network_access_row(name: &str, detail: &str, state: &str, actions: Markup) -> Markup {
+    let state_key = state.to_ascii_lowercase();
+    html! {
+        div class="network-access-row" {
+            div class="network-access-row__copy" {
+                strong { (name) }
+                em { (detail) }
+            }
+            span class=(format!("system-status system-status--{}", if state_key == "available" || state_key == "reachable" || state_key == "installed" { "available" } else if state_key == "needed" { "unknown" } else { "disabled" })) {
+                (state)
+            }
+            div class="network-access-row__actions" { (actions) }
+        }
     }
 }
 

@@ -61,17 +61,19 @@
         for required in [
             "Online",
             "IP address",
-            "Gateway",
-            "DNS",
-            "LAN",
-            "Internet",
             "Wired LAN",
             "Run speed test",
             "Details",
             "IP Settings",
             "Services",
+            "Copy URL",
+            "Copy IP",
+            "Copy Command",
+            "Coming soon",
+            "Choose Network",
             "Diagnostics",
             "network-hub",
+            "network-services-hub",
             "network-workbench",
             "http://arcadia.home.arpa",
         ] {
@@ -97,6 +99,9 @@
         assert!(APP_JS.contains("input.type = event.target.checked ? 'text' : 'password'"));
         assert!(APP_JS.contains("/api/network/speed-test"));
         assert!(!network_html.contains(">Connected<"));
+        assert!(!network_html.contains("network-summary-strip"));
+        assert!(!network_html.contains("data-network-action=\"scan-wifi\""));
+        assert!(!network_html.contains("Scan</button>"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
         assert!(!home_html.contains("Game Library"));
