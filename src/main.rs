@@ -267,6 +267,26 @@ async fn main() -> anyhow_free::Result<()> {
             "/api/caduceus/v1/update/service/toggle",
             post(caduceus_update_service_toggle_proxy_route),
         )
+        .route(
+            "/api/caduceus/v1/gui/update/now",
+            post(caduceus_gui_update_now_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/local-ai/runtime/status",
+            get(caduceus_local_ai_runtime_status_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/local-ai/runtime/check",
+            post(caduceus_local_ai_runtime_check_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/local-ai/runtime/update",
+            post(caduceus_local_ai_runtime_update_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/profile/module/toggle",
+            post(caduceus_profile_module_toggle_proxy_route),
+        )
         .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))
         .route(

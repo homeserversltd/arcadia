@@ -558,9 +558,14 @@
 
     #[test]
     fn local_ai_runtime_actions_call_real_harmonia_and_reject_fake_green() {
+        let routes = include_str!("../../src/bands/routes_ai_models.rs");
         assert!(
-            include_str!("../../src/bands/routes_ai_models.rs").contains("homeconsole-local-ai-update"),
-            "runtime update must call the real Harmonia Local AI transition"
+            routes.contains("/api/v1/local-ai/runtime/update"),
+            "runtime update must route through Caduceus HTTP"
+        );
+        assert!(
+            !routes.contains("homeconsole-local-ai-update"),
+            "runtime update must not call Harmonia directly from Arcadia"
         );
         assert!(
             include_str!("../../src/bands/routes_ai_models.rs").contains("runtime.installed"),

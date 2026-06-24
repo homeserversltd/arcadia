@@ -1156,6 +1156,20 @@
     }
 
     #[test]
+    fn update_gui_routes_through_caduceus_membrane() {
+        let source = include_str!("../../src/bands/console_system_actions.rs");
+        assert!(source.contains("/api/v1/gui/update/now"));
+        assert!(!source.contains("homeconsole-arcadia-gui-update"));
+    }
+
+    #[test]
+    fn harmonia_module_toggle_routes_through_caduceus_membrane() {
+        let source = include_str!("../../src/bands/console_system_actions.rs");
+        assert!(source.contains("/api/v1/profile/module/toggle"));
+        assert!(!source.contains("index.json.arcadia-bak"));
+    }
+
+    #[test]
     fn sync_action_routes_through_caduceus_membrane() {
         let routes = include_str!("../../src/bands/routes_caduceus.rs");
         let source = include_str!("../../src/bands/console_system_actions.rs");
@@ -1179,6 +1193,9 @@
         assert!(routes.contains("/api/v1/update/now"));
         assert!(routes.contains("/api/v1/sync/now"));
         assert!(routes.contains("/api/v1/receipts/ledger"));
+        assert!(routes.contains("/api/v1/gui/update/now"));
+        assert!(routes.contains("/api/v1/local-ai/runtime/update"));
+        assert!(routes.contains("/api/v1/profile/module/toggle"));
         assert!(main_rs.contains("/api/caduceus/v1/identity"));
         assert!(main_rs.contains("/api/caduceus/v1/profile"));
         assert!(main_rs.contains("/api/caduceus/v1/health"));

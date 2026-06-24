@@ -22,52 +22,61 @@ async fn gui_pin_status_route() -> Json<GuiPinStatus> {
 async fn ai_runtime_check_update(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
+    let Ok(value) = caduceus_post_json("/api/v1/local-ai/runtime/check", "{}") else {
+        return ai_action(
+            StatusCode::BAD_GATEWAY,
+            &state,
+            false,
+            "runtime-check-update",
+            "Caduceus Local AI runtime check is unreachable.",
+        );
+    };
     let mut cfg = load_ai_config();
     cfg.last_checked_at = Some(now_rfc3339_like());
     let _ = save_ai_config(&cfg);
+    let installed = value.get("installed").and_then(|v| v.as_bool()).unwrap_or(false);
     ai_action(
         StatusCode::OK,
         &state,
         true,
         "runtime-check-update",
-        "llama.cpp update check completed.",
+        if installed {
+            "llama.cpp runtime is installed."
+        } else {
+            "llama.cpp update check completed."
+        },
     )
 }
 async fn ai_runtime_update(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    if !helper_exists(HARMONIA_BIN) {
+    let Ok(value) = caduceus_post_json("/api/v1/local-ai/runtime/update", "{}") else {
         return ai_action(
-            StatusCode::NOT_IMPLEMENTED,
+            StatusCode::BAD_GATEWAY,
             &state,
             false,
             "runtime-update",
-            "Harmonia is unavailable; Local AI runtime cannot be installed from Arcadia.",
+            "Caduceus Local AI runtime update is unreachable.",
         );
-    }
-    let output = Command::new(HARMONIA_BIN)
-        .args([
-            "homeconsole-local-ai-update",
-            HOMECONSOLE_PROFILE,
-            "--apply",
-            "--receipt-dir",
-            "/var/lib/harmonia/receipts/local-ai-runtime-latest",
-        ])
-        .output();
-    let command_ok = output.as_ref().map(|o| o.status.success()).unwrap_or(false);
+    };
+    let command_ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     let runtime_installed = local_ai_state(&state).runtime.installed;
     let ok = command_ok && runtime_installed;
     ai_action(
-        if ok { StatusCode::OK } else { StatusCode::FAILED_DEPENDENCY },
+        if ok {
+            StatusCode::OK
+        } else {
+            StatusCode::FAILED_DEPENDENCY
+        },
         &state,
         ok,
         "runtime-update",
         if ok {
-            "llama.cpp installed and proven through Harmonia."
+            "llama.cpp installed and proven through Caduceus."
         } else if command_ok {
-            "Harmonia ran, but llama.cpp is still not installed; check /var/lib/harmonia/receipts/local-ai-runtime-latest."
+            "Caduceus ran Harmonia, but llama.cpp is still not installed; check /var/lib/harmonia/receipts/local-ai-runtime-latest."
         } else {
-            "Harmonia Local AI runtime update failed; check /var/lib/harmonia/receipts/local-ai-runtime-latest."
+            "Caduceus Local AI runtime update failed; check /var/lib/harmonia/receipts/local-ai-runtime-latest."
         },
     )
 }
