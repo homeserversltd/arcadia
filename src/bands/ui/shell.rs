@@ -2,55 +2,47 @@ fn header(status: &ConsoleStatus) -> Markup {
     let sync_delta = status.library.unsynced_added
         + status.library.unsynced_changed
         + status.library.unsynced_removed;
-    let (sync_label, sync_class, sync_tip) = if status.library.last_sync_state == "running" {
+    let games_total = status.library.total_detected_games;
+    let games_total_label = games_total.to_string();
+    let (sync_class, sync_tip) = if status.library.last_sync_state == "running" {
         (
-            "Syncing".to_string(),
             "warn",
-            "Game folders are syncing now".to_string(),
+            format!("{games_total} games total · syncing now"),
         )
     } else if status.library.last_sync_state == "error" {
         (
-            "Sync failed".to_string(),
             "bad",
-            "Last game sync failed".to_string(),
+            format!("{games_total} games total · last sync failed"),
         )
     } else if !sync_has_history(status) {
         (
-            status.library.total_detected_games.to_string(),
             "idle",
             format!(
-                "No verified sync receipt; current folders contain {} playable ROM files",
-                status.library.total_detected_games
+                "{games_total} games total · no verified sync receipt; current folders contain {games_total} playable ROM files"
             ),
         )
     } else if status.library.last_sync_state == "success" {
         (
-            status.library.total_detected_games.to_string(),
             "idle",
-            format!(
-                "Last sync counted {} playable ROM files",
-                status.library.total_detected_games
-            ),
+            format!("{games_total} games total · last sync counted {games_total} playable ROM files"),
         )
     } else if status.library.sync_needed || sync_delta > 0 {
         (
-            "Sync needed".to_string(),
             "warn",
-            "Game folder changes are queued for sync".to_string(),
+            format!("{games_total} games total · folder changes are queued for sync"),
         )
     } else if status.library.sync_state == "unknown" {
         (
-            "Unknown".to_string(),
             "idle",
-            "Game sync state is unavailable".to_string(),
+            format!("{games_total} games total · sync state is unavailable"),
         )
     } else {
         (
-            "Synced".to_string(),
             "good",
-            "No queued game sync changes".to_string(),
+            format!("{games_total} games total · no queued sync changes"),
         )
     };
+    let sync_label = games_total_label;
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
         "available" => (
             "Available".to_string(),
@@ -116,12 +108,12 @@ fn header(status: &ConsoleStatus) -> Markup {
                 div { h1 { "HomeConsole" } }
             }
             div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
-                (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
-                (currentness_status_chip("sync", "Games", &sync_label, sync_class, &sync_tip, "sync"))
-                (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
-                (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
-                (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
-                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin"))
+                (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network", None))
+                (currentness_status_chip("sync", "Games", &sync_label, sync_class, &sync_tip, "sync", Some(games_total)))
+                (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates", None))
+                (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system", None))
+                (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai", None))
+                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin", None))
                 (theme_cycle_button())
             }
         }
@@ -154,13 +146,22 @@ fn currentness_status_chip(
     class: &str,
     help: &str,
     target: &str,
+    games_total: Option<u64>,
 ) -> Markup {
     let icon = chip_icon(kind, value);
     html! {
-        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) aria-label=(format!("{}: {}", label, value)) {
-            span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
-            span class="chip-copy" { (label) }
-            strong { (value) }
+        @if let Some(total) = games_total {
+            button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) data-games-total=(total.to_string()) aria-label=(format!("{}: {}", label, value)) {
+                span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
+                span class="chip-copy" { (label) }
+                strong data-games-total-value { (value) }
+            }
+        } @else {
+            button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) aria-label=(format!("{}: {}", label, value)) {
+                span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
+                span class="chip-copy" { (label) }
+                strong { (value) }
+            }
         }
     }
 }
