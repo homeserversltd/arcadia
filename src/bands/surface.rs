@@ -80,7 +80,7 @@ fn surface_and_samba_status(
 
 fn updates_status() -> UpdatesStatus {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let suite_receipt = "/var/lib/harmonia/receipts/homeconsole-latest/run.json";
+    let suite_receipt = "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json";
     let check_receipt = "/var/lib/harmonia/receipts/homeconsole-check-latest/run.json";
     let arcadia_receipt = "/var/lib/harmonia/receipts/arcadia-gui-latest/run.json";
     let profile = harmonia_profile_modules();
@@ -318,7 +318,7 @@ fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
         .map(|id| {
             let enabled_flag = enabled.iter().any(|module| module == &id);
             let present = module_root.join(&id).exists();
-            let receipt_path = format!("/var/lib/harmonia/receipts/homeconsole-latest/modules/{}/run.json", id);
+            let receipt_path = format!("/var/lib/harmonia/receipts/homeconsole-update-latest/modules/{}/run.json", id);
             let state = if !enabled_flag {
                 "disabled"
             } else if present {
