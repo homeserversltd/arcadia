@@ -204,6 +204,9 @@
         assert!(APP_JS.contains("clearTimeout(state.retryTimer)"));
         assert!(APP_JS.contains("state.source.close()"));
         assert!(APP_JS.contains("bindHomeLoadSubscription();"));
+        assert!(APP_JS.contains("formatTransferRate"));
+        assert!(APP_JS.contains("readBytesPerSec"));
+        assert!(APP_JS.contains("writeBytesPerSec"));
         assert!(!APP_JS.contains("function bindHomeLoadPolling()"));
         assert!(!APP_JS.contains("window.arcadiaHomeLoadPollState"));
         assert!(!APP_JS.contains("setInterval(poll, pollMs)"));
@@ -1245,6 +1248,8 @@
         assert!(telemetry["data"].get("load").is_some());
         assert!(telemetry["data"].get("io").is_some());
         assert!(telemetry["data"]["io"].get("pressureAvg10").is_some());
+        assert!(telemetry["data"]["io"]["disk"].get("readBytesPerSec").is_some());
+        assert!(telemetry["data"]["io"]["disk"].get("writeBytesPerSec").is_some());
         let telemetry_metrics = telemetry["metrics"].as_array().expect("metrics");
         assert!(telemetry_metrics
             .iter()
@@ -1284,6 +1289,9 @@
         assert!(source.contains("Event::default().event(\"expired\")"));
         assert!(source.contains("const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 1;"));
         assert!(source.contains("tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS))"));
+        assert!(source.contains("fn thermal_zone_priority"));
+        assert!(source.contains("readBytesPerSec"));
+        assert!(source.contains("writeBytesPerSec"));
         assert!(source.contains("fn api_root_telemetry_tick"));
         assert!(source.contains("let root = api_root_telemetry_tick(&state);"));
         assert!(

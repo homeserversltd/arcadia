@@ -176,8 +176,8 @@ fn home_load_card() -> Markup {
         None => "idle",
     };
     let disk = disk_io_counters();
-    let read_bytes = json_u64(&disk, "readBytesApprox");
-    let written_bytes = json_u64(&disk, "writtenBytesApprox");
+    let read_rate = json_u64(&disk, "readBytesPerSec");
+    let write_rate = json_u64(&disk, "writeBytesPerSec");
     let load_headline = one
         .map(|value| format!("{value:.2}"))
         .unwrap_or_else(|| "—".to_string());
@@ -197,8 +197,8 @@ fn home_load_card() -> Markup {
             div class="load-telemetry-grid" aria-label="Telemetry" {
                 (load_chip("CPU", "cpu", &temp_label, temp_state))
                 (load_chip("I/O", "io", &io_label, io_state))
-                (load_chip("Read", "read", &read_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
-                (load_chip("Write", "write", &written_bytes.map(human_size).unwrap_or_else(|| "—".to_string()), "idle"))
+                (load_chip("Read/s", "read", &read_rate.map(human_rate).unwrap_or_else(|| "—".to_string()), if read_rate.unwrap_or(0) > 0 { "ok" } else { "idle" }))
+                (load_chip("Write/s", "write", &write_rate.map(human_rate).unwrap_or_else(|| "—".to_string()), if write_rate.unwrap_or(0) > 0 { "ok" } else { "idle" }))
             }
         }
     }
@@ -235,6 +235,24 @@ fn json_number(value: &serde_json::Value, key: &str) -> Option<f64> {
 
 fn json_u64(value: &serde_json::Value, key: &str) -> Option<u64> {
     value.get(key).and_then(serde_json::Value::as_u64)
+}
+
+fn human_rate(bytes_per_sec: u64) -> String {
+    if bytes_per_sec == 0 {
+        return "0 B/s".to_string();
+    }
+    if bytes_per_sec < 1024 {
+        return format!("{bytes_per_sec} B/s");
+    }
+    if bytes_per_sec < 1024 * 1024 {
+        return format!("{} KB/s", bytes_per_sec / 1024);
+    }
+    let mb = bytes_per_sec as f64 / 1024.0 / 1024.0;
+    if mb >= 10.0 {
+        format!("{mb:.0} MB/s")
+    } else {
+        format!("{mb:.1} MB/s")
+    }
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {

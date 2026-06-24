@@ -373,8 +373,10 @@ function bindHomeLoadSubscription() {
     const pressure = number(io.pressureAvg10);
     setChip('cpu', fmtTemp(temp), temp == null ? 'idle' : (temp >= 82 ? 'warn' : 'ok'));
     setChip('io', fmtPressure(pressure), pressure == null ? 'idle' : (pressure >= 10 ? 'warn' : 'ok'));
-    setChip('read', disk.readBytesApprox == null ? '—' : formatBytes(Number(disk.readBytesApprox)), 'idle');
-    setChip('write', disk.writtenBytesApprox == null ? '—' : formatBytes(Number(disk.writtenBytesApprox)), 'idle');
+    const readRate = number(disk.readBytesPerSec);
+    const writeRate = number(disk.writeBytesPerSec);
+    setChip('read', readRate == null ? '—' : formatTransferRate(readRate), readRate > 0 ? 'ok' : 'idle');
+    setChip('write', writeRate == null ? '—' : formatTransferRate(writeRate), writeRate > 0 ? 'ok' : 'idle');
   };
   const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
   const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
@@ -2529,6 +2531,14 @@ function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   const gb = bytes / 1024 / 1024 / 1024;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 / 1024)} MB`;
+}
+
+function formatTransferRate(bytesPerSec) {
+  if (!Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return '0 B/s';
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${Math.round(bytesPerSec / 1024)} KB/s`;
+  const mb = bytesPerSec / 1024 / 1024;
+  return mb >= 10 ? `${Math.round(mb)} MB/s` : `${mb.toFixed(1)} MB/s`;
 }
 
 async function postJson(url, body) {
