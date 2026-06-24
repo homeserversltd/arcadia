@@ -16,6 +16,7 @@ const PROVIDER_KEY_NAMES: [(&str, &str); 3] = [
     ("screenscraper", "SCREENSCRAPER_API_KEY"),
 ];
 const CADUCEUS_BIN: &str = "/usr/local/bin/caduceus";
+const CADUCEUS_HTTP_BASE: &str = "http://127.0.0.1:8787";
 const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
 const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
 const HOMECONSOLE_SYNC_MODULE: &str = "/etc/harmonia/modules/homeconsole/sync/index.json";

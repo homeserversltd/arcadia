@@ -43,6 +43,7 @@ include!("bands/routes_storage.rs");
 include!("bands/routes_ai_models.rs");
 include!("bands/routes_ai_runtime.rs");
 include!("bands/routes_ai_settings.rs");
+include!("bands/routes_caduceus.rs");
 include!("bands/console_system_actions.rs");
 include!("bands/console_access_actions.rs");
 include!("bands/provider_keys.rs");
@@ -225,6 +226,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/check-updates", post(action_check_updates))
         .route("/api/harmonia/ledger", get(harmonia_ledger_route))
+        .route("/api/caduceus/health", get(caduceus_health_proxy_route))
+        .route("/api/caduceus/v1/identity", get(caduceus_identity_proxy_route))
+        .route("/api/caduceus/v1/profile", get(caduceus_profile_proxy_route))
+        .route("/api/caduceus/v1/health", get(caduceus_health_api_proxy_route))
         .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))
         .route(
