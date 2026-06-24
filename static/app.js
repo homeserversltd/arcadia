@@ -335,12 +335,13 @@ function bindHomeLoadSubscription() {
     if (chip) chip.className = `load-chip load-chip--${stateName}`;
   };
   const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
-  const fmtLoad = (value) => value == null ? '—' : value.toFixed(2);
+  const fmtUsage = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
+  const fmtLoadAvgPct = (value, cores) => value == null ? '—' : `${((value / Math.max(1, cores)) * 100).toFixed(1)}%`;
   const fmtTemp = (value) => value == null ? '—' : `${value.toFixed(1)}°C`;
   const fmtPressure = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
   const updateSpark = (key, value, cores) => {
     const pct = value == null ? 0 : Math.max(0, Math.min(100, Math.round((value / Math.max(1, cores)) * 100)));
-    setText(`[data-load-spark-value="${key}"]`, fmtLoad(value));
+    setText(`[data-load-spark-value="${key}"]`, fmtLoadAvgPct(value, cores));
     const bar = card.querySelector(`[data-load-spark-bar="${key}"]`);
     if (bar) bar.style.width = `${pct}%`;
   };
@@ -355,16 +356,17 @@ function bindHomeLoadSubscription() {
     const five = number(load.fiveMinute);
     const fifteen = number(load.fifteenMinute);
     const cores = Number(navigator.hardwareConcurrency || 1);
-    const pct = one == null ? 0 : Math.max(0, Math.min(100, Math.round((one / Math.max(1, cores)) * 100)));
-    setText('[data-load-headline]', fmtLoad(one));
+    const usage = number(data.cpu?.usagePercent);
+    const pct = usage == null ? 0 : Math.max(0, Math.min(100, Math.round(usage)));
+    setText('[data-load-headline]', fmtUsage(usage));
     setText('[data-load-percent]', `${pct}%`);
     const orb = card.querySelector('[data-load-orb]');
     if (orb) {
       orb.style.setProperty('--load-pct', pct);
       orb.setAttribute('aria-label', `${pct} percent load`);
       orb.classList.toggle('load-orb--warn', pct >= 90);
-      orb.classList.toggle('load-orb--ok', pct < 90 && one != null);
-      orb.classList.toggle('load-orb--idle', one == null);
+      orb.classList.toggle('load-orb--ok', pct < 90 && usage != null);
+      orb.classList.toggle('load-orb--idle', usage == null);
     }
     updateSpark('oneMinute', one, cores);
     updateSpark('fiveMinute', five, cores);

@@ -207,6 +207,9 @@
         assert!(APP_JS.contains("formatTransferRate"));
         assert!(APP_JS.contains("readBytesPerSec"));
         assert!(APP_JS.contains("writeBytesPerSec"));
+        assert!(APP_JS.contains("usagePercent"));
+        assert!(APP_JS.contains("fmtUsage"));
+        assert!(APP_JS.contains("fmtLoadAvgPct"));
         assert!(!APP_JS.contains("function bindHomeLoadPolling()"));
         assert!(!APP_JS.contains("window.arcadiaHomeLoadPollState"));
         assert!(!APP_JS.contains("setInterval(poll, pollMs)"));
@@ -1245,6 +1248,7 @@
             .find(|node| node["id"] == "telemetry")
             .expect("telemetry node present");
         assert!(telemetry["data"].get("cpu").is_some());
+        assert!(telemetry["data"]["cpu"].get("usagePercent").is_some());
         assert!(telemetry["data"].get("load").is_some());
         assert!(telemetry["data"].get("io").is_some());
         assert!(telemetry["data"]["io"].get("pressureAvg10").is_some());
@@ -1254,6 +1258,9 @@
         assert!(telemetry_metrics
             .iter()
             .any(|metric| metric["id"] == "cpuTemperatureCelsius"));
+        assert!(telemetry_metrics
+            .iter()
+            .any(|metric| metric["id"] == "cpuUsagePercent"));
         assert!(telemetry_metrics
             .iter()
             .any(|metric| metric["id"] == "ioPressureAvg10"));
@@ -1290,6 +1297,8 @@
         assert!(source.contains("const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 1;"));
         assert!(source.contains("tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS))"));
         assert!(source.contains("fn thermal_zone_priority"));
+        assert!(source.contains("fn cpu_usage_percent"));
+        assert!(source.contains("usagePercent"));
         assert!(source.contains("readBytesPerSec"));
         assert!(source.contains("writeBytesPerSec"));
         assert!(source.contains("fn api_root_telemetry_tick"));

@@ -1,8 +1,9 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
-    cpu_temperature_celsius, disk_io_counters, human_size, load_average, pressure_avg10_percent,
-    AiModelStorageStatus, ButtonVariant, ConsoleStatus, GameSystemTally, StorageCategoryStatus,
+    cpu_temperature_celsius, cpu_usage_percent, disk_io_counters, human_size, load_average,
+    pressure_avg10_percent, AiModelStorageStatus, ButtonVariant, ConsoleStatus, GameSystemTally,
+    StorageCategoryStatus,
 };
 
 const VIEWS: [(&str, &str, &str); 9] = [

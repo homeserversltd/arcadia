@@ -139,6 +139,7 @@ fn home_storage_everything_else_size(status: &ConsoleStatus) -> String {
 }
 
 fn home_load_card() -> Markup {
+    let cpu_usage = cpu_usage_percent();
     let load = load_average();
     let one = json_number(&load, "oneMinute");
     let five = json_number(&load, "fiveMinute");
@@ -147,12 +148,12 @@ fn home_load_card() -> Markup {
         .map(|count| count.get() as f64)
         .unwrap_or(1.0)
         .max(1.0);
-    let load_percent = one
-        .map(|value| ((value / cores) * 100.0).clamp(0.0, 100.0).round() as u8)
+    let load_percent = cpu_usage
+        .map(|value| value.clamp(0.0, 100.0).round() as u8)
         .unwrap_or(0);
     let load_state = if load_percent >= 90 {
         "warn"
-    } else if one.is_some() {
+    } else if cpu_usage.is_some() {
         "ok"
     } else {
         "idle"
@@ -178,8 +179,8 @@ fn home_load_card() -> Markup {
     let disk = disk_io_counters();
     let read_rate = json_u64(&disk, "readBytesPerSec");
     let write_rate = json_u64(&disk, "writeBytesPerSec");
-    let load_headline = one
-        .map(|value| format!("{value:.2}"))
+    let load_headline = cpu_usage
+        .map(|value| format!("{value:.1}%"))
         .unwrap_or_else(|| "—".to_string());
     html! {
         article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" {
@@ -209,7 +210,7 @@ fn load_spark(label: &str, key: &str, value: Option<f64>, cores: f64) -> Markup 
         .map(|number| ((number / cores) * 100.0).clamp(0.0, 100.0).round() as u8)
         .unwrap_or(0);
     let display = value
-        .map(|number| format!("{number:.2}"))
+        .map(|number| format!("{:.1}%", (number / cores) * 100.0))
         .unwrap_or_else(|| "—".to_string());
     html! {
         div class="load-spark" data-load-spark=(key) {
