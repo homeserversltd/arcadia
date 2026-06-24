@@ -42,12 +42,19 @@ const HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS: u64 = 30;
 static HOME_TELEMETRY_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
 static HOME_TELEMETRY_LEASES: OnceLock<Mutex<HashMap<String, HomeTelemetryLease>>> = OnceLock::new();
 static LAST_DISK_IO_SAMPLE: OnceLock<Mutex<Option<DiskIoSample>>> = OnceLock::new();
+static LAST_CPU_USAGE_SAMPLE: OnceLock<Mutex<Option<CpuUsageSample>>> = OnceLock::new();
 
 #[derive(Clone, Copy)]
 struct DiskIoSample {
     sectors_read: u64,
     sectors_written: u64,
     sampled_at_millis: u128,
+}
+
+#[derive(Clone, Copy)]
+struct CpuUsageSample {
+    busy_jiffies: u64,
+    total_jiffies: u64,
 }
 
 #[derive(Clone)]
@@ -395,6 +402,7 @@ fn api_artwork_node(status: &ConsoleStatus) -> ApiObjectNode {
 
 fn api_telemetry_node() -> ApiObjectNode {
     let cpu_temp = cpu_temperature_celsius();
+    let cpu_usage = cpu_usage_percent();
     let load = load_average();
     let disk_io = disk_io_counters();
     let io_pressure = pressure_avg10_percent("/proc/pressure/io");
@@ -406,24 +414,26 @@ fn api_telemetry_node() -> ApiObjectNode {
         route: Some("/api/root".to_string()),
         summary: serde_json::json!({
             "cpuTemperatureCelsius": cpu_temp,
+            "cpuUsagePercent": cpu_usage,
             "loadAverage": load,
             "diskIo": disk_io,
             "ioPressureAvg10": io_pressure,
         }),
         metrics: vec![
             api_metric_value("cpuTemperatureCelsius", "CPU temperature", serde_json::json!(cpu_temp), Some("celsius"), None),
+            api_metric_value("cpuUsagePercent", "CPU usage", serde_json::json!(cpu_usage), Some("percent"), None),
             api_metric_value("load1", "Load average 1m", load.get("oneMinute").cloned().unwrap_or(serde_json::Value::Null), None, None),
             api_metric_value("diskReadRate", "Disk read rate", disk_io.get("readBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
             api_metric_value("diskWriteRate", "Disk write rate", disk_io.get("writeBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
             api_metric_value("ioPressureAvg10", "I/O pressure", serde_json::json!(io_pressure), Some("percent"), None),
         ],
         data: serde_json::json!({
-            "cpu": { "temperatureCelsius": cpu_temp },
+            "cpu": { "temperatureCelsius": cpu_temp, "usagePercent": cpu_usage },
             "load": load,
             "io": { "disk": disk_io, "pressureAvg10": io_pressure },
         }),
         children: vec![
-            api_leaf("cpu", "CPU", "telemetry", "observed", "/api/root", serde_json::json!({"temperatureCelsius": cpu_temp})),
+            api_leaf("cpu", "CPU", "telemetry", "observed", "/api/root", serde_json::json!({"temperatureCelsius": cpu_temp, "usagePercent": cpu_usage})),
             api_leaf("load", "Load", "telemetry", "observed", "/api/root", load),
             api_leaf("io", "I/O", "telemetry", "observed", "/api/root", disk_io),
         ],
@@ -563,6 +573,52 @@ fn cpu_temperature_celsius() -> Option<f64> {
         }
     }
     best.map(|(_, celsius)| celsius)
+}
+
+fn proc_cpu_jiffies() -> Option<(u64, u64)> {
+    let raw = fs::read_to_string("/proc/stat").ok()?;
+    let line = raw.lines().next()?;
+    if !line.starts_with("cpu ") {
+        return None;
+    }
+    let parts = line.split_whitespace().collect::<Vec<_>>();
+    if parts.len() < 5 {
+        return None;
+    }
+    let parse = |index: usize| parts.get(index).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let user = parse(1);
+    let nice = parse(2);
+    let system = parse(3);
+    let idle = parse(4);
+    let iowait = parse(5);
+    let irq = parse(6);
+    let softirq = parse(7);
+    let steal = parse(8);
+    let busy = user + nice + system + irq + softirq + steal;
+    let total = busy + idle + iowait;
+    Some((busy, total))
+}
+
+fn cpu_usage_percent() -> Option<f64> {
+    let (busy, total) = proc_cpu_jiffies()?;
+    let store = LAST_CPU_USAGE_SAMPLE.get_or_init(|| Mutex::new(None));
+    let Ok(mut slot) = store.lock() else {
+        return None;
+    };
+    let usage = slot.as_ref().and_then(|previous| {
+        let busy_delta = busy.saturating_sub(previous.busy_jiffies);
+        let total_delta = total.saturating_sub(previous.total_jiffies);
+        if total_delta == 0 {
+            return None;
+        }
+        let percent = (busy_delta as f64 / total_delta as f64) * 100.0;
+        Some((percent * 10.0).round() / 10.0)
+    });
+    *slot = Some(CpuUsageSample {
+        busy_jiffies: busy,
+        total_jiffies: total,
+    });
+    usage
 }
 
 fn load_average() -> serde_json::Value {
