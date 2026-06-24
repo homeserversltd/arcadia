@@ -67,8 +67,7 @@
             "IP Settings",
             "Services",
             "Copy URL",
-            "Copy IP:port",
-            "Copy URL:port",
+            "Copy IP",
             "Copy Command",
             "Coming soon",
             "Choose Network",
@@ -103,6 +102,8 @@
         assert!(!network_html.contains("network-summary-strip"));
         assert!(!network_html.contains("data-network-action=\"scan-wifi\""));
         assert!(!network_html.contains("Scan</button>"));
+        assert!(!network_html.contains("Copy IP:port"));
+        assert!(!network_html.contains("Copy URL:port"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
         assert!(!home_html.contains("Game Library"));

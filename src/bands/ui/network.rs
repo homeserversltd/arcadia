@@ -3,13 +3,7 @@ fn network_view(status: &ConsoleStatus) -> Markup {
     let ssh = &status.system.ssh;
     let trust = &status.system.trust;
     let lan_ai_port = 7777u16;
-    let (console_scheme, console_port) = console_endpoint_parts(console_url, trust.mode.as_str());
     let lan_ip = status.network.ip_address.as_str();
-    let lan_console_ip_port = (lan_ip != "—").then(|| endpoint_ip_port(lan_ip, console_port));
-    let lan_console_url_port =
-        lan_console_ip_port
-            .as_ref()
-            .map(|_| endpoint_url_port(lan_ip, console_port, console_scheme));
     let lan_ai_ip_port = (lan_ip != "—").then(|| endpoint_ip_port(lan_ip, lan_ai_port));
     let lan_ai_url_port = lan_ai_ip_port
         .as_ref()
@@ -43,15 +37,12 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                             "Available",
                             html! { (copy_button("Copy URL", console_url)) },
                         ))
-                        @if let (Some(ip_port), Some(url_port)) = (&lan_console_ip_port, &lan_console_url_port) {
+                        @if status.network.ip_address != "—" {
                             (network_access_row(
                                 "LAN IP",
-                                ip_port,
+                                &status.network.ip_address,
                                 "Reachable",
-                                html! {
-                                    (copy_button("Copy IP:port", ip_port))
-                                    (copy_button("Copy URL:port", url_port))
-                                },
+                                html! { (copy_button("Copy IP", &status.network.ip_address)) },
                             ))
                         }
                         (network_access_row(
@@ -60,8 +51,8 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                             if status.network.lan_ai_reachable { "Available" } else { "Disabled" },
                             html! {
                                 @if let (Some(ip_port), Some(url_port)) = (&lan_ai_ip_port, &lan_ai_url_port) {
-                                    (copy_button("Copy IP:port", ip_port))
-                                    (copy_button("Copy URL:port", url_port))
+                                    (copy_button("Copy IP", ip_port))
+                                    (copy_button("Copy URL", url_port))
                                 }
                                 (nav_focus_button("Open Local AI", "local-ai", "local-ai-inference"))
                             },
@@ -165,21 +156,6 @@ fn network_view(status: &ConsoleStatus) -> Markup {
             }
         },
     )
-}
-
-fn console_endpoint_parts(web_origin: &str, trust_mode: &str) -> (&'static str, u16) {
-    let scheme = if trust_mode == "https" || web_origin.starts_with("https://") {
-        "https"
-    } else {
-        "http"
-    };
-    let default_port = if scheme == "https" { 443 } else { 80 };
-    let port = web_origin
-        .split_once("://")
-        .and_then(|(_, rest)| rest.split('/').next())
-        .and_then(|host| host.rsplit_once(':').and_then(|(_, port_text)| port_text.parse().ok()))
-        .unwrap_or(default_port);
-    (scheme, port)
 }
 
 fn endpoint_ip_port(ip: &str, port: u16) -> String {
