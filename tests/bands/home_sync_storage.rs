@@ -86,7 +86,8 @@
             r#"aria-label="Load""#,
 
             r#"aria-label="Network""#,
-            "home-topology",
+            "home-network-stack",
+            "home-network-node",
             "Console URL",
             r#"aria-label="AI Model""#,
             "local-ai-home-card",
@@ -147,6 +148,11 @@
             ">Appliance</h3>",
             r#"aria-label="System Health""#,
             r#"aria-label="Appliance""#,
+            "home-topology",
+            "reachability-row",
+            "reachability--ok",
+            "Mbps",
+            "aria-label=\"Ethernet speed\"",
         ] {
             assert!(
                 !home_html.contains(forbidden),
@@ -377,6 +383,51 @@
             assert!(
                 !card_html.contains(forbidden),
                 "home games card leaked legacy surface: {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn home_network_card_surfaces_vertical_modem_lan_console_stack() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.network.online = true;
+        status.network.ip_address = "192.168.123.42".to_string();
+        status.network.internet_reachable = Some(true);
+        let rendered = ui::layout(&status).into_string();
+        let card_start = rendered
+            .find("network-home-card")
+            .expect("network home card");
+        let card_end = card_start
+            + rendered[card_start..]
+                .find("</article>")
+                .expect("network home card closes");
+        let card_html = &rendered[card_start..card_start + card_end];
+
+        for required in [
+            "home-network-stack",
+            ">Modem</strong>",
+            ">Home LAN</strong>",
+            "home-network-link",
+            ">Online</span>",
+            "192.168.123.42",
+        ] {
+            assert!(card_html.contains(required), "home network card missing {required}");
+        }
+        for forbidden in [
+            "home-topology",
+            "reachability-row",
+            "Mbps",
+            "→",
+            "aria-label=\"Ethernet speed\"",
+        ] {
+            assert!(
+                !card_html.contains(forbidden),
+                "home network card leaked legacy surface: {forbidden}"
             );
         }
     }
