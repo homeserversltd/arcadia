@@ -1000,6 +1000,21 @@
     }
 
     #[test]
+    fn caduceus_query_tranche_exposes_same_origin_read_proxy() {
+        let constants = include_str!("../../src/bands/constants.rs");
+        let routes = include_str!("../../src/bands/routes_caduceus.rs");
+        let main_rs = include_str!("../../src/main.rs");
+        assert!(constants.contains("const CADUCEUS_HTTP_BASE: &str = \"http://127.0.0.1:8787\";"));
+        assert!(routes.contains("/api/v1/identity"));
+        assert!(routes.contains("/api/v1/profile"));
+        assert!(routes.contains("/api/v1/health"));
+        assert!(main_rs.contains("/api/caduceus/v1/identity"));
+        assert!(main_rs.contains("/api/caduceus/v1/profile"));
+        assert!(main_rs.contains("/api/caduceus/v1/health"));
+        assert!(main_rs.contains("/api/caduceus/health"));
+    }
+
+    #[test]
     fn api_root_object_is_decomposable_infinite_infinite_tree() {
         let state = AppState {
             started_unix: 0,
