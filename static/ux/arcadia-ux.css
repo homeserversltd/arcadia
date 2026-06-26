@@ -92,6 +92,15 @@
   --ux-wifi-list-gap: 6px;
   --ux-wifi-card-radius: 16px;
   --ux-wifi-signal-height: 18px;
+
+  --ux-sync-gap: 8px;
+  --ux-sync-board-max-inline: 100%;
+  --ux-sync-orb-size: clamp(104px, 12vw, 132px);
+  --ux-sync-system-min-inline: 126px;
+  --ux-sync-system-card-min-height: 64px;
+  --ux-sync-game-row-min-height: 42px;
+  --ux-sync-game-list-max-block: min(34dvh, 310px);
+  --ux-sync-cover-size: 34px;
 }
 
 .ux-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ux-grid-gap); }

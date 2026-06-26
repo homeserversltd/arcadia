@@ -132,7 +132,30 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   display: none;
 }
 
-/* Basic desktop fit: sync keeps decision, queue, location, and three copy controls visible. */
+/* Basic desktop fit: sync packs the orb, systems, and full game list inside the appliance pane. */
+.view[data-view-panel="sync"].is-active {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.view[data-view-panel="sync"] .sync-admission-board {
+  max-block-size: 100%;
+}
+.view[data-view-panel="sync"] .sync-orb-stage {
+  min-height: 0;
+  border-radius: 20px;
+}
+.view[data-view-panel="sync"] .sync-system-blades {
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+}
+.view[data-view-panel="sync"] .sync-admitted-shelf {
+  max-block-size: min(32dvh, 280px);
+}
+.view[data-view-panel="sync"] .sync-game-card {
+  border-radius: 13px;
+}
 .view[data-view-panel="sync"] .sync-rom-panel {
   padding: 12px;
   gap: 10px;

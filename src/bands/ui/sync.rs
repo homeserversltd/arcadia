@@ -200,7 +200,7 @@ fn sync_admitted_shelf(status: &ConsoleStatus) -> Markup {
                     span { "Add games, then admit them into the console library." }
                 }
             } @else {
-                @for game in status.library.admitted_games.iter().take(10) {
+                @for game in status.library.admitted_games.iter() {
                     article class="sync-game-card" data-artwork-paired=(game.artwork_paired) {
                         div class=(if game.artwork_paired { "sync-cover-frame sync-cover-frame--paired" } else { "sync-cover-frame sync-cover-frame--missing" }) aria-hidden="true" {
                             span { (system_monogram(&game.system)) }
@@ -219,9 +219,6 @@ fn sync_admitted_shelf(status: &ConsoleStatus) -> Markup {
                             }
                         }
                     }
-                }
-                @if status.library.admitted_games.len() > 10 {
-                    div class="sync-game-more" { "+" (status.library.admitted_games.len() - 10) " more admitted games" }
                 }
             }
         }
