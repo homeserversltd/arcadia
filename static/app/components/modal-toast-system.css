@@ -197,11 +197,18 @@ body.modal-fullscreen-open { overflow: hidden; }
 .harmonia-pane-chrome strong { color: var(--cream); font-size: var(--ux-text-md); }
 .harmonia-pane-chrome span { color: var(--muted); font-size: var(--ux-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .harmonia-module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.harmonia-module { min-height: var(--ux-updates-module-min-height); display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-bg-raised) 58%, transparent); }
+.harmonia-module { min-height: var(--ux-updates-module-min-height); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 8px 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-bg-raised) 58%, transparent); }
+.harmonia-module-switch { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: center; cursor: pointer; }
+.harmonia-module-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.harmonia-module-switch input:checked + .pin-toggle-track { border-color: color-mix(in srgb, var(--theme-accent) 68%, transparent); background: linear-gradient(90deg, var(--orange), var(--orange-strong)); }
+.harmonia-module-switch input:checked + .pin-toggle-track .pin-toggle-thumb { transform: translateX(22px); }
+.harmonia-module-switch:focus-within { outline: 2px solid var(--orange-strong); outline-offset: 2px; border-radius: 14px; }
+.harmonia-module-copy { min-width: 0; display: grid; gap: 1px; }
 .harmonia-module strong { display: block; color: var(--cream); font-size: 13px; }
 .harmonia-module span { display: block; color: var(--muted); font-size: 11px; }
-.harmonia-module .btn { min-height: 28px; padding: 4px 8px; font-size: 11px; }
-.harmonia-module--disabled { opacity: .72; }
+.harmonia-module .pin-toggle-track { width: 50px; height: 28px; }
+.harmonia-module .pin-toggle-thumb { width: 20px; height: 20px; }
+.harmonia-module--disabled { opacity: .82; }
 .harmonia-update-pane--zero { min-height: 166px; place-items: center; text-align: center; }
 .harmonia-zero-updates { display: grid; gap: 4px; place-items: center; }
 .harmonia-zero-updates strong { color: var(--cream); font-size: var(--ux-text-lg); }

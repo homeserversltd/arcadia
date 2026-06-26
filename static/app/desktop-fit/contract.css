@@ -175,7 +175,6 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.view[data-view-panel="updates"] .harmonia-module-grid,
 .view[data-view-panel="updates"] .harmonia-receipts {
   display: none;
 }

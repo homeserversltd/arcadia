@@ -2969,6 +2969,9 @@ function openHarmoniaLedger() {
 function bindHarmoniaModules() {
   document.querySelectorAll('[data-harmonia-module-menu]').forEach((button) => button.addEventListener('click', openHarmoniaModuleMenu));
   document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
+  document.querySelectorAll('[data-harmonia-module-switch]').forEach((input) => input.addEventListener('change', () => {
+    toggleHarmoniaModule(input.dataset.harmoniaModuleSwitch, input.checked, null);
+  }));
   document.querySelectorAll('[data-harmonia-module-toggle]').forEach((button) => button.addEventListener('click', () => {
     const enabled = button.dataset.enabled === 'true';
     toggleHarmoniaModule(button.dataset.harmoniaModuleToggle, !enabled, button);
