@@ -1773,13 +1773,17 @@
 
         assert!(modules_pos < tiles_pos, "module pane should precede right-side update tiles");
         for required in [
-            "data-update-kind=\"modules\"",
-            "data-update-kind=\"check\"",
-            "data-update-kind=\"suite\"",
-            "data-update-kind=\"arcadia\"",
-            "arcadia-next",
+            "data-update-kind=\"identity\"",
+            "data-update-kind=\"system-packages\"",
+            "data-update-kind=\"harmonia-runtime\"",
+            "8 modules need update",
+            "Update needed",
+            "Press Sync to update this module",
         ] {
             assert!(updates_html.contains(required), "updates tile surface missing {required}");
         }
         assert!(!updates_html.contains("Zero updates available"));
+        for forbidden in ["State check", "System suite", "Needs repair", "Repair pending", "Drift", "Suite stale", "No Harmonia receipt", "Missing"] {
+            assert!(!updates_html.contains(forbidden), "updates view leaked customer-hostile text: {forbidden}");
+        }
     }
