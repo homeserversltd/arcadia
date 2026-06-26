@@ -66,58 +66,20 @@ fn harmonia_module_toggle_line(modules: &[crate::HarmoniaModuleStatus]) -> Strin
 
 fn harmonia_update_pressure_label(status: &crate::UpdatesStatus) -> String {
     let (ready, enabled) = harmonia_module_readiness(&status.modules);
-    let missing = enabled.saturating_sub(ready);
+    let unavailable = enabled.saturating_sub(ready);
     if status.check_missing_signal == "not-checked" {
-        return "Check not run".to_string();
+        return "Not checked".to_string();
     }
-    if !status.check_ok {
-        if missing > 0 {
-            return format!("Drift · {missing} missing");
-        }
-        if status.check_changed {
-            return "Drift detected".to_string();
-        }
-        return "Check found work".to_string();
+    if !status.check_ok || status.check_changed {
+        return "Updates available".to_string();
     }
-    if !status.suite_ok {
-        if status.suite_changed {
-            return "Apply needed".to_string();
-        }
-        return "Suite stale".to_string();
+    if !status.suite_ok || status.suite_changed {
+        return "Update needed".to_string();
     }
-    if missing > 0 {
-        return format!("{missing} module(s) missing");
+    if unavailable > 0 {
+        return format!("{unavailable} module(s) unavailable");
     }
-    "No pressure".to_string()
-}
-
-fn harmonia_check_status_label(status: &crate::UpdatesStatus) -> String {
-    if status.check_missing_signal == "not-checked" {
-        "Not run".to_string()
-    } else if status.check_ok {
-        "Current".to_string()
-    } else {
-        "Needs repair".to_string()
-    }
-}
-
-fn harmonia_suite_status_label(status: &crate::UpdatesStatus) -> String {
-    if status.suite_ok {
-        "Current".to_string()
-    } else if status.first_missing_signal == "receipt-missing" {
-        "Not run".to_string()
-    } else {
-        "Needs repair".to_string()
-    }
-}
-
-fn harmonia_missing_signal_label(signal: &str) -> String {
-    match signal {
-        "none" => "None".to_string(),
-        "not-checked" => "Not checked yet".to_string(),
-        "receipt-missing" => "No Harmonia receipt".to_string(),
-        other => other.replace('-', " "),
-    }
+    "Current".to_string()
 }
 
 fn harmonia_update_availability_pane(status: &crate::UpdatesStatus) -> Markup {
@@ -131,12 +93,12 @@ fn harmonia_update_availability_pane(status: &crate::UpdatesStatus) -> Markup {
                 }
             } @else {
                 div class="harmonia-pane-chrome" {
-                    strong { (harmonia_pending_label(status.pending_updates)) " available" }
+                    strong { (harmonia_update_modules_heading(tiles.len())) }
                     span { (harmonia_update_pressure_label(status)) }
                 }
                 div class="harmonia-update-tiles" data-harmonia-update-tiles="true" {
                     @for (kind, label, value, detail) in tiles {
-                        article class=(format!("harmonia-update-tile harmonia-update-tile--{}", kind)) data-update-kind=(kind) {
+                        article class="harmonia-update-tile harmonia-update-tile--module" data-update-kind=(kind) {
                             strong { (label) }
                             b { (value) }
                             span { (detail) }
@@ -148,69 +110,36 @@ fn harmonia_update_availability_pane(status: &crate::UpdatesStatus) -> Markup {
     }
 }
 
-fn harmonia_update_tiles(
-    status: &crate::UpdatesStatus,
-) -> Vec<(&'static str, &'static str, String, String)> {
-    let (ready, enabled) = harmonia_module_readiness(&status.modules);
-    let missing = enabled.saturating_sub(ready);
+fn harmonia_update_modules_heading(count: usize) -> String {
+    if count == 1 {
+        "1 module needs update".to_string()
+    } else {
+        format!("{count} modules need update")
+    }
+}
+
+fn harmonia_update_tiles(status: &crate::UpdatesStatus) -> Vec<(&str, &str, String, String)> {
     let mut tiles = Vec::new();
 
-    if status.pending_updates == 0 && missing == 0 && status.check_ok && status.suite_ok {
-        return tiles;
-    }
-
-    if missing > 0 {
+    for module in status
+        .modules
+        .iter()
+        .filter(|module| module.enabled && !module.present)
+    {
         tiles.push((
-            "modules",
-            "Modules",
-            format!("{missing} missing"),
-            format!("{ready}/{enabled} enabled modules ready"),
+            module.id.as_str(),
+            module.label.as_str(),
+            "Update needed".to_string(),
+            "Press Sync to update this module".to_string(),
         ));
     }
 
-    if status.check_missing_signal == "not-checked" {
+    if tiles.is_empty() && (!status.check_ok || status.check_changed || status.pending_updates > 0) {
         tiles.push((
-            "check",
-            "State check",
-            "Not run".to_string(),
-            "Use Check state for a fresh readback".to_string(),
-        ));
-    } else if !status.check_ok || status.check_changed {
-        tiles.push((
-            "check",
-            "State check",
-            harmonia_check_status_label(status),
-            harmonia_missing_signal_label(&status.check_missing_signal),
-        ));
-    }
-
-    if !status.suite_ok || status.suite_changed {
-        tiles.push((
-            "suite",
-            "System suite",
-            harmonia_suite_status_label(status),
-            harmonia_missing_signal_label(&status.first_missing_signal),
-        ));
-    }
-
-    if status.state == "available" {
-        tiles.push((
-            "arcadia",
-            "Arcadia GUI",
-            status
-                .available_version
-                .clone()
-                .unwrap_or_else(|| "Available".to_string()),
-            format!("Current {}", status.current_version),
-        ));
-    }
-
-    if tiles.is_empty() && status.pending_updates > 0 {
-        tiles.push((
-            "harmonia",
-            "Harmonia",
-            harmonia_pending_label(status.pending_updates),
-            format!("Last run {}", status.last_update_run),
+            "enabled-modules",
+            "Enabled modules",
+            harmonia_pending_label(status.pending_updates.max(1)),
+            "Press Sync to update enabled modules".to_string(),
         ));
     }
 
@@ -226,7 +155,7 @@ fn harmonia_module_row(module: &crate::HarmoniaModuleStatus) -> Markup {
         "disabled"
     };
     let status_label = if module.enabled {
-        if module.present { "Enabled" } else { "Missing" }
+        if module.present { "Enabled" } else { "Update needed" }
     } else {
         "Disabled"
     };

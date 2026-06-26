@@ -48,12 +48,9 @@ fn header(status: &ConsoleStatus) -> Markup {
             format!("Harmonia current · {}", status.updates.current_version),
         ),
         "repair_pending" => (
-            "Repair pending".to_string(),
+            "Update needed".to_string(),
             "warn",
-            format!(
-                "Harmonia blocker · {}",
-                harmonia_missing_signal_label(&status.updates.first_missing_signal)
-            ),
+            "Press Sync to update enabled modules".to_string(),
         ),
         "checking" => (
             "Checking".to_string(),

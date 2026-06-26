@@ -468,7 +468,7 @@ fn title_case_state_like(state: &str) -> &'static str {
         "disabled" => "Disabled",
         "success" => "Success",
         "current" => "Current",
-        "repair_pending" => "Repair pending",
+        "repair_pending" => "Update needed",
         "ready to save" => "Ready to save",
         "saved" => "Saved",
         "waiting for controller" => "Waiting",
