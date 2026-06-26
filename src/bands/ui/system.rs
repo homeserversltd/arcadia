@@ -17,24 +17,33 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                 }
 
                 article class="system-ca-panel" aria-label="Certificate bundle ingestion" data-active-bundle=(if trust.ca_installed { "present" } else { "missing" }) {
-                    div class="system-ca-copy" {
-                        strong { "HTTPS bundle" }
-                        p { "Upload one PEM certificate or CA bundle for the active HomeConsole trust slot. A technician can validate the bundle here; once the bundle is secured, Arcadia can switch the console from local HTTP to HTTPS. Only one bundle is active at a time." }
+                    div class="system-ca-hero" {
+                        div class="system-ca-orb" aria-label="HTTPS mode" {
+                            span { "HTTPS" }
+                            strong { (if trust.mode == "https" { "ON" } else { "HTTP" }) }
+                        }
+                        div class="system-ca-copy" {
+                            strong { "HTTPS bundle" }
+                            p { "Add a PEM certificate or CA bundle for this console. Only one bundle is active at a time." }
+                        }
                     }
                     div class="system-ca-state" {
                         (system_field("Mode", if trust.mode == "https" { "HTTPS" } else { "HTTP" }))
                         (system_field("Active bundle", if trust.ca_installed { "Installed" } else { "Empty" }))
-                        (system_field("Anchor", trust.ca_path))
+                        span class="system-field system-field--anchor" { em { "Anchor" } strong { (trust.ca_path) } }
                         @if let Some(expiry) = trust.ca_not_after.as_deref() { (system_field("Expires", expiry)) }
                     }
                     form id="root-ca-form" class="settings-form system-ca-form" autocomplete="off" enctype="multipart/form-data" {
                         label class="system-upload-drop" {
-                            span { "Certificate bundle" }
-                            input class="field" type="file" name="ca_bundle_file" accept=".pem,.crt,.cer,.bundle,.chain,text/plain,application/x-pem-file,application/pem-certificate-chain" {}
+                            input type="file" name="ca_bundle_file" accept=".pem,.crt,.cer,.bundle,.chain,text/plain,application/x-pem-file,application/pem-certificate-chain" {}
+                            span class="system-upload-face" {
+                                strong { "Certificate bundle" }
+                                em { "Select PEM / CRT file" }
+                            }
                         }
                         label class="system-ca-paste" {
                             span { "Paste PEM bundle" }
-                            textarea class="field field--textarea" name="ca_bundle" rows="6" placeholder="-----BEGIN CERTIFICATE-----" {}
+                            textarea class="field field--textarea" name="ca_bundle" rows="5" placeholder="-----BEGIN CERTIFICATE-----" {}
                         }
                         div class="inline-actions" { button class="btn btn--primary" type="submit" { "Upload CA Bundle" } }
                         div id="root-ca-message" class="message" hidden {}
