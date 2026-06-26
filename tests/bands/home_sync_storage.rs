@@ -1627,6 +1627,19 @@
             "Check state",
             "data-harmonia-module-grid=\"true\"",
             "data-harmonia-module=\"identity\"",
+            "data-harmonia-module-switch=\"identity\"",
+            "data-harmonia-module-switch-row=\"identity\"",
+            "type=\"checkbox\"",
+            "pin-toggle-track",
+            "pin-toggle-thumb",
+            "Identity",
+            "System Packages",
+            "Harmonia Runtime",
+            "Keyman Runtime",
+            "Homeconsole Sync Runtime",
+            "Rust Build Toolchain",
+            "Arcadia Gui Runtime",
+            "Pinned Artifacts Runtime",
             "enabled ·",
             "disabled",
             "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json",
@@ -1638,6 +1651,13 @@
         assert_eq!(updates_html.matches("data-harmonia-ledger-open=\"true\"").count(), 1);
         assert_eq!(updates_html.matches("/api/actions/check-updates").count(), 1);
         assert_eq!(updates_html.matches("/api/actions/update-gui").count(), 1);
+        assert_eq!(updates_html.matches("data-harmonia-module=\"").count(), 8);
+        assert_eq!(updates_html.matches("data-harmonia-module-switch=\"").count(), 8);
+        assert_eq!(updates_html.matches("type=\"checkbox\"").count(), 8);
+        assert_eq!(updates_html.matches("pin-toggle-track").count(), 8);
+        assert!(!updates_html.contains("data-harmonia-module-toggle="));
+        assert!(!updates_html.contains(">Disable</button>"));
+        assert!(!updates_html.contains(">Enable</button>"));
         assert!(!updates_html.contains("Manual SCP bridge"));
         assert!(!updates_html.contains("Latest available</span><strong>Not checked"));
         assert!(!updates_html.contains("Make harmonious"));

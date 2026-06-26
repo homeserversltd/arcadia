@@ -218,18 +218,31 @@ fn harmonia_update_tiles(
 }
 
 fn harmonia_module_row(module: &crate::HarmoniaModuleStatus) -> Markup {
+    let status_tone = if module.enabled && module.present {
+        "available"
+    } else if module.enabled {
+        "error"
+    } else {
+        "disabled"
+    };
+    let status_label = if module.enabled {
+        if module.present { "Enabled" } else { "Missing" }
+    } else {
+        "Disabled"
+    };
     html! {
         article class=(format!("harmonia-module harmonia-module--{}", module.state)) data-harmonia-module=(module.id) data-module-enabled=(module.enabled) {
-            div {
-                strong { (module.label) }
-                span { (module.id) }
+            label class="harmonia-module-switch" data-harmonia-module-switch-row=(module.id) {
+                input type="checkbox" checked[module.enabled] data-harmonia-module-switch=(module.id) data-enabled=(module.enabled) aria-label=(format!("{} module enabled", module.label));
+                span class="pin-toggle-track" aria-hidden="true" {
+                    span class="pin-toggle-thumb" {}
+                }
+                span class="harmonia-module-copy" {
+                    strong { (module.label) }
+                    span { (module.id) }
+                }
             }
-            b class=(format!("system-status system-status--{}", if module.enabled && module.present { "available" } else if module.enabled { "error" } else { "disabled" })) {
-                (if module.enabled { if module.present { "Enabled" } else { "Missing" } } else { "Disabled" })
-            }
-            button class="btn btn--secondary" type="button" data-harmonia-module-toggle=(module.id) data-enabled=(module.enabled) {
-                (if module.enabled { "Disable" } else { "Enable" })
-            }
+            b class=(format!("system-status system-status--{}", status_tone)) { (status_label) }
         }
     }
 }
