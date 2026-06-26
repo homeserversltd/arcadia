@@ -110,7 +110,7 @@
 
         for marker in [
             "ai-manager-section--desktop-detail",
-            "system-card--desktop-detail",
+            "system-redo",
             "sync-desktop-detail",
         ] {
             assert!(

@@ -228,9 +228,18 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/actions/check-updates", post(action_check_updates))
         .route("/api/harmonia/ledger", get(harmonia_ledger_route))
         .route("/api/caduceus/health", get(caduceus_health_proxy_route))
-        .route("/api/caduceus/v1/identity", get(caduceus_identity_proxy_route))
-        .route("/api/caduceus/v1/profile", get(caduceus_profile_proxy_route))
-        .route("/api/caduceus/v1/health", get(caduceus_health_api_proxy_route))
+        .route(
+            "/api/caduceus/v1/identity",
+            get(caduceus_identity_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/profile",
+            get(caduceus_profile_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/health",
+            get(caduceus_health_api_proxy_route),
+        )
         .route(
             "/api/caduceus/v1/update/status",
             get(caduceus_update_status_proxy_route),
