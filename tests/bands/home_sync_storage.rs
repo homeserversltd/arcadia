@@ -951,7 +951,7 @@
             "ux-sync-orb",
             "ux-sync-orb-track",
             "ux-sync-orb-sweep",
-            r#"<span class="ux-sync-orb-core">7</span>"#,
+            r#"<span class="ux-sync-orb-core">4</span>"#,
             "Native",
             "Added",
             "Artwork",
@@ -978,15 +978,68 @@
         }
         for required_css in [
             ".sync-admission-board",
+            "inline-size: min(var(--ux-sync-board-max-inline), 100%);",
+            "overflow-x: clip;",
             ".sync-orb-stage",
+            "grid-template-columns: var(--ux-sync-orb-size) minmax(0, 1fr) minmax(128px, .24fr);",
             "conic-gradient",
             ".sync-system-blade",
+            "grid-template-columns: repeat(auto-fit, minmax(var(--ux-sync-system-min-inline), 1fr));",
             ".sync-admitted-shelf",
+            "max-block-size: var(--ux-sync-game-list-max-block);",
+            "overflow: auto;",
             ".sync-game-card",
+            "grid-template-columns: var(--ux-sync-cover-size) minmax(0, 1fr) minmax(118px, auto);",
             ".sync-cover-frame",
+            "width: var(--ux-sync-cover-size);",
         ] {
             assert!(APP_CSS.contains(required_css), "missing admission board CSS: {required_css}");
         }
+        for required_ux in [
+            "--ux-sync-orb-size",
+            "--ux-sync-system-min-inline",
+            "--ux-sync-game-list-max-block",
+            "--ux-sync-cover-size",
+        ] {
+            assert!(UX_CSS.contains(required_ux), "sync fit token missing: {required_ux}");
+        }
+        assert!(APP_CSS.contains(".view[data-view-panel=\"sync\"].is-active {"));
+        assert!(APP_CSS.contains("overflow: hidden;"));
+    }
+
+    #[test]
+    fn sync_admitted_game_list_is_dense_full_collection_not_ten_tile_cap() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.library.first_sync_completed = true;
+        status.library.last_sync_state = "success".to_string();
+        status.library.total_detected_games = 14;
+        status.library.total_synced_entries = 14;
+        status.library.artwork_paired_total = 14;
+        status.library.artwork_missing = 0;
+        status.library.admitted_games = (1..=14)
+            .map(|index| AdmittedGameTally {
+                title: format!("Pocket Game {index:02}"),
+                system: "GBA".to_string(),
+                source_file: format!("/hidden/diagnostic/path/pocket-game-{index:02}.gba"),
+                game_id: format!("pocket-game-{index:02}"),
+                runner: "RetroArch mGBA".to_string(),
+                steam_entry: format!("Pocket Game {index:02}"),
+                artwork_paired: true,
+                artwork_source: "local".to_string(),
+            })
+            .collect();
+
+        let rendered = ui::layout(&status).into_string();
+        let sync_html = sync_slice(&rendered);
+        assert_eq!(sync_html.matches("<article class=\"sync-game-card\"").count(), 14);
+        assert!(sync_html.contains("Pocket Game 14"));
+        assert!(!sync_html.contains("more admitted games"));
+        assert!(!include_str!("../../src/bands/ui/sync.rs").contains("admitted_games.iter().take(10)"));
     }
 
     #[test]
