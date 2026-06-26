@@ -120,8 +120,8 @@
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-auto-rows: max-content;
-  align-content: start;
+  grid-auto-rows: minmax(0, 1fr);
+  align-content: stretch;
   gap: var(--ux-control-gap);
   padding: var(--ux-sidebar-padding-block) var(--ux-sidebar-padding-inline);
   border: 1px solid var(--line);
@@ -134,7 +134,7 @@
   justify-items: center;
   align-content: center;
   gap: 5px;
-  min-height: var(--ux-launcher-min-height);
+  min-height: 0;
   max-height: var(--ux-launcher-max-height);
   padding: var(--ux-launcher-padding-block) var(--ux-launcher-padding-inline);
   border: 1px solid transparent;
