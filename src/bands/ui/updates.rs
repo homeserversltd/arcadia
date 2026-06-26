@@ -5,30 +5,25 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            div class="harmonia-panel" data-harmonia-updates="true" {
-                article class=(format!("harmonia-currentness harmonia-currentness--{}", status.updates.state)) {
-                    div class="harmonia-orb" aria-hidden="true" { "H" }
-                    div class="harmonia-currentness-copy" {
-                        strong { (harmonia_state_label(&status.updates.state)) }
-                        span { (status.updates.profile_id) " / " (status.updates.identity) " · " (status.updates.first_missing_signal) }
-                    }
-                    div class="harmonia-currentness-actions" {
-                        (action_button(ButtonVariant::Secondary, "Check state", "check-updates", "/api/actions/check-updates"))
-                        (action_button(ButtonVariant::Primary, "Make harmonious", "update-gui", "/api/actions/update-gui"))
-                        button class="btn btn--secondary" type="button" data-harmonia-module-menu="true" { "Modules" }
-                        button class="btn btn--secondary" type="button" data-harmonia-ledger-open="true" { "Ledger" }
-                    }
+            div class="harmonia-panel harmonia-panel--update-center" data-harmonia-updates="true" {
+                div class="harmonia-command-rail" data-harmonia-update-controls="true" {
+                    (action_button(ButtonVariant::Primary, "Sync", "update-gui", "/api/actions/update-gui"))
+                    button class="btn btn--secondary" type="button" data-harmonia-ledger-open="true" { "Ledger" }
+                    (action_button(ButtonVariant::Secondary, "Check state", "check-updates", "/api/actions/check-updates"))
                 }
-                div class="harmonia-metrics" {
-                    (status_card("Arcadia", status.arcadia.version, "GUI runtime"))
-                    (status_card("Modules", &format!("{} enabled", status.updates.modules.iter().filter(|module| module.enabled).count()), "Profile spine"))
-                    (status_card("Operations", &status.updates.operation_count.to_string(), "Last Harmonia run"))
-                    (status_card("Receipt", &receipt_short_name(&status.updates.latest_receipt), "Suite receipt"))
-                }
-                div class="harmonia-module-grid" data-harmonia-module-grid="true" {
-                    @for module in &status.updates.modules {
-                        (harmonia_module_row(module))
+                div class="harmonia-default-grid" data-harmonia-default-grid="true" {
+                    article class="harmonia-module-pane" data-harmonia-module-pane="true" {
+                        div class="harmonia-pane-chrome" {
+                            strong { "Modules" }
+                            span { (harmonia_module_toggle_line(&status.updates.modules)) }
+                        }
+                        div class="harmonia-module-grid" data-harmonia-module-grid="true" {
+                            @for module in &status.updates.modules {
+                                (harmonia_module_row(module))
+                            }
+                        }
                     }
+                    (harmonia_update_availability_pane(&status.updates))
                 }
                 details class="collapsible-log harmonia-receipts" {
                     summary { "Receipts" }
@@ -66,7 +61,7 @@ fn harmonia_module_readiness(modules: &[crate::HarmoniaModuleStatus]) -> (usize,
 fn harmonia_module_toggle_line(modules: &[crate::HarmoniaModuleStatus]) -> String {
     let on = modules.iter().filter(|module| module.enabled).count();
     let off = modules.iter().filter(|module| !module.enabled).count();
-    format!("{on} on · {off} off")
+    format!("{on} enabled · {off} disabled")
 }
 
 fn harmonia_update_pressure_label(status: &crate::UpdatesStatus) -> String {
@@ -125,26 +120,101 @@ fn harmonia_missing_signal_label(signal: &str) -> String {
     }
 }
 
-fn harmonia_state_label(state: &str) -> &'static str {
-    match state {
-        "current" => "Harmonia current",
-        "repair_pending" => "Repair pending",
-        "checking" => "Checking",
-        "installing" => "Making harmonious",
-        "available" => "Update available",
-        "error" => "Harmonia error",
-        _ => "Harmonia unknown",
+fn harmonia_update_availability_pane(status: &crate::UpdatesStatus) -> Markup {
+    let tiles = harmonia_update_tiles(status);
+    html! {
+        article class=(format!("harmonia-update-pane harmonia-update-pane--{}", if tiles.is_empty() { "zero" } else { "available" })) data-harmonia-update-pane="true" data-update-count=(status.pending_updates) {
+            @if tiles.is_empty() {
+                div class="harmonia-zero-updates" data-zero-updates="true" {
+                    strong { "Zero updates available" }
+                    span { (harmonia_update_pressure_label(status)) }
+                }
+            } @else {
+                div class="harmonia-pane-chrome" {
+                    strong { (harmonia_pending_label(status.pending_updates)) " available" }
+                    span { (harmonia_update_pressure_label(status)) }
+                }
+                div class="harmonia-update-tiles" data-harmonia-update-tiles="true" {
+                    @for (kind, label, value, detail) in tiles {
+                        article class=(format!("harmonia-update-tile harmonia-update-tile--{}", kind)) data-update-kind=(kind) {
+                            strong { (label) }
+                            b { (value) }
+                            span { (detail) }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-fn receipt_short_name(path: &str) -> String {
-    path.rsplit('/')
-        .take(2)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>()
-        .join("/")
+fn harmonia_update_tiles(
+    status: &crate::UpdatesStatus,
+) -> Vec<(&'static str, &'static str, String, String)> {
+    let (ready, enabled) = harmonia_module_readiness(&status.modules);
+    let missing = enabled.saturating_sub(ready);
+    let mut tiles = Vec::new();
+
+    if status.pending_updates == 0 && missing == 0 && status.check_ok && status.suite_ok {
+        return tiles;
+    }
+
+    if missing > 0 {
+        tiles.push((
+            "modules",
+            "Modules",
+            format!("{missing} missing"),
+            format!("{ready}/{enabled} enabled modules ready"),
+        ));
+    }
+
+    if status.check_missing_signal == "not-checked" {
+        tiles.push((
+            "check",
+            "State check",
+            "Not run".to_string(),
+            "Use Check state for a fresh readback".to_string(),
+        ));
+    } else if !status.check_ok || status.check_changed {
+        tiles.push((
+            "check",
+            "State check",
+            harmonia_check_status_label(status),
+            harmonia_missing_signal_label(&status.check_missing_signal),
+        ));
+    }
+
+    if !status.suite_ok || status.suite_changed {
+        tiles.push((
+            "suite",
+            "System suite",
+            harmonia_suite_status_label(status),
+            harmonia_missing_signal_label(&status.first_missing_signal),
+        ));
+    }
+
+    if status.state == "available" {
+        tiles.push((
+            "arcadia",
+            "Arcadia GUI",
+            status
+                .available_version
+                .clone()
+                .unwrap_or_else(|| "Available".to_string()),
+            format!("Current {}", status.current_version),
+        ));
+    }
+
+    if tiles.is_empty() && status.pending_updates > 0 {
+        tiles.push((
+            "harmonia",
+            "Harmonia",
+            harmonia_pending_label(status.pending_updates),
+            format!("Last run {}", status.last_update_run),
+        ));
+    }
+
+    tiles
 }
 
 fn harmonia_module_row(module: &crate::HarmoniaModuleStatus) -> Markup {
@@ -155,12 +225,11 @@ fn harmonia_module_row(module: &crate::HarmoniaModuleStatus) -> Markup {
                 span { (module.id) }
             }
             b class=(format!("system-status system-status--{}", if module.enabled && module.present { "available" } else if module.enabled { "error" } else { "disabled" })) {
-                (if module.enabled { if module.present { "Enabled" } else { "Missing" } } else { "Off" })
+                (if module.enabled { if module.present { "Enabled" } else { "Missing" } } else { "Disabled" })
             }
             button class="btn btn--secondary" type="button" data-harmonia-module-toggle=(module.id) data-enabled=(module.enabled) {
-                (if module.enabled { "Turn off" } else { "Turn on" })
+                (if module.enabled { "Disable" } else { "Enable" })
             }
         }
     }
 }
-

@@ -1618,19 +1618,30 @@
 
         for required in [
             "data-harmonia-updates=\"true\"",
+            "data-harmonia-update-controls=\"true\"",
+            "data-harmonia-default-grid=\"true\"",
+            "data-harmonia-module-pane=\"true\"",
+            "data-harmonia-update-pane=\"true\"",
+            "Sync",
+            "Ledger",
             "Check state",
-            "Make harmonious",
-            "data-harmonia-module-menu=\"true\"",
             "data-harmonia-module-grid=\"true\"",
             "data-harmonia-module=\"identity\"",
+            "enabled ·",
+            "disabled",
             "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json",
             "/api/actions/check-updates",
             "/api/actions/update-gui",
         ] {
             assert!(updates_html.contains(required), "updates view missing {required}");
         }
+        assert_eq!(updates_html.matches("data-harmonia-ledger-open=\"true\"").count(), 1);
+        assert_eq!(updates_html.matches("/api/actions/check-updates").count(), 1);
+        assert_eq!(updates_html.matches("/api/actions/update-gui").count(), 1);
         assert!(!updates_html.contains("Manual SCP bridge"));
         assert!(!updates_html.contains("Latest available</span><strong>Not checked"));
+        assert!(!updates_html.contains("Make harmonious"));
+        assert!(!updates_html.contains("data-harmonia-module-menu=\"true\""));
     }
 
     #[test]
@@ -1669,3 +1680,86 @@
         }
     }
 
+    #[test]
+    fn updates_view_collapses_available_side_when_zero_updates() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        for module in &mut status.updates.modules {
+            module.enabled = true;
+            module.present = true;
+            module.state = "enabled".to_string();
+        }
+        status.updates.pending_updates = 0;
+        status.updates.check_ok = true;
+        status.updates.suite_ok = true;
+        status.updates.check_changed = false;
+        status.updates.suite_changed = false;
+        status.updates.check_missing_signal = "none".to_string();
+        status.updates.first_missing_signal = "none".to_string();
+
+        let rendered = ui::layout(&status).into_string();
+        let updates_start = rendered
+            .find("<section id=\"view-updates\"")
+            .expect("updates view starts");
+        let updates_end = updates_start
+            + rendered[updates_start..]
+                .find("<section id=\"view-system\"")
+                .expect("system follows updates");
+        let updates_html = &rendered[updates_start..updates_end];
+
+        assert!(updates_html.contains("data-zero-updates=\"true\""));
+        assert!(updates_html.contains("Zero updates available"));
+        assert!(!updates_html.contains("data-harmonia-update-tiles=\"true\""));
+    }
+
+    #[test]
+    fn updates_view_surfaces_available_update_tiles_right_of_modules() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.updates.pending_updates = 3;
+        status.updates.check_ok = false;
+        status.updates.check_changed = true;
+        status.updates.suite_ok = false;
+        status.updates.suite_changed = true;
+        status.updates.check_missing_signal = "packages-stale".to_string();
+        status.updates.first_missing_signal = "packages-stale".to_string();
+        status.updates.state = "available".to_string();
+        status.updates.available_version = Some("arcadia-next".to_string());
+        if let Some(module) = status.updates.modules.first_mut() {
+            module.enabled = true;
+            module.present = false;
+            module.state = "missing".to_string();
+        }
+
+        let rendered = ui::layout(&status).into_string();
+        let updates_start = rendered
+            .find("<section id=\"view-updates\"")
+            .expect("updates view starts");
+        let updates_end = updates_start
+            + rendered[updates_start..]
+                .find("<section id=\"view-system\"")
+                .expect("system follows updates");
+        let updates_html = &rendered[updates_start..updates_end];
+        let modules_pos = updates_html.find("data-harmonia-module-pane=\"true\"").expect("module pane");
+        let tiles_pos = updates_html.find("data-harmonia-update-tiles=\"true\"").expect("update tiles");
+
+        assert!(modules_pos < tiles_pos, "module pane should precede right-side update tiles");
+        for required in [
+            "data-update-kind=\"modules\"",
+            "data-update-kind=\"check\"",
+            "data-update-kind=\"suite\"",
+            "data-update-kind=\"arcadia\"",
+            "arcadia-next",
+        ] {
+            assert!(updates_html.contains(required), "updates tile surface missing {required}");
+        }
+        assert!(!updates_html.contains("Zero updates available"));
+    }

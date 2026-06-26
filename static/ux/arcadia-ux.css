@@ -101,6 +101,41 @@
   --ux-sync-game-row-min-height: 42px;
   --ux-sync-game-list-max-block: min(34dvh, 310px);
   --ux-sync-cover-size: 34px;
+
+  --ux-updates-gap: 8px;
+  --ux-updates-card-radius: 18px;
+  --ux-updates-card-padding: 10px;
+  --ux-updates-command-min-height: 34px;
+  --ux-updates-module-min-height: 48px;
+}
+
+.ux-appliance-command-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ux-control-gap);
+}
+
+.ux-appliance-pane-chrome {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ux-card-header-gap);
+}
+
+.ux-appliance-pane-chrome strong {
+  color: var(--cream);
+  font-size: var(--ux-text-md);
+}
+
+.ux-appliance-pane-chrome span {
+  color: var(--muted);
+  font-size: var(--ux-text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ux-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ux-grid-gap); }
