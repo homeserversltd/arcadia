@@ -3006,11 +3006,15 @@ function bindSystemTrustAndAccessForms() {
     caForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       clearMessage('root-ca-message');
-      const ca = caForm.querySelector('[name="ca_bundle"]')?.value || '';
-      if (!ca.includes('-----BEGIN CERTIFICATE-----') || !ca.includes('-----END CERTIFICATE-----')) {
-        return setMessage('root-ca-message', 'Paste a PEM/CRT certificate bundle.', 'error');
+      const file = caForm.querySelector('[name="ca_bundle_file"]')?.files?.[0] || null;
+      let ca = caForm.querySelector('[name="ca_bundle"]')?.value || '';
+      if (file && !ca.trim()) {
+        ca = await file.text();
       }
-      if (!window.confirm('Install this Home Root CA into appliance trust?')) return;
+      if (!ca.includes('-----BEGIN CERTIFICATE-----') || !ca.includes('-----END CERTIFICATE-----')) {
+        return setMessage('root-ca-message', 'Upload or paste a PEM certificate bundle.', 'error');
+      }
+      if (!window.confirm('Install this HTTPS bundle as the active Arcadia trust bundle?')) return;
       const button = caForm.querySelector('button[type="submit"]');
       const old = button.textContent;
       button.disabled = true; button.textContent = 'Installing…';

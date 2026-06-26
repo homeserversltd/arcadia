@@ -154,7 +154,7 @@
     }
 
     #[test]
-    fn system_view_is_an_appliance_front_panel_not_a_backend_dump() {
+    fn system_view_is_button_tile_and_ca_bundle_ingest() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.home.arpa/".to_string(),
@@ -171,9 +171,46 @@
         assert!(!rendered.contains("data-view=\"power\""));
         assert!(!rendered.contains("id=\"view-power\""));
         for required in [
-            "Power &amp; Sessions",
+            "system-redo",
+            "system-button-tile",
             "Restart Console",
-            "Shut Down",
+            "Shutdown",
+            "Restart GameScope",
+            "Restart Arcadia",
+            "Passwordless SSH",
+            "system-ca-panel",
+            "HTTPS bundle",
+            "Certificate bundle",
+            "Upload CA Bundle",
+            "Only one bundle is active at a time.",
+            "data-active-bundle=",
+            "name=\"ca_bundle_file\"",
+            "name=\"ca_bundle\"",
+            "Active bundle",
+        ] {
+            assert!(system_html.contains(required), "missing {required}");
+        }
+        assert!(
+            system_html.contains("Turn On Passwordless SSH")
+                || system_html.contains("Turn Off Passwordless SSH"),
+            "passwordless SSH must expose exactly one binary toggle"
+        );
+        for action in [
+            "reboot-console",
+            "shutdown-console",
+            "restart-arcadia",
+            "restart-gamescope",
+            "enable-ssh",
+            "disable-ssh",
+        ] {
+            assert!(
+                system_html.matches(&format!("data-action=\"{action}\"")).count() <= 1,
+                "duplicated System action {action}"
+            );
+        }
+        for forbidden in [
+            "Power &amp; Sessions",
+            "Front panel",
             "Restart Interface",
             "Restart Game Session",
             "Remote Access",
@@ -192,40 +229,14 @@
             "HomeConsole Interface",
             "Diagnostics",
             "Open Diagnostics",
-        ] {
-            assert!(system_html.contains(required), "missing {required}");
-        }
-        assert!(
-            system_html.contains("Turn On Remote Access")
-                || system_html.contains("Turn Off Remote Access"),
-            "remote access must expose exactly one next action"
-        );
-        assert!(
-            system_html.contains("Allow Password Login")
-                || system_html.contains("Require Key Login"),
-            "login policy must expose exactly one next action"
-        );
-        assert!(
-            system_html.contains("Enable Secure Web Access")
-                || system_html.contains("Use Local HTTP"),
-            "trust mode must expose exactly one next action"
-        );
-        for action in [
-            "restart-arcadia",
-            "restart-gamescope",
-            "enable-ssh",
-            "disable-ssh",
+            "Allow Password Login",
+            "Require Key Login",
+            "Enable Secure Web Access",
+            "Use Local HTTP",
             "enable-ssh-password",
             "disable-ssh-password",
             "trust-mode-http",
             "trust-mode-https",
-        ] {
-            assert!(
-                system_html.matches(&format!("data-action=\"{action}\"")).count() <= 1,
-                "duplicated System action {action}"
-            );
-        }
-        for forbidden in [
             "Enable SSH",
             "Disable SSH",
             "Enable SSH Password",
@@ -233,11 +244,9 @@
             "Trust &amp; HTTPS",
             "HTTP Mode",
             "HTTPS with Home Root CA</button>",
-            "GameScope",
             "Samba",
             "Local AI Inference",
             "Web GUI",
-            ">Arcadia<",
             ">Restart</button>",
             ">View</button>",
             ">Download</button>",
@@ -251,6 +260,9 @@
                 "forbidden System substrate survived: {forbidden}"
             );
         }
+        assert!(APP_JS.contains("ca_bundle_file"));
+        assert!(APP_JS.contains("file.text()"));
+        assert!(APP_JS.contains("active Arcadia trust bundle"));
         assert!(rendered.contains("data-nav-target=\"system\""));
         assert!(APP_JS.contains("if (view === 'advanced') view = 'system';"));
         assert!(APP_JS.contains("Restarting GameScope may close the active game session."));

@@ -96,7 +96,7 @@
         }
         assert!(!rendered.contains("smb:://"));
         assert!(!rendered.contains("Vault"));
-        assert!(rendered.contains("Secure Web Access"));
+        assert!(rendered.contains("HTTPS bundle"));
 
         assert!(
             !rendered.contains("data-view=\"games\""),
