@@ -2401,11 +2401,16 @@ function openWifiConnectModal(ssid = '', secured = true, saved = false, signalPe
         step.classList.remove('is-active');
         step.classList.add('is-done');
       });
-      msg.textContent = data.message || 'Wi-Fi connect complete.';
-      msg.className = `wifi-join-message message message--${data.ok ? 'success' : 'error'}`;
-      msg.hidden = false;
-      PopupManager.showToast(data.message || 'Wi-Fi connect complete.', data.ok ? 'success' : 'error');
-      if (data.ok) window.setTimeout(() => PopupManager.closeModal(), 700);
+      if (data.ok) {
+        msg.hidden = true;
+        PopupManager.showToast(data.message || 'Wi-Fi connect complete.', 'success');
+        window.setTimeout(() => PopupManager.closeModal(), 700);
+      } else {
+        msg.textContent = data.message || 'Wi-Fi connect failed.';
+        msg.className = 'wifi-join-message message message--error';
+        msg.hidden = false;
+        PopupManager.showToast(data.message || 'Wi-Fi connect failed.', 'error');
+      }
     } catch (_) {
       if (passwordInput) passwordInput.value = '';
       steps.hidden = true;
