@@ -90,7 +90,7 @@
   min-width: 0;
 }
 .system-ca-copy strong {
-  font-size: clamp(18px, 2vw, 24px);
+  font-size: clamp(18px, 2vw, 22px);
   line-height: 1.05;
 }
 .system-ca-copy p {

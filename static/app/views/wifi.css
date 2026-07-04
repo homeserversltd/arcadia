@@ -293,10 +293,6 @@
   border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
   background: color-mix(in srgb, var(--bad) 12%, transparent);
 }
-.wifi-join-message.message--success {
-  border: 1px solid color-mix(in srgb, var(--good) 35%, var(--line));
-  background: color-mix(in srgb, var(--good) 12%, transparent);
-}
 .wifi-join-message.message--info {
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent);
