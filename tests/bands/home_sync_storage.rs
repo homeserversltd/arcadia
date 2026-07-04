@@ -225,6 +225,45 @@
         }
     }
 
+
+    #[test]
+    fn app_js_has_pane_blind_living_state_projector_and_widget_valve() {
+        for required in [
+            "const ArcadiaProjector = (() =>",
+            "window.ArcadiaProjector = ArcadiaProjector",
+            "function resolve(path, root)",
+            "[data-bind]",
+            "node.textContent = asText(resolve(node.dataset.bind, state))",
+            "[data-bind-class]",
+            "node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)))",
+            "[data-bind-show]",
+            "node.hidden = !visible",
+            "[data-bind-each]",
+            "host.firstElementChild?.tagName === 'TEMPLATE'",
+            "template.content.cloneNode(true)",
+            "project(fragment, item, true)",
+            "function registerWidget(selectorOrName, fn)",
+            "widgets.push({ selectorOrName, fn })",
+            "fn(state, widgetContext(selectorOrName))",
+            "dispatchWidgets(lastDocument)",
+            "source.addEventListener('state', onLivingState)",
+            "ArcadiaProjector.apply(state.livingState)",
+            "data-bind-class projects normalized values into data-state",
+        ] {
+            assert!(APP_JS.contains(required), "projector missing {required}");
+        }
+
+        for forbidden in [
+            "projector-pane-knowledge",
+            "data-view-panel=\"home\"].is-active') && ArcadiaProjector",
+            "view-home",
+            "view-network",
+            "view-controllers",
+        ] {
+            assert!(!APP_JS.contains(forbidden), "projector leaked pane knowledge: {forbidden}");
+        }
+    }
+
     #[test]
     fn home_view_updates_available_and_service_states_are_truthful() {
         let state = AppState {

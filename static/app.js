@@ -308,6 +308,101 @@ function bindNavigation() {
   activate(stored);
 }
 
+
+const ArcadiaProjector = (() => {
+  const widgets = [];
+  let lastDocument = null;
+
+  function resolve(path, root) {
+    if (!path) return root;
+    return String(path).split('.').reduce((value, key) => {
+      if (value == null || key === '') return undefined;
+      return value[key];
+    }, root);
+  }
+
+  function asText(value) {
+    if (value == null) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  function asState(value) {
+    return asText(value).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
+  }
+
+  function boundNodes(root, selector, includeGenerated) {
+    return Array.from(root.querySelectorAll(selector)).filter((node) => includeGenerated || !node.closest('[data-projector-generated="true"]'));
+  }
+
+  function projectScalarBindings(root, state, includeGenerated = false) {
+    boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
+      node.textContent = asText(resolve(node.dataset.bind, state));
+    });
+    boundNodes(root, '[data-bind-class]', includeGenerated).forEach((node) => {
+      node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)));
+    });
+    boundNodes(root, '[data-bind-show]', includeGenerated).forEach((node) => {
+      const visible = Boolean(resolve(node.dataset.bindShow, state));
+      node.hidden = !visible;
+      node.setAttribute('aria-hidden', String(!visible));
+    });
+  }
+
+  function projectEachBindings(root, state, includeGenerated = false) {
+    boundNodes(root, '[data-bind-each]', includeGenerated).forEach((host) => {
+      const template = host.firstElementChild?.tagName === 'TEMPLATE' ? host.firstElementChild : null;
+      if (!template) return;
+      host.querySelectorAll(':scope > [data-projector-generated="true"]').forEach((node) => node.remove());
+      const items = resolve(host.dataset.bindEach, state);
+      if (!Array.isArray(items)) return;
+      items.forEach((item) => {
+        const fragment = template.content.cloneNode(true);
+        Array.from(fragment.children).forEach((node) => { node.dataset.projectorGenerated = 'true'; });
+        project(fragment, item, true);
+        host.appendChild(fragment);
+      });
+    });
+  }
+
+  function widgetContext(selectorOrName) {
+    const elements = /^[.#\[]/.test(selectorOrName) ? Array.from(document.querySelectorAll(selectorOrName)) : [];
+    return { selectorOrName, elements };
+  }
+
+  function dispatchWidgets(state) {
+    widgets.forEach(({ selectorOrName, fn }) => {
+      try {
+        fn(state, widgetContext(selectorOrName));
+      } catch (error) {
+        console.warn('ArcadiaProjector widget failed', selectorOrName, error);
+      }
+    });
+  }
+
+  function project(root, state, includeGenerated = false) {
+    projectEachBindings(root, state, includeGenerated);
+    projectScalarBindings(root, state, includeGenerated);
+  }
+
+  function apply(state) {
+    lastDocument = state || {};
+    project(document, lastDocument);
+    dispatchWidgets(lastDocument);
+  }
+
+  function registerWidget(selectorOrName, fn) {
+    if (typeof selectorOrName !== 'string' || typeof fn !== 'function') return false;
+    widgets.push({ selectorOrName, fn });
+    if (lastDocument) fn(lastDocument, widgetContext(selectorOrName));
+    return true;
+  }
+
+  // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
+  return { apply, registerWidget, resolve };
+})();
+window.ArcadiaProjector = ArcadiaProjector;
+
 function bindHomeLoadSubscription() {
   const card = document.querySelector('[data-load-card]');
   if (!card) return;
@@ -469,8 +564,17 @@ function bindHomeLoadSubscription() {
           state.expiresAtUnix = state.heartbeat.expiresAtUnix;
         } catch (_) {}
       };
+      const onLivingState = (event) => {
+        try {
+          state.livingState = JSON.parse(event.data);
+          ArcadiaProjector.apply(state.livingState);
+        } catch (_) {
+          // Ignore malformed living-state payloads and keep the last projected document.
+        }
+      };
       source.addEventListener('snapshot', onRoot);
       source.addEventListener('root', onRoot);
+      source.addEventListener('state', onLivingState);
       source.addEventListener('lease', onLease);
       source.addEventListener('heartbeat', onHeartbeat);
       source.addEventListener('expired', () => {
