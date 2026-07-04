@@ -32,25 +32,25 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            section class="sync-admission-board sync-orb-board" data-sync-root="true" data-sync-orb-state=(orb_state) data-sync-debt=(sync_debt) data-beauty-debt=(beauty_debt) data-sync-games-total=(orb_number) data-sync-art-progress=(art_progress.to_string()) data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync orb" {
+            section class="sync-admission-board sync-orb-board" data-sync-root="true" data-bind-class="sync.state" data-sync-orb-state=(orb_state) data-sync-debt=(sync_debt) data-beauty-debt=(beauty_debt) data-sync-games-total=(orb_number) data-sync-art-progress=(art_progress.to_string()) data-storage-health=(status.storage.health) data-storage-low=(storage_low) data-storage-blocked=(storage_blocked) data-sync-state=(status.library.last_sync_state) aria-label="Sync orb" {
                 div class="sync-orb-stage ux-sync-orb-stage" data-sync-result=(sync_result_kind(status)) {
                     div class=(format!("ux-sync-orb ux-sync-orb--{}", orb_state)) style=(format!("--sync-art-pct:{};", art_progress)) aria-label=(format!("{games_total} games total ({native} GameScope + {added} ROMs), {art_progress} percent ROM artwork paired")) {
                         span class="ux-sync-orb-track" aria-hidden="true" {}
                         span class="ux-sync-orb-sweep" aria-hidden="true" {}
                         span class="ux-sync-orb-ring" aria-hidden="true" {}
-                        span class="ux-sync-orb-core" { (orb_number) }
+                        span class="ux-sync-orb-core" data-bind="sync.total" { (orb_number) }
                     }
                     div class="sync-orb-copy" {
                         div class="sync-orb-lanes" aria-label="Game library counts" {
-                            (sync_lane_chip("Native", native, "quiet"))
-                            (sync_lane_chip("Added", added, if added > 0 { "good" } else { "quiet" }))
-                            (sync_lane_chip_str("Artwork", &artwork_line, if artwork_missing > 0 { "caveat" } else if added > 0 { "good" } else { "quiet" }))
-                            (sync_lane_chip("Artwork missing", artwork_missing, if artwork_missing > 0 { "caveat" } else { "good" }))
+                            (sync_lane_chip_bound("Native", native, "quiet", "sync.native"))
+                            (sync_lane_chip_bound("Added", added, if added > 0 { "good" } else { "quiet" }, "sync.added"))
+                            (sync_lane_chip_str_bound("Artwork", &artwork_line, if artwork_missing > 0 { "caveat" } else if added > 0 { "good" } else { "quiet" }, "sync.artwork"))
+                            (sync_lane_chip_bound("Artwork missing", artwork_missing, if artwork_missing > 0 { "caveat" } else { "good" }, "sync.artworkMissing"))
                         }
                     }
                     div class="sync-orb-actions" aria-label="Sync actions" {
                         @if primary_disabled {
-                            button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { (if storage_blocked { "Storage Full" } else { "Syncing" }) }
+                            button class="btn btn--primary" type="button" data-button="primary" data-action="sync-games" data-endpoint="/api/actions/sync-games" disabled { span data-bind="sync.disabledLabel" { (if storage_blocked { "Storage Full" } else { "Syncing" }) } }
                         } @else {
                             (action_button(ButtonVariant::Primary, primary_label, "sync-games", "/api/actions/sync-games"))
                         }
@@ -70,16 +70,15 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
-                section id="sync-running-panel" class="sync-running-panel sync-running-panel--admission" aria-label="Admission in progress" hidden[status.library.last_sync_state != "running"] {
+                section id="sync-running-panel" class="sync-running-panel sync-running-panel--admission" aria-label="Admission in progress" data-bind-show="sync.running" hidden[status.library.last_sync_state != "running"] {
                     div class="sync-scanner" aria-hidden="true" {
                         span class="sync-scanner-dot" {}
                         span class="sync-scanner-line" {}
                         span class="sync-scanner-file" {}
                     }
                     div class="sync-admission-phase" aria-hidden="true" {
-                        span class="sync-phase-pill" { "classify" }
-                        span class="sync-phase-pill" { "admit" }
-                        span class="sync-phase-pill" { "beautify" }
+                        span id="sync-state" class="sync-phase-pill" data-bind="sync.stateLine" data-sync-state=(status.library.last_sync_state) { (if status.library.last_sync_state == "running" { "Syncing" } else { "Ready" }) }
+                        span class="sync-phase-pill" data-bind="sync.phaseLine" { "classify admit beautify" }
                     }
                 }
 
@@ -135,17 +134,31 @@ fn sync_primary_action_label(
     }
 }
 
-fn sync_lane_chip(label: &str, value: u64, tone: &str) -> Markup {
-    html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong { (value) } } }
+fn sync_lane_chip_bound(label: &str, value: u64, tone: &str, bind: &str) -> Markup {
+    html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong data-bind=(bind) { (value) } } }
 }
 
-fn sync_lane_chip_str(label: &str, value: &str, tone: &str) -> Markup {
-    html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong { (value) } } }
+fn sync_lane_chip_str_bound(label: &str, value: &str, tone: &str, bind: &str) -> Markup {
+    html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong data-bind=(bind) { (value) } } }
 }
 
 fn sync_system_blades(status: &ConsoleStatus) -> Markup {
     html! {
-        div class="sync-system-blades" aria-label="Game systems admitted" {
+        div class="sync-system-blades" aria-label="Game systems admitted" data-bind-each="sync.systems" {
+            template {
+                article class="sync-system-blade" data-bind-class="tone" data-system="" {
+                    div class="sync-blade-icon" aria-hidden="true" data-bind="monogram" {}
+                    div class="sync-blade-copy" {
+                        strong data-bind="system" {}
+                        span data-bind="admitted" {}
+                    }
+                    div class="sync-blade-art" {
+                        span data-bind="artworkPaired" {}
+                        em data-bind="artworkMissing" {}
+                    }
+                    div class="sync-blade-meter" {}
+                }
+            }
             @if status.library.game_system_tally.is_empty() {
                 article class="sync-system-blade sync-system-blade--empty" {
                     strong { "No systems yet" }
@@ -155,7 +168,7 @@ fn sync_system_blades(status: &ConsoleStatus) -> Markup {
             } @else {
                 @for row in status.library.game_system_tally.iter() {
                     @let paired_percent = if row.admitted == 0 { 0 } else { ((row.artwork_paired * 100) / row.admitted).min(100) };
-                    article class=(sync_system_blade_class(row)) data-system=(&row.system) {
+                    article class=(sync_system_blade_class(row)) data-projector-generated="true" data-system=(&row.system) {
                         div class="sync-blade-icon" aria-hidden="true" { (system_monogram(&row.system)) }
                         div class="sync-blade-copy" {
                             strong { (&row.system) }
@@ -198,6 +211,7 @@ fn sync_admitted_shelf(status: &ConsoleStatus) -> Markup {
                     div class="sync-cover-frame sync-cover-frame--empty" aria-hidden="true" { span { "＋" } }
                     strong { "No games admitted yet" }
                     span { "Add games, then admit them into the console library." }
+                    em class="sync-admitted-count" data-bind="sync.admitted" { (status.library.total_synced_entries) }
                 }
             } @else {
                 @for game in status.library.admitted_games.iter() {

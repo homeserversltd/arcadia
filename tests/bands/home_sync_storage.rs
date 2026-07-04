@@ -763,6 +763,12 @@
             "sync-orb-stage",
             "ux-sync-orb",
             "sync-orb-lanes",
+            r#"data-bind="sync.native""#,
+            r#"data-bind="sync.added""#,
+            r#"data-bind="sync.artwork""#,
+            r#"data-bind="sync.artworkMissing""#,
+            r#"data-bind-each="sync.systems""#,
+            "<template>",
             r#"data-sync-debt="none""#,
             r#"data-beauty-debt="none""#,
             "sync-system-blades",
@@ -841,6 +847,11 @@
         assert!(APP_JS.contains("form.append('system', gameKind)"));
         assert!(APP_JS.contains("uploadSyncGames"));
         assert!(APP_JS.contains("uploadSyncFiles"));
+        assert!(!APP_JS.contains("function setSyncState"));
+        assert!(!APP_JS.contains("function setSyncReadback"));
+        assert!(!APP_JS.contains("function startSyncProgress"));
+        assert!(!APP_JS.contains("function finishSyncProgress"));
+        assert!(APP_JS.contains("syncStateIsRunning"));
         assert!(APP_JS.contains("dragover"));
         assert!(APP_JS.contains("dataTransfer"));
         assert!(APP_CSS.contains("sync-add-games-modal"));
@@ -925,7 +936,7 @@
         let after_rendered = ui::layout(&status).into_string();
         let after = sync_slice(&after_rendered);
         assert!(after.contains("Sync orb"));
-        assert!(after.contains(r#"<span class="ux-sync-orb-core">3</span>"#));
+        assert!(after.contains(r#"data-bind="sync.total">3</span>"#));
         assert!(after.contains("Native"));
         assert!(after.contains("Added"));
         assert!(after.contains("Artwork"));
@@ -993,7 +1004,7 @@
             "ux-sync-orb",
             "ux-sync-orb-track",
             "ux-sync-orb-sweep",
-            r#"<span class="ux-sync-orb-core">4</span>"#,
+            r#"data-bind="sync.total">4</span>"#,
             "Native",
             "Added",
             "Artwork",
@@ -1021,7 +1032,6 @@
         for required_css in [
             ".sync-admission-board",
             "inline-size: min(var(--ux-sync-board-max-inline), 100%);",
-            "overflow-x: clip;",
             ".sync-orb-stage",
             "grid-template-columns: var(--ux-sync-orb-size) minmax(0, 1fr) minmax(128px, .24fr);",
             "conic-gradient",
@@ -1046,6 +1056,8 @@
             assert!(UX_CSS.contains(required_ux), "sync fit token missing: {required_ux}");
         }
         assert!(APP_CSS.contains(".view[data-view-panel=\"sync\"].is-active {"));
+        assert!(APP_CSS.contains("grid-template-rows: auto auto minmax(0, .42fr) minmax(0, 1fr) auto;"));
+        assert!(APP_CSS.contains("gap: var(--ux-grid-gap);"));
         assert!(APP_CSS.contains("overflow: hidden;"));
     }
 
@@ -1104,7 +1116,7 @@
         let rendered = ui::layout(&status).into_string();
         let sync_html = sync_slice(&rendered);
         assert!(sync_html.contains(r#"data-sync-debt="admission""#));
-        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">100</span>"#));
+        assert!(sync_html.contains(r#"data-bind="sync.total">100</span>"#));
         assert!(sync_html.contains(r#"data-sync-games-total="100""#));
         assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">1</span>"#));
         assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">125</span>"#));
@@ -1244,7 +1256,7 @@
         assert!(!sync_html.contains("Synced"));
         assert!(rendered.contains("Games: 3"));
         assert!(!sync_html.contains("Last sync complete"));
-        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core">3</span>"#));
+        assert!(sync_html.contains(r#"data-bind="sync.total">3</span>"#));
         assert!(sync_html.contains("Native"));
         assert!(sync_html.contains("Added"));
         assert!(sync_html.contains("Artwork"));
@@ -1424,6 +1436,10 @@
         assert!(source.contains("pub struct ApiLivingStateDocument"));
         assert!(source.contains("schema: \"arcadia.api.state.v1\""));
         assert!(source.contains("kind: \"arcadiaLivingState\""));
+        assert!(source.contains("pub sync: ApiSyncState"));
+        assert!(source.contains("pub systems: Vec<ApiSyncSystemState>"));
+        assert!(source.contains("fn api_sync_state(status: &ConsoleStatus) -> ApiSyncState"));
+        assert!(source.contains("api_sync_state(&status)"));
         assert!(source.contains("pub storage: StorageStatus"));
         assert!(source.contains("pub storage_summary: StorageStatus"));
         assert!(source.contains("pub network: NetworkState"));
