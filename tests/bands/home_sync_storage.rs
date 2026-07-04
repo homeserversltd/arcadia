@@ -247,7 +247,7 @@
             "fn(state, widgetContext(selectorOrName))",
             "dispatchWidgets(lastDocument)",
             "source.addEventListener('state', onLivingState)",
-            "ArcadiaProjector.apply(state.livingState)",
+            "ArcadiaProjector.apply(JSON.parse(event.data))",
             "data-bind-class projects normalized values into data-state",
         ] {
             assert!(APP_JS.contains(required), "projector missing {required}");
@@ -294,10 +294,13 @@
         let home_html = &rendered[home_start..home_end];
 
         assert!(home_html.contains("aria-label=\"Updates\""));
-        assert!(home_html.contains("Update available"));
+        assert!(home_html.contains("data-bind=\"home.priority.state\""));
+        assert!(home_html.contains("data-bind-show=\"home.priority.visible\""));
+        assert!(home_html.contains("data-bind=\"home.updates.readinessRatio\""));
+        assert!(home_html.contains("data-bind=\"home.updates.pendingUpdates\""));
         assert!(!home_html.contains("homeconsole-update-latest/run.json"));
         assert!(!home_html.contains(">Receipt<"));
-        assert!(home_html.contains(">✓<"));
+        assert!(home_html.contains("data-bind-class=\"home.session.state\""));
         assert!(home_html.contains("aria-label=\"Game Session\""));
         assert!(home_html.contains(">!<"));
         assert!(!home_html.contains(">Unknown<"));
@@ -355,7 +358,7 @@
             );
         }
 
-        let last_ran_prefix = ">Last ran:</span><strong>";
+        let last_ran_prefix = "data-bind=\"home.updates.lastRan\">";
         let last_ran_start = home_html
             .find(last_ran_prefix)
             .expect("last ran detail row");
@@ -397,9 +400,9 @@
 
         for required in [
             ">AI Model</h3>",
-            ">Model:</span><strong>Hermes 8B</strong>",
-            ">Load:</span><strong>Hot</strong>",
-            ">State:</span><strong>Actively working</strong>",
+            "data-bind=\"home.ai.model\">Hermes 8B</strong>",
+            "data-bind=\"home.ai.load\">Hot</strong>",
+            "data-bind=\"home.ai.activity\">Actively working</strong>",
             "data-home-ai-load-state=\"hot\"",
         ] {
             assert!(card_html.contains(required), "home ai model card missing {required}");
@@ -434,9 +437,9 @@
         let card_html = &rendered[card_start..card_end];
 
         for required in [
-            ">Games</h3><strong>5</strong>",
-            ">Games:</span><strong>5</strong>",
-            ">Artwork:</span><strong>3 / 5</strong>",
+            "data-bind=\"home.games.total\">5</strong>",
+            "data-bind=\"home.games.total\">5</strong>",
+            "data-bind=\"home.games.artwork\">3 / 5</strong>",
             "data-home-games-total=\"5\"",
         ] {
             assert!(card_html.contains(required), "home games card missing {required}");
@@ -507,7 +510,7 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         assert!(
-            card_html.contains(">Games</h3><strong>103</strong>"),
+            card_html.contains("data-bind=\"home.games.total\">103</strong>"),
             "home games card total should be detected library count only"
         );
         assert!(
@@ -519,7 +522,7 @@
             "header tooltip should explain games and artwork pairing"
         );
         assert!(
-            card_html.contains(">Artwork:</span><strong>88 / 103</strong>"),
+            card_html.contains("data-bind=\"home.games.artwork\">88 / 103</strong>"),
             "home games card should surface artwork pairing"
         );
     }
@@ -551,10 +554,10 @@
             "storage-bar--home",
             "storage-segment--games",
             "storage-segment--free",
-            ">Games used:</span><strong>12 GB</strong>",
-            ">AI used:</span><strong>48 GB</strong>",
-            ">Everything else:</span><strong>3.0 GB</strong>",
-            ">Free:</span><strong>400 GB</strong>",
+            "data-bind=\"home.storage.gamesSize\">12 GB</strong>",
+            "data-bind=\"home.storage.aiSize\">48 GB</strong>",
+            "data-bind=\"home.storage.everythingElseSize\">3.0 GB</strong>",
+            "data-bind=\"home.storage.freeSize\">400 GB</strong>",
         ] {
             assert!(card_html.contains(required), "home storage card missing {required}");
         }
@@ -660,8 +663,8 @@
                 .expect("sync view follows home");
         let home_html = &rendered[home_start..home_end];
 
-        assert!(!home_html.contains("priority-strip"));
-        assert!(!home_html.contains(">Ready<"));
+        assert!(home_html.contains("data-bind-show=\"home.priority.visible\""));
+        assert!(home_html.contains("hidden"));
         assert!(!home_html.contains("All systems current."));
     }
 
