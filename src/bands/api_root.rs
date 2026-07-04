@@ -34,6 +34,22 @@ pub struct ApiMetric {
     pub state: Option<String>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiLivingStateDocument {
+    pub schema: &'static str,
+    pub kind: &'static str,
+    pub id: &'static str,
+    pub generated_at_unix: u64,
+    pub status: ConsoleStatus,
+    pub storage: StorageStatus,
+    pub storage_summary: StorageStatus,
+    pub network: NetworkState,
+    pub ai: LocalAIState,
+    pub controllers: ControllerStatus,
+    pub system: SystemAdminStatus,
+}
+
 const HOME_TELEMETRY_TOPIC: &str = "home.load";
 const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 1;
 const HOME_TELEMETRY_RENEW_SECONDS: u64 = 10;
@@ -210,6 +226,14 @@ async fn api_root_events_route(
                 .id(root.generated_at_unix.to_string())
                 .data(payload));
 
+            let living_state = api_living_state_document(&state);
+            let living_state_json = serde_json::to_string(&living_state)
+                .unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default()
+                .event("state")
+                .id(living_state.generated_at_unix.to_string())
+                .data(living_state_json));
+
             let heartbeat = serde_json::to_string(&status)
                 .unwrap_or_else(|_| "{}".to_string());
             yield Ok(Event::default().event("heartbeat").data(heartbeat));
@@ -255,6 +279,24 @@ fn api_root_telemetry_tick(state: &AppState) -> ApiRootObject {
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         children: vec![api_telemetry_node()],
+    }
+}
+
+fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
+    let status = console_status(state);
+    let storage = storage_status();
+    ApiLivingStateDocument {
+        schema: "arcadia.api.state.v1",
+        kind: "arcadiaLivingState",
+        id: "arcadia-state",
+        generated_at_unix: now_unix_seconds(),
+        status,
+        storage: storage.clone(),
+        storage_summary: storage,
+        network: network_state(state),
+        ai: local_ai_state(state),
+        controllers: controller_status_api(),
+        system: system_admin_status(&network_status(), &hostname()),
     }
 }
 
