@@ -42,12 +42,100 @@ pub struct ApiLivingStateDocument {
     pub id: &'static str,
     pub generated_at_unix: u64,
     pub status: ConsoleStatus,
+    pub home: ApiHomeState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
     pub ai: LocalAIState,
     pub controllers: ControllerStatus,
     pub system: SystemAdminStatus,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeState {
+    pub priority: ApiHomePriorityState,
+    pub storage: ApiHomeStorageState,
+    pub games: ApiHomeGamesState,
+    pub network: ApiHomeNetworkState,
+    pub updates: ApiHomeUpdatesState,
+    pub ai: ApiHomeAiState,
+    pub warning: ApiHomeWarningState,
+    pub session: ApiHomeSessionState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomePriorityState {
+    pub visible: bool,
+    pub state: String,
+    pub badge: &'static str,
+    pub tone: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeStorageState {
+    pub state: &'static str,
+    pub attention: bool,
+    pub games_size: String,
+    pub ai_size: String,
+    pub everything_else_size: String,
+    pub free_size: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeGamesState {
+    pub state: String,
+    pub attention: bool,
+    pub total: String,
+    pub artwork: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeNetworkState {
+    pub state: &'static str,
+    pub attention: bool,
+    pub headline: &'static str,
+    pub console_reachability: &'static str,
+    pub ai_reachability: &'static str,
+    pub internet_reachability: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeUpdatesState {
+    pub state: String,
+    pub attention: bool,
+    pub readiness_ratio: String,
+    pub pending_updates: String,
+    pub last_ran: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeAiState {
+    pub state: String,
+    pub attention: bool,
+    pub model: String,
+    pub load: &'static str,
+    pub activity: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeWarningState {
+    pub visible: bool,
+    pub title: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeSessionState {
+    pub visible: bool,
+    pub state: &'static str,
 }
 
 const HOME_TELEMETRY_TOPIC: &str = "home.load";
@@ -290,6 +378,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         kind: "arcadiaLivingState",
         id: "arcadia-state",
         generated_at_unix: now_unix_seconds(),
+        home: api_home_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -297,6 +386,145 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         ai: local_ai_state(state),
         controllers: controller_status_api(),
         system: system_admin_status(&network_status(), &hostname()),
+    }
+}
+
+fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
+    let priority = api_home_priority_state(status);
+    let storage_attention = status.storage.percent_used >= 90;
+    let pending_changes = status.library.unsynced_added
+        + status.library.unsynced_changed
+        + status.library.unsynced_removed;
+    let games_attention = status.library.last_sync_state == "error"
+        || pending_changes > 0
+        || status.library.sync_needed;
+    let updates_ready = status.updates.modules.iter().filter(|module| module.enabled && module.present).count();
+    let updates_enabled = status.updates.modules.iter().filter(|module| module.enabled).count();
+    let updates_attention = status.updates.pending_updates > 0
+        || updates_ready < updates_enabled
+        || !status.updates.check_ok && status.updates.check_missing_signal != "not-checked"
+        || !status.updates.suite_ok;
+    let ai_attention = status.local_ai.load_state == "error";
+    ApiHomeState {
+        priority,
+        storage: ApiHomeStorageState {
+            state: if storage_attention { "attention" } else { status.storage.health },
+            attention: storage_attention,
+            games_size: status.storage.games.size.clone(),
+            ai_size: status.storage.ai_models.size.clone(),
+            everything_else_size: human_size(status.storage.artwork.bytes.saturating_add(status.storage.other.bytes)),
+            free_size: status.storage.free.clone(),
+        },
+        games: ApiHomeGamesState {
+            state: if games_attention { "attention".to_string() } else { status.library.last_sync_state.clone() },
+            attention: games_attention,
+            total: status.library.total_detected_games.to_string(),
+            artwork: format!("{} / {}", status.library.artwork_paired_total, status.library.total_detected_games),
+        },
+        network: ApiHomeNetworkState {
+            state: if status.network.online { "online" } else { "offline" },
+            attention: !status.network.online,
+            headline: if status.network.online { "Online" } else { "Offline" },
+            console_reachability: if status.network.online { "Online" } else { "Offline" },
+            ai_reachability: if status.network.lan_ai_reachable { "Online" } else { "Offline" },
+            internet_reachability: if matches!(status.network.internet_reachable, Some(true)) { "Online" } else { "Offline" },
+        },
+        updates: ApiHomeUpdatesState {
+            state: status.updates.state.clone(),
+            attention: updates_attention,
+            readiness_ratio: format!("{updates_ready}/{updates_enabled}"),
+            pending_updates: status.updates.pending_updates.to_string(),
+            last_ran: status.updates.last_update_run.clone(),
+        },
+        ai: ApiHomeAiState {
+            state: status.local_ai.load_state.clone(),
+            attention: ai_attention,
+            model: api_home_local_ai_model_name(status),
+            load: api_home_local_ai_load_label(&status.local_ai.load_state),
+            activity: api_home_local_ai_activity_label(status),
+        },
+        warning: ApiHomeWarningState {
+            visible: status.library.last_sync_state == "error" || status.local_ai.load_state == "error",
+            title: if status.library.last_sync_state == "error" { "Sync failed" } else { "Local AI error" },
+        },
+        session: ApiHomeSessionState {
+            visible: status.arcadia.service != "running",
+            state: status.arcadia.service,
+        },
+    }
+}
+
+fn api_home_priority_state(status: &ConsoleStatus) -> ApiHomePriorityState {
+    let priority: Option<(String, &'static str)> = if !status.network.online {
+        Some(("Network offline".to_string(), "bad"))
+    } else if status.storage.percent_used >= 90 {
+        Some((format!("Storage low: {} free", status.storage.free), "warn"))
+    } else if status.library.last_sync_state == "error" {
+        Some(("Sync failed".to_string(), "bad"))
+    } else if !status.library.first_sync_completed && status.library.last_sync_state != "success" {
+        Some(("First sync waiting".to_string(), "idle"))
+    } else if status.library.sync_needed {
+        let changes = status.library.unsynced_added
+            + status.library.unsynced_changed
+            + status.library.unsynced_removed;
+        Some((format!("{} changes waiting for sync", changes), "warn"))
+    } else if status.updates.state == "available" {
+        Some(("Update available".to_string(), "warn"))
+    } else if status.local_ai.load_state == "error" {
+        Some(("Local AI error".to_string(), "bad"))
+    } else {
+        None
+    };
+    if let Some((state, tone)) = priority {
+        ApiHomePriorityState {
+            visible: true,
+            state,
+            badge: if tone == "idle" { "Waiting" } else { "Attention" },
+            tone,
+        }
+    } else {
+        ApiHomePriorityState { visible: false, state: String::new(), badge: "", tone: "idle" }
+    }
+}
+
+fn api_home_local_ai_model_name(status: &ConsoleStatus) -> String {
+    status
+        .local_ai
+        .loaded_model_name
+        .clone()
+        .or_else(|| status.local_ai.selected_model_name.clone())
+        .unwrap_or_else(|| {
+            if status.local_ai.available_models.is_empty() {
+                "No models installed".to_string()
+            } else {
+                "No model selected".to_string()
+            }
+        })
+}
+
+fn api_home_local_ai_load_label(load_state: &str) -> &'static str {
+    match load_state {
+        "hot" => "Hot",
+        "cold" => "Cold",
+        "unloaded" => "Unloaded",
+        "error" => "Error",
+        _ => "Unknown",
+    }
+}
+
+fn api_home_local_ai_activity_label(status: &ConsoleStatus) -> &'static str {
+    if status.local_ai.load_state == "error" {
+        return "Error";
+    }
+    if status.local_ai.load_state == "hot" && status.local_ai.lan_inference_enabled {
+        return "Actively working";
+    }
+    match status.local_ai.load_state.as_str() {
+        "hot" => "Idle",
+        "cold" => "Idle",
+        "unloaded" if status.local_ai.available_models.is_empty() => "Idle",
+        "unloaded" => "Not loaded",
+        _ => "Idle",
     }
 }
 

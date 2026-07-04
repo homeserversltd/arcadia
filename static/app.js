@@ -566,8 +566,7 @@ function bindHomeLoadSubscription() {
       };
       const onLivingState = (event) => {
         try {
-          state.livingState = JSON.parse(event.data);
-          ArcadiaProjector.apply(state.livingState);
+          ArcadiaProjector.apply(JSON.parse(event.data));
         } catch (_) {
           // Ignore malformed living-state payloads and keep the last projected document.
         }

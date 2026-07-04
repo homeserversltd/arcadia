@@ -13,12 +13,12 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                     (home_gamescope_card(status))
                 }
             }
-            @if status.library.last_sync_state == "error" || status.local_ai.load_state == "error" {
-                div class="active-warning-strip home-warning-strip" {
+            div class="active-warning-strip home-warning-strip" data-bind-show="home.warning.visible" hidden[!(status.library.last_sync_state == "error" || status.local_ai.load_state == "error")] {
+                strong data-bind="home.warning.title" {
                     @if status.library.last_sync_state == "error" {
-                        strong { "Sync failed" }
+                        "Sync failed"
                     } @else {
-                        strong { "Local AI error" }
+                        "Local AI error"
                     }
                 }
             }
@@ -87,27 +87,25 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
         None
     };
 
-    if let Some((state, _detail, tone)) = priority {
-        let badge = if tone == "idle" {
-            "Waiting"
-        } else {
-            "Attention"
-        };
-        html! {
-            article class=(format!("priority-strip priority-strip--{}", tone)) aria-label="Highest priority console state" {
-                strong { (state) }
-                b class=(format!("system-status system-status--{}", if tone == "bad" { "error" } else if tone == "warn" { "starting" } else { "unknown" })) { (badge) }
-            }
-        }
+    let (state, _detail, tone) = priority.unwrap_or_else(|| (String::new(), String::new(), "idle"));
+    let badge = if tone == "idle" {
+        "Waiting"
     } else {
-        html! {}
+        "Attention"
+    };
+    let system_tone = if tone == "bad" { "error" } else if tone == "warn" { "starting" } else { "unknown" };
+    html! {
+        article class=(format!("priority-strip priority-strip--{}", tone)) aria-label="Highest priority console state" data-bind-show="home.priority.visible" data-bind-class="home.priority.tone" hidden[state.is_empty()] {
+            strong data-bind="home.priority.state" { (state) }
+            b class=(format!("system-status system-status--{}", system_tone)) data-bind="home.priority.badge" data-bind-class="home.priority.tone" { (badge) }
+        }
     }
 }
 
 fn home_storage_card(status: &ConsoleStatus) -> Markup {
     let everything_else = home_storage_everything_else_size(status);
     html! {
-        article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) {
+        article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) data-bind-class="home.storage.state" {
             div class="card-head" aria-label="Storage" {
                 h3 { "Storage" }
             }
@@ -119,10 +117,10 @@ fn home_storage_card(status: &ConsoleStatus) -> Markup {
                 span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
             }
             div class="state-rows state-rows--compact storage-home-details" {
-                (home_detail_row("Games used:", &status.storage.games.size, true))
-                (home_detail_row("AI used:", &status.storage.ai_models.size, true))
-                (home_detail_row("Everything else:", &everything_else, true))
-                (home_detail_row("Free:", &status.storage.free, true))
+                (home_bound_detail_row("Games used:", &status.storage.games.size, true, "home.storage.gamesSize"))
+                (home_bound_detail_row("AI used:", &status.storage.ai_models.size, true, "home.storage.aiSize"))
+                (home_bound_detail_row("Everything else:", &everything_else, true, "home.storage.everythingElseSize"))
+                (home_bound_detail_row("Free:", &status.storage.free, true, "home.storage.freeSize"))
             }
         }
     }
@@ -262,10 +260,10 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
     let ai_copy = home_network_ai_copy_value(status);
     let headline = if status.network.online { "Online" } else { "Offline" };
     html! {
-        article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) {
+        article class=(if status.network.online { "operational-card network-home-card" } else { "operational-card network-home-card attention" }) data-bind-class="home.network.state" {
             div class="card-head" aria-label="Network" {
                 h3 { "Network" }
-                strong { (headline) }
+                strong data-bind="home.network.headline" { (headline) }
             }
             div class="home-network-chip-row" aria-label="Network reachability" {
                 (home_network_chip("Console", status.network.online))
@@ -311,8 +309,14 @@ fn home_network_ai_copy_value(status: &ConsoleStatus) -> Option<String> {
 fn home_network_chip(label: &str, online: bool) -> Markup {
     let state = if online { "Online" } else { "Offline" };
     let tone = if online { "ok" } else { "warn" };
+    let bind_path = match label {
+        "Console" => "home.network.consoleReachability",
+        "AI" => "home.network.aiReachability",
+        "Internet" => "home.network.internetReachability",
+        _ => "home.network.consoleReachability",
+    };
     html! {
-        span class=(format!("home-network-chip home-network-chip--{tone}")) aria-label=(format!("{label} {state}")) {
+        span class=(format!("home-network-chip home-network-chip--{tone}")) aria-label=(format!("{label} {state}")) data-bind-class=(bind_path) {
             (label)
         }
     }
@@ -330,14 +334,14 @@ fn home_sync_card(status: &ConsoleStatus) -> Markup {
         || pending_changes > 0
         || status.library.sync_needed;
     html! {
-        article class=(if needs_attention { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) data-home-games-total=(total_line) {
+        article class=(if needs_attention { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) data-home-games-total=(total_line) data-bind-class="home.games.state" {
             div class="card-head" aria-label="Games" {
                 h3 { "Games" }
-                strong { (total_line) }
+                strong data-bind="home.games.total" { (total_line) }
             }
             div class="state-rows state-rows--compact sync-home-details" {
-                (home_detail_row("Games:", &games_line, true))
-                (home_detail_row("Artwork:", &artwork_line, true))
+                (home_bound_detail_row("Games:", &games_line, true, "home.games.total"))
+                (home_bound_detail_row("Artwork:", &artwork_line, true, "home.games.artwork"))
             }
         }
     }
@@ -348,14 +352,14 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
     let load_label = home_local_ai_load_label(&status.local_ai.load_state);
     let activity_label = home_local_ai_activity_label(status);
     html! {
-        article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) data-home-ai-load-state=(&status.local_ai.load_state) {
+        article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) data-home-ai-load-state=(&status.local_ai.load_state) data-bind-class="home.ai.state" {
             div class="card-head" aria-label="AI Model" {
                 h3 { "AI Model" }
             }
             div class="state-rows state-rows--compact local-ai-home-details" {
-                (home_detail_row("Model:", &model_name, false))
-                (home_detail_row("Load:", load_label, true))
-                (home_detail_row("State:", activity_label, true))
+                (home_bound_detail_row("Model:", &model_name, false, "home.ai.model"))
+                (home_bound_detail_row("Load:", load_label, true, "home.ai.load"))
+                (home_bound_detail_row("State:", activity_label, true, "home.ai.activity"))
             }
         }
     }
@@ -411,14 +415,14 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
         || !status.updates.check_ok && status.updates.check_missing_signal != "not-checked"
         || !status.updates.suite_ok;
     html! {
-        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) {
+        article class=(if needs_attention { "operational-card updates-home-card attention" } else { "operational-card updates-home-card" }) data-home-harmonia-state=(&status.updates.state) data-bind-class="home.updates.state" {
             div class="card-head" aria-label="Updates" {
                 h3 { "Updates" }
-                strong { (ratio) }
+                strong data-bind="home.updates.readinessRatio" { (ratio) }
             }
             div class="state-rows state-rows--compact updates-home-details" {
-                (home_detail_row("Last ran:", &status.updates.last_update_run, false))
-                (home_detail_row("updates available:", &available_line, true))
+                (home_bound_detail_row("Last ran:", &status.updates.last_update_run, false, "home.updates.lastRan"))
+                (home_bound_detail_row("updates available:", &available_line, true, "home.updates.pendingUpdates"))
             }
             div class="inline-actions inline-actions--compact updates-home-actions" {
                 (action_button(ButtonVariant::Primary, "Check", "check-updates", "/api/actions/check-updates"))
@@ -427,7 +431,7 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
     }
 }
 
-fn home_detail_row(label: &str, value: &str, inline_count: bool) -> Markup {
+fn home_bound_detail_row(label: &str, value: &str, inline_count: bool, bind_path: &str) -> Markup {
     let row_class = if inline_count {
         "state-row home-detail-row home-detail-row--inline"
     } else {
@@ -436,22 +440,22 @@ fn home_detail_row(label: &str, value: &str, inline_count: bool) -> Markup {
     html! {
         div class=(row_class) aria-label=(format!("{label} {value}")) {
             span { (label) }
-            strong { (value) }
+            strong data-bind=(bind_path) { (value) }
         }
     }
 }
 
 fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
     html! {
-        article class="operational-card gamescope-home-card attention" {
-            div class="card-head" aria-label="Game Session" { h3 { "Session" } strong data-state=(status.arcadia.service) { "!" } }
+        article class="operational-card gamescope-home-card attention" data-bind-show="home.session.visible" {
+            div class="card-head" aria-label="Game Session" { h3 { "Session" } strong data-state=(status.arcadia.service) data-bind-class="home.session.state" { "!" } }
             div class="home-signal-strip" { (home_signal("Interface", status.arcadia.service, if status.arcadia.service == "running" { "ok" } else { "warn" })) }
         }
     }
 }
 
 fn home_signal(label: &str, value: &str, tone: &str) -> Markup {
-    html! { span class=(format!("home-signal home-signal--{}", tone)) data-label=(label) aria-label=(format!("{} {}", label, value)) { strong { (value) } } }
+    html! { span class=(format!("home-signal home-signal--{}", tone)) data-label=(label) aria-label=(format!("{} {}", label, value)) { strong data-bind="home.session.state" { (value) } } }
 }
 
 fn title_case_state_like(state: &str) -> &'static str {
