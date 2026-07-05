@@ -213,6 +213,53 @@
 
 
     #[test]
+    fn local_ai_pane_surfaces_are_bound_and_js_readback_is_retired() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let local_ai_start = rendered
+            .find(r#"id="view-local-ai""#)
+            .expect("local ai view starts");
+        let local_ai_end = rendered[local_ai_start..]
+            .find(r#"id="view-controllers""#)
+            .map(|offset| local_ai_start + offset)
+            .expect("controllers view follows local ai");
+        let local_ai_html = &rendered[local_ai_start..local_ai_end];
+
+        for required in [
+            r#"data-bind="localAiPane.hero.headline""#,
+            r#"data-bind="localAiPane.hero.endpoint""#,
+            "No active endpoint",
+            r#"data-bind="localAiPane.model.selected""#,
+            r#"data-bind="localAiPane.model.servingNow""#,
+            r#"data-bind="localAiPane.model.libraryCount""#,
+            r#"data-bind="localAiPane.model.state""#,
+            r#"data-bind="localAiPane.access.internal""#,
+            r#"data-bind="localAiPane.access.lan""#,
+            r#"data-bind="localAiPane.access.port""#,
+            r#"data-bind="localAiPane.access.baseUrl""#,
+            r#"data-bind="localAiPane.access.listeningBadge""#,
+            "API NOT LISTENING",
+            r#"data-bind="localAiPane.port.activeBadge""#,
+            "local-ai-workbench",
+        ] {
+            assert!(local_ai_html.contains(required), "missing Local AI binding/readback: {required}");
+        }
+        assert!(APP_CSS.contains(r#".view[data-view-panel="local-ai"].is-active"#));
+        assert!(APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
+        assert!(APP_CSS.contains(".local-ai-workbench"));
+        assert!(APP_CSS.contains("grid-template-columns: repeat(3, minmax(0, 1fr));"));
+        assert!(APP_CSS.contains(".local-ai-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto;"));
+        assert!(!APP_JS.contains("updateLocalAIPortReadback"));
+        assert!(!APP_JS.contains("setLocalAIPortState"));
+    }
+
+
+    #[test]
     fn controllers_view_is_single_pane_for_controller_mapping() {
         let state = AppState {
             started_unix: 0,

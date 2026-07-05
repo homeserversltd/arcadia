@@ -29,11 +29,6 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
         local_ai_model_state_label(status, model_loaded, selected_present, model_count);
     let model_state_class =
         local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
-    let api_state = if api_ready {
-        "API reachable"
-    } else {
-        "API not listening"
-    };
     let access_state = if api_ready {
         "Trusted LAN enabled"
     } else {
@@ -56,16 +51,16 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
         "",
         "",
         html! {
-            section class=(format!("local-ai-hero local-ai-hero--{}", model_state_class)) aria-label="Local AI status" data-ai-auto-refresh="true" {
+            section class=(format!("local-ai-hero local-ai-hero--{}", model_state_class)) aria-label="Local AI status" data-ai-auto-refresh="true" data-bind-class="localAiPane.hero.stateClass" data-state=(model_state_class) {
                 div class="local-ai-orb" aria-hidden="true" { "◉" }
                 div class="local-ai-hero-copy" {
                     span { "Local AI" }
-                    strong data-ai-model-state="true" { (model_state) }
-                    p { (next_action) " · " (if api_ready { "OpenAI-compatible API is reachable on the trusted home LAN." } else { "No client endpoint is reachable until a model is serving." }) }
+                    strong data-ai-model-state="true" data-bind="localAiPane.hero.headline" { (if model_loaded { "Model loaded and serving" } else { "No model serving" }) }
+                    p { span data-bind="localAiPane.hero.nextAction" { (next_action) } " · " span data-bind="localAiPane.hero.endpoint" { (if api_ready { endpoint.as_str() } else { "No active endpoint" }) } }
                 }
-                div class="local-ai-hero-endpoint" {
+                div class="local-ai-hero-endpoint" data-bind-class="localAiPane.hero.endpointState" data-state=(if api_ready { "available" } else { "disabled" }) {
                     span { "Client endpoint" }
-                    code id="ai-endpoint-readback" data-ai-endpoint=(if api_ready { endpoint.as_str() } else { "" }) {
+                    code id="ai-endpoint-readback" data-ai-endpoint=(if api_ready { endpoint.as_str() } else { "" }) data-bind="localAiPane.hero.endpoint" {
                         (if api_ready { endpoint.as_str() } else { "No active endpoint" })
                     }
                     div class="local-ai-actions" {
@@ -75,63 +70,67 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
-            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--model" aria-label="Model control" {
-                div class="local-ai-card-head" {
-                    strong { "Model control" }
-                    span class=(format!("system-status system-status--{}", model_state_class)) { (model_state) }
+            div class="local-ai-workbench" aria-label="Local AI controls" {
+                section class="local-ai-section ai-manager-section local-ai-card local-ai-card--model" aria-label="Model control" data-bind-class="localAiPane.model.stateClass" data-state=(model_state_class) {
+                    div class="local-ai-card-head" {
+                        strong { "Model control" }
+                        span class=(format!("system-status system-status--{}", model_state_class)) data-bind="localAiPane.model.state" { (model_state) }
+                    }
+                    div class="local-ai-card-body local-ai-state-list" {
+                        (ai_state_tile_bound("Selected", selected_name, if selected_present { "Ready to load" } else { "Choose or import a model" }, "selected", "localAiPane.model.selected", "localAiPane.model.selectedDetail"))
+                        (ai_state_tile_bound("Serving now", loaded_name, if model_loaded { "Available for client calls" } else { "No model invoked" }, "loaded", "localAiPane.model.servingNow", "localAiPane.model.servingDetail"))
+                        (ai_state_tile_bound("Model library", &format!("{} library", library_model_count), if library_model_count == 0 { "Empty" } else { "Plain list ready" }, "library", "localAiPane.model.libraryCount", "localAiPane.model.libraryDetail"))
+                        @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
+                        @if model_count == 0 {
+                            div class="local-ai-empty" { strong { "No GGUF model installed" } p { "Import a model file or fetch a compatible Hugging Face GGUF before enabling client access." } }
+                        }
+                    }
+                    div class="inline-actions inline-actions--compact local-ai-actions local-ai-card-foot" {
+                        @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
+                        @else if !selected_present { (nav_focus_button("Choose model", "local-ai", "installed-models")) }
+                        @else if !model_loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load model" } }
+                        @if model_loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
+                        button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open logs" }
+                    }
                 }
-                div class="local-ai-state-list" {
-                    (ai_state_tile("Selected", selected_name, if selected_present { "Ready to load" } else { "Choose or import a model" }, "selected"))
-                    (ai_state_tile("Serving now", loaded_name, if model_loaded { "Available for client calls" } else { "No model invoked" }, "loaded"))
-                    (ai_state_tile("Model library", &format!("{} library", library_model_count), if library_model_count == 0 { "Empty" } else { "Plain list ready" }, "library"))
-                    @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
-                }
-                div class="inline-actions inline-actions--compact local-ai-actions" {
-                    @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
-                    @else if !selected_present { (nav_focus_button("Choose model", "local-ai", "installed-models")) }
-                    @else if !model_loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load model" } }
-                    @if model_loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
-                    button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open logs" }
-                }
-                @if model_count == 0 {
-                    div class="local-ai-empty" { strong { "No GGUF model installed" } p { "Import a model file or fetch a compatible Hugging Face GGUF before enabling client access." } }
-                }
-            }
 
-            section id="local-ai-inference" class="local-ai-section ai-manager-section local-ai-card local-ai-card--access" aria-label="API access" tabindex="-1" {
-                div class="local-ai-card-head" {
-                    strong { "API access" }
-                    span class=(format!("system-status system-status--{}", if api_ready { "available" } else { "disabled" })) { (api_state) }
+                section id="local-ai-inference" class="local-ai-section ai-manager-section local-ai-card local-ai-card--access" aria-label="API access" tabindex="-1" data-bind-class="localAiPane.access.stateClass" data-state=(if api_ready { "available" } else { "disabled" }) {
+                    div class="local-ai-card-head" {
+                        strong { "API access" }
+                        span class=(format!("system-status system-status--{}", if api_ready { "available" } else { "disabled" })) data-bind="localAiPane.access.listeningBadge" { (if api_ready { "Listening" } else { "API NOT LISTENING" }) }
+                    }
+                    div class="local-ai-card-body local-ai-access-grid" {
+                        (ai_state_tile_bound("Internal API", if api_ready { "Listening" } else { "Off" }, if api_ready { "Health test can run now" } else { "Load a model before client calls" }, "api", "localAiPane.access.internal", "localAiPane.access.internalDetail"))
+                        (ai_state_tile_bound("LAN API", access_state, if api_ready { "Trusted LAN only" } else { "Disabled until explicitly enabled" }, "lan", "localAiPane.access.lan", "localAiPane.access.lanDetail"))
+                        (ai_state_tile_bound("Port", &port.to_string(), "Saved HomeConsole Local AI port", "port", "localAiPane.access.port", ""))
+                        (ai_state_tile_bound("OpenAI base URL", if api_ready { &base_url } else { "Unavailable" }, if api_ready { "Use this in clients" } else { "No base URL until API listens" }, "endpoint", "localAiPane.access.baseUrl", "localAiPane.access.baseUrlDetail"))
+                    }
+                    div class="inline-actions inline-actions--compact local-ai-actions local-ai-card-foot" {
+                        button class="btn btn--primary" type="button" data-ai-action="inference-enable" disabled[model_count == 0] title=(if model_count == 0 { "Install a GGUF model before enabling API access." } else { "Enable console-local API mode." }) { "API on" }
+                        button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
+                        button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
+                        @if api_ready { (copy_button("Copy base URL", &base_url)) } @else { button class="btn btn--secondary" type="button" disabled title="No API endpoint is reachable yet." { "Copy base URL" } }
+                    }
+                    p class="local-ai-help" { "Internal mode keeps the service on this console. LAN mode exposes only the saved port to trusted home-network clients." }
                 }
-                div class="local-ai-access-grid" {
-                    (ai_state_tile("Internal API", if api_ready { "Listening" } else { "Off" }, if api_ready { "Health test can run now" } else { "Load a model before client calls" }, "api"))
-                    (ai_state_tile("LAN API", access_state, if api_ready { "Trusted LAN only" } else { "Disabled until explicitly enabled" }, "lan"))
-                    (ai_state_tile("Port", &port.to_string(), "Saved HomeConsole Local AI port", "port"))
-                    (ai_state_tile("OpenAI base URL", if api_ready { &base_url } else { "Unavailable" }, if api_ready { "Use this in clients" } else { "No base URL until API listens" }, "endpoint"))
-                }
-                div class="inline-actions inline-actions--compact local-ai-actions" {
-                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" disabled[model_count == 0] title=(if model_count == 0 { "Install a GGUF model before enabling API access." } else { "Enable console-local API mode." }) { "API on" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
-                    @if api_ready { (copy_button("Copy base URL", &base_url)) } @else { button class="btn btn--secondary" type="button" disabled title="No API endpoint is reachable yet." { "Copy base URL" } }
-                }
-                p class="local-ai-help" { "Internal mode keeps the service on this console. LAN mode exposes only the saved port to trusted home-network clients." }
-            }
 
-            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--config" aria-label="Port management" {
-                div class="local-ai-card-head" {
-                    strong { "Port management" }
-                    span class="system-status system-status--unknown" id="ai-port-state" data-active-port=(port) { "Active " (port) }
-                }
-                form class="settings-form settings-form--inline local-ai-port-form" id="ai-lan-form" data-active-port=(port) {
-                    label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
-                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
-                    p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
-                    div class="inline-actions inline-actions--compact local-ai-actions" {
-                        button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
-                        button class="btn btn--secondary" type="button" data-ai-port-revert="true" { "Revert" }
-                        button class="btn btn--secondary" type="button" data-ai-action="lan-enable" disabled[!model_loaded] title=(if model_loaded { "Expose Local AI on the trusted LAN." } else { "Load a model before exposing LAN access." }) { "Enable LAN" }
-                        button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" }
+                section class="local-ai-section ai-manager-section local-ai-card local-ai-card--config" aria-label="Port management" data-bind-class="localAiPane.port.stateClass" data-state=(if api_ready { "available" } else { "unknown" }) {
+                    div class="local-ai-card-head" {
+                        strong { "Port management" }
+                        span class="system-status system-status--unknown" id="ai-port-state" data-active-port=(port) data-bind="localAiPane.port.activeBadge" { "Active " (port) }
+                    }
+                    form class="settings-form settings-form--inline local-ai-port-form" id="ai-lan-form" data-active-port=(port) {
+                        div class="local-ai-card-body local-ai-port-fields" {
+                            label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
+                            label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
+                            p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
+                        }
+                        div class="inline-actions inline-actions--compact local-ai-actions local-ai-card-foot" {
+                            button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
+                            button class="btn btn--secondary" type="button" data-ai-port-revert="true" { "Revert" }
+                            button class="btn btn--secondary" type="button" data-ai-action="lan-enable" disabled[!model_loaded] title=(if model_loaded { "Expose Local AI on the trusted LAN." } else { "Load a model before exposing LAN access." }) { "Enable LAN" }
+                            button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" }
+                        }
                     }
                 }
             }
@@ -269,6 +268,17 @@ fn ai_state_tile(label: &str, value: &str, detail: &str, kind: &str) -> Markup {
             span { (label) }
             strong { (value) }
             em { (detail) }
+        }
+    }
+}
+
+fn ai_state_tile_bound(label: &str, value: &str, detail: &str, kind: &str, value_bind: &str, detail_bind: &str) -> Markup {
+    html! {
+        div class="local-ai-state-tile" data-ai-tile=(kind) {
+            span { (label) }
+            strong data-bind=(value_bind) { (value) }
+            @if detail_bind.is_empty() { em { (detail) } }
+            @else { em data-bind=(detail_bind) { (detail) } }
         }
     }
 }
