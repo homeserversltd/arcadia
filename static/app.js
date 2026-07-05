@@ -2600,7 +2600,6 @@ function bindLocalAIControls() {
     const active = lanForm.dataset.activePort || '7777';
     const input = lanForm.querySelector('input[name="port"]');
     if (input) input.value = active;
-    setLocalAIPortState(`Active ${active}`, 'unknown');
   });
   const settingsForm = document.getElementById('ai-settings-form');
   if (settingsForm) settingsForm.addEventListener('submit', async (event) => {
@@ -2636,41 +2635,15 @@ function localAIPortPayload() {
   return { port, lanCidr };
 }
 
-function setLocalAIPortState(text, state = 'unknown') {
-  const node = document.getElementById('ai-port-state');
-  if (!node) return;
-  node.textContent = text;
-  node.className = `system-status system-status--${state}`;
-}
-
-function updateLocalAIPortReadback(data) {
-  const state = data?.state || data;
-  const port = state?.inference?.port;
-  const endpoints = state?.inference?.endpointUrls || [];
-  const endpoint = endpoints[0] || state?.clientHandoff?.endpoint || '';
-  const form = document.getElementById('ai-lan-form');
-  if (port && form) form.dataset.activePort = String(port);
-  if (port) setLocalAIPortState(`Active ${port}`, data?.ok === false ? 'error' : 'available');
-  const readback = document.getElementById('ai-endpoint-readback');
-  if (readback && endpoint) {
-    readback.textContent = endpoint;
-    readback.dataset.aiEndpoint = endpoint;
-  }
-}
-
 async function saveLocalAIPort() {
   let payload;
   try { payload = localAIPortPayload(); }
   catch (error) {
     setMessage('ai-message', error.message, 'error');
     PopupManager.showToast(error.message, 'error');
-    setLocalAIPortState('Invalid port', 'error');
     return null;
   }
-  setLocalAIPortState(`Saving ${payload.port}`, 'unknown');
-  const data = await postAI('/api/ai/settings', { lanPort: payload.port, lanCidr: payload.lanCidr }, 'Local AI port saved');
-  updateLocalAIPortReadback(data);
-  return data;
+  return await postAI('/api/ai/settings', { lanPort: payload.port, lanCidr: payload.lanCidr }, 'Local AI port saved');
 }
 
 async function applyLocalAIPort(enableLan) {
@@ -2679,12 +2652,9 @@ async function applyLocalAIPort(enableLan) {
   catch (error) {
     setMessage('ai-message', error.message, 'error');
     PopupManager.showToast(error.message, 'error');
-    setLocalAIPortState('Invalid port', 'error');
     return null;
   }
-  const data = await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port, lanCidr: payload.lanCidr }, 'LAN access applied');
-  updateLocalAIPortReadback(data);
-  return data;
+  return await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port, lanCidr: payload.lanCidr }, 'LAN access applied');
 }
 
 function hfForm() { return document.querySelector('[data-hf-installer]'); }

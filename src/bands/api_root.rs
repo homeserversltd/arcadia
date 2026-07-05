@@ -45,6 +45,7 @@ pub struct ApiLivingStateDocument {
     pub home: ApiHomeState,
     pub sync: ApiSyncState,
     pub storage_pane: ApiStoragePaneState,
+    pub local_ai_pane: ApiLocalAiPaneState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
@@ -173,6 +174,64 @@ pub struct ApiStoragePaneCategoryState {
     pub badge: String,
     pub state: &'static str,
     pub bar: ApiStoragePaneStyleState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiLocalAiPaneState {
+    pub hero: ApiLocalAiPaneHeroState,
+    pub model: ApiLocalAiPaneModelState,
+    pub access: ApiLocalAiPaneAccessState,
+    pub port: ApiLocalAiPanePortState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiLocalAiPaneHeroState {
+    pub state: String,
+    pub state_class: &'static str,
+    pub headline: &'static str,
+    pub endpoint: String,
+    pub endpoint_available: bool,
+    pub endpoint_state: &'static str,
+    pub next_action: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiLocalAiPaneModelState {
+    pub state: String,
+    pub state_class: &'static str,
+    pub selected: String,
+    pub serving_now: String,
+    pub selected_detail: &'static str,
+    pub serving_detail: &'static str,
+    pub library_count: String,
+    pub library_detail: &'static str,
+    pub load_badge: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiLocalAiPaneAccessState {
+    pub state: &'static str,
+    pub state_class: &'static str,
+    pub internal: &'static str,
+    pub internal_detail: &'static str,
+    pub lan: &'static str,
+    pub lan_detail: &'static str,
+    pub port: String,
+    pub base_url: String,
+    pub base_url_detail: &'static str,
+    pub listening_badge: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiLocalAiPanePortState {
+    pub active: String,
+    pub active_badge: String,
+    pub state_class: &'static str,
 }
 
 
@@ -506,6 +565,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         home: api_home_state(&status),
         sync: api_sync_state(&status),
         storage_pane: api_storage_pane_state(&status),
+        local_ai_pane: api_local_ai_pane_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -516,6 +576,119 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
     }
 }
 
+
+
+fn api_local_ai_pane_state(status: &ConsoleStatus) -> ApiLocalAiPaneState {
+    let selected_name = status
+        .local_ai
+        .selected_model_name
+        .clone()
+        .unwrap_or_else(|| "No model selected".to_string());
+    let loaded_name = status
+        .local_ai
+        .loaded_model_name
+        .clone()
+        .unwrap_or_else(|| "No model loaded".to_string());
+    let port = status.local_ai.lan_inference_port.unwrap_or(7777);
+    let endpoint = format!(
+        "{}:{}",
+        status.identity.web_origin.trim_end_matches('/'),
+        port
+    );
+    let base_url = format!("{endpoint}/v1");
+    let api_ready = status.local_ai.lan_inference_enabled;
+    let model_count = status.local_ai.available_models.len();
+    let library_model_count = status.local_ai.library_models.len();
+    let selected_present = status.local_ai.selected_model_id.is_some();
+    let model_loaded = matches!(
+        status.local_ai.load_state.as_str(),
+        "hot" | "loaded" | "running"
+    ) || status.local_ai.loaded_model_id.is_some()
+        || status.local_ai.loaded_model_name.is_some();
+    let state = api_local_ai_model_state_label(status, model_loaded, selected_present, model_count);
+    let state_class = api_local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
+    let endpoint_available = api_ready;
+    ApiLocalAiPaneState {
+        hero: ApiLocalAiPaneHeroState {
+            state: state.to_string(),
+            state_class,
+            headline: if model_loaded { "Model loaded and serving" } else { "No model serving" },
+            endpoint: if endpoint_available { endpoint.clone() } else { "No active endpoint".to_string() },
+            endpoint_available,
+            endpoint_state: if endpoint_available { "available" } else { "disabled" },
+            next_action: if model_count == 0 {
+                "Import a GGUF model"
+            } else if !selected_present {
+                "Select a model"
+            } else if !model_loaded {
+                "Load the selected model"
+            } else if !api_ready {
+                "Turn API on"
+            } else {
+                "Copy the client endpoint"
+            },
+        },
+        model: ApiLocalAiPaneModelState {
+            state: state.to_string(),
+            state_class,
+            selected: selected_name,
+            serving_now: loaded_name,
+            selected_detail: if selected_present { "Ready to load" } else { "Choose or import a model" },
+            serving_detail: if model_loaded { "Available for client calls" } else { "No model invoked" },
+            library_count: format!("{library_model_count} library"),
+            library_detail: if library_model_count == 0 { "Empty" } else { "Plain list ready" },
+            load_badge: status.local_ai.load_state.clone(),
+        },
+        access: ApiLocalAiPaneAccessState {
+            state: if api_ready { "API reachable" } else { "API NOT LISTENING" },
+            state_class: if api_ready { "available" } else { "disabled" },
+            internal: if api_ready { "Listening" } else { "Off" },
+            internal_detail: if api_ready { "Health test can run now" } else { "Load a model before client calls" },
+            lan: if api_ready { "Trusted LAN enabled" } else { "Console only" },
+            lan_detail: if api_ready { "Trusted LAN only" } else { "Disabled until explicitly enabled" },
+            port: port.to_string(),
+            base_url: if api_ready { base_url } else { "Unavailable".to_string() },
+            base_url_detail: if api_ready { "Use this in clients" } else { "No base URL until API listens" },
+            listening_badge: if api_ready { "Listening" } else { "API NOT LISTENING" },
+        },
+        port: ApiLocalAiPanePortState {
+            active: port.to_string(),
+            active_badge: format!("Active {port}"),
+            state_class: if api_ready { "available" } else { "unknown" },
+        },
+    }
+}
+
+fn api_local_ai_model_state_label(
+    status: &ConsoleStatus,
+    model_loaded: bool,
+    selected_present: bool,
+    model_count: usize,
+) -> &'static str {
+    if status.local_ai.load_state == "error" {
+        "Backend error"
+    } else if model_loaded {
+        "Model loaded"
+    } else if selected_present {
+        "Model selected, not loaded"
+    } else if model_count > 0 {
+        "Models installed, none selected"
+    } else {
+        "No model loaded"
+    }
+}
+
+fn api_local_ai_state_class(load_state: &str, model_loaded: bool, model_count: usize) -> &'static str {
+    if load_state == "error" {
+        "error"
+    } else if model_loaded {
+        "available"
+    } else if model_count > 0 {
+        "partial"
+    } else {
+        "disabled"
+    }
+}
 
 fn api_storage_pane_state(status: &ConsoleStatus) -> ApiStoragePaneState {
     let classified_bytes = status
