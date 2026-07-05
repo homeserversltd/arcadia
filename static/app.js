@@ -747,8 +747,6 @@ function bindConsoleActions() {
       clearMessage('console-action-message');
       button.disabled = true;
       button.textContent = action === 'sync-games' ? 'Sync Running' : 'Running...';
-      let syncProgress = null;
-      if (action === 'sync-games') syncProgress = startSyncProgress();
       try {
         const assignBody = action.startsWith('controllers-assign-')
           ? { ...body, controllerId: activeControllerId() }
@@ -757,11 +755,10 @@ function bindConsoleActions() {
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
-        if (action === 'sync-games') finishSyncProgress(Boolean(data.ok), data, syncProgress);
+        if (action === 'sync-games' && data.ok !== false) markOnboardingFirstSyncComplete(data);
       } catch (_) {
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
-        if (action === 'sync-games') finishSyncProgress(false, { message: 'Sync failed. Open the ledger for the reason and fix action.' }, syncProgress);
       } finally {
         button.disabled = false;
         button.textContent = original;
@@ -1821,7 +1818,7 @@ async function copyToClipboard(value) {
 function prepareSyncStart() {
   const root = document.querySelector('[data-sync-root]');
   const stateNode = document.getElementById('sync-state');
-  if (['scanning', 'syncing'].includes(stateNode?.dataset.syncState) || root?.dataset.syncState === 'running') {
+  if (syncStateIsRunning() || ['scanning', 'syncing'].includes(stateNode?.dataset.syncState)) {
     PopupManager.showToast('Sync is already running.', 'error');
     return false;
   }
@@ -1838,61 +1835,9 @@ function prepareSyncStart() {
   return true;
 }
 
-function setSyncState(label, state = label) {
-  const value = String(state || label).toLowerCase().replace(/\s+/g, '-');
-  const node = document.getElementById('sync-state');
-  if (node) {
-    node.textContent = label;
-    node.dataset.syncState = value;
-  }
+function syncStateIsRunning() {
   const root = document.querySelector('[data-sync-root]');
-  if (root) root.dataset.syncState = value;
-  document.querySelectorAll('.status-badge[data-chip-kind="sync"]').forEach((badge) => {
-    const total = badge.dataset.gamesTotal || badge.querySelector('[data-games-total-value]')?.textContent?.trim() || label;
-    const tip = /^\d+$/.test(String(total))
-      ? `${total} games total · ${String(label).toLowerCase()}`
-      : `Games: ${label}`;
-    badge.setAttribute('aria-label', `Games: ${total}`);
-    badge.dataset.tooltip = tip;
-    badge.title = tip;
-  });
-}
-
-function setSyncReadback(kind, message) {
-  const result = document.querySelector('[data-sync-result]');
-  const resultCopy = document.getElementById('sync-result-copy');
-  if (result) result.dataset.syncResult = kind;
-  if (resultCopy) resultCopy.textContent = message;
-}
-
-function startSyncProgress() {
-  setSyncState('Scanning', 'scanning');
-  const panel = document.getElementById('sync-running-panel');
-  const progress = document.getElementById('sync-progress-text');
-  if (panel) panel.hidden = false;
-  if (progress) progress.textContent = 'Preparing game import…';
-  setSyncReadback('running', 'The machine is importing games now.');
-  return { stop() { if (panel) panel.hidden = true; } };
-}
-
-function finishSyncProgress(ok, data = {}, progressHandle = null) {
-  if (progressHandle && typeof progressHandle.stop === 'function') progressHandle.stop();
-  const button = document.querySelector('[data-action="sync-games"]');
-  const progress = document.getElementById('sync-progress-text');
-  if (ok) {
-    setSyncState('Synced', 'synced');
-    if (button) button.textContent = 'Synced';
-    const message = data.message || 'Games synced. Receipt ready.';
-    if (progress) progress.textContent = message;
-    setSyncReadback('success', 'Games synced. Receipt ready.');
-    markOnboardingFirstSyncComplete(data);
-  } else {
-    setSyncState('Sync failed', 'sync-failed');
-    if (button) button.textContent = 'Sync failed';
-    const message = data.message || 'Sync failed. Open the ledger for the reason and fix action.';
-    if (progress) progress.textContent = message;
-    setSyncReadback('error', 'Sync failed. Open the ledger for the reason and fix action.');
-  }
+  return root?.dataset.state === 'running' || root?.dataset.syncState === 'running';
 }
 
 const SYNC_GAME_KINDS = [
@@ -2009,24 +1954,20 @@ async function uploadSyncFiles(files, gameKind, endpoint = '/api/actions/add-gam
   const form = new FormData();
   form.append('system', gameKind);
   files.forEach((file) => form.append('games', file, file.name));
-  setSyncReadback('running', 'Checking added games…');
   PopupManager.showToast(`${files.length} game file${files.length === 1 ? '' : 's'} entering the machine.`, 'info');
   try {
     const response = await fetch(endpoint, { method: 'POST', body: form });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok === false) {
       const message = data.message || 'Some games were rejected. Open the ledger for the reason and fix action.';
-      setSyncReadback('error', message);
       PopupManager.showToast(message, 'error');
       return;
     }
     const message = data.message || 'Games staged. Press Sync games.';
-    setSyncReadback('success', message);
     PopupManager.showToast(message, 'success');
     PopupManager.closeModal();
   } catch (_) {
     const message = 'The machine could not accept those games.';
-    setSyncReadback('error', message);
     PopupManager.showToast(message, 'error');
   }
 }

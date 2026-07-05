@@ -135,7 +135,10 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 /* Basic desktop fit: sync packs the orb, systems, and full game list inside the appliance pane. */
 .view[data-view-panel="sync"].is-active {
   display: grid;
-  align-content: start;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  align-content: stretch;
   gap: 8px;
   min-width: 0;
   overflow: hidden;
@@ -151,7 +154,7 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
 }
 .view[data-view-panel="sync"] .sync-admitted-shelf {
-  max-block-size: min(32dvh, 280px);
+  max-block-size: none;
 }
 .view[data-view-panel="sync"] .sync-game-card {
   border-radius: 13px;

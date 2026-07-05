@@ -43,12 +43,51 @@ pub struct ApiLivingStateDocument {
     pub generated_at_unix: u64,
     pub status: ConsoleStatus,
     pub home: ApiHomeState,
+    pub sync: ApiSyncState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
     pub ai: LocalAIState,
     pub controllers: ControllerStatus,
     pub system: SystemAdminStatus,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiSyncState {
+    pub state: String,
+    pub state_line: String,
+    pub phase_line: &'static str,
+    pub running: bool,
+    pub result: &'static str,
+    pub orb: &'static str,
+    pub debt: &'static str,
+    pub beauty: &'static str,
+    pub storage_health: String,
+    pub storage_low: bool,
+    pub storage_blocked: bool,
+    pub total: String,
+    pub native: String,
+    pub added: String,
+    pub artwork: String,
+    pub artwork_missing: String,
+    pub artwork_progress: String,
+    pub admitted: String,
+    pub primary_label: &'static str,
+    pub disabled_label: &'static str,
+    pub systems: Vec<ApiSyncSystemState>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiSyncSystemState {
+    pub system: String,
+    pub admitted: String,
+    pub artwork_paired: String,
+    pub artwork_missing: String,
+    pub meter: String,
+    pub tone: &'static str,
+    pub monogram: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -379,6 +418,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         id: "arcadia-state",
         generated_at_unix: now_unix_seconds(),
         home: api_home_state(&status),
+        sync: api_sync_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -387,6 +427,124 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         controllers: controller_status_api(),
         system: system_admin_status(&network_status(), &hostname()),
     }
+}
+
+fn api_sync_state(status: &ConsoleStatus) -> ApiSyncState {
+    let pending_changes = status.library.unsynced_added
+        + status.library.unsynced_changed
+        + status.library.unsynced_removed;
+    let rejected = status.library.failed_games + status.library.skipped_games;
+    let added = status.library.total_detected_games;
+    let artwork_progress = api_sync_art_progress_pct(status);
+    let storage_blocked = status.storage.health == "Full";
+    let storage_low = status.storage.percent_used >= 90;
+    let running = status.library.last_sync_state == "running";
+    ApiSyncState {
+        state: status.library.last_sync_state.clone(),
+        state_line: api_sync_state_line(status, pending_changes, rejected),
+        phase_line: if running { "classify admit beautify" } else { "ready" },
+        running,
+        result: api_sync_result_kind(status),
+        orb: api_sync_orb_state(status),
+        debt: if pending_changes > 0 { "admission" } else { "none" },
+        beauty: if status.library.artwork_missing > 0 { "caveat" } else { "none" },
+        storage_health: status.storage.health.to_string(),
+        storage_low,
+        storage_blocked,
+        total: api_sync_library_games_total(status).to_string(),
+        native: status.library.gamescope_entries.to_string(),
+        added: added.to_string(),
+        artwork: api_sync_artwork_lane_label(status.library.artwork_paired_total, added),
+        artwork_missing: status.library.artwork_missing.to_string(),
+        artwork_progress: artwork_progress.to_string(),
+        admitted: status.library.total_synced_entries.to_string(),
+        primary_label: api_sync_primary_action_label(status, pending_changes, rejected),
+        disabled_label: if storage_blocked { "Storage Full" } else { "Syncing" },
+        systems: status.library.game_system_tally.iter().map(api_sync_system_state).collect(),
+    }
+}
+
+fn api_sync_system_state(row: &GameSystemTally) -> ApiSyncSystemState {
+    let meter = if row.admitted == 0 { 0 } else { ((row.artwork_paired * 100) / row.admitted).min(100) };
+    ApiSyncSystemState {
+        system: row.system.clone(),
+        admitted: format!("{} admitted", row.admitted),
+        artwork_paired: format!("{} art", row.artwork_paired),
+        artwork_missing: if row.artwork_missing > 0 { format!("{} missing", row.artwork_missing) } else { String::new() },
+        meter: format!("{meter}%"),
+        tone: if row.artwork_missing > 0 { "warn" } else { "complete" },
+        monogram: api_sync_system_monogram(&row.system),
+    }
+}
+
+fn api_sync_state_line(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> String {
+    match status.library.last_sync_state.as_str() {
+        "running" => "Syncing".to_string(),
+        "error" => "Review".to_string(),
+        _ if pending_changes > 0 => format!("{pending_changes} waiting"),
+        _ if rejected > 0 => "Review".to_string(),
+        _ if !api_sync_has_history(status) => "Not scanned yet".to_string(),
+        _ => "Ready".to_string(),
+    }
+}
+
+fn api_sync_orb_state(status: &ConsoleStatus) -> &'static str {
+    if status.library.last_sync_state == "running" {
+        "syncing"
+    } else if api_sync_library_games_total(status) == 0 {
+        "idle"
+    } else if status.library.artwork_missing > 0 {
+        "caveat"
+    } else {
+        "current"
+    }
+}
+
+fn api_sync_art_progress_pct(status: &ConsoleStatus) -> u8 {
+    let added = status.library.total_detected_games;
+    if added == 0 { return 0; }
+    ((status.library.artwork_paired_total.saturating_mul(100)) / added).min(100) as u8
+}
+
+fn api_sync_artwork_lane_label(artwork_paired: u64, added: u64) -> String {
+    if added == 0 { "0".to_string() } else { format!("{artwork_paired} / {added}") }
+}
+
+fn api_sync_primary_action_label(status: &ConsoleStatus, pending_changes: u64, rejected: u64) -> &'static str {
+    if pending_changes > 0 || !api_sync_has_history(status) {
+        "Sync games"
+    } else if rejected > 0 {
+        "Review"
+    } else {
+        "Check again"
+    }
+}
+
+fn api_sync_has_history(status: &ConsoleStatus) -> bool {
+    matches!(status.library.last_sync_state.as_str(), "success" | "error" | "running")
+        || status.library.first_sync_completed
+}
+
+fn api_sync_result_kind(status: &ConsoleStatus) -> &'static str {
+    match status.library.last_sync_state.as_str() {
+        "success" => "success",
+        "error" => "error",
+        "running" => "running",
+        _ => "idle",
+    }
+}
+
+fn api_sync_library_games_total(status: &ConsoleStatus) -> u64 {
+    status.library.total_detected_games
+}
+
+fn api_sync_system_monogram(system: &str) -> String {
+    system
+        .split_whitespace()
+        .filter_map(|part| part.chars().next())
+        .take(2)
+        .collect::<String>()
+        .to_uppercase()
 }
 
 fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
