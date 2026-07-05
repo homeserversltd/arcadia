@@ -161,9 +161,10 @@ fn sync_system_blades(status: &ConsoleStatus) -> Markup {
             }
             @if status.library.game_system_tally.is_empty() {
                 article class="sync-system-blade sync-system-blade--empty" {
+                    div class="sync-blade-icon sync-blade-icon--empty" aria-hidden="true" { "◎" }
                     strong { "No systems yet" }
-                    span { "0 admitted" }
-                    div class="sync-blade-meter" style="--sync-meter:0%" {}
+                    span { "Admit games to fill systems." }
+                    em { "0 admitted" }
                 }
             } @else {
                 @for row in status.library.game_system_tally.iter() {

@@ -1038,7 +1038,7 @@
             ".sync-system-blade",
             "grid-template-columns: repeat(auto-fit, minmax(var(--ux-sync-system-min-inline), 1fr));",
             ".sync-admitted-shelf",
-            "max-block-size: var(--ux-sync-game-list-max-block);",
+            "max-block-size: none;",
             "overflow: auto;",
             ".sync-game-card",
             "grid-template-columns: var(--ux-sync-cover-size) minmax(0, 1fr) minmax(118px, auto);",
@@ -1056,7 +1056,7 @@
             assert!(UX_CSS.contains(required_ux), "sync fit token missing: {required_ux}");
         }
         assert!(APP_CSS.contains(".view[data-view-panel=\"sync\"].is-active {"));
-        assert!(APP_CSS.contains("grid-template-rows: auto auto minmax(0, .42fr) minmax(0, 1fr) auto;"));
+        assert!(APP_CSS.contains("grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr);"));
         assert!(APP_CSS.contains("gap: var(--ux-grid-gap);"));
         assert!(APP_CSS.contains("overflow: hidden;"));
     }
