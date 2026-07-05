@@ -238,6 +238,9 @@
             "node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)))",
             "[data-bind-show]",
             "node.hidden = !visible",
+            "[data-bind-style-var]",
+            "node.style.setProperty(name, asText(resolve(path, state)))",
+            r#"data-bind-style-var="--var:path" projects a document value into a CSS custom property"#,
             "[data-bind-each]",
             "host.firstElementChild?.tagName === 'TEMPLATE'",
             "template.content.cloneNode(true)",
@@ -1438,6 +1441,10 @@
         assert!(source.contains("kind: \"arcadiaLivingState\""));
         assert!(source.contains("pub sync: ApiSyncState"));
         assert!(source.contains("pub systems: Vec<ApiSyncSystemState>"));
+        assert!(source.contains("pub storage_pane: ApiStoragePaneState"));
+        assert!(source.contains("pub struct ApiStoragePaneState"));
+        assert!(source.contains("fn api_storage_pane_state(status: &ConsoleStatus) -> ApiStoragePaneState"));
+        assert!(source.contains("api_storage_pane_state(&status)"));
         assert!(source.contains("fn api_sync_state(status: &ConsoleStatus) -> ApiSyncState"));
         assert!(source.contains("api_sync_state(&status)"));
         assert!(source.contains("pub storage: StorageStatus"));
@@ -1660,6 +1667,14 @@
             );
         }
         assert!(rendered.contains("/api/storage/rescan-summary"));
+        assert!(APP_JS.contains("[data-bind-style-var]"));
+        assert!(APP_CSS.contains(r#".view[data-view-panel="storage"].is-active"#));
+        assert!(APP_CSS.contains("grid-template-rows: auto auto minmax(0, 1fr);"));
+        assert!(APP_CSS.contains(".storage-category-list {"));
+        assert!(APP_CSS.contains("grid-auto-rows: minmax(0, 1fr);"));
+        assert!(APP_CSS.contains("width: var(--storage-seg-pct, auto);"));
+        assert!(include_str!("../../static/ux/README.md").contains(r#"data-bind-style-var="--var:path""#));
+        assert!(!APP_JS.contains("storagePane"), "projector must stay pane-blind");
         assert!(!rendered.contains("delete-all-games"));
         assert!(!rendered.contains("data-storage-modal-template=\"games\""));
         assert!(!rendered.contains("<details class=\"storage-section"));
