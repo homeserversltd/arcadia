@@ -1412,6 +1412,8 @@
         assert!(source.contains(".route(\"/api/root\", get(api_root_route))"));
         assert!(source.contains(".route(\"/api/root/events\", get(api_root_events_route))"));
         assert!(source.contains(".route(\"/api/root/events/renew\", post(api_root_events_renew_route))"));
+        assert!(source.contains("\"/api/controllers/trainer/events\""));
+        assert!(source.contains("get(controllers_trainer_events_route)"));
         assert!(source.contains("include!(\"bands/api_root.rs\")"));
     }
 
@@ -1467,6 +1469,31 @@
         assert!(source.contains("let snapshot = api_root_object(&state);"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
+    }
+
+
+
+    #[test]
+    fn controllers_trainer_events_route_streams_scoped_trainer_sse() {
+        let main = include_str!("../../src/main.rs");
+        let source = include_str!("../../src/bands/status_controllers.rs");
+        let app_js = APP_JS;
+        assert!(main.contains("/api/controllers/trainer/events"));
+        assert!(source.contains("async fn controllers_trainer_events_route()"));
+        assert!(source.contains("Sse<impl Stream<Item = Result<Event, Infallible>>>"));
+        assert!(source.contains("CONTROLLER_TRAINER_STREAM_TOPIC: &str = \"controllers.trainer\""));
+        assert!(source.contains("CONTROLLER_TRAINER_STREAM_CADENCE_MS: u64 = 60"));
+        assert!(source.contains("tokio::time::interval(Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS))"));
+        for event in ["event(\"lease\")", "event(\"snapshot\")", "event(\"input\")", "event(\"heartbeat\")"] {
+            assert!(source.contains(event), "controller SSE missing {event}");
+        }
+        assert!(app_js.contains("const ArcadiaControllerTrainerStream = (() =>"));
+        assert!(app_js.contains("new EventSource('/api/controllers/trainer/events')"));
+        assert!(app_js.contains("ArcadiaProjector.registerWidget('controllersPane', controllerPaneWidget)"));
+        assert!(app_js.contains("subscribers.delete(key)"));
+        assert!(app_js.contains("if (!hasWatchers()) close()"));
+        assert!(!app_js.contains("window.setInterval(poll, 650)"));
+        assert!(!app_js.contains("const serverData = await getJson('/api/controllers/input');\n        const browserData = readBrowserGamepadInput();"));
     }
 
     #[test]

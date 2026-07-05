@@ -22,22 +22,16 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         }
                         div class="controls-card__head-actions controllers-actions" {
                             span class=(format!("system-status system-status--{}", hero_class)) {
-                                (format!("{} saved", status.controllers.controller_pool.len()))
+                                span data-controller-pool-count="true" { (status.controllers.controller_pool.len()) }
+                                " saved"
                             }
-                            (action_button(ButtonVariant::Secondary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
                         }
                     }
-                    @if status.controllers.controller_pool.is_empty() {
-                        p class="controls-pool-empty" {
-                            (status.controllers.recovery.detail)
-                            " Scan to add the first gamepad to your library."
+                    div class=(if status.controllers.controller_pool.is_empty() { "controller-pool-scroll controller-pool-scroll--empty" } else { "controller-pool-scroll" }) {
+                        @for entry in &status.controllers.controller_pool {
+                            (controller_pool_card(entry))
                         }
-                    } @else {
-                        div class="controller-pool-scroll" {
-                            @for entry in &status.controllers.controller_pool {
-                                (controller_pool_card(entry))
-                            }
-                        }
+                        (controller_pool_scan_tile(&status.controllers.recovery.detail))
                     }
                 }
 
@@ -60,7 +54,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                         p class="controller-tuner-intro" {
                             "Adjust deadzone to ignore stick drift, and response for how snappy sticks feel in games. Move your sticks to preview."
                         }
-                        p class="controls-live-device controller-tuner-device" data-controller-tuner-device { (status.controllers.primary_device) }
+                        p class="controls-live-device controller-tuner-device" data-controller-tuner-device data-controller-primary-device="true" { (status.controllers.primary_device) }
                         div class="controller-tuner-grid" {
                             (controller_tuner_stick_panel("left", "Left stick"))
                             (controller_tuner_stick_panel("right", "Right stick"))
@@ -100,7 +94,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                             }
                             section class="controller-map-live" aria-label="Live preview" {
                                 span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Tap a control on the gamepad to begin" }
-                                p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
+                                p class="controls-live-device" data-controller-programmer-device data-controller-primary-device="true" { (status.controllers.live_input.device) }
                                 div class="controller-axis-strip" data-controller-programmer-axes {}
                                 p class="controls-map-hint" { "Press your controller to light up controls here." }
                                 div class="controls-card__actions controllers-actions" {
@@ -259,6 +253,17 @@ fn gamepad_dpad(active: bool, connected: bool) -> Markup {
             button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--right" data-controller-control="D-pad Right" { "▶" }
             button type="button" class="ux-gamepad-dpad-arm ux-gamepad-dpad-arm--down" data-controller-control="D-pad Down" { "▼" }
             span { (gamepad_binding_label(binding)) }
+        }
+    }
+}
+
+fn controller_pool_scan_tile(recovery_detail: &str) -> Markup {
+    html! {
+        article class="controller-pool-scan-tile" data-controller-pool-scan-tile {
+            div class="controller-pool-scan-tile__icon" aria-hidden="true" { "⌁" }
+            strong { "Scan for controllers" }
+            span { (recovery_detail) }
+            (action_button(ButtonVariant::Secondary, "Scan", "controllers-rescan", "/api/actions/controllers-rescan"))
         }
     }
 }

@@ -17,3 +17,4 @@ Agent contract:
 5. Keep ordinary human-facing text within 12px through 22px unless a special display surface is explicitly ordered.
 6. Prove visible control geometry with rendered DOM readback when a change touches buttons, cards, action rows, or viewport fit.
 7. Pane-blind living-state style binding uses `data-bind-style-var="--var:path"`; values come from curated API document strings and are written only to CSS custom properties.
+8. High-bandwidth pane widgets register through `ArcadiaProjector.registerWidget(name, fn)`. The projector remains pane-blind: the widget receives the living-state document and may mount a scoped transport only while its visible presenter is active. The first declared valve is `controllersPane`, which combines `controllers` living-state readbacks with `/api/controllers/trainer/events` for 60ms trainer lighting and closes the stream when the pane/modal leaves focus.
