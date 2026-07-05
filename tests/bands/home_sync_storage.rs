@@ -76,15 +76,20 @@
             "data-load-card",
             r#"data-load-retry-ms="5000""#,
             "data-load-orb",
-            "data-load-headline",
             "data-load-spark-value",
             "data-load-chip-value",
-            "CPU",
+            "Temp",
             "I/O",
             "storage-home-card",
             "storage-bar--home",
             "storage-segment--games",
+            "storage-segment--other",
             "storage-home-details",
+            "data-bind=\"home.storage.percentUsed\"",
+            "home-detail-row--cat-games",
+            "home-detail-row--cat-ai",
+            "home-detail-row--cat-else",
+            "home-detail-row--cat-free",
             ">Games used:</span>",
             ">AI used:</span>",
             ">Everything else:</span>",
@@ -184,6 +189,8 @@
         assert!(APP_CSS.contains(".home-operational-grid"));
         assert!(APP_CSS.contains(".load-home-card"));
         assert!(APP_CSS.contains(".load-orb"));
+        assert!(APP_CSS.contains(".load-orb::before"));
+        assert!(APP_CSS.contains("mask: radial-gradient"));
         assert!(APP_CSS.contains(".load-spark"));
         assert!(APP_CSS.contains(".load-telemetry-grid"));
         assert!(APP_CSS.contains("conic-gradient"));
@@ -211,7 +218,7 @@
         assert!(APP_JS.contains("readBytesPerSec"));
         assert!(APP_JS.contains("writeBytesPerSec"));
         assert!(APP_JS.contains("usagePercent"));
-        assert!(APP_JS.contains("fmtUsage"));
+        assert!(!APP_JS.contains("[data-load-headline]"));
         assert!(APP_JS.contains("fmtLoadAvgPct"));
         assert!(!APP_JS.contains("function bindHomeLoadPolling()"));
         assert!(!APP_JS.contains("window.arcadiaHomeLoadPollState"));
@@ -553,7 +560,13 @@
         for required in [
             "storage-bar--home",
             "storage-segment--games",
+            "storage-segment--other",
             "storage-segment--free",
+            "data-bind=\"home.storage.percentUsed\"",
+            "home-detail-row--cat-games",
+            "home-detail-row--cat-ai",
+            "home-detail-row--cat-else",
+            "home-detail-row--cat-free",
             "data-bind=\"home.storage.gamesSize\">12 GB</strong>",
             "data-bind=\"home.storage.aiSize\">48 GB</strong>",
             "data-bind=\"home.storage.everythingElseSize\">3.0 GB</strong>",

@@ -565,7 +565,6 @@ function bindHomeLoadSubscription() {
     if (chip) chip.className = `load-chip load-chip--${stateName}`;
   };
   const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
-  const fmtUsage = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
   const fmtLoadAvgPct = (value, cores) => value == null ? '—' : `${((value / Math.max(1, cores)) * 100).toFixed(1)}%`;
   const fmtTemp = (value) => value == null ? '—' : `${value.toFixed(1)}°C`;
   const fmtPressure = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
@@ -588,7 +587,6 @@ function bindHomeLoadSubscription() {
     const cores = Number(navigator.hardwareConcurrency || 1);
     const usage = number(data.cpu?.usagePercent);
     const pct = usage == null ? 0 : Math.max(0, Math.min(100, Math.round(usage)));
-    setText('[data-load-headline]', fmtUsage(usage));
     setText('[data-load-percent]', `${pct}%`);
     const orb = card.querySelector('[data-load-orb]');
     if (orb) {

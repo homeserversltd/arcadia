@@ -104,25 +104,35 @@ fn priority_strip(status: &ConsoleStatus) -> Markup {
 
 fn home_storage_card(status: &ConsoleStatus) -> Markup {
     let everything_else = home_storage_everything_else_size(status);
+    let everything_else_bytes = status.storage.artwork.bytes.saturating_add(status.storage.other.bytes);
+    let everything_else_percent = home_storage_percent_of_total(everything_else_bytes, status.storage.total_bytes);
     html! {
         article class=(if status.storage.percent_used >= 90 { "operational-card storage-home-card attention" } else { "operational-card storage-home-card" }) data-bind-class="home.storage.state" {
             div class="card-head" aria-label="Storage" {
                 h3 { "Storage" }
+                strong data-bind="home.storage.percentUsed" { (format!("{}% used", status.storage.percent_used)) }
             }
             div class="storage-bar storage-bar--home" aria-label="Storage usage by category" {
                 span class="storage-segment storage-segment--games" style=(format!("width: {}%", status.storage.games.percent_of_total.max(if status.storage.games.bytes > 0 { 1 } else { 0 }))) title=(format!("Games {}", status.storage.games.size)) {}
-                span class="storage-segment storage-segment--artwork" style=(format!("width: {}%", status.storage.artwork.percent_of_total.max(if status.storage.artwork.bytes > 0 { 1 } else { 0 }))) title=(format!("Artwork {}", status.storage.artwork.size)) {}
                 span class="storage-segment storage-segment--ai" style=(format!("width: {}%", status.storage.ai_models.percent_of_total.max(if status.storage.ai_models.bytes > 0 { 1 } else { 0 }))) title=(format!("AI Models {}", status.storage.ai_models.size)) {}
-                span class="storage-segment storage-segment--other" style=(format!("width: {}%", status.storage.other.percent_of_total.max(if status.storage.other.bytes > 0 { 1 } else { 0 }))) title=(format!("Other {}", status.storage.other.size)) {}
+                span class="storage-segment storage-segment--other" style=(format!("width: {}%", everything_else_percent.max(if everything_else_bytes > 0 { 1 } else { 0 }))) title=(format!("Everything else {}", everything_else)) {}
                 span class="storage-segment storage-segment--free" style=(format!("width: {}%", 100u8.saturating_sub(status.storage.percent_used))) title=(format!("Free {}", status.storage.free)) {}
             }
             div class="state-rows state-rows--compact storage-home-details" {
-                (home_bound_detail_row("Games used:", &status.storage.games.size, true, "home.storage.gamesSize"))
-                (home_bound_detail_row("AI used:", &status.storage.ai_models.size, true, "home.storage.aiSize"))
-                (home_bound_detail_row("Everything else:", &everything_else, true, "home.storage.everythingElseSize"))
-                (home_bound_detail_row("Free:", &status.storage.free, true, "home.storage.freeSize"))
+                (home_bound_detail_row_with_class("Games used:", &status.storage.games.size, true, "home.storage.gamesSize", "home-detail-row--cat-games"))
+                (home_bound_detail_row_with_class("AI used:", &status.storage.ai_models.size, true, "home.storage.aiSize", "home-detail-row--cat-ai"))
+                (home_bound_detail_row_with_class("Everything else:", &everything_else, true, "home.storage.everythingElseSize", "home-detail-row--cat-else"))
+                (home_bound_detail_row_with_class("Free:", &status.storage.free, true, "home.storage.freeSize", "home-detail-row--cat-free"))
             }
         }
+    }
+}
+
+fn home_storage_percent_of_total(bytes: u64, total_bytes: u64) -> u8 {
+    if bytes == 0 || total_bytes == 0 {
+        0
+    } else {
+        ((bytes as u128).saturating_mul(100) / total_bytes as u128).min(100) as u8
     }
 }
 
@@ -177,12 +187,9 @@ fn home_load_card() -> Markup {
     let disk = disk_io_counters();
     let read_rate = json_u64(&disk, "readBytesPerSec");
     let write_rate = json_u64(&disk, "writeBytesPerSec");
-    let load_headline = cpu_usage
-        .map(|value| format!("{value:.1}%"))
-        .unwrap_or_else(|| "—".to_string());
     html! {
         article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" {
-            div class="card-head" aria-label="Load" { h3 { "Load" } strong data-load-headline { (load_headline) } }
+            div class="card-head" aria-label="Load" { h3 { "Load" } }
             div class="load-orb-row" {
                 div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) data-load-orb {
                     span data-load-percent { (load_percent) "%" }
@@ -194,7 +201,7 @@ fn home_load_card() -> Markup {
                 }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
-                (load_chip("CPU", "cpu", &temp_label, temp_state))
+                (load_chip("Temp", "cpu", &temp_label, temp_state))
                 (load_chip("I/O", "io", &io_label, io_state))
                 (load_chip("Read/s", "read", &read_rate.map(human_rate).unwrap_or_else(|| "—".to_string()), if read_rate.unwrap_or(0) > 0 { "ok" } else { "idle" }))
                 (load_chip("Write/s", "write", &write_rate.map(human_rate).unwrap_or_else(|| "—".to_string()), if write_rate.unwrap_or(0) > 0 { "ok" } else { "idle" }))
@@ -432,10 +439,25 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
 }
 
 fn home_bound_detail_row(label: &str, value: &str, inline_count: bool, bind_path: &str) -> Markup {
+    home_bound_detail_row_with_class(label, value, inline_count, bind_path, "")
+}
+
+fn home_bound_detail_row_with_class(
+    label: &str,
+    value: &str,
+    inline_count: bool,
+    bind_path: &str,
+    extra_class: &str,
+) -> Markup {
     let row_class = if inline_count {
         "state-row home-detail-row home-detail-row--inline"
     } else {
         "state-row home-detail-row"
+    };
+    let row_class = if extra_class.is_empty() {
+        row_class.to_string()
+    } else {
+        format!("{row_class} {extra_class}")
     };
     html! {
         div class=(row_class) aria-label=(format!("{label} {value}")) {

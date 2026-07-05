@@ -181,6 +181,7 @@
 .status-card-grid, .model-grid, .path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ux-grid-gap); margin: var(--ux-grid-gap) 0; }
 .path-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .priority-strip { margin: 0 0 12px; min-height: 54px; padding: 10px 12px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--theme-line-strong); border-radius: 20px; background: linear-gradient(145deg, var(--theme-accent-soft), var(--theme-glass)); box-shadow: 0 12px 30px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass); }
+.priority-strip[hidden] { display: none; }
 .priority-strip strong { font-size: 18px; line-height: 1.12; }
 .priority-strip span, .card-line { color: var(--muted); font-size: 13px; line-height: 1.3; }
 .priority-strip .btn { min-height: 34px; padding: 7px 11px; font-size: 12px; }
@@ -208,10 +209,11 @@
 .storage-mini-row strong { color: var(--cream); }
 .load-home-card { grid-column: span 2; background: radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--theme-accent) 20%, transparent), transparent 32%), linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 45%, transparent)); }
 .load-orb-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; align-items: center; }
-.load-orb { --load-pct: 0; width: 78px; height: 78px; display: grid; place-items: center; border-radius: 999px; background: conic-gradient(var(--theme-good) calc(var(--load-pct) * 1%), color-mix(in srgb, var(--theme-field-surface) 82%, transparent) 0); border: 1px solid var(--line); box-shadow: inset 0 0 0 9px color-mix(in srgb, var(--theme-bg-raised) 88%, transparent), 0 10px 26px color-mix(in srgb, var(--theme-field-surface) 92%, transparent); }
-.load-orb--warn { background: conic-gradient(var(--theme-warn) calc(var(--load-pct) * 1%), color-mix(in srgb, var(--theme-field-surface) 82%, transparent) 0); }
-.load-orb--idle { background: conic-gradient(var(--theme-idle) calc(var(--load-pct) * 1%), color-mix(in srgb, var(--theme-field-surface) 82%, transparent) 0); }
-.load-orb span { color: var(--cream); font-size: 18px; font-weight: 950; letter-spacing: -.04em; }
+.load-orb { --load-pct: 0; --load-ring-color: var(--theme-good); position: relative; width: 78px; height: 78px; display: grid; place-items: center; border-radius: 999px; background: color-mix(in srgb, var(--theme-bg-raised) 88%, transparent); border: 1px solid var(--line); box-shadow: 0 10px 26px color-mix(in srgb, var(--theme-field-surface) 92%, transparent); }
+.load-orb::before { content: ""; position: absolute; inset: 0; border-radius: 999px; background: conic-gradient(var(--load-ring-color) calc(var(--load-pct) * 1%), color-mix(in srgb, var(--theme-field-surface) 82%, transparent) 0); -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 10px), #000 calc(100% - 9px)); mask: radial-gradient(closest-side, transparent calc(100% - 10px), #000 calc(100% - 9px)); }
+.load-orb--warn { --load-ring-color: var(--theme-warn); }
+.load-orb--idle { --load-ring-color: var(--theme-idle); }
+.load-orb span { position: relative; color: var(--cream); font-size: 18px; font-weight: 950; letter-spacing: -.04em; }
 .load-spark-bank { display: grid; gap: 5px; min-width: 0; }
 .load-spark { display: grid; grid-template-columns: 28px minmax(0, 1fr) 42px; gap: 7px; align-items: center; font-size: 12px; }
 .load-spark span { color: var(--muted); font-weight: 900; }
@@ -230,4 +232,5 @@
 .gpu-bar { height: 12px; margin-top: 8px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--theme-field-surface); }
 .gpu-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--good), var(--orange)); }
 .active-warning-strip { margin-top: 12px; padding: 10px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--theme-bad) 50%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--theme-bad) 16%, transparent); }
+.active-warning-strip[hidden] { display: none; }
 .active-warning-strip span { color: var(--muted); }
