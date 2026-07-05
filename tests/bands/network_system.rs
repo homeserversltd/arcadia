@@ -125,6 +125,13 @@
             assert!(network_html.contains(required), "network live binding missing {required}");
         }
         assert!(network_html.contains("Copy AI"), "network LAN AI copy control must stay present");
+        assert!(network_html.contains("network-wifi-body"), "Wi-Fi card must carry a filled body panel");
+        assert!(network_html.contains("No Wi-Fi adapter"), "Wi-Fi no-adapter state must read as intentional appliance state");
+        assert!(network_html.contains("network-wired-body"), "Wired LAN internals must own a full card body");
+        assert!(network_html.contains("network-diagnostics-foot__body"), "Diagnostics must render as an open bottom panel");
+        assert!(APP_CSS.contains(".network-hub") && APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
+        assert!(APP_CSS.contains(".network-workbench") && APP_CSS.contains("height: 100%;"));
+        assert!(APP_CSS.contains(".network-card") && APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
         assert!(APP_JS.contains("[data-bind-copy-value]"));
         assert!(APP_JS.contains("[data-bind-enabled]"));
         assert!(

@@ -99,12 +99,30 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                                 (wifi_status_label(status))
                             }
                         }
-                        @if status.network.active_type == "wifi" {
-                            div class="network-wifi-signal" aria-label="Wi-Fi signal strength" data-bind-show="networkPane.wifi.signalVisible" {
-                                span class="network-wifi-signal__track" {
-                                    span class="network-wifi-signal__fill" style=(format!("--wifi-signal: {}%", status.network.signal_percent.unwrap_or(0))) data-bind-style-var="--wifi-signal:networkPane.wifi.signalPercent" {}
+                        div class="network-wifi-body" {
+                            @if status.network.active_type == "wifi" {
+                                div class="network-wifi-signal" aria-label="Wi-Fi signal strength" data-bind-show="networkPane.wifi.signalVisible" {
+                                    span class="network-wifi-signal__track" {
+                                        span class="network-wifi-signal__fill" style=(format!("--wifi-signal: {}%", status.network.signal_percent.unwrap_or(0))) data-bind-style-var="--wifi-signal:networkPane.wifi.signalPercent" {}
+                                    }
+                                    em data-bind="networkPane.wifi.signalLabel" { (status.network.signal_percent.map(|v| format!("{v}% signal")).unwrap_or_else(|| "Signal unavailable".to_string())) }
                                 }
-                                em data-bind="networkPane.wifi.signalLabel" { (status.network.signal_percent.map(|v| format!("{v}% signal")).unwrap_or_else(|| "Signal unavailable".to_string())) }
+                            } @else if !status.network.wifi_adapter_available {
+                                div class="network-wifi-state network-wifi-state--empty" {
+                                    span class="network-wifi-state__icon" aria-hidden="true" { "⌁" }
+                                    div class="network-wifi-state__copy" {
+                                        strong { "No Wi-Fi adapter" }
+                                        span { "Wireless controls are intentionally disabled on this console. Use Wired LAN or add an adapter." }
+                                    }
+                                }
+                            } @else {
+                                div class="network-wifi-state" {
+                                    span class="network-wifi-state__icon" aria-hidden="true" { "≋" }
+                                    div class="network-wifi-state__copy" {
+                                        strong { "Ready for wireless setup" }
+                                        span { "Choose a network, join hidden Wi-Fi, or toggle the radio from the action row." }
+                                    }
+                                }
                             }
                         }
                         div class="network-wifi-actions" {
@@ -126,18 +144,20 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                                 (ethernet_head_badge(status))
                             }
                         }
-                        div class="network-compact-grid network-compact-grid--small" {
-                            (system_field_bound("Mode", if status.network.ethernet_dhcp { "DHCP" } else { "Manual" }, "networkPane.wired.mode"))
-                            (system_field_bound("Nameservers", &status.network.resolv_nameservers, "networkPane.wired.nameservers"))
-                            (system_field_bound("Search", &status.network.resolv_search, "networkPane.wired.search"))
-                            (system_field_bound("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown"), "networkPane.wired.gateway"))
-                        }
-                        @if !status.network.ethernet_available {
-                            div class="empty-state" { strong { "No Ethernet adapter" } }
-                        }
-                        div class="network-speed-panel" {
-                            button class="btn btn--secondary" type="button" data-network-action="speed-test" disabled[!status.network.ethernet_available] title=(if status.network.ethernet_available { "Run a network speed test." } else { "No Ethernet adapter is available on this console." }) { "Run speed test" }
-                            div id="speed-test-results" class="network-speed-result" data-bind="networkPane.diagnostics.internet" hidden {}
+                        div class="network-wired-body" {
+                            div class="network-compact-grid network-compact-grid--small" {
+                                (system_field_bound("Mode", if status.network.ethernet_dhcp { "DHCP" } else { "Manual" }, "networkPane.wired.mode"))
+                                (system_field_bound("Nameservers", &status.network.resolv_nameservers, "networkPane.wired.nameservers"))
+                                (system_field_bound("Search", &status.network.resolv_search, "networkPane.wired.search"))
+                                (system_field_bound("Gateway", status.network.gateway.as_deref().unwrap_or("Unknown"), "networkPane.wired.gateway"))
+                            }
+                            @if !status.network.ethernet_available {
+                                div class="empty-state" { strong { "No Ethernet adapter" } }
+                            }
+                            div class="network-speed-panel" {
+                                button class="btn btn--secondary" type="button" data-network-action="speed-test" disabled[!status.network.ethernet_available] title=(if status.network.ethernet_available { "Run a network speed test." } else { "No Ethernet adapter is available on this console." }) { "Run speed test" }
+                                div id="speed-test-results" class="network-speed-result" data-bind="networkPane.diagnostics.internet" hidden {}
+                            }
                         }
                         div class="inline-actions inline-actions--compact network-card__actions" {
                             button class="btn btn--secondary" type="button" data-open-wired-details="true" { "Details" }
@@ -147,20 +167,25 @@ fn network_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
-                details class="network-section network-diagnostics-foot sync-desktop-detail" {
-                    summary { "Diagnostics" }
-                    div class="inline-actions inline-actions--compact" data-diagnostics-actions="true" {
-                        button class="btn btn--secondary" type="button" data-diagnostic="gateway" { "Test Gateway" }
-                        button class="btn btn--secondary" type="button" data-diagnostic="dns" { "Test DNS" }
-                        button class="btn btn--secondary" type="button" data-diagnostic="internet" { "Test Internet" }
-                        button class="btn btn--secondary" type="button" data-diagnostic="lan-ai" { "Test LAN AI" }
+                article class="network-section network-diagnostics-foot sync-desktop-detail" aria-label="Diagnostics" {
+                    div class="network-diagnostics-foot__head" {
+                        strong { "Diagnostics" }
+                        span class="system-status system-status--unknown" { "Ready" }
                     }
-                    div id="diagnostics-results" class="diagnostics-results" {
-                        div class="network-diagnostic-grid" {
-                            span data-bind="networkPane.diagnostics.gateway" { "Ready" }
-                            span data-bind="networkPane.diagnostics.dns" { "Ready" }
-                            span data-bind="networkPane.diagnostics.internet" { "Ready" }
-                            span data-bind="networkPane.diagnostics.lanAi" { "Ready" }
+                    div class="network-diagnostics-foot__body" {
+                        div id="diagnostics-results" class="diagnostics-results" {
+                            div class="network-diagnostic-grid" {
+                                span data-bind="networkPane.diagnostics.gateway" { "Gateway ready" }
+                                span data-bind="networkPane.diagnostics.dns" { "DNS ready" }
+                                span data-bind="networkPane.diagnostics.internet" { "Internet ready" }
+                                span data-bind="networkPane.diagnostics.lanAi" { "LAN AI ready" }
+                            }
+                        }
+                        div class="inline-actions inline-actions--compact" data-diagnostics-actions="true" {
+                            button class="btn btn--secondary" type="button" data-diagnostic="gateway" { "Test Gateway" }
+                            button class="btn btn--secondary" type="button" data-diagnostic="dns" { "Test DNS" }
+                            button class="btn btn--secondary" type="button" data-diagnostic="internet" { "Test Internet" }
+                            button class="btn btn--secondary" type="button" data-diagnostic="lan-ai" { "Test LAN AI" }
                         }
                     }
                 }
@@ -283,3 +308,4 @@ fn system_field_bound(label: &str, value: &str, bind: &str) -> Markup {
         }
     }
 }
+
