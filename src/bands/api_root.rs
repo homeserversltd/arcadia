@@ -47,6 +47,7 @@ pub struct ApiLivingStateDocument {
     pub storage_pane: ApiStoragePaneState,
     pub local_ai_pane: ApiLocalAiPaneState,
     pub network_pane: ApiNetworkPaneState,
+    pub updates_pane: ApiUpdatesPaneState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
@@ -324,6 +325,44 @@ pub struct ApiLocalAiPanePortState {
     pub state_class: &'static str,
 }
 
+
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiUpdatesPaneState {
+    pub state: String,
+    pub state_label: String,
+    pub state_class: &'static str,
+    pub last_ran: String,
+    pub pending_updates: String,
+    pub readiness_ratio: String,
+    pub module_line: String,
+    pub suite: &'static str,
+    pub check: &'static str,
+    pub modules: Vec<ApiUpdatesModuleState>,
+    pub receipts: ApiUpdatesReceiptsState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiUpdatesModuleState {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+    pub state: String,
+    pub state_label: &'static str,
+    pub state_class: &'static str,
+    pub version: String,
+    pub receipt: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiUpdatesReceiptsState {
+    pub suite: String,
+    pub check: String,
+    pub module_root: String,
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -626,6 +665,7 @@ fn api_root_object_from_status(_state: &AppState, status: &ConsoleStatus) -> Api
         children: vec![
             api_appliance_node(status),
             api_storage_node(status),
+            api_updates_node(status),
             api_telemetry_node(),
             api_routes_node(),
         ],
@@ -657,6 +697,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         storage_pane: api_storage_pane_state(&status),
         local_ai_pane: api_local_ai_pane_state(&status),
         network_pane: api_network_pane_state(&status),
+        updates_pane: api_updates_pane_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -668,7 +709,74 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
 }
 
 
+fn api_updates_state_label(state: &str) -> String {
+    match state {
+        "current" => "Current".to_string(),
+        "available" => "Updates available".to_string(),
+        "repair_pending" => "Update needed".to_string(),
+        "unknown" => "Check needed".to_string(),
+        other => other.split(['-', '_']).filter(|part| !part.is_empty()).map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        }).collect::<Vec<_>>().join(" "),
+    }
+}
 
+fn api_updates_state_class(state: &str) -> &'static str {
+    match state {
+        "current" => "available",
+        "available" | "repair_pending" => "error",
+        "unknown" => "unknown",
+        _ => "disabled",
+    }
+}
+
+fn api_updates_module_state(module: &crate::HarmoniaModuleStatus) -> (&'static str, &'static str) {
+    if !module.enabled {
+        ("Disabled", "disabled")
+    } else if module.present {
+        ("Enabled", "available")
+    } else {
+        ("Update needed", "error")
+    }
+}
+
+fn api_updates_pane_state(status: &ConsoleStatus) -> ApiUpdatesPaneState {
+    let enabled = status.updates.modules.iter().filter(|module| module.enabled).count();
+    let ready = status.updates.modules.iter().filter(|module| module.enabled && module.present).count();
+    ApiUpdatesPaneState {
+        state: status.updates.state.clone(),
+        state_label: api_updates_state_label(&status.updates.state),
+        state_class: api_updates_state_class(&status.updates.state),
+        last_ran: status.updates.last_update_run.clone(),
+        pending_updates: status.updates.pending_updates.to_string(),
+        readiness_ratio: format!("{ready}/{enabled}"),
+        module_line: format!("{} ready · {} need update", ready, enabled.saturating_sub(ready)),
+        suite: if status.updates.suite_ok { "Current" } else { "Needs update" },
+        check: if status.updates.check_ok { "Current" } else { "Check needed" },
+        modules: status.updates.modules.iter().map(|module| {
+            let (state_label, state_class) = api_updates_module_state(module);
+            ApiUpdatesModuleState {
+                id: module.id.clone(),
+                label: module.label.clone(),
+                enabled: module.enabled,
+                state: module.state.clone(),
+                state_label,
+                state_class,
+                version: if module.present { status.updates.current_version.clone() } else { "Pending".to_string() },
+                receipt: module.receipt_path.clone(),
+            }
+        }).collect(),
+        receipts: ApiUpdatesReceiptsState {
+            suite: status.updates.latest_receipt.clone(),
+            check: status.updates.latest_check_receipt.clone(),
+            module_root: status.updates.module_root.clone(),
+        },
+    }
+}
 
 
 fn api_network_wifi_status_label(status: &ConsoleStatus) -> &'static str {
@@ -1421,6 +1529,31 @@ fn api_artwork_node(status: &ConsoleStatus) -> ApiObjectNode {
             .iter()
             .map(|store| api_leaf(&store.id, &store.display_name, "artwork-store", &store.state, "/api/storage/artwork", serde_json::json!(store)))
             .collect(),
+    }
+}
+
+fn api_updates_node(status: &ConsoleStatus) -> ApiObjectNode {
+    ApiObjectNode {
+        id: "updatesPane".to_string(),
+        kind: "updatesPane".to_string(),
+        title: "Updates".to_string(),
+        state: status.updates.state.clone(),
+        route: Some("/api/root".to_string()),
+        summary: serde_json::json!({
+            "state": status.updates.state,
+            "lastRan": status.updates.last_update_run,
+            "pendingUpdates": status.updates.pending_updates,
+            "modules": status.updates.module_count,
+        }),
+        metrics: vec![
+            api_metric("pendingUpdates", "Updates available", status.updates.pending_updates, Some("count"), Some(&status.updates.state)),
+            api_metric("modules", "Modules", status.updates.module_count, Some("count"), None),
+        ],
+        data: serde_json::json!({"updatesPane": api_updates_pane_state(status)}),
+        children: status.updates.modules.iter().map(|module| {
+            let (_, state_class) = api_updates_module_state(module);
+            api_leaf(&module.id, &module.label, "updatesModule", state_class, "/api/root", serde_json::json!(module))
+        }).collect(),
     }
 }
 

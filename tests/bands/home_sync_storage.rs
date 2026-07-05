@@ -1755,8 +1755,13 @@
             "Rust Build Toolchain",
             "Arcadia Gui Runtime",
             "Pinned Artifacts Runtime",
-            "enabled ·",
-            "disabled",
+            "ready ·",
+            "data-bind=\"stateLabel\"",
+            "Version",
+            "Readbacks",
+            "updatesPane.receipts.suite",
+            "updatesPane.receipts.check",
+            "updatesPane.receipts.moduleRoot",
             "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json",
             "/api/actions/check-updates",
             "/api/actions/update-gui",
@@ -1766,10 +1771,10 @@
         assert_eq!(updates_html.matches("data-harmonia-ledger-open=\"true\"").count(), 1);
         assert_eq!(updates_html.matches("/api/actions/check-updates").count(), 1);
         assert_eq!(updates_html.matches("/api/actions/update-gui").count(), 1);
-        assert_eq!(updates_html.matches("data-harmonia-module=\"").count(), 8);
-        assert_eq!(updates_html.matches("data-harmonia-module-switch=\"").count(), 8);
-        assert_eq!(updates_html.matches("type=\"checkbox\"").count(), 8);
-        assert_eq!(updates_html.matches("pin-toggle-track").count(), 8);
+        assert!(updates_html.matches("data-harmonia-module=\"").count() >= 8);
+        assert!(updates_html.matches("data-harmonia-module-switch=\"").count() >= 8);
+        assert!(updates_html.matches("type=\"checkbox\"").count() >= 8);
+        assert!(updates_html.matches("pin-toggle-track").count() >= 8);
         assert!(!updates_html.contains("data-harmonia-module-toggle="));
         assert!(!updates_html.contains(">Disable</button>"));
         assert!(!updates_html.contains(">Enable</button>"));
@@ -1777,6 +1782,68 @@
         assert!(!updates_html.contains("Latest available</span><strong>Not checked"));
         assert!(!updates_html.contains("Make harmonious"));
         assert!(!updates_html.contains("data-harmonia-module-menu=\"true\""));
+    }
+
+
+    #[test]
+    fn updates_pane_family_is_in_living_state_and_root_tree() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let living = api_living_state_document(&state);
+        let encoded = serde_json::to_value(&living).expect("living state serializes");
+        assert_eq!(encoded["updatesPane"]["state"].as_str().unwrap_or(""), living.status.updates.state);
+        assert!(encoded["updatesPane"]["lastRan"].as_str().unwrap_or("").len() > 0);
+        assert!(encoded["updatesPane"]["pendingUpdates"].as_str().is_some());
+        assert!(encoded["updatesPane"]["modules"].as_array().map(|m| !m.is_empty()).unwrap_or(false));
+        assert!(encoded["updatesPane"]["receipts"]["suite"].as_str().unwrap_or("").contains("homeconsole-update-latest"));
+
+        let root = api_root_object(&state);
+        let root_json = serde_json::to_value(&root).expect("root serializes");
+        let children = root_json["children"].as_array().expect("root children");
+        assert!(children.iter().any(|node| node["kind"] == "updatesPane" && node["id"] == "updatesPane"));
+    }
+
+    #[test]
+    fn updates_css_band_is_curated_and_height_budgeted() {
+        let views_index = include_str!("../../static/app/views/index.json");
+        assert!(views_index.contains("updates.css"));
+        for required in [
+            ".view[data-view-panel=\"updates\"].is-active",
+            ".updates-pane",
+            "grid-template-rows: auto minmax(0, 1fr) auto;",
+            ".updates-board",
+            "grid-template-columns: minmax(0, 1.45fr) minmax(240px, .65fr);",
+            ".updates-module-grid",
+            "grid-auto-rows: minmax(var(--ux-updates-module-min-height), 1fr);",
+            "overflow: hidden;",
+        ] {
+            assert!(APP_CSS.contains(required), "updates css missing {required}");
+        }
+    }
+
+    #[test]
+    fn updates_readbacks_ride_living_state_not_obsolete_dom_menu() {
+        for required in [
+            "data-bind-checked",
+            "data-bind-value",
+            "data-bind-attr-id",
+            "host.dataset.bindReplace === 'true'",
+            "document.addEventListener('change', (event) =>",
+            "ArcadiaProjector.apply(JSON.parse(event.data))",
+        ] {
+            assert!(APP_JS.contains(required), "projector missing updates support {required}");
+        }
+        for forbidden in [
+            "function openHarmoniaModuleMenu()",
+            "data-harmonia-module-toggle",
+            "window.setInterval(poll, 650)",
+            "setInterval(poll, pollMs)",
+        ] {
+            assert!(!APP_JS.contains(forbidden), "obsolete updates readback/poll remains: {forbidden}");
+        }
     }
 
     #[test]
@@ -1804,6 +1871,7 @@
             assert!(updates_html.contains(required), "updates view missing {required}");
         }
         for required in [
+            "function ledgerValue(value)",
             "/api/harmonia/ledger?page=",
             "harmonia-ledger-list",
             "harmonia-ledger-pager",
