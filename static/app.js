@@ -347,6 +347,13 @@ const ArcadiaProjector = (() => {
       node.hidden = !visible;
       node.setAttribute('aria-hidden', String(!visible));
     });
+    boundNodes(root, '[data-bind-style-var]', includeGenerated).forEach((node) => {
+      String(node.dataset.bindStyleVar || '').split(',').forEach((binding) => {
+        const [name, path] = binding.split(':').map((part) => part && part.trim());
+        if (!name || !path || !name.startsWith('--')) return;
+        node.style.setProperty(name, asText(resolve(path, state)));
+      });
+    });
   }
 
   function projectEachBindings(root, state, includeGenerated = false) {
@@ -399,6 +406,7 @@ const ArcadiaProjector = (() => {
   }
 
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
+  // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
   return { apply, registerWidget, resolve };
 })();
 window.ArcadiaProjector = ArcadiaProjector;

@@ -44,6 +44,7 @@ pub struct ApiLivingStateDocument {
     pub status: ConsoleStatus,
     pub home: ApiHomeState,
     pub sync: ApiSyncState,
+    pub storage_pane: ApiStoragePaneState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
@@ -89,6 +90,91 @@ pub struct ApiSyncSystemState {
     pub tone: &'static str,
     pub monogram: String,
 }
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneState {
+    pub hero: ApiStoragePaneHeroState,
+    pub capacity: ApiStoragePaneCapacityState,
+    pub mismatch: ApiStoragePaneMismatchState,
+    pub categories: ApiStoragePaneCategoriesState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneHeroState {
+    pub total: String,
+    pub used: String,
+    pub free: String,
+    pub scan: String,
+    pub percent: String,
+    pub health: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneCapacityState {
+    pub used_line: String,
+    pub segments: ApiStoragePaneSegmentsState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneSegmentsState {
+    pub games: ApiStoragePaneStyleState,
+    pub artwork: ApiStoragePaneStyleState,
+    pub ai: ApiStoragePaneStyleState,
+    pub updates: ApiStoragePaneStyleState,
+    pub logs: ApiStoragePaneStyleState,
+    pub temporary: ApiStoragePaneStyleState,
+    pub system: ApiStoragePaneStyleState,
+    pub other: ApiStoragePaneStyleState,
+    pub free: ApiStoragePaneStyleState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneStyleState {
+    pub width: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneMismatchState {
+    pub visible: bool,
+    pub state: &'static str,
+    pub title: String,
+    pub copy: String,
+    pub filesystem_used: String,
+    pub category_scan: String,
+    pub other: String,
+    pub scan_time: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneCategoriesState {
+    pub games: ApiStoragePaneCategoryState,
+    pub artwork: ApiStoragePaneCategoryState,
+    pub ai: ApiStoragePaneCategoryState,
+    pub updates: ApiStoragePaneCategoryState,
+    pub logs: ApiStoragePaneCategoryState,
+    pub temporary: ApiStoragePaneCategoryState,
+    pub system: ApiStoragePaneCategoryState,
+    pub other: ApiStoragePaneCategoryState,
+    pub free: ApiStoragePaneCategoryState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiStoragePaneCategoryState {
+    pub size: String,
+    pub percent: String,
+    pub badge: String,
+    pub state: &'static str,
+    pub bar: ApiStoragePaneStyleState,
+}
+
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -419,6 +505,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         generated_at_unix: now_unix_seconds(),
         home: api_home_state(&status),
         sync: api_sync_state(&status),
+        storage_pane: api_storage_pane_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -427,6 +514,143 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         controllers: controller_status_api(),
         system: system_admin_status(&network_status(), &hostname()),
     }
+}
+
+
+fn api_storage_pane_state(status: &ConsoleStatus) -> ApiStoragePaneState {
+    let classified_bytes = status
+        .storage
+        .games
+        .bytes
+        .saturating_add(status.storage.artwork.bytes)
+        .saturating_add(status.storage.ai_models.bytes)
+        .saturating_add(status.storage.categories.updates.bytes)
+        .saturating_add(status.storage.categories.logs.bytes)
+        .saturating_add(status.storage.categories.temporary.bytes)
+        .saturating_add(status.storage.categories.system.bytes);
+    let accounted_bytes = classified_bytes.saturating_add(status.storage.other.bytes);
+    let diagnostics_count = status.storage.diagnostics.missing_dirs.len()
+        + status.storage.diagnostics.permission_errors.len()
+        + status.storage.diagnostics.warnings.len()
+        + status.storage.diagnostics.overlap_warnings.len()
+        + status.storage.diagnostics.category_scan_errors.len();
+    let mismatch_visible = diagnostics_count > 0;
+    let mismatch_copy = if mismatch_visible {
+        format!(
+            "Managed storage categories overlap or could not be fully scanned. Filesystem used {}. Managed categories classify {}; accounting total is {}.",
+            status.storage.used,
+            human_size_or_zero(classified_bytes),
+            human_size_or_zero(accounted_bytes)
+        )
+    } else {
+        String::new()
+    };
+    ApiStoragePaneState {
+        hero: ApiStoragePaneHeroState {
+            total: status.storage.total.clone(),
+            used: status.storage.used.clone(),
+            free: status.storage.free.clone(),
+            scan: api_storage_scan_label(&status.storage.scanned_at),
+            percent: status.storage.percent.clone(),
+            health: status.storage.health,
+        },
+        capacity: ApiStoragePaneCapacityState {
+            used_line: format!("{} used of {}", status.storage.used, status.storage.total),
+            segments: ApiStoragePaneSegmentsState {
+                games: api_storage_style_width(status.storage.games.percent_of_total, status.storage.games.bytes),
+                artwork: api_storage_style_width(status.storage.artwork.percent_of_total, status.storage.artwork.bytes),
+                ai: api_storage_style_width(status.storage.ai_models.percent_of_total, status.storage.ai_models.bytes),
+                updates: api_storage_style_width(status.storage.categories.updates.percent_of_total, status.storage.categories.updates.bytes),
+                logs: api_storage_style_width(status.storage.categories.logs.percent_of_total, status.storage.categories.logs.bytes),
+                temporary: api_storage_style_width(status.storage.categories.temporary.percent_of_total, status.storage.categories.temporary.bytes),
+                system: api_storage_style_width(status.storage.categories.system.percent_of_total, status.storage.categories.system.bytes),
+                other: api_storage_style_width(status.storage.other.percent_of_total, status.storage.other.bytes),
+                free: ApiStoragePaneStyleState { width: format!("{}%", 100u8.saturating_sub(status.storage.percent_used)) },
+            },
+        },
+        mismatch: ApiStoragePaneMismatchState {
+            visible: mismatch_visible,
+            state: if mismatch_visible { "warning" } else { "ok" },
+            title: if mismatch_visible { "Storage mismatch detected".to_string() } else { String::new() },
+            copy: mismatch_copy,
+            filesystem_used: status.storage.used.clone(),
+            category_scan: human_size_or_zero(classified_bytes),
+            other: status.storage.other.size.clone(),
+            scan_time: format!("{} ms", status.storage.diagnostics.scan_duration_ms),
+        },
+        categories: ApiStoragePaneCategoriesState {
+            games: api_storage_pane_category(&status.storage.games),
+            artwork: api_storage_pane_category(&status.storage.artwork),
+            ai: api_ai_storage_pane_category(&status.storage.ai_models),
+            updates: api_storage_pane_category(&status.storage.categories.updates),
+            logs: api_storage_pane_category(&status.storage.categories.logs),
+            temporary: api_storage_pane_category(&status.storage.categories.temporary),
+            system: api_storage_pane_category(&status.storage.categories.system),
+            other: api_storage_pane_category(&status.storage.other),
+            free: ApiStoragePaneCategoryState {
+                size: status.storage.free.clone(),
+                percent: api_percent_label(100u8.saturating_sub(status.storage.percent_used), status.storage.free_bytes),
+                badge: "Available".to_string(),
+                state: "available",
+                bar: ApiStoragePaneStyleState { width: format!("{}%", 100u8.saturating_sub(status.storage.percent_used)) },
+            },
+        },
+    }
+}
+
+fn api_storage_pane_category(category: &StorageCategoryStatus) -> ApiStoragePaneCategoryState {
+    ApiStoragePaneCategoryState {
+        size: category.size.clone(),
+        percent: api_percent_label(category.percent_of_total, category.bytes),
+        badge: api_title_case_state_like(&category.state).to_string(),
+        state: api_storage_state_class(&category.state),
+        bar: api_storage_style_width(category.percent_of_total, category.bytes),
+    }
+}
+
+fn api_ai_storage_pane_category(category: &AiModelStorageStatus) -> ApiStoragePaneCategoryState {
+    ApiStoragePaneCategoryState {
+        size: category.size.clone(),
+        percent: api_percent_label(category.percent_of_total, category.bytes),
+        badge: category.meta.clone(),
+        state: "available",
+        bar: api_storage_style_width(category.percent_of_total, category.bytes),
+    }
+}
+
+fn api_storage_style_width(percent: u8, bytes: u64) -> ApiStoragePaneStyleState {
+    ApiStoragePaneStyleState { width: format!("{}%", percent.max(if bytes == 0 { 0 } else { 1 })) }
+}
+
+fn api_storage_scan_label(scanned_at: &str) -> String {
+    if scanned_at.contains('T') { "just now".to_string() } else { scanned_at.to_string() }
+}
+
+fn api_storage_state_class(state: &str) -> &'static str {
+    match state {
+        "ok" => "available",
+        "warning" => "starting",
+        "unknown" => "unknown",
+        _ => "unknown",
+    }
+}
+
+fn api_title_case_state_like(state: &str) -> &'static str {
+    match state {
+        "ok" => "Available",
+        "warning" => "Review",
+        "unknown" => "Unknown",
+        "available" => "Available",
+        _ => "Unknown",
+    }
+}
+
+fn api_percent_label(percent: u8, bytes: u64) -> String {
+    if bytes > 0 && percent == 0 { "<1%".to_string() } else { format!("{}%", percent) }
+}
+
+fn human_size_or_zero(bytes: u64) -> String {
+    if bytes == 0 { "0 B".to_string() } else { human_size(bytes) }
 }
 
 fn api_sync_state(status: &ConsoleStatus) -> ApiSyncState {

@@ -16,3 +16,4 @@ Agent contract:
 4. Do not add new `@media` blocks to `static/app.css`; the Rust test suite enforces this.
 5. Keep ordinary human-facing text within 12px through 22px unless a special display surface is explicitly ordered.
 6. Prove visible control geometry with rendered DOM readback when a change touches buttons, cards, action rows, or viewport fit.
+7. Pane-blind living-state style binding uses `data-bind-style-var="--var:path"`; values come from curated API document strings and are written only to CSS custom properties.
