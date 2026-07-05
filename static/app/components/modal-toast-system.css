@@ -140,25 +140,21 @@ body.modal-fullscreen-open { overflow: hidden; }
 .storage-category-card p { color: var(--muted); line-height: 1.45; }
 .storage-category-list { display: grid; gap: 7px; }
 .storage-category-list--dashboard { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.storage-category-row { display: grid; grid-template-columns: minmax(0, 1fr); align-content: center; gap: var(--ux-grid-gap); width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); color: inherit; text-align: left; }
-.storage-category-row--inline { grid-template-areas: none; }
+.storage-category-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto auto; gap: 8px; align-items: center; width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); color: inherit; text-align: left; }
+.storage-category-row--inline { grid-template-areas: "icon main size percent affordance" "icon main mini state affordance"; }
 .storage-category-row--action { cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
 .storage-category-row--action:hover, .storage-category-row--action:focus-visible { border-color: color-mix(in srgb, var(--orange) 62%, var(--line)); background: color-mix(in srgb, var(--theme-button-surface) 88%, transparent); transform: translateY(-1px); outline: none; }
 .storage-category-row--action:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--orange) 40%, transparent); }
-.storage-category-stack { width: 100%; display: grid; align-content: center; gap: var(--ux-grid-gap); }
-.storage-category-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.storage-category-chevron { justify-self: end; color: var(--orange); font-size: 19px; font-weight: 900; line-height: 1; }
-.storage-category-chevron--placeholder { visibility: hidden; }
-.storage-category-icon { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; background: var(--theme-button-surface); }
-.storage-category-head strong { min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.storage-category-description { color: var(--muted); font-size: 11px; line-height: 1.22; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.storage-category-stat { display: flex; align-items: baseline; justify-content: flex-start; gap: 7px; min-width: 0; }
-.storage-category-row b { font-size: 14px; text-align: left; white-space: nowrap; }
-.storage-category-row em { color: var(--muted); font-style: normal; font-size: 12px; text-align: left; }
-.storage-category-foot { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
-.storage-category-row .system-status { justify-self: end; }
+.storage-category-chevron { grid-area: affordance; align-self: center; justify-self: end; color: var(--orange); font-size: 19px; font-weight: 900; line-height: 1; }
+.storage-category-icon { grid-area: icon; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; background: var(--theme-button-surface); }
+.storage-category-main { grid-area: main; display: grid; gap: 2px; min-width: 0; }
+.storage-category-main strong { font-size: 14px; }
+.storage-category-main small { color: var(--muted); font-size: 11px; line-height: 1.22; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.storage-category-row b { grid-area: size; font-size: 14px; text-align: right; white-space: nowrap; }
+.storage-category-row em { grid-area: percent; color: var(--muted); font-style: normal; font-size: 12px; text-align: right; }
+.storage-category-row .system-status { grid-area: state; justify-self: end; }
 .storage-category-row .btn, .storage-alert-line .btn { min-height: 32px; padding: 6px 10px; border-radius: 12px; font-size: 12px; }
-.storage-category-mini { height: 9px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--theme-glass); }
+.storage-category-mini { grid-area: mini; height: 9px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--theme-glass); }
 .storage-category-mini span { display: block; height: 100%; }
 .storage-model-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
 .storage-model-row span { display: grid; gap: 3px; }

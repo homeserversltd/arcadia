@@ -1,22 +1,4 @@
 /* Arcadia composable: views/local-ai.css */
-
-.view[data-view-panel="local-ai"].is-active {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: var(--ux-card-gap);
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  align-content: stretch;
-}
-.view[data-view-panel="local-ai"] .local-ai-workbench {
-  grid-column: 1 / -1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--ux-card-gap);
-  align-items: stretch;
-}
 .local-ai-hero, .local-ai-card {
   min-width: 0;
   border: 1px solid var(--line);
@@ -27,9 +9,9 @@
 .local-ai-hero {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) minmax(220px, .44fr);
-  gap: var(--ux-card-gap);
+  gap: 14px;
   align-items: center;
-  padding: 14px;
+  padding: 15px;
   border-color: color-mix(in srgb, var(--theme-accent) 36%, transparent);
   background: linear-gradient(135deg, color-mix(in srgb, var(--theme-accent) 17%, transparent), color-mix(in srgb, var(--theme-bg-raised) 78%, transparent));
 }
@@ -54,26 +36,17 @@
 .local-ai-hero-copy p, .local-ai-help, .local-ai-state-tile em, .local-ai-empty p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.3; font-style: normal; }
 .local-ai-hero-endpoint { display: grid; gap: 6px; justify-items: start; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 16px; background: color-mix(in srgb, var(--theme-field-surface) 74%, transparent); }
 .local-ai-hero-endpoint code { max-width: 100%; color: var(--orange-strong); font-size: 13px; font-weight: 900; overflow-wrap: anywhere; }
-.local-ai-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 9px; min-height: 0; padding: 12px; align-content: stretch; }
-.local-ai-card-body { min-height: 0; align-content: start; }
-.local-ai-card-foot { align-self: end; }
+.local-ai-card { display: grid; gap: 9px; padding: 12px; }
 .view[data-view-panel="local-ai"] .btn { width: 128px; min-height: var(--ux-button-min-height); padding: var(--ux-button-padding-block) var(--ux-button-padding-inline); display: inline-flex; align-items: center; justify-content: center; text-align: center; white-space: nowrap; }
 .local-ai-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 128px)); justify-content: start; align-items: stretch; gap: var(--ux-control-gap); }
 .local-ai-actions .btn { width: 100%; }
-.local-ai-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; padding-bottom: 7px; border-bottom: var(--ux-card-divider); }
+.local-ai-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 7px; border-bottom: var(--ux-card-divider); }
 .local-ai-card-head strong { font-size: 16px; }
 .local-ai-state-list, .local-ai-access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.local-ai-port-form { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; height: 100%; }
-.local-ai-port-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.local-ai-port-fields .local-ai-help { grid-column: 1 / -1; }
 .local-ai-state-tile { display: grid; gap: 4px; min-width: 0; padding: 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); }
 .local-ai-state-tile strong { color: var(--cream); font-size: 14px; line-height: 1.15; overflow-wrap: anywhere; }
 .local-ai-state-tile[data-ai-tile="endpoint"] { grid-column: 1 / -1; }
-.local-ai-card--access .local-ai-access-grid { align-content: start; }
-.local-ai-card--access .local-ai-state-tile { gap: 3px; padding: 8px; overflow: hidden; }
-.local-ai-card--access .local-ai-state-tile em { display: none; }
-.local-ai-card--access .local-ai-help { display: none; }
-.local-ai-empty { grid-column: 1 / -1; padding: 9px; border: 1px solid color-mix(in srgb, var(--theme-warn) 38%, transparent); border-radius: 15px; background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
+.local-ai-empty { padding: 9px; border: 1px solid color-mix(in srgb, var(--theme-warn) 38%, transparent); border-radius: 15px; background: color-mix(in srgb, var(--theme-warn) 10%, transparent); }
 .local-ai-empty strong { color: var(--warn); }
 .local-ai-port-form { gap: 8px; }
 .model-card { display: grid; gap: 10px; padding: 18px; border-radius: 22px; border: 1px solid var(--line); background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); }

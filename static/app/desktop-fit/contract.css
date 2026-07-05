@@ -87,15 +87,11 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 .storage-category-list--dashboard { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .storage-category-row { gap: 4px; padding: 4px 5px; border-radius: 12px; }
 .storage-category-row--action:hover, .storage-category-row--action:focus-visible { transform: none; }
-.storage-category-stack { gap: 4px; }
-.storage-category-head { gap: 4px; }
 .storage-category-chevron { font-size: 13px; }
 .storage-category-icon { width: 18px; height: 18px; font-size: 10px; }
-.storage-category-head strong, .storage-category-row b { font-size: 11px; }
-.storage-category-description { font-size: 9px; line-height: 1.05; }
-.storage-category-stat { gap: 4px; }
+.storage-category-main strong, .storage-category-row b { font-size: 11px; }
+.storage-category-main small { font-size: 9px; line-height: 1.05; }
 .storage-category-row em { font-size: 9px; }
-.storage-category-foot { gap: 4px; }
 .storage-category-mini { height: 5px; }
 .storage-category-row .system-status { padding: 2px 4px; font-size: 8px; }
 .system-power-panel { gap: 7px; margin-bottom: 7px; padding: 8px; }
@@ -139,10 +135,7 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
 /* Basic desktop fit: sync packs the orb, systems, and full game list inside the appliance pane. */
 .view[data-view-panel="sync"].is-active {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  height: 100%;
-  min-height: 0;
-  align-content: stretch;
+  align-content: start;
   gap: 8px;
   min-width: 0;
   overflow: hidden;
@@ -158,7 +151,7 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
 }
 .view[data-view-panel="sync"] .sync-admitted-shelf {
-  max-block-size: none;
+  max-block-size: min(32dvh, 280px);
 }
 .view[data-view-panel="sync"] .sync-game-card {
   border-radius: 13px;

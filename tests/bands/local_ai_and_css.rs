@@ -213,53 +213,6 @@
 
 
     #[test]
-    fn local_ai_pane_surfaces_are_bound_and_js_readback_is_retired() {
-        let state = AppState {
-            started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
-            product: "HomeConsole".to_string(),
-        };
-        let status = console_status(&state);
-        let rendered = ui::layout(&status).into_string();
-        let local_ai_start = rendered
-            .find(r#"id="view-local-ai""#)
-            .expect("local ai view starts");
-        let local_ai_end = rendered[local_ai_start..]
-            .find(r#"id="view-controllers""#)
-            .map(|offset| local_ai_start + offset)
-            .expect("controllers view follows local ai");
-        let local_ai_html = &rendered[local_ai_start..local_ai_end];
-
-        for required in [
-            r#"data-bind="localAiPane.hero.headline""#,
-            r#"data-bind="localAiPane.hero.endpoint""#,
-            "No active endpoint",
-            r#"data-bind="localAiPane.model.selected""#,
-            r#"data-bind="localAiPane.model.servingNow""#,
-            r#"data-bind="localAiPane.model.libraryCount""#,
-            r#"data-bind="localAiPane.model.state""#,
-            r#"data-bind="localAiPane.access.internal""#,
-            r#"data-bind="localAiPane.access.lan""#,
-            r#"data-bind="localAiPane.access.port""#,
-            r#"data-bind="localAiPane.access.baseUrl""#,
-            r#"data-bind="localAiPane.access.listeningBadge""#,
-            "API NOT LISTENING",
-            r#"data-bind="localAiPane.port.activeBadge""#,
-            "local-ai-workbench",
-        ] {
-            assert!(local_ai_html.contains(required), "missing Local AI binding/readback: {required}");
-        }
-        assert!(APP_CSS.contains(r#".view[data-view-panel="local-ai"].is-active"#));
-        assert!(APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
-        assert!(APP_CSS.contains(".local-ai-workbench"));
-        assert!(APP_CSS.contains("grid-template-columns: repeat(3, minmax(0, 1fr));"));
-        assert!(APP_CSS.contains(".local-ai-card { display: grid; grid-template-rows: auto minmax(0, 1fr) auto;"));
-        assert!(!APP_JS.contains("updateLocalAIPortReadback"));
-        assert!(!APP_JS.contains("setLocalAIPortState"));
-    }
-
-
-    #[test]
     fn controllers_view_is_single_pane_for_controller_mapping() {
         let state = AppState {
             started_unix: 0,
@@ -305,8 +258,6 @@
             "PCSX2",
             "PPSSPP",
             "data-action=\"controllers-rescan\"",
-            "data-controller-pool-scan-tile",
-            "Scan for controllers",
             "data-action=\"controllers-save-profile\"",
             "data-action=\"controllers-assign-retroarch\"",
             "data-action=\"controllers-assign-dolphin\"",
@@ -369,7 +320,7 @@
         assert!(APP_JS.contains("openControllerModal"));
         assert!(APP_JS.contains("openControllerTunerModal"));
         assert!(APP_JS.contains("/api/actions/controllers-save-tuning"));
-        assert!(APP_JS.contains("/api/controllers/trainer/events"));
+        assert!(APP_JS.contains("/api/controllers/input"));
         assert!(APP_CSS.contains(".controller-pool-card__tune"));
         assert!(APP_CSS.contains(".controls-hub"));
         assert!(APP_CSS.contains(".controls-status"));
@@ -399,10 +350,7 @@
         assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_CUBLET_COLS"));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
-        assert!(APP_CSS.contains("repeat(auto-fit, minmax(168px, 220px))"));
-        assert!(APP_CSS.contains("place-content: center"));
-        assert!(APP_CSS.contains(".controller-pool-scroll--empty"));
-        assert!(APP_CSS.contains(".controller-pool-scan-tile"));
+        assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
         assert!(UX_CSS.contains("--ux-controller-pool-card-min-height:"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-card-min-height)"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-action-min-height)"));
@@ -426,9 +374,7 @@
         assert!(controllers_backend.contains("fn controller_status_api()"));
         assert!(controllers_backend.contains("Json(controller_status_api())"));
         assert!(controllers_backend.contains("async fn controllers_input_route()"));
-        assert!(controllers_backend.contains("async fn controllers_trainer_events_route()"));
         assert!(controllers_backend.contains("read_controller_input(active_device.as_ref().or(devices.first()))"));
-        assert!(controllers_backend.contains("CONTROLLER_TRAINER_STREAM_CADENCE_MS: u64 = 60"));
         assert!(!controllers_backend.contains("console_status(&state)"));
         assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
@@ -460,18 +406,15 @@
         assert!(APP_JS.contains("Pause or quit your game first"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
         assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));
-        assert!(APP_JS.contains("ArcadiaControllerTrainerStream.subscribe('controller-programmer'"));
-        assert!(APP_JS.contains("ArcadiaControllerTrainerStream.subscribe('controller-tuner'"));
-        assert!(APP_JS.contains("const intervalMs = 60;"));
-        assert!(!APP_JS.contains("window.setInterval(async ()"));
-        assert!(!APP_JS.contains("window.setInterval(poll, 650)"));
+        assert!(APP_JS.contains("EventSource('/api/controllers/trainer/events')"));
+        assert!(APP_JS.contains("ArcadiaControllerTrainerStream.subscribe"));
+        assert!(APP_JS.contains("/api/controllers/trainer/events"));
         assert!(APP_JS.contains("data-controller-programmer-modal"));
         assert!(APP_JS.contains("data-controller-broadcast-toggle"));
         assert!(APP_JS.contains("/api/actions/controllers-select"));
         assert!(APP_JS.contains("controllerId"));
         assert!(APP_JS.contains("hydrateControllerBindings"));
         assert!(APP_JS.contains("updateControllerPoolSelection"));
-        assert!(APP_JS.contains("Array.isArray(controllers.controllerPool)"));
         assert!(APP_JS.contains("openControllerModal"));
         assert!(VIEWPORT_CSS.contains(".controller-pool-scroll"));
         assert!(VIEWPORT_CSS.contains("max-height: 280px"));

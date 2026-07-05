@@ -85,16 +85,10 @@
   max-height: none;
   overflow: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 220px));
-  grid-auto-rows: minmax(var(--ux-controller-pool-card-min-height), auto);
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
   gap: 8px;
-  padding: 2px;
-  place-content: center;
-  align-items: stretch;
-  justify-items: stretch;
-}
-.controller-pool-scroll--empty {
-  grid-template-columns: minmax(168px, 220px);
+  padding-right: 2px;
+  align-content: start;
 }
 .controller-pool-card {
   position: relative;
@@ -106,47 +100,6 @@
   border-radius: 14px;
   overflow: hidden;
   background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent);
-}
-.controller-pool-scan-tile {
-  min-width: 0;
-  min-height: var(--ux-controller-pool-card-min-height);
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 7px;
-  padding: 12px;
-  text-align: center;
-  border: 1px dashed color-mix(in srgb, var(--orange-strong) 52%, var(--line));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--theme-field-surface) 36%, transparent);
-}
-.controller-pool-scan-tile__icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--orange-strong) 16%, transparent);
-  color: var(--orange-strong);
-  font-size: var(--ux-text-lg);
-  font-weight: 950;
-}
-.controller-pool-scan-tile strong {
-  color: var(--cream);
-  font-size: var(--ux-text-sm);
-  line-height: 1.15;
-}
-.controller-pool-scan-tile span {
-  max-width: 18ch;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.25;
-}
-.controller-pool-scan-tile .btn {
-  width: 100%;
-  min-height: var(--ux-controller-pool-action-min-height);
-  padding: 6px 8px;
-  font-size: var(--ux-text-xs);
 }
 .controller-pool-card--selected {
   border-color: color-mix(in srgb, var(--good) 55%, var(--line));
