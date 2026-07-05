@@ -108,12 +108,50 @@
         assert!(!network_html.contains("Scan</button>"));
         assert!(!network_html.contains("Copy IP:port"));
         assert!(!network_html.contains("Copy URL:port"));
+
+        for required in [
+            r#"data-bind="networkPane.connection.headline""#,
+            r#"data-bind="networkPane.connection.detail""#,
+            r#"data-bind="networkPane.wifi.status""#,
+            r#"data-bind="networkPane.wifi.ssid""#,
+            r#"data-bind="networkPane.wired.badge""#,
+            r#"data-bind="networkPane.wired.nameservers""#,
+            r#"data-bind="networkPane.addresses.ip""#,
+            r#"data-bind-copy-value="networkPane.addresses.ip""#,
+            r#"data-bind-enabled="networkPane.addresses.ipCopyable""#,
+            r#"data-bind="networkPane.services.lanAi""#,
+            r#"data-bind="networkPane.diagnostics.gateway""#,
+        ] {
+            assert!(network_html.contains(required), "network live binding missing {required}");
+        }
+        assert!(network_html.contains("Copy AI"), "network LAN AI copy control must stay present");
+        assert!(network_html.contains("network-wifi-body"), "Wi-Fi card must carry a filled body panel");
+        let network_source = include_str!("../../src/bands/ui/network.rs");
+        for required in [
+            "network-wifi-state network-wifi-state--empty",
+            "network-wifi-state__icon",
+            "network-wifi-state__copy",
+            "No Wi-Fi adapter",
+        ] {
+            assert!(
+                network_source.contains(required),
+                "Wi-Fi no-adapter source branch missing {required}"
+            );
+        }
+        assert!(network_html.contains("network-wired-body"), "Wired LAN internals must own a full card body");
+        assert!(network_html.contains("network-diagnostics-foot__body"), "Diagnostics must render as an open bottom panel");
+        assert!(APP_CSS.contains(".network-hub") && APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
+        assert!(APP_CSS.contains(".network-workbench") && APP_CSS.contains("height: 100%;"));
+        assert!(APP_CSS.contains(".network-card") && APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
+        assert!(APP_JS.contains("[data-bind-copy-value]"));
+        assert!(APP_JS.contains("[data-bind-enabled]"));
         assert!(
             network_html.contains("network-services-hub__detail")
                 && (network_html.contains("Ethernet ·")
                     || network_html.contains("Wi-Fi ·")
+                    || network_html.contains("Limited ·")
                     || network_html.contains("Offline")),
-            "services hub detail must show active session duration"
+            "services hub detail must show active or limited session duration"
         );
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));

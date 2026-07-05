@@ -339,6 +339,16 @@ const ArcadiaProjector = (() => {
     boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
       node.textContent = asText(resolve(node.dataset.bind, state));
     });
+    boundNodes(root, '[data-bind-copy-value]', includeGenerated).forEach((node) => {
+      const value = asText(resolve(node.dataset.bindCopyValue, state));
+      node.dataset.copyValue = value;
+      node.setAttribute('data-copy-value', value);
+    });
+    boundNodes(root, '[data-bind-enabled]', includeGenerated).forEach((node) => {
+      const enabled = Boolean(resolve(node.dataset.bindEnabled, state));
+      node.disabled = !enabled;
+      node.setAttribute('aria-disabled', String(!enabled));
+    });
     boundNodes(root, '[data-bind-class]', includeGenerated).forEach((node) => {
       node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)));
     });
@@ -407,6 +417,7 @@ const ArcadiaProjector = (() => {
 
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
   // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
+  // data-bind-copy-value and data-bind-enabled keep presenter-owned controls stable while values change.
   return { apply, registerWidget, resolve };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
