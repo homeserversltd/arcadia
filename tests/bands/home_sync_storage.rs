@@ -187,6 +187,14 @@
         );
         assert!(APP_CSS.contains(".priority-strip"));
         assert!(APP_CSS.contains(".home-operational-grid"));
+        for required in [
+            ".view[data-view-panel=\"home\"].is-active { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; }",
+            ".view[data-view-panel=\"home\"] .priority-strip { grid-row: 1; }",
+            ".view[data-view-panel=\"home\"] .home-operational-grid { grid-row: 2; min-height: 0; }",
+            ".view[data-view-panel=\"home\"] .home-warning-strip { grid-row: 3; }",
+        ] {
+            assert!(APP_CSS.contains(required), "home grid row CSS missing {required}");
+        }
         assert!(APP_CSS.contains(".load-home-card"));
         assert!(APP_CSS.contains(".load-orb"));
         assert!(APP_CSS.contains(".load-orb::before"));
