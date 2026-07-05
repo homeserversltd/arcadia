@@ -305,6 +305,8 @@
             "PCSX2",
             "PPSSPP",
             "data-action=\"controllers-rescan\"",
+            "data-controller-pool-scan-tile",
+            "Scan for controllers",
             "data-action=\"controllers-save-profile\"",
             "data-action=\"controllers-assign-retroarch\"",
             "data-action=\"controllers-assign-dolphin\"",
@@ -397,7 +399,10 @@
         assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_CUBLET_COLS"));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
-        assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
+        assert!(APP_CSS.contains("repeat(auto-fit, minmax(168px, 220px))"));
+        assert!(APP_CSS.contains("place-content: center"));
+        assert!(APP_CSS.contains(".controller-pool-scroll--empty"));
+        assert!(APP_CSS.contains(".controller-pool-scan-tile"));
         assert!(UX_CSS.contains("--ux-controller-pool-card-min-height:"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-card-min-height)"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-action-min-height)"));
@@ -466,6 +471,7 @@
         assert!(APP_JS.contains("controllerId"));
         assert!(APP_JS.contains("hydrateControllerBindings"));
         assert!(APP_JS.contains("updateControllerPoolSelection"));
+        assert!(APP_JS.contains("Array.isArray(controllers.controllerPool)"));
         assert!(APP_JS.contains("openControllerModal"));
         assert!(VIEWPORT_CSS.contains(".controller-pool-scroll"));
         assert!(VIEWPORT_CSS.contains("max-height: 280px"));

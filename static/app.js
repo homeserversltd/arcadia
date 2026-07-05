@@ -496,7 +496,9 @@ function controllerPaneWidget(state) {
   const controllers = state?.controllers || {};
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
-  panel.querySelectorAll('[data-controller-pool-count]').forEach((node) => { node.textContent = String((controllers.controllerPool || []).length); });
+  if (Array.isArray(controllers.controllerPool)) {
+    panel.querySelectorAll('[data-controller-pool-count]').forEach((node) => { node.textContent = String(controllers.controllerPool.length); });
+  }
   panel.querySelectorAll('[data-controller-primary-device]').forEach((node) => { node.textContent = controllers.primaryDevice || 'No controller detected'; });
   if (!document.querySelector('[data-controller-programmer-modal]')) {
     hydrateControllerBindings(panel, controllers.profile?.bindings || []);
