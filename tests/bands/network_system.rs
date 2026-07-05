@@ -126,7 +126,18 @@
         }
         assert!(network_html.contains("Copy AI"), "network LAN AI copy control must stay present");
         assert!(network_html.contains("network-wifi-body"), "Wi-Fi card must carry a filled body panel");
-        assert!(network_html.contains("No Wi-Fi adapter"), "Wi-Fi no-adapter state must read as intentional appliance state");
+        let network_source = include_str!("../../src/bands/ui/network.rs");
+        for required in [
+            "network-wifi-state network-wifi-state--empty",
+            "network-wifi-state__icon",
+            "network-wifi-state__copy",
+            "No Wi-Fi adapter",
+        ] {
+            assert!(
+                network_source.contains(required),
+                "Wi-Fi no-adapter source branch missing {required}"
+            );
+        }
         assert!(network_html.contains("network-wired-body"), "Wired LAN internals must own a full card body");
         assert!(network_html.contains("network-diagnostics-foot__body"), "Diagnostics must render as an open bottom panel");
         assert!(APP_CSS.contains(".network-hub") && APP_CSS.contains("grid-template-rows: auto minmax(0, 1fr) auto;"));
