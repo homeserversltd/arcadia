@@ -351,6 +351,24 @@ const ArcadiaProjector = (() => {
       node.disabled = !enabled;
       node.setAttribute('aria-disabled', String(!enabled));
     });
+    boundNodes(root, '[data-bind-checked]', includeGenerated).forEach((node) => {
+      node.checked = Boolean(resolve(node.dataset.bindChecked, state));
+    });
+    boundNodes(root, '[data-bind-value]', includeGenerated).forEach((node) => {
+      const value = asText(resolve(node.dataset.bindValue, state));
+      node.value = value;
+      node.dataset.harmoniaModuleSwitch = value;
+      node.setAttribute('data-harmonia-module-switch', value);
+      node.setAttribute('aria-label', `${value} module enabled`);
+    });
+    boundNodes(root, '[data-bind-attr-id]', includeGenerated).forEach((node) => {
+      const value = asText(resolve(node.dataset.bindAttrId, state));
+      if (value) {
+        node.dataset.harmoniaModule = value;
+        node.setAttribute('data-harmonia-module', value);
+        node.querySelectorAll('[data-harmonia-module-switch-row=""]').forEach((row) => row.setAttribute('data-harmonia-module-switch-row', value));
+      }
+    });
     boundNodes(root, '[data-bind-class]', includeGenerated).forEach((node) => {
       node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)));
     });
@@ -372,7 +390,11 @@ const ArcadiaProjector = (() => {
     boundNodes(root, '[data-bind-each]', includeGenerated).forEach((host) => {
       const template = host.firstElementChild?.tagName === 'TEMPLATE' ? host.firstElementChild : null;
       if (!template) return;
-      host.querySelectorAll(':scope > [data-projector-generated="true"]').forEach((node) => node.remove());
+      if (host.dataset.bindReplace === 'true') {
+        Array.from(host.children).forEach((node) => { if (node !== template) node.remove(); });
+      } else {
+        host.querySelectorAll(':scope > [data-projector-generated="true"]').forEach((node) => node.remove());
+      }
       const items = resolve(host.dataset.bindEach, state);
       if (!Array.isArray(items)) return;
       items.forEach((item) => {
@@ -2978,38 +3000,6 @@ async function toggleHarmoniaModule(moduleId, enabled, sourceButton = null) {
   }
 }
 
-function openHarmoniaModuleMenu() {
-  const body = document.createElement('div');
-  body.className = 'harmonia-module-menu';
-  const modules = Array.from(document.querySelectorAll('[data-harmonia-module]'));
-  if (!modules.length) {
-    body.innerHTML = '<div class="empty-state"><strong>No Harmonia modules reported.</strong></div>';
-    return PopupManager.showModal({ title: 'Harmonia Modules', body, hideDefaultAction: true });
-  }
-  modules.forEach((module) => {
-    const moduleId = module.dataset.harmoniaModule;
-    const enabled = module.dataset.moduleEnabled === 'true';
-    const row = document.createElement('label');
-    row.className = 'harmonia-module-choice';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = enabled;
-    const track = document.createElement('span');
-    track.className = 'pin-toggle-track';
-    const thumb = document.createElement('span');
-    thumb.className = 'pin-toggle-thumb';
-    track.appendChild(thumb);
-    const copy = document.createElement('span');
-    copy.className = 'harmonia-module-choice-copy';
-    copy.innerHTML = `<strong>${escapeHtml(moduleLabelFromId(moduleId))}</strong><em>${escapeHtml(moduleId)}</em>`;
-    input.addEventListener('change', () => toggleHarmoniaModule(moduleId, input.checked, null));
-    row.append(input, track, copy);
-    body.appendChild(row);
-  });
-  PopupManager.showModal({ title: 'Harmonia Modules', body, hideDefaultAction: true });
-}
-
-
 function ledgerValue(value) {
   if (value === undefined || value === null || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'yes' : 'no';
@@ -3083,15 +3073,12 @@ function openHarmoniaLedger() {
 }
 
 function bindHarmoniaModules() {
-  document.querySelectorAll('[data-harmonia-module-menu]').forEach((button) => button.addEventListener('click', openHarmoniaModuleMenu));
   document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
-  document.querySelectorAll('[data-harmonia-module-switch]').forEach((input) => input.addEventListener('change', () => {
+  document.addEventListener('change', (event) => {
+    const input = event.target.closest?.('[data-harmonia-module-switch]');
+    if (!input) return;
     toggleHarmoniaModule(input.dataset.harmoniaModuleSwitch, input.checked, null);
-  }));
-  document.querySelectorAll('[data-harmonia-module-toggle]').forEach((button) => button.addEventListener('click', () => {
-    const enabled = button.dataset.enabled === 'true';
-    toggleHarmoniaModule(button.dataset.harmoniaModuleToggle, !enabled, button);
-  }));
+  });
 }
 
 function bindSystemTrustAndAccessForms() {
