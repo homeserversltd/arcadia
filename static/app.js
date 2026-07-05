@@ -39,6 +39,7 @@ const PopupManager = (() => {
     else target.textContent = body || '';
     actions()?.toggleAttribute('hidden', hideDefaultAction);
     el.hidden = false;
+    document.dispatchEvent(new CustomEvent('arcadia:modal-open', { detail: { title: modalTitle || 'Arcadia Console', variant } }));
     const focusable = el.querySelector('button, [href], input, select, textarea, details, [tabindex]:not([tabindex="-1"])');
     focusable?.focus();
   }
@@ -53,6 +54,7 @@ const PopupManager = (() => {
     document.body.classList.remove('modal-fullscreen-open');
     content().textContent = '';
     actions()?.removeAttribute('hidden');
+    document.dispatchEvent(new CustomEvent('arcadia:modal-close'));
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
   }
 
@@ -404,6 +406,7 @@ const ArcadiaProjector = (() => {
 
   function apply(state) {
     lastDocument = state || {};
+    if (window.arcadiaControllerTrainerStreamState) window.arcadiaControllerTrainerStreamState.lastLivingState = lastDocument;
     project(document, lastDocument);
     dispatchWidgets(lastDocument);
   }
@@ -421,6 +424,95 @@ const ArcadiaProjector = (() => {
   return { apply, registerWidget, resolve };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
+
+
+const ArcadiaControllerTrainerStream = (() => {
+  const subscribers = new Map();
+  const state = { source: null, events: 0, lease: null, lastInput: null, lastEvent: '', fallbackSnapshots: 0 };
+  window.arcadiaControllerTrainerStreamState = state;
+
+  function hasWatchers() { return subscribers.size > 0; }
+  function close() {
+    if (state.source) state.source.close();
+    state.source = null;
+  }
+  async function fallbackSnapshot() {
+    try {
+      const serverData = await getJson('/api/controllers/input');
+      state.fallbackSnapshots += 1;
+      publish(serverData, 'snapshot');
+    } catch (_) {}
+  }
+  function publish(serverData, eventName = 'input') {
+    const merged = mergeControllerInput(serverData, readBrowserGamepadInput());
+    state.lastInput = merged;
+    state.lastEvent = eventName;
+    state.events += 1;
+    subscribers.forEach((fn, key) => {
+      try { fn(merged, { eventName, key, lease: state.lease }); }
+      catch (error) { console.warn('controller trainer subscriber failed', key, error); }
+    });
+  }
+  function connect() {
+    if (!hasWatchers() || state.source || document.visibilityState !== 'visible') return;
+    if (!window.EventSource) { fallbackSnapshot(); return; }
+    const source = new EventSource('/api/controllers/trainer/events');
+    state.source = source;
+    source.addEventListener('lease', (event) => {
+      try { state.lease = JSON.parse(event.data); } catch (_) {}
+    });
+    ['snapshot', 'input'].forEach((name) => {
+      source.addEventListener(name, (event) => {
+        try { publish(JSON.parse(event.data), name); } catch (_) {}
+      });
+    });
+    source.addEventListener('heartbeat', (event) => { state.lastEvent = 'heartbeat'; try { state.lease = JSON.parse(event.data); } catch (_) {} });
+    source.addEventListener('expired', () => { close(); if (hasWatchers()) setTimeout(connect, 300); });
+    source.onerror = () => { close(); if (hasWatchers()) setTimeout(connect, 800); };
+  }
+  function subscribe(key, fn) {
+    if (!key || typeof fn !== 'function') return () => {};
+    subscribers.set(key, fn);
+    connect();
+    if (state.lastInput) fn(state.lastInput, { eventName: state.lastEvent || 'cached', key, lease: state.lease });
+    return () => {
+      subscribers.delete(key);
+      if (!hasWatchers()) close();
+    };
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') close();
+    else connect();
+  });
+  return { subscribe, close, state };
+})();
+
+function controllerPaneIsActive() {
+  return Boolean(document.querySelector('[data-view-panel="controllers"].is-active')) && document.visibilityState === 'visible';
+}
+
+let controllerPaneUnsubscribe = null;
+function controllerPaneWidget(state) {
+  const controllers = state?.controllers || {};
+  const panel = document.querySelector('[data-view-panel="controllers"]');
+  if (!panel) return;
+  panel.querySelectorAll('[data-controller-pool-count]').forEach((node) => { node.textContent = String((controllers.controllerPool || []).length); });
+  panel.querySelectorAll('[data-controller-primary-device]').forEach((node) => { node.textContent = controllers.primaryDevice || 'No controller detected'; });
+  if (!document.querySelector('[data-controller-programmer-modal]')) {
+    hydrateControllerBindings(panel, controllers.profile?.bindings || []);
+  }
+  const shouldStream = controllerPaneIsActive();
+  if (shouldStream && !controllerPaneUnsubscribe) {
+    controllerPaneUnsubscribe = ArcadiaControllerTrainerStream.subscribe('controllers-pane', (input) => {
+      if (!controllerPaneIsActive() || document.querySelector('[data-controller-programmer-modal], [data-controller-tuner-modal]')) return;
+      updateControllerLiveInput(input);
+    });
+  } else if (!shouldStream && controllerPaneUnsubscribe) {
+    controllerPaneUnsubscribe();
+    controllerPaneUnsubscribe = null;
+  }
+}
+ArcadiaProjector.registerWidget('controllersPane', controllerPaneWidget);
 
 function bindHomeLoadSubscription() {
   const card = document.querySelector('[data-load-card]');
@@ -1116,10 +1208,10 @@ function mergeControllerInput(serverData, browserData) {
 
 function updateControllerLiveInput(data) {
   const root = document.querySelector('[data-controller-live-input]');
-  if (!root || !data) return;
-  const state = root.querySelector('[data-controller-input-state]');
+  if (!data) return;
+  const state = root?.querySelector('[data-controller-input-state]');
   if (state) state.textContent = titleCase((data.state || 'listening').replace(/-/g, ' '));
-  const device = root.querySelector('[data-controller-input-device]');
+  const device = root?.querySelector('[data-controller-input-device]');
   if (device) device.textContent = data.device || 'No controller detected';
   const pressed = new Set((data.pressed || []).map((item) => item.control));
   document.querySelectorAll('[data-controller-control]').forEach((pill) => {
@@ -1127,7 +1219,7 @@ function updateControllerLiveInput(data) {
     pill.classList.toggle('controller-button-dot--active', active);
     pill.classList.toggle('is-active', active);
   });
-  const axes = root.querySelector('[data-controller-axes]');
+  const axes = root?.querySelector('[data-controller-axes]');
   if (axes) {
     const values = data.axes || [];
     axes.innerHTML = '';
@@ -1472,25 +1564,21 @@ function bindControllerProgramming() {
   };
 
   const startProgrammerLoop = (root) => {
-    if (programmerTimer) window.clearInterval(programmerTimer);
+    if (programmerTimer) { programmerTimer(); programmerTimer = null; }
     bindProfileCards(root);
     bindControlButtons(root);
     bindModalActions(root);
     const readout = root.querySelector('[data-controller-broadcast-readout]');
     if (readout) readout.textContent = 'Live';
-    programmerTimer = window.setInterval(async () => {
+    programmerTimer = ArcadiaControllerTrainerStream.subscribe('controller-programmer', async (merged) => {
       if (!document.querySelector('[data-controller-programmer-modal]')) {
-        window.clearInterval(programmerTimer);
+        if (programmerTimer) programmerTimer();
         programmerTimer = null;
         return;
       }
       if (programmerPaused) return;
-      try {
-        const serverData = await getJson('/api/controllers/input');
-        const browserData = readBrowserGamepadInput();
-        await ingestProgrammerInput(root, mergeControllerInput(serverData, browserData));
-      } catch (_) {}
-    }, intervalMs);
+      await ingestProgrammerInput(root, merged);
+    });
     const toggle = root.querySelector('[data-controller-broadcast-toggle]:not([data-controller-broadcast-bound])');
     if (toggle) {
       toggle.dataset.controllerBroadcastBound = 'true';
@@ -1681,20 +1769,16 @@ function bindControllerProgramming() {
     }
   };
   const startTunerLoop = (root) => {
-    if (tunerTimer) window.clearInterval(tunerTimer);
+    if (tunerTimer) { tunerTimer(); tunerTimer = null; }
     bindTunerControls(root);
-    tunerTimer = window.setInterval(async () => {
+    tunerTimer = ArcadiaControllerTrainerStream.subscribe('controller-tuner', (merged) => {
       if (!document.querySelector('[data-controller-tuner-modal]')) {
-        window.clearInterval(tunerTimer);
+        if (tunerTimer) tunerTimer();
         tunerTimer = null;
         return;
       }
-      try {
-        const serverData = await getJson('/api/controllers/input');
-        const browserData = readBrowserGamepadInput();
-        updateTunerPreview(root, mergeControllerInput(serverData, browserData));
-      } catch (_) {}
-    }, intervalMs);
+      updateTunerPreview(root, merged);
+    });
   };
   const openControllerTunerModal = async (controllerId) => {
     const targetId = controllerId || activeControllerId();
@@ -1788,19 +1872,11 @@ function bindControllerLiveInput() {
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
   bindControllerProgramming();
-  const root = document.querySelector('[data-controller-live-input]');
-  if (!root) return;
-  const poll = async () => {
-    const active = document.querySelector('[data-view-panel="controllers"].is-active, [data-view-panel="controllers"].view--active, [data-view-panel="controllers"].active');
-    if (!active || document.querySelector('[data-controller-programmer-modal]') || document.querySelector('[data-controller-tuner-modal]')) return;
-    try {
-      const serverData = await getJson('/api/controllers/input');
-      const browserData = readBrowserGamepadInput();
-      updateControllerLiveInput(mergeControllerInput(serverData, browserData));
-    } catch (_) {}
-  };
-  poll();
-  window.setInterval(poll, 650);
+  const refresh = () => controllerPaneWidget(window.arcadiaControllerTrainerStreamState?.lastLivingState || {});
+  document.addEventListener('arcadia:view-change', refresh);
+  document.addEventListener('visibilitychange', refresh);
+  document.addEventListener('arcadia:modal-close', refresh);
+  refresh();
 }
 
 function bindStorageModals() {

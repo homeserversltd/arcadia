@@ -155,6 +155,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/ai/state", get(ai_state_route))
         .route("/api/controllers/state", get(controllers_state_route))
         .route("/api/controllers/input", get(controllers_input_route))
+        .route(
+            "/api/controllers/trainer/events",
+            get(controllers_trainer_events_route),
+        )
         .route("/api/network/wifi/status", get(wifi_status))
         .route("/api/network/wifi/scan", post(wifi_scan))
         .route("/api/network/wifi/connect", post(wifi_connect))

@@ -367,7 +367,7 @@
         assert!(APP_JS.contains("openControllerModal"));
         assert!(APP_JS.contains("openControllerTunerModal"));
         assert!(APP_JS.contains("/api/actions/controllers-save-tuning"));
-        assert!(APP_JS.contains("/api/controllers/input"));
+        assert!(APP_JS.contains("/api/controllers/trainer/events"));
         assert!(APP_CSS.contains(".controller-pool-card__tune"));
         assert!(APP_CSS.contains(".controls-hub"));
         assert!(APP_CSS.contains(".controls-status"));
@@ -421,7 +421,9 @@
         assert!(controllers_backend.contains("fn controller_status_api()"));
         assert!(controllers_backend.contains("Json(controller_status_api())"));
         assert!(controllers_backend.contains("async fn controllers_input_route()"));
+        assert!(controllers_backend.contains("async fn controllers_trainer_events_route()"));
         assert!(controllers_backend.contains("read_controller_input(active_device.as_ref().or(devices.first()))"));
+        assert!(controllers_backend.contains("CONTROLLER_TRAINER_STREAM_CADENCE_MS: u64 = 60"));
         assert!(!controllers_backend.contains("console_status(&state)"));
         assert!(APP_JS.contains("setBindingListenState"));
         let controller_backend = include_str!("../../src/bands/status_controllers.rs");
@@ -453,9 +455,11 @@
         assert!(APP_JS.contains("Pause or quit your game first"));
         assert!(APP_JS.contains("/api/actions/controllers-bind"));
         assert!(APP_JS.contains("/api/actions/controllers-apply-profile"));
-        assert!(APP_JS.contains("window.setInterval(async ()"));
-        assert!(APP_JS.contains("}, intervalMs);"));
+        assert!(APP_JS.contains("ArcadiaControllerTrainerStream.subscribe('controller-programmer'"));
+        assert!(APP_JS.contains("ArcadiaControllerTrainerStream.subscribe('controller-tuner'"));
         assert!(APP_JS.contains("const intervalMs = 60;"));
+        assert!(!APP_JS.contains("window.setInterval(async ()"));
+        assert!(!APP_JS.contains("window.setInterval(poll, 650)"));
         assert!(APP_JS.contains("data-controller-programmer-modal"));
         assert!(APP_JS.contains("data-controller-broadcast-toggle"));
         assert!(APP_JS.contains("/api/actions/controllers-select"));

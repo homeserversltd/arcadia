@@ -396,11 +396,19 @@ fn virtual_controller_device(status: &ControllerStatus, controller_id: &str) -> 
 }
 
 fn read_controller_input(device: Option<&ControllerDeviceStatus>) -> ControllerInputStatus {
+    read_controller_input_with_timeout(device, "0.18")
+}
+
+fn read_controller_input_fast(device: Option<&ControllerDeviceStatus>) -> ControllerInputStatus {
+    read_controller_input_with_timeout(device, "0.04")
+}
+
+fn read_controller_input_with_timeout(device: Option<&ControllerDeviceStatus>, sample_timeout: &str) -> ControllerInputStatus {
     let Some(device) = device else {
         return ControllerInputStatus { state: "waiting".to_string(), device: "No controller detected".to_string(), sample_path: String::new(), pressed: Vec::new(), axes: Vec::new() };
     };
     let sample_path = if device.path.contains("/dev/input/js") { device.path.clone() } else { first_js_path().unwrap_or_else(|| device.path.clone()) };
-    let events = sample_js_events(&sample_path);
+    let events = sample_js_events(&sample_path, sample_timeout);
     let mut pressed = Vec::new();
     let mut axes = Vec::new();
     for (_, value, kind, number) in events {
@@ -431,9 +439,9 @@ fn first_js_path() -> Option<String> {
     None
 }
 
-fn sample_js_events(path: &str) -> Vec<(u32, i16, u8, u8)> {
+fn sample_js_events(path: &str, sample_timeout: &str) -> Vec<(u32, i16, u8, u8)> {
     let Ok(output) = Command::new("/usr/bin/env")
-        .args(["timeout", "0.18", "dd", &format!("if={}", path), "bs=8", "count=64", "status=none"])
+        .args(["timeout", sample_timeout, "dd", &format!("if={}", path), "bs=8", "count=64", "status=none"])
         .output()
     else { return Vec::new(); };
     parse_js_events(&output.stdout)
@@ -530,6 +538,83 @@ async fn controllers_input_route() -> Json<ControllerInputStatus> {
     let active_controller_id = active_controller_id();
     let active_device = active_connected_device(&devices, &active_controller_id);
     Json(read_controller_input(active_device.as_ref().or(devices.first())))
+}
+
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ControllerTrainerStreamLease {
+    schema: &'static str,
+    kind: &'static str,
+    lease_id: String,
+    topic: &'static str,
+    cadence_ms: u64,
+    active: bool,
+    generated_at_unix: u64,
+}
+
+static CONTROLLER_TRAINER_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
+const CONTROLLER_TRAINER_STREAM_TOPIC: &str = "controllers.trainer";
+const CONTROLLER_TRAINER_STREAM_CADENCE_MS: u64 = 60;
+
+fn active_controller_input_snapshot_fast() -> ControllerInputStatus {
+    let devices = controller_devices();
+    let active_controller_id = active_controller_id();
+    let active_device = active_connected_device(&devices, &active_controller_id);
+    read_controller_input_fast(active_device.as_ref().or(devices.first()))
+}
+
+async fn controllers_trainer_events_route() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let lease_id = format!(
+        "controllers-trainer-{}",
+        CONTROLLER_TRAINER_LEASE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    let stream_lease = ControllerTrainerStreamLease {
+        schema: "arcadia.controllers.trainer.lease.v1",
+        kind: "controllerTrainerLease",
+        lease_id: lease_id.clone(),
+        topic: CONTROLLER_TRAINER_STREAM_TOPIC,
+        cadence_ms: CONTROLLER_TRAINER_STREAM_CADENCE_MS,
+        active: true,
+        generated_at_unix: now_unix_seconds(),
+    };
+    let stream = async_stream::stream! {
+        let lease_json = serde_json::to_string(&stream_lease).unwrap_or_else(|_| "{}".to_string());
+        yield Ok(Event::default().event("lease").data(lease_json));
+
+        let snapshot = active_controller_input_snapshot_fast();
+        let snapshot_json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
+        yield Ok(Event::default().event("snapshot").data(snapshot_json));
+
+        let mut tick = tokio::time::interval(Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS));
+        let mut heartbeat_tick: u64 = 0;
+        loop {
+            tick.tick().await;
+            let input = active_controller_input_snapshot_fast();
+            let input_json = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
+            yield Ok(Event::default().event("input").data(input_json));
+            heartbeat_tick = heartbeat_tick.saturating_add(1);
+            if heartbeat_tick >= 16 {
+                heartbeat_tick = 0;
+                let heartbeat = serde_json::json!({
+                    "schema": "arcadia.controllers.trainer.lease.v1",
+                    "kind": "controllerTrainerHeartbeat",
+                    "leaseId": lease_id,
+                    "topic": CONTROLLER_TRAINER_STREAM_TOPIC,
+                    "cadenceMs": CONTROLLER_TRAINER_STREAM_CADENCE_MS,
+                    "active": true,
+                    "generatedAtUnix": now_unix_seconds(),
+                });
+                yield Ok(Event::default().event("heartbeat").data(heartbeat.to_string()));
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(5))
+            .text("arcadia-controller-input"),
+    )
 }
 
 async fn action_controllers_rescan() -> (StatusCode, Json<ConsoleActionResponse>) {
