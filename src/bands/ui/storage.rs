@@ -159,16 +159,22 @@ fn storage_category_row(
     let bar_bind = format!("--storage-seg-pct:storagePane.categories.{bind_key}.bar.width");
     html! {
         button class="storage-category-row storage-category-row--inline storage-category-row--action" type="button" data-storage-category=(color) data-storage-modal=(modal) aria-label=(format!("Open {} storage details", label)) {
-            span class="storage-category-icon" { (icon) }
-            div class="storage-category-main" {
-                strong { (label) }
-                small { (category.detail) }
+            div class="storage-category-stack" {
+                div class="storage-category-head" {
+                    span class="storage-category-icon" { (icon) }
+                    strong { (label) }
+                    span class="storage-category-chevron" aria-hidden="true" { "›" }
+                }
+                small class="storage-category-description" { (category.detail) }
+                div class="storage-category-stat" {
+                    b data-bind=(size_bind) { (category.size) }
+                    em data-bind=(percent_bind) { (percent_label(category.percent_of_total, category.bytes)) }
+                }
+                div class="storage-category-foot" {
+                    div class="storage-category-mini" aria-hidden="true" { span class=(format!("storage-segment--{}", color)) style=(storage_width_style(category.percent_of_total, category.bytes)) data-bind-style-var=(bar_bind) {} }
+                    span class=(format!("system-status system-status--{}", state_class(&category.state))) data-bind=(badge_bind) data-bind-class=(state_bind) { (title_case_state_like(&category.state)) }
+                }
             }
-            b data-bind=(size_bind) { (category.size) }
-            em data-bind=(percent_bind) { (percent_label(category.percent_of_total, category.bytes)) }
-            div class="storage-category-mini" aria-hidden="true" { span class=(format!("storage-segment--{}", color)) style=(storage_width_style(category.percent_of_total, category.bytes)) data-bind-style-var=(bar_bind) {} }
-            span class=(format!("system-status system-status--{}", state_class(&category.state))) data-bind=(badge_bind) data-bind-class=(state_bind) { (title_case_state_like(&category.state)) }
-            span class="storage-category-chevron" aria-hidden="true" { "›" }
         }
     }
 }
@@ -176,16 +182,22 @@ fn storage_category_row(
 fn storage_ai_category_row(category: &AiModelStorageStatus) -> Markup {
     html! {
         button class="storage-category-row storage-category-row--inline storage-category-row--action" type="button" data-storage-category="ai" data-storage-modal="ai-models-detail" aria-label="Open Local AI storage details" {
-            span class="storage-category-icon" { "◉" }
-            div class="storage-category-main" {
-                strong { "Local AI" }
-                small { (category.detail) }
+            div class="storage-category-stack" {
+                div class="storage-category-head" {
+                    span class="storage-category-icon" { "◉" }
+                    strong { "Local AI" }
+                    span class="storage-category-chevron" aria-hidden="true" { "›" }
+                }
+                small class="storage-category-description" { (category.detail) }
+                div class="storage-category-stat" {
+                    b data-bind="storagePane.categories.ai.size" { (category.size) }
+                    em data-bind="storagePane.categories.ai.percent" { (percent_label(category.percent_of_total, category.bytes)) }
+                }
+                div class="storage-category-foot" {
+                    div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--ai" style=(storage_width_style(category.percent_of_total, category.bytes)) data-bind-style-var="--storage-seg-pct:storagePane.categories.ai.bar.width" {} }
+                    span class="system-status system-status--available" data-bind="storagePane.categories.ai.badge" data-bind-class="storagePane.categories.ai.state" { (category.meta) }
+                }
             }
-            b data-bind="storagePane.categories.ai.size" { (category.size) }
-            em data-bind="storagePane.categories.ai.percent" { (percent_label(category.percent_of_total, category.bytes)) }
-            div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--ai" style=(storage_width_style(category.percent_of_total, category.bytes)) data-bind-style-var="--storage-seg-pct:storagePane.categories.ai.bar.width" {} }
-            span class="system-status system-status--available" data-bind="storagePane.categories.ai.badge" data-bind-class="storagePane.categories.ai.state" { (category.meta) }
-            span class="storage-category-chevron" aria-hidden="true" { "›" }
         }
     }
 }
@@ -194,15 +206,22 @@ fn storage_free_row(status: &ConsoleStatus) -> Markup {
     let free_percent = 100u8.saturating_sub(status.storage.percent_used);
     html! {
         article class="storage-category-row storage-category-row--inline" data-storage-category="free" {
-            span class="storage-category-icon" { "○" }
-            div class="storage-category-main" {
-                strong { "Free" }
-                small { "Available capacity for games, artwork, updates, and Local AI models." }
+            div class="storage-category-stack" {
+                div class="storage-category-head" {
+                    span class="storage-category-icon" { "○" }
+                    strong { "Free" }
+                    span class="storage-category-chevron storage-category-chevron--placeholder" aria-hidden="true" { "" }
+                }
+                small class="storage-category-description" { "Available capacity for games, artwork, updates, and Local AI models." }
+                div class="storage-category-stat" {
+                    b data-bind="storagePane.categories.free.size" { (status.storage.free) }
+                    em data-bind="storagePane.categories.free.percent" { (percent_label(free_percent, status.storage.free_bytes)) }
+                }
+                div class="storage-category-foot" {
+                    div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--free" style=(format!("width: {}%", free_percent)) data-bind-style-var="--storage-seg-pct:storagePane.categories.free.bar.width" {} }
+                    span class="system-status system-status--available" data-bind="storagePane.categories.free.badge" data-bind-class="storagePane.categories.free.state" { "Available" }
+                }
             }
-            b data-bind="storagePane.categories.free.size" { (status.storage.free) }
-            em data-bind="storagePane.categories.free.percent" { (percent_label(free_percent, status.storage.free_bytes)) }
-            div class="storage-category-mini" aria-hidden="true" { span class="storage-segment--free" style=(format!("width: {}%", free_percent)) data-bind-style-var="--storage-seg-pct:storagePane.categories.free.bar.width" {} }
-            span class="system-status system-status--available" data-bind="storagePane.categories.free.badge" data-bind-class="storagePane.categories.free.state" { "Available" }
         }
     }
 }
