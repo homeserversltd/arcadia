@@ -391,6 +391,7 @@ pub struct ApiHomePriorityState {
 pub struct ApiHomeStorageState {
     pub state: &'static str,
     pub attention: bool,
+    pub percent_used: String,
     pub games_size: String,
     pub ai_size: String,
     pub everything_else_size: String,
@@ -1272,6 +1273,7 @@ fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
         storage: ApiHomeStorageState {
             state: if storage_attention { "attention" } else { status.storage.health },
             attention: storage_attention,
+            percent_used: format!("{}% used", status.storage.percent_used),
             games_size: status.storage.games.size.clone(),
             ai_size: status.storage.ai_models.size.clone(),
             everything_else_size: human_size(status.storage.artwork.bytes.saturating_add(status.storage.other.bytes)),
