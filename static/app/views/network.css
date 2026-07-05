@@ -18,9 +18,8 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--ux-network-gap);
-  height: 100%;
   min-height: 0;
-  align-items: stretch;
+  align-items: start;
 }
 .network-section {
   padding: var(--ux-network-card-padding);
@@ -32,11 +31,7 @@
   min-height: 0;
   display: grid;
   gap: var(--ux-network-gap);
-  align-content: stretch;
-}
-.network-card {
-  height: 100%;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: start;
 }
 .network-services-hub {
   gap: 10px;
@@ -111,40 +106,10 @@
   background: linear-gradient(90deg, color-mix(in srgb, var(--good) 70%, var(--theme-accent)), var(--good));
 }
 .network-wifi-signal em { color: var(--muted); font-style: normal; font-size: var(--ux-text-xs); }
-.network-wifi-body {
-  min-height: 0;
-  display: grid;
-  align-content: center;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent);
-}
-.network-wifi-state {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-}
-.network-wifi-state__icon {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--theme-accent) 16%, var(--theme-field-surface));
-  color: var(--theme-accent);
-  font-size: 22px;
-  font-weight: 900;
-}
-.network-wifi-state__copy { display: grid; gap: 3px; min-width: 0; }
-.network-wifi-state__copy strong { font-size: var(--ux-text-md); line-height: 1.15; }
-.network-wifi-state__copy span { color: var(--muted); font-size: var(--ux-text-sm); line-height: 1.25; }
 .network-wifi-actions {
   display: grid;
   gap: var(--ux-control-gap);
-  align-content: end;
+  align-content: start;
 }
 .network-wifi-choose {
   width: 100%;
@@ -159,9 +124,8 @@
   gap: var(--ux-control-gap);
   align-items: center;
 }
-.network-card__actions { align-content: end; align-self: end; margin-top: auto; }
-.network-wired-body { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: var(--ux-network-gap); }
-.network-speed-panel { display: grid; gap: 6px; align-content: end; }
+.network-card__actions { align-content: start; }
+.network-speed-panel { display: grid; gap: 6px; align-content: start; }
 .network-speed-result {
   padding: 8px 10px;
   border-radius: 14px;
@@ -173,27 +137,7 @@
 }
 .network-speed-result--error { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
 .network-speed-result--ok { border-color: color-mix(in srgb, var(--good) 35%, var(--line)); }
-.network-diagnostics-foot { grid-template-rows: auto auto; display: grid; align-self: end; }
-.network-diagnostics-foot__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.network-diagnostics-foot__head strong { font-size: var(--ux-text-md); }
-.network-diagnostics-foot__body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ux-network-gap); align-items: center; }
-.network-diagnostic-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-.network-diagnostic-grid > span {
-  min-height: 28px;
-  display: grid;
-  place-items: center;
-  padding: 5px 8px;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  background: color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
-  color: var(--muted);
-  font-size: var(--ux-text-xs);
-  font-weight: 800;
-}
+.network-diagnostics-foot { grid-template-rows: auto; }
 .network-service-list { display: grid; gap: 6px; align-content: start; }
 .network-service-row {
   display: grid;
@@ -207,11 +151,7 @@
 }
 .network-compact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
 .network-compact-grid--small { grid-template-columns: 1fr; }
-.network-card--wired .network-compact-grid { height: 100%; grid-auto-rows: minmax(0, 1fr); }
-.network-card--wired .network-compact-grid--small { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.network-card--wired .network-compact-grid .system-field { display: grid; align-content: center; gap: 3px; min-width: 0; overflow: hidden; }
-.network-card--wired .network-compact-grid .system-field strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.network-compact-grid .system-field { padding: 8px 10px; border-radius: 12px; background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); }
+.network-compact-grid .system-field { padding: 6px 8px; border-radius: 12px; background: color-mix(in srgb, var(--theme-field-surface) 70%, transparent); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); }
 .network-compact-grid .system-field em { font-size: var(--ux-text-xs); }
 .network-compact-grid .system-field strong { font-size: var(--ux-text-sm); line-height: 1.2; }
 .empty-state { padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--theme-field-surface) 75%, transparent); border: 1px solid var(--line); }
@@ -221,5 +161,3 @@
 .system-status--disabled { color: var(--idle); }
 .system-status--error { color: var(--bad); }
 .system-status--unknown { color: var(--idle); }
-.view[data-view-panel="network"] .network-diagnostics-foot.sync-desktop-detail { display: grid; }
-

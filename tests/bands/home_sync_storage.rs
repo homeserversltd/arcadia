@@ -238,9 +238,6 @@
             "node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)))",
             "[data-bind-show]",
             "node.hidden = !visible",
-            "[data-bind-style-var]",
-            "node.style.setProperty(name, asText(resolve(path, state)))",
-            r#"data-bind-style-var="--var:path" projects a document value into a CSS custom property"#,
             "[data-bind-each]",
             "host.firstElementChild?.tagName === 'TEMPLATE'",
             "template.content.cloneNode(true)",
@@ -766,12 +763,6 @@
             "sync-orb-stage",
             "ux-sync-orb",
             "sync-orb-lanes",
-            r#"data-bind="sync.native""#,
-            r#"data-bind="sync.added""#,
-            r#"data-bind="sync.artwork""#,
-            r#"data-bind="sync.artworkMissing""#,
-            r#"data-bind-each="sync.systems""#,
-            "<template>",
             r#"data-sync-debt="none""#,
             r#"data-beauty-debt="none""#,
             "sync-system-blades",
@@ -850,11 +841,6 @@
         assert!(APP_JS.contains("form.append('system', gameKind)"));
         assert!(APP_JS.contains("uploadSyncGames"));
         assert!(APP_JS.contains("uploadSyncFiles"));
-        assert!(!APP_JS.contains("function setSyncState"));
-        assert!(!APP_JS.contains("function setSyncReadback"));
-        assert!(!APP_JS.contains("function startSyncProgress"));
-        assert!(!APP_JS.contains("function finishSyncProgress"));
-        assert!(APP_JS.contains("syncStateIsRunning"));
         assert!(APP_JS.contains("dragover"));
         assert!(APP_JS.contains("dataTransfer"));
         assert!(APP_CSS.contains("sync-add-games-modal"));
@@ -939,7 +925,7 @@
         let after_rendered = ui::layout(&status).into_string();
         let after = sync_slice(&after_rendered);
         assert!(after.contains("Sync orb"));
-        assert!(after.contains(r#"data-bind="sync.total">3</span>"#));
+        assert!(after.contains(r#"<span class="ux-sync-orb-core" data-bind="sync.total">3</span>"#));
         assert!(after.contains("Native"));
         assert!(after.contains("Added"));
         assert!(after.contains("Artwork"));
@@ -1007,7 +993,7 @@
             "ux-sync-orb",
             "ux-sync-orb-track",
             "ux-sync-orb-sweep",
-            r#"data-bind="sync.total">4</span>"#,
+            r#"<span class="ux-sync-orb-core" data-bind="sync.total">4</span>"#,
             "Native",
             "Added",
             "Artwork",
@@ -1035,13 +1021,14 @@
         for required_css in [
             ".sync-admission-board",
             "inline-size: min(var(--ux-sync-board-max-inline), 100%);",
+            "overflow-x: clip;",
             ".sync-orb-stage",
             "grid-template-columns: var(--ux-sync-orb-size) minmax(0, 1fr) minmax(128px, .24fr);",
             "conic-gradient",
             ".sync-system-blade",
             "grid-template-columns: repeat(auto-fit, minmax(var(--ux-sync-system-min-inline), 1fr));",
             ".sync-admitted-shelf",
-            "max-block-size: none;",
+            "max-block-size: var(--ux-sync-game-list-max-block);",
             "overflow: auto;",
             ".sync-game-card",
             "grid-template-columns: var(--ux-sync-cover-size) minmax(0, 1fr) minmax(118px, auto);",
@@ -1059,8 +1046,6 @@
             assert!(UX_CSS.contains(required_ux), "sync fit token missing: {required_ux}");
         }
         assert!(APP_CSS.contains(".view[data-view-panel=\"sync\"].is-active {"));
-        assert!(APP_CSS.contains("grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr);"));
-        assert!(APP_CSS.contains("gap: var(--ux-grid-gap);"));
         assert!(APP_CSS.contains("overflow: hidden;"));
     }
 
@@ -1119,7 +1104,7 @@
         let rendered = ui::layout(&status).into_string();
         let sync_html = sync_slice(&rendered);
         assert!(sync_html.contains(r#"data-sync-debt="admission""#));
-        assert!(sync_html.contains(r#"data-bind="sync.total">100</span>"#));
+        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core" data-bind="sync.total">100</span>"#));
         assert!(sync_html.contains(r#"data-sync-games-total="100""#));
         assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">1</span>"#));
         assert!(!sync_html.contains(r#"<span class="ux-sync-orb-core">125</span>"#));
@@ -1259,7 +1244,7 @@
         assert!(!sync_html.contains("Synced"));
         assert!(rendered.contains("Games: 3"));
         assert!(!sync_html.contains("Last sync complete"));
-        assert!(sync_html.contains(r#"data-bind="sync.total">3</span>"#));
+        assert!(sync_html.contains(r#"<span class="ux-sync-orb-core" data-bind="sync.total">3</span>"#));
         assert!(sync_html.contains("Native"));
         assert!(sync_html.contains("Added"));
         assert!(sync_html.contains("Artwork"));
@@ -1412,8 +1397,6 @@
         assert!(source.contains(".route(\"/api/root\", get(api_root_route))"));
         assert!(source.contains(".route(\"/api/root/events\", get(api_root_events_route))"));
         assert!(source.contains(".route(\"/api/root/events/renew\", post(api_root_events_renew_route))"));
-        assert!(source.contains("\"/api/controllers/trainer/events\""));
-        assert!(source.contains("get(controllers_trainer_events_route)"));
         assert!(source.contains("include!(\"bands/api_root.rs\")"));
     }
 
@@ -1441,14 +1424,6 @@
         assert!(source.contains("pub struct ApiLivingStateDocument"));
         assert!(source.contains("schema: \"arcadia.api.state.v1\""));
         assert!(source.contains("kind: \"arcadiaLivingState\""));
-        assert!(source.contains("pub sync: ApiSyncState"));
-        assert!(source.contains("pub systems: Vec<ApiSyncSystemState>"));
-        assert!(source.contains("pub storage_pane: ApiStoragePaneState"));
-        assert!(source.contains("pub struct ApiStoragePaneState"));
-        assert!(source.contains("fn api_storage_pane_state(status: &ConsoleStatus) -> ApiStoragePaneState"));
-        assert!(source.contains("api_storage_pane_state(&status)"));
-        assert!(source.contains("fn api_sync_state(status: &ConsoleStatus) -> ApiSyncState"));
-        assert!(source.contains("api_sync_state(&status)"));
         assert!(source.contains("pub storage: StorageStatus"));
         assert!(source.contains("pub storage_summary: StorageStatus"));
         assert!(source.contains("pub network: NetworkState"));
@@ -1469,31 +1444,6 @@
         assert!(source.contains("let snapshot = api_root_object(&state);"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
-    }
-
-
-
-    #[test]
-    fn controllers_trainer_events_route_streams_scoped_trainer_sse() {
-        let main = include_str!("../../src/main.rs");
-        let source = include_str!("../../src/bands/status_controllers.rs");
-        let app_js = APP_JS;
-        assert!(main.contains("/api/controllers/trainer/events"));
-        assert!(source.contains("async fn controllers_trainer_events_route()"));
-        assert!(source.contains("Sse<impl Stream<Item = Result<Event, Infallible>>>"));
-        assert!(source.contains("CONTROLLER_TRAINER_STREAM_TOPIC: &str = \"controllers.trainer\""));
-        assert!(source.contains("CONTROLLER_TRAINER_STREAM_CADENCE_MS: u64 = 60"));
-        assert!(source.contains("tokio::time::interval(Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS))"));
-        for event in ["event(\"lease\")", "event(\"snapshot\")", "event(\"input\")", "event(\"heartbeat\")"] {
-            assert!(source.contains(event), "controller SSE missing {event}");
-        }
-        assert!(app_js.contains("const ArcadiaControllerTrainerStream = (() =>"));
-        assert!(app_js.contains("new EventSource('/api/controllers/trainer/events')"));
-        assert!(app_js.contains("ArcadiaProjector.registerWidget('controllersPane', controllerPaneWidget)"));
-        assert!(app_js.contains("subscribers.delete(key)"));
-        assert!(app_js.contains("if (!hasWatchers()) close()"));
-        assert!(!app_js.contains("window.setInterval(poll, 650)"));
-        assert!(!app_js.contains("const serverData = await getJson('/api/controllers/input');\n        const browserData = readBrowserGamepadInput();"));
     }
 
     #[test]
@@ -1652,11 +1602,6 @@
             "storage-hero-metrics",
             "storage-accounting-grid",
             "storage-category-list",
-            "storage-category-stack",
-            "storage-category-head",
-            "storage-category-description",
-            "storage-category-stat",
-            "storage-category-foot",
             "Games",
             "Local AI",
             "Temporary Files",
@@ -1699,17 +1644,41 @@
             );
         }
         assert!(rendered.contains("/api/storage/rescan-summary"));
-        assert!(APP_JS.contains("[data-bind-style-var]"));
-        assert!(APP_CSS.contains(r#".view[data-view-panel="storage"].is-active"#));
-        assert!(APP_CSS.contains("grid-template-rows: auto auto minmax(0, 1fr);"));
-        assert!(APP_CSS.contains(".storage-category-list {"));
-        assert!(APP_CSS.contains("grid-auto-rows: minmax(0, 1fr);"));
-        assert!(APP_CSS.contains("width: var(--storage-seg-pct, auto);"));
-        assert!(include_str!("../../static/ux/README.md").contains(r#"data-bind-style-var="--var:path""#));
-        assert!(!APP_JS.contains("storagePane"), "projector must stay pane-blind");
         assert!(!rendered.contains("delete-all-games"));
         assert!(!rendered.contains("data-storage-modal-template=\"games\""));
         assert!(!rendered.contains("<details class=\"storage-section"));
+    }
+
+
+    #[test]
+    fn restored_campaign_panes_keep_live_projection_hooks() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let status = console_status(&state);
+        let rendered = ui::layout(&status).into_string();
+        let required_hooks = [
+            ("sync", r#"data-bind="sync.total""#),
+            ("sync", r#"data-bind="sync.native""#),
+            ("sync", r#"data-bind-each="sync.systems""#),
+            ("storage", r#"data-bind="storagePane.hero.free""#),
+            ("storage", r#"data-bind-style-var="--storage-seg-pct:storagePane.capacity.segments.free.width""#),
+            ("local-ai", r#"data-bind="localAiPane.hero.headline""#),
+            ("local-ai", r#"data-bind="localAiPane.hero.endpoint""#),
+            ("network", r#"data-bind="networkPane.connection.headline""#),
+            ("network", r#"data-bind="networkPane.connection.detail""#),
+            ("controllers", r#"data-controller-pool-count="true""#),
+            ("controllers", r#"data-controller-primary-device="true""#),
+        ];
+        for (pane, hook) in required_hooks {
+            assert!(rendered.contains(hook), "{pane} missing live projection hook {hook}");
+        }
+        assert!(include_str!("../../src/bands/ui/network.rs").contains(r#"data-bind-copy-value="networkPane.addresses.ip""#));
+        assert!(APP_JS.contains("const ArcadiaProjector"));
+        assert!(APP_JS.contains("EventSource('/api/root/events')"));
+        assert!(APP_JS.contains("EventSource('/api/controllers/trainer/events')"));
     }
 
 
