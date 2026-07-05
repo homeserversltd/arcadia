@@ -1,6 +1,9 @@
 /* Arcadia composable: views/home.css */
 .active-warning-strip .btn { margin-left: auto; min-height: 34px; padding: 7px 11px; font-size: 12px; }
-.view[data-view-panel="home"].is-active { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: var(--ux-grid-gap); }
+.view[data-view-panel="home"].is-active { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; }
+.view[data-view-panel="home"] .priority-strip { grid-row: 1; }
+.view[data-view-panel="home"] .home-operational-grid { grid-row: 2; min-height: 0; }
+.view[data-view-panel="home"] .home-warning-strip { grid-row: 3; }
 .home-operational-grid--dashboard { min-height: 0; grid-auto-rows: minmax(0, 1fr); align-items: stretch; }
 .home-operational-grid--dashboard .operational-card { overflow: hidden; justify-content: space-between; }
 .home-operational-grid--dashboard .state-rows { flex: 1 1 auto; align-content: center; gap: var(--ux-grid-gap); }
