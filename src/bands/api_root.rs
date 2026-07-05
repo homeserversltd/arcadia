@@ -46,6 +46,7 @@ pub struct ApiLivingStateDocument {
     pub sync: ApiSyncState,
     pub storage_pane: ApiStoragePaneState,
     pub local_ai_pane: ApiLocalAiPaneState,
+    pub network_pane: ApiNetworkPaneState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
@@ -174,6 +175,95 @@ pub struct ApiStoragePaneCategoryState {
     pub badge: String,
     pub state: &'static str,
     pub bar: ApiStoragePaneStyleState,
+}
+
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneState {
+    pub connection: ApiNetworkPaneConnectionState,
+    pub wifi: ApiNetworkPaneWifiState,
+    pub wired: ApiNetworkPaneWiredState,
+    pub addresses: ApiNetworkPaneAddressState,
+    pub reachability: ApiNetworkPaneReachabilityState,
+    pub services: ApiNetworkPaneServicesState,
+    pub diagnostics: ApiNetworkPaneDiagnosticsState,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneConnectionState {
+    pub state: &'static str,
+    pub headline: &'static str,
+    pub detail: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneWifiState {
+    pub state: &'static str,
+    pub status: &'static str,
+    pub ssid: String,
+    pub signal_label: String,
+    pub signal_percent: String,
+    pub signal_visible: bool,
+    pub adapter_available: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneWiredState {
+    pub state: &'static str,
+    pub badge: String,
+    pub mode: &'static str,
+    pub nameservers: String,
+    pub search: String,
+    pub gateway: String,
+    pub available: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneAddressState {
+    pub console_url: String,
+    pub ip: String,
+    pub ip_copyable: bool,
+    pub ai_ip_port: String,
+    pub ai_url_port: String,
+    pub ai_copyable: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneReachabilityState {
+    pub console: &'static str,
+    pub console_state: &'static str,
+    pub ai: &'static str,
+    pub ai_state: &'static str,
+    pub internet: &'static str,
+    pub internet_state: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneServicesState {
+    pub web_console: &'static str,
+    pub web_console_state: &'static str,
+    pub lan_ai: &'static str,
+    pub lan_ai_state: &'static str,
+    pub ssh: &'static str,
+    pub ssh_state: &'static str,
+    pub root_ca: &'static str,
+    pub root_ca_state: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiNetworkPaneDiagnosticsState {
+    pub gateway: &'static str,
+    pub dns: &'static str,
+    pub internet: &'static str,
+    pub lan_ai: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -566,6 +656,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         sync: api_sync_state(&status),
         storage_pane: api_storage_pane_state(&status),
         local_ai_pane: api_local_ai_pane_state(&status),
+        network_pane: api_network_pane_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -577,6 +668,114 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
 }
 
 
+
+
+
+fn api_network_wifi_status_label(status: &ConsoleStatus) -> &'static str {
+    if !status.network.wifi_adapter_available {
+        "Unavailable"
+    } else if status.network.active_type == "wifi" {
+        "On"
+    } else {
+        "Available"
+    }
+}
+
+fn api_network_ethernet_head_badge(status: &ConsoleStatus) -> String {
+    if !status.network.ethernet_connected {
+        return "No cable".to_string();
+    }
+    status
+        .network
+        .ethernet_speed_mbps
+        .map(|v| format!("{v} Mbps link"))
+        .unwrap_or_else(|| "Link up".to_string())
+}
+
+fn api_network_ssh_service_label(state: &str) -> &'static str {
+    match state {
+        "running" | "available" | "active" => "Available",
+        _ => "Disabled",
+    }
+}
+
+fn api_network_pane_state(status: &ConsoleStatus) -> ApiNetworkPaneState {
+    let ip_copyable = status.network.ip_address != "—";
+    let lan_ai_port = status.local_ai.lan_inference_port.unwrap_or(7777);
+    let ai_copyable = ip_copyable && status.network.lan_ai_reachable;
+    let ai_ip_port = if ip_copyable {
+        format!("{}:{}", status.network.ip_address, lan_ai_port)
+    } else {
+        "Unavailable".to_string()
+    };
+    let ai_url_port = if ip_copyable {
+        format!("http://{}:{}", status.network.ip_address, lan_ai_port)
+    } else {
+        "Unavailable".to_string()
+    };
+    let internet_ok = matches!(status.network.internet_reachable, Some(true));
+    ApiNetworkPaneState {
+        connection: ApiNetworkPaneConnectionState {
+            state: if status.network.online { "available" } else { "disabled" },
+            headline: if status.network.online { "Online" } else { "Offline" },
+            detail: status.network.connection_session_detail.clone(),
+        },
+        wifi: ApiNetworkPaneWifiState {
+            state: if !status.network.wifi_adapter_available { "disabled" } else if status.network.active_type == "wifi" { "available" } else { "unknown" },
+            status: api_network_wifi_status_label(status),
+            ssid: if status.network.active_type == "wifi" {
+                status.network.ssid.clone().unwrap_or_else(|| "Wi-Fi".to_string())
+            } else {
+                "Ready for wireless setup".to_string()
+            },
+            signal_label: status.network.signal_percent.map(|v| format!("{v}% signal")).unwrap_or_else(|| "Signal unavailable".to_string()),
+            signal_percent: format!("{}%", status.network.signal_percent.unwrap_or(0)),
+            signal_visible: status.network.active_type == "wifi",
+            adapter_available: status.network.wifi_adapter_available,
+        },
+        wired: ApiNetworkPaneWiredState {
+            state: if status.network.ethernet_connected { "available" } else { "disabled" },
+            badge: api_network_ethernet_head_badge(status),
+            mode: if status.network.ethernet_dhcp { "DHCP" } else { "Manual" },
+            nameservers: status.network.resolv_nameservers.clone(),
+            search: status.network.resolv_search.clone(),
+            gateway: status.network.gateway.clone().unwrap_or_else(|| "Unknown".to_string()),
+            available: status.network.ethernet_available,
+        },
+        addresses: ApiNetworkPaneAddressState {
+            console_url: status.identity.web_origin.clone(),
+            ip: status.network.ip_address.clone(),
+            ip_copyable,
+            ai_ip_port,
+            ai_url_port,
+            ai_copyable,
+        },
+        reachability: ApiNetworkPaneReachabilityState {
+            console: if status.network.console_reachable { "Reachable" } else { "Offline" },
+            console_state: if status.network.console_reachable { "available" } else { "disabled" },
+            ai: if status.network.lan_ai_reachable { "Available" } else { "Disabled" },
+            ai_state: if status.network.lan_ai_reachable { "available" } else { "disabled" },
+            internet: if internet_ok { "Online" } else { "Offline" },
+            internet_state: if internet_ok { "available" } else { "disabled" },
+        },
+        services: ApiNetworkPaneServicesState {
+            web_console: "Available",
+            web_console_state: "available",
+            lan_ai: if status.network.lan_ai_reachable { "Available" } else { "Disabled" },
+            lan_ai_state: if status.network.lan_ai_reachable { "available" } else { "disabled" },
+            ssh: api_network_ssh_service_label(&status.system.ssh.service_state),
+            ssh_state: if api_network_ssh_service_label(&status.system.ssh.service_state) == "Available" { "available" } else { "disabled" },
+            root_ca: if status.system.trust.ca_installed { "Installed" } else { "Needed" },
+            root_ca_state: if status.system.trust.ca_installed { "available" } else { "unknown" },
+        },
+        diagnostics: ApiNetworkPaneDiagnosticsState {
+            gateway: "Ready",
+            dns: "Ready",
+            internet: "Ready",
+            lan_ai: "Ready",
+        },
+    }
+}
 
 fn api_local_ai_pane_state(status: &ConsoleStatus) -> ApiLocalAiPaneState {
     let selected_name = status

@@ -108,12 +108,32 @@
         assert!(!network_html.contains("Scan</button>"));
         assert!(!network_html.contains("Copy IP:port"));
         assert!(!network_html.contains("Copy URL:port"));
+
+        for required in [
+            r#"data-bind="networkPane.connection.headline""#,
+            r#"data-bind="networkPane.connection.detail""#,
+            r#"data-bind="networkPane.wifi.status""#,
+            r#"data-bind="networkPane.wifi.ssid""#,
+            r#"data-bind="networkPane.wired.badge""#,
+            r#"data-bind="networkPane.wired.nameservers""#,
+            r#"data-bind="networkPane.addresses.ip""#,
+            r#"data-bind-copy-value="networkPane.addresses.ip""#,
+            r#"data-bind-enabled="networkPane.addresses.ipCopyable""#,
+            r#"data-bind="networkPane.services.lanAi""#,
+            r#"data-bind="networkPane.diagnostics.gateway""#,
+        ] {
+            assert!(network_html.contains(required), "network live binding missing {required}");
+        }
+        assert!(network_html.contains("Copy AI"), "network LAN AI copy control must stay present");
+        assert!(APP_JS.contains("[data-bind-copy-value]"));
+        assert!(APP_JS.contains("[data-bind-enabled]"));
         assert!(
             network_html.contains("network-services-hub__detail")
                 && (network_html.contains("Ethernet ·")
                     || network_html.contains("Wi-Fi ·")
+                    || network_html.contains("Limited ·")
                     || network_html.contains("Offline")),
-            "services hub detail must show active session duration"
+            "services hub detail must show active or limited session duration"
         );
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));

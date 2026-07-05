@@ -8,11 +8,12 @@
 }
 .network-hub {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto;
   gap: var(--ux-network-gap);
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  align-content: start;
 }
 .network-workbench {
   display: grid;
@@ -124,7 +125,7 @@
   gap: var(--ux-control-gap);
   align-items: center;
 }
-.network-card__actions { align-content: start; }
+.network-card__actions { align-content: start; margin-top: auto; }
 .network-speed-panel { display: grid; gap: 6px; align-content: start; }
 .network-speed-result {
   padding: 8px 10px;
@@ -137,7 +138,24 @@
 }
 .network-speed-result--error { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
 .network-speed-result--ok { border-color: color-mix(in srgb, var(--good) 35%, var(--line)); }
-.network-diagnostics-foot { grid-template-rows: auto; }
+.network-diagnostics-foot { grid-template-rows: auto; display: grid; }
+.network-diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.network-diagnostic-grid > span {
+  min-height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 5px 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  background: color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
+  color: var(--muted);
+  font-size: var(--ux-text-xs);
+  font-weight: 800;
+}
 .network-service-list { display: grid; gap: 6px; align-content: start; }
 .network-service-row {
   display: grid;
@@ -161,3 +179,4 @@
 .system-status--disabled { color: var(--idle); }
 .system-status--error { color: var(--bad); }
 .system-status--unknown { color: var(--idle); }
+.view[data-view-panel="network"] .network-diagnostics-foot.sync-desktop-detail { display: grid; }
