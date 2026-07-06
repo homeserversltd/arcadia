@@ -477,7 +477,8 @@
         assert!(APP_JS.contains("host.querySelectorAll('[data-gamepad-slot]')"));
         assert!(APP_JS.contains("[data-gamepad-slot][data-controller-control]"));
         assert!(APP_JS.contains("event.key === 'Enter' || event.key === ' '"));
-        assert!(APP_JS.contains("[data-controller-binding-label], span, em"));
+        assert!(APP_JS.contains("node.querySelector('[data-controller-binding-label]')"));
+        assert!(!APP_JS.contains("[data-controller-binding-label], span, em"));
         assert!(APP_CSS.contains("modal-card--fullscreen"));
         assert!(APP_CSS.contains("modal-overlay--fullscreen"));
         assert!(APP_JS.contains("clearOverlayVariants"));
