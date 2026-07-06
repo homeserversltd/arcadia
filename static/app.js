@@ -1178,25 +1178,17 @@ function controlLabelForButtonIndex(index) {
 function normalizeControllerInputEvents(data) {
   if (!data) return data;
   const normalize = (item) => {
-    const match = String(item.control || '').match(/^Button\s+(\d+)$/i);
+    const match = String(item.control || '').match(/^(Button|Axis)\s+(\d+)$/i);
     if (!match) return item;
-    const index = Number.parseInt(match[1], 10);
     return {
       ...item,
-      control: controlLabelForButtonIndex(Number.isFinite(index) ? index : 0),
-      binding: item.binding || `button ${match[1]}`,
+      binding: item.binding || `${match[1].toLowerCase()} ${match[2]}`,
     };
   };
   return {
     ...data,
     pressed: (data.pressed || []).map(normalize),
-    axes: (data.axes || []).map((axis) => {
-      const match = String(axis.control || '').match(/^Axis\s+(\d+)$/i);
-      if (!match) return axis;
-      const labels = ['Left Stick X', 'Left Stick Y', '', 'Right Stick X', 'Right Stick Y'];
-      const index = Number.parseInt(match[1], 10);
-      return { ...axis, control: labels[index] || axis.control };
-    }),
+    axes: (data.axes || []).map(normalize),
   };
 }
 
