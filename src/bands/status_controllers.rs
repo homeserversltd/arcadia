@@ -101,8 +101,8 @@ fn controller_recovery_status(devices: &[ControllerDeviceStatus]) -> ControllerR
         return ControllerRecoveryStatus {
             state: "receiver-only".to_string(),
             title: receiver,
-            detail: "Receiver is awake; no gamepad event surface is exposed yet.".to_string(),
-            action: "Wake or pair the controller".to_string(),
+            detail: "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.".to_string(),
+            action: "Restart the console".to_string(),
         };
     }
     ControllerRecoveryStatus {
@@ -123,11 +123,40 @@ fn idle_receiver_label() -> Option<String> {
             let raw = entry.file_name().to_string_lossy().to_string();
             let lowered = raw.to_ascii_lowercase();
             if lowered.contains("8bitdo") && (lowered.contains("idle") || lowered.contains("hidraw")) {
-                return Some(controller_display_name(&raw));
+                return Some(receiver_only_display_title(&raw));
             }
         }
     }
     None
+}
+
+fn receiver_only_display_title(raw: &str) -> String {
+    let mut words: Vec<String> = Vec::new();
+    for word in controller_display_name(raw).split_whitespace() {
+        let lowered = word.to_ascii_lowercase();
+        let serial_like = word.len() >= 8 && word.chars().all(|ch| ch.is_ascii_hexdigit());
+        let interface_suffix = lowered.len() > 2
+            && lowered.starts_with("if")
+            && lowered[2..].chars().all(|ch| ch.is_ascii_digit());
+        if serial_like || interface_suffix || matches!(lowered.as_str(), "hidraw" | "idle") {
+            continue;
+        }
+        if words
+            .last()
+            .is_some_and(|previous| previous.eq_ignore_ascii_case(word))
+        {
+            continue;
+        }
+        words.push(word.to_string());
+    }
+    if !words.iter().any(|word| word.eq_ignore_ascii_case("receiver")) {
+        words.push("receiver".to_string());
+    }
+    if words.is_empty() {
+        "Receiver only".to_string()
+    } else {
+        words.join(" ")
+    }
 }
 
 fn controller_transport(name: &str, path: &str) -> String {

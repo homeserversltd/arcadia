@@ -213,6 +213,83 @@
 
 
     #[test]
+    fn controller_recovery_reaches_controls_pane_and_modal() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.controllers.detected_count = 0;
+        status.controllers.state = "receiver-only".to_string();
+        status.controllers.recovery.state = "receiver-only".to_string();
+        status.controllers.recovery.title = receiver_only_display_title(
+            "usb-8BitDo_8BitDo_Ultimate_2C_Wireless_Controller_2D377104CC-if02-hidraw",
+        );
+        status.controllers.recovery.detail = "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.".to_string();
+        status.controllers.recovery.action = "Restart the console".to_string();
+
+        let rendered = ui::layout(&status).into_string();
+        let controllers_start = rendered.find("id=\"view-controllers\"").expect("controllers view starts");
+        let controllers_end = rendered[controllers_start..]
+            .find("id=\"view-network\"")
+            .map(|offset| controllers_start + offset)
+            .expect("network follows controllers");
+        let controllers_html = &rendered[controllers_start..controllers_end];
+
+        for required in [
+            "class=\"controls-recovery\"",
+            "data-controller-recovery",
+            "data-controller-recovery-title",
+            "data-controller-recovery-detail",
+            "data-controller-recovery-action",
+            "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.",
+            "Restart the console",
+            "data-controller-programmer-recovery",
+            "Controller receiver found, but the console cannot read it as a gamepad yet. Restarting the console usually fixes this.",
+        ] {
+            assert!(controllers_html.contains(required), "missing truthful recovery surface: {required}");
+        }
+        assert!(!controllers_html.contains("/dev/input"), "main controls pane leaked raw device path");
+        assert!(!controllers_html.contains("2D377104CC"), "main controls pane leaked receiver serial");
+        assert!(!controllers_html.contains("if02"), "main controls pane leaked receiver interface suffix");
+        assert!(!controllers_html.contains("hidraw"), "main controls pane leaked raw hidraw detail");
+        assert!(!controllers_html.contains("8BitDo 8BitDo"), "main controls pane leaked doubled vendor word");
+        assert!(controllers_html.contains("8BitDo Ultimate 2C Wireless Controller receiver"));
+        assert!(!controllers_html.contains("event0"), "main controls pane leaked raw event number");
+        assert!(!controllers_html.contains("event1"), "main controls pane leaked raw event number");
+        assert!(APP_CSS.contains(".controls-recovery { display: grid;"));
+        assert!(APP_CSS.contains(".controls-recovery[hidden] { display: none; }"));
+        assert!(APP_CSS.contains(".controls-map-recovery[hidden] { display: none; }"));
+        assert!(APP_JS.contains("function updateControllerRecoverySurfaces"));
+        assert!(APP_JS.contains("controllerRecoveryNeedsRestart"));
+        assert!(APP_JS.contains("state === 'receiver-only' || detail.includes('no gamepad event surface')"));
+        assert!(APP_JS.contains("Restarting the console usually fixes this"));
+        assert!(APP_JS.contains("line.hidden = !show"));
+    }
+
+    #[test]
+    fn nominal_controller_recovery_keeps_empty_chrome_hidden() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let mut status = console_status(&state);
+        status.controllers.recovery.state = "connected".to_string();
+        let rendered = ui::layout(&status).into_string();
+        let controllers_start = rendered.find("id=\"view-controllers\"").expect("controllers view starts");
+        let controllers_end = rendered[controllers_start..]
+            .find("id=\"view-network\"")
+            .map(|offset| controllers_start + offset)
+            .expect("network follows controllers");
+        let controllers_html = &rendered[controllers_start..controllers_end];
+        assert!(controllers_html.contains("data-controller-recovery hidden"));
+        assert!(controllers_html.contains("data-controller-programmer-recovery hidden"));
+        assert!(APP_JS.contains("normalizedState === 'connected' || normalizedState === 'nominal'"));
+    }
+
+    #[test]
     fn controllers_view_is_single_pane_for_controller_mapping() {
         let state = AppState {
             started_unix: 0,
