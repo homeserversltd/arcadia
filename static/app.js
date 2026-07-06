@@ -1476,19 +1476,24 @@ function bindControllerProgramming() {
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
   const TEACH_SWEEP_ORDER = [
-    { control: 'A', label: 'A' },
-    { control: 'B', label: 'B' },
-    { control: 'X', label: 'X' },
-    { control: 'Y', label: 'Y' },
-    { control: 'L1', label: 'L1' },
-    { control: 'R1', label: 'R1' },
-    { control: 'L2', label: 'L2' },
-    { control: 'R2', label: 'R2' },
-    { control: 'Select', label: 'Select' },
-    { control: 'Start', label: 'Start' },
-    { control: 'Left Stick X', label: 'Left Stick' },
-    { control: 'Right Stick X', label: 'Right Stick' },
-    { control: 'D-pad', label: 'D-pad' },
+    { control: 'A', highlightSlot: 'face-a', prompt: 'Press A (1 of 18)' },
+    { control: 'B', highlightSlot: 'face-b', prompt: 'Press B (2 of 18)' },
+    { control: 'X', highlightSlot: 'face-x', prompt: 'Press X (3 of 18)' },
+    { control: 'Y', highlightSlot: 'face-y', prompt: 'Press Y (4 of 18)' },
+    { control: 'L1', highlightSlot: 'shoulder-l1', prompt: 'Press the left shoulder (5 of 18)' },
+    { control: 'R1', highlightSlot: 'shoulder-r1', prompt: 'Press the right shoulder (6 of 18)' },
+    { control: 'L2', highlightSlot: 'shoulder-l2', prompt: 'Pull the left trigger (7 of 18)' },
+    { control: 'R2', highlightSlot: 'shoulder-r2', prompt: 'Pull the right trigger (8 of 18)' },
+    { control: 'Select', highlightSlot: 'system-select', prompt: 'Press Select (9 of 18)' },
+    { control: 'Start', highlightSlot: 'system-start', prompt: 'Press Start (10 of 18)' },
+    { control: 'Left Stick X', highlightSlot: 'stick-left', prompt: 'Push the left stick straight left (11 of 18)' },
+    { control: 'Left Stick Y', highlightSlot: 'stick-left', prompt: 'Push the left stick straight up (12 of 18)' },
+    { control: 'Right Stick X', highlightSlot: 'stick-right', prompt: 'Push the right stick straight left (13 of 18)' },
+    { control: 'Right Stick Y', highlightSlot: 'stick-right', prompt: 'Push the right stick straight up (14 of 18)' },
+    { control: 'D-pad Up', highlightSlot: 'dpad', prompt: 'Press up on the D-pad (15 of 18)' },
+    { control: 'D-pad Down', highlightSlot: 'dpad', prompt: 'Press down on the D-pad (16 of 18)' },
+    { control: 'D-pad Left', highlightSlot: 'dpad', prompt: 'Press left on the D-pad (17 of 18)' },
+    { control: 'D-pad Right', highlightSlot: 'dpad', prompt: 'Press right on the D-pad (18 of 18)' },
   ];
   let selected = null;
   let bindingStartedAt = 0;
@@ -1610,11 +1615,14 @@ function bindControllerProgramming() {
     root.dataset.teachControl = step.control;
     root.querySelector('[data-controller-teach-skip]')?.removeAttribute('hidden');
     root.querySelector('[data-controller-teach-exit]')?.removeAttribute('hidden');
-    root.querySelectorAll(`[data-gamepad-slot][data-controller-control="${CSS.escape(step.control)}"], [data-gamepad-slot] [data-controller-control="${CSS.escape(step.control)}"]`).forEach((node) => {
+    const highlightSelector = step.highlightSlot
+      ? `[data-gamepad-slot="${CSS.escape(step.highlightSlot)}"]`
+      : `[data-gamepad-slot][data-controller-control="${CSS.escape(step.control)}"], [data-gamepad-slot] [data-controller-control="${CSS.escape(step.control)}"]`;
+    root.querySelectorAll(highlightSelector).forEach((node) => {
       (node.closest('[data-gamepad-slot]') || node).classList.add('is-teach-target');
     });
     selectProgrammerControl(root, step.control);
-    setBindingListenState(root, step.control, { text: `Press ${step.label} on your controller (${teachIndex + 1} of ${TEACH_SWEEP_ORDER.length})` });
+    setBindingListenState(root, step.control, { text: step.prompt || `Press ${step.control} on your controller (${teachIndex + 1} of ${TEACH_SWEEP_ORDER.length})` });
   };
 
   const advanceTeachStep = (root) => {
