@@ -627,6 +627,14 @@
   padding-top: 4px;
   border-top: var(--ux-card-divider);
 }
+.controller-save-layout--cue {
+  animation: controller-save-cue .9s ease-out 1;
+}
+@keyframes controller-save-cue {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--orange-strong) 55%, transparent); }
+  55% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--orange-strong) 22%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 .controls-map-hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .controls-map-readout { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .modal-content .controller-programmer-modal { white-space: normal; }
