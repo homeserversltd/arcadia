@@ -513,6 +513,33 @@ function controllerPaneIsActive() {
   return Boolean(document.querySelector('[data-view-panel="controllers"].is-active')) && document.visibilityState === 'visible';
 }
 
+function controllerRecoveryNeedsRestart(recovery = {}) {
+  const state = String(recovery.state || '').toLowerCase();
+  const detail = String(recovery.detail || '').toLowerCase();
+  return state === 'receiver-only' || detail.includes('no gamepad event surface');
+}
+
+function updateControllerRecoverySurfaces(root, recovery = {}) {
+  const normalizedState = String(recovery.state || '').toLowerCase();
+  const nominal = !normalizedState || normalizedState === 'connected' || normalizedState === 'nominal';
+  root.querySelectorAll('[data-controller-recovery]').forEach((card) => {
+    card.hidden = nominal;
+    card.setAttribute('aria-hidden', String(nominal));
+    const title = card.querySelector('[data-controller-recovery-title]');
+    const detail = card.querySelector('[data-controller-recovery-detail]');
+    const action = card.querySelector('[data-controller-recovery-action]');
+    if (title) title.textContent = recovery.title || 'Controller recovery';
+    if (detail) detail.textContent = recovery.detail || '';
+    if (action) action.textContent = recovery.action || '';
+  });
+  root.querySelectorAll('[data-controller-programmer-recovery]').forEach((line) => {
+    const show = controllerRecoveryNeedsRestart(recovery);
+    line.hidden = !show;
+    line.setAttribute('aria-hidden', String(!show));
+    if (show) line.textContent = 'Controller receiver found, but the console cannot read it as a gamepad yet. Restarting the console usually fixes this.';
+  });
+}
+
 let controllerPaneUnsubscribe = null;
 function controllerPaneWidget(state) {
   const controllers = state?.controllers || {};
@@ -522,6 +549,9 @@ function controllerPaneWidget(state) {
     panel.querySelectorAll('[data-controller-pool-count]').forEach((node) => { node.textContent = String(controllers.controllerPool.length); });
   }
   panel.querySelectorAll('[data-controller-primary-device]').forEach((node) => { node.textContent = controllers.primaryDevice || 'No controller detected'; });
+  updateControllerRecoverySurfaces(panel, controllers.recovery || {});
+  const programmer = document.querySelector('[data-controller-programmer-modal]');
+  if (programmer) updateControllerRecoverySurfaces(programmer, controllers.recovery || {});
   if (!document.querySelector('[data-controller-programmer-modal]')) {
     hydrateControllerBindings(panel, controllers.profile?.bindings || []);
   }
@@ -1481,6 +1511,7 @@ function bindControllerProgramming() {
       const activeId = root.dataset.controllerId || state.activeControllerId || '';
       const entry = (state.controllerPool || []).find((item) => item.id === activeId);
       hydrateControllerBindings(root, entry?.bindings?.length ? entry.bindings : (state.profile?.bindings || []));
+      updateControllerRecoverySurfaces(root, state.recovery || {});
       const device = root.querySelector('[data-controller-programmer-device]');
       if (device) device.textContent = entry?.name || state.primaryDevice || state.liveInput?.device || 'No controller detected';
     } catch (_) {}
@@ -1726,6 +1757,7 @@ function bindControllerProgramming() {
       }
       const root = document.querySelector('[data-controller-programmer-modal]');
       if (root) {
+        updateControllerRecoverySurfaces(root, state.recovery || {});
         const device = root.querySelector('[data-controller-programmer-device]');
         if (device) device.textContent = entry?.name || state.primaryDevice || state.liveInput?.device || 'No controller detected';
         startProgrammerLoop(root);
