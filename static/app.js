@@ -1228,8 +1228,9 @@ function readBrowserGamepadInput() {
     if (Math.abs(value) < 0.55) return;
     axes.push({
       control: axisLabels[index] || `Axis ${index}`,
-      binding: String(Math.round(value * 32767)),
+      binding: `axis ${index}`,
       pressed: true,
+      axisValue: Math.round(value * 32767),
     });
   });
   return {
@@ -1288,7 +1289,7 @@ function updateControllerLiveInput(data) {
       values.forEach((axis) => {
         const pill = document.createElement('span');
         pill.className = 'controller-axis-pill';
-        pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}`.trim();
+        pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}${axis.axisValue === undefined || axis.axisValue === null ? '' : ` ${axis.axisValue}`}`.trim();
         axes.appendChild(pill);
       });
     }
@@ -1366,10 +1367,7 @@ function controllerCaptureAxisKey(axis) {
 }
 
 function controllerCaptureAxisInput(axis) {
-  const number = String(axis?.control || '').match(/(\d+)/);
-  if (number) return `axis ${number[1]}`;
-  if (axis?.binding) return `axis ${axis.binding}`;
-  return null;
+  return axis?.binding || null;
 }
 
 function createControllerCaptureGate({ now = () => Date.now(), onGateOpen = () => {} } = {}) {
@@ -1427,8 +1425,8 @@ function hydrateControllerBindings(root, bindings) {
   const map = new Map((bindings || []).map((item) => [item.control, item.binding]));
   root.querySelectorAll('[data-binding-control]').forEach((node) => {
     const control = node.dataset.bindingControl || '';
-    const binding = map.get(control) || 'Waiting';
-    node.textContent = binding === 'Waiting' ? binding : formatControllerBinding(binding);
+    const binding = map.get(control);
+    node.textContent = binding ? formatControllerBinding(binding) : 'Unbound';
   });
   root.querySelectorAll('[data-controller-control]').forEach((node) => {
     const control = node.dataset.controllerControl || '';
@@ -1678,7 +1676,7 @@ function bindControllerProgramming() {
       (merged.axes || []).forEach((axis) => {
         const pill = document.createElement('span');
         pill.className = 'controller-axis-pill';
-        pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}`.trim();
+        pill.textContent = `${axis.control || 'Axis'} ${axis.binding || ''}${axis.axisValue === undefined || axis.axisValue === null ? '' : ` ${axis.axisValue}`}`.trim();
         axes.appendChild(pill);
       });
     }
