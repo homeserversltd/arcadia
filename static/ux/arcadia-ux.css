@@ -377,6 +377,7 @@
     animation: none;
     stroke-width: 5;
   }
+  .controller-save-layout--cue { animation: none; }
 }
 
 /* Sync Orb primitive: playable game count with artwork progress ring and sweep head. */
