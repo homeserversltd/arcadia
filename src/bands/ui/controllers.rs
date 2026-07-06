@@ -110,6 +110,9 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                             }
                         }
                         footer class="controller-map-footer controllers-actions" {
+                            button class="btn btn--secondary" type="button" data-controller-teach-start { "Teach me" }
+                            button class="btn btn--secondary" type="button" data-controller-teach-skip hidden { "Skip" }
+                            button class="btn btn--secondary" type="button" data-controller-teach-exit hidden { "Exit teach" }
                             (action_button(ButtonVariant::Primary, "Save layout", "controllers-save-profile", "/api/actions/controllers-save-profile"))
                             (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole remembers every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Tap Map, choose a control on the virtual pad, then press the matching button on your real controller.\n3. Check Your mappings on the right — that is the before/after readout.\n4. Save layout, then use Push mapping on each game system."))
                         }

@@ -341,6 +341,43 @@
     drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 40%, transparent))
     drop-shadow(0 0 4px var(--accent));
 }
+.ux-gamepad-slot.is-teach-target {
+  filter:
+    drop-shadow(0 0 16px color-mix(in srgb, var(--orange-strong) 42%, transparent))
+    drop-shadow(0 0 5px color-mix(in srgb, var(--orange-strong) 74%, transparent));
+}
+.ux-gamepad-slot.is-teach-target .ux-gamepad-button-well,
+.ux-gamepad-slot.is-teach-target .ux-gamepad-stick-well,
+.ux-gamepad-slot.is-teach-target .ux-gamepad-dpad-cross,
+.ux-gamepad-slot.is-teach-target .ux-gamepad-pill,
+.ux-gamepad-slot.is-teach-target .ux-gamepad-shoulder-shape {
+  animation: ux-gamepad-teach-pulse 1.15s ease-in-out infinite;
+  stroke: var(--orange-strong);
+  fill: color-mix(in srgb, var(--orange-strong) 18%, var(--theme-button-surface));
+}
+@keyframes ux-gamepad-teach-pulse {
+  0%, 100% {
+    stroke-width: 4;
+    filter: drop-shadow(0 0 4px color-mix(in srgb, var(--orange-strong) 25%, transparent));
+  }
+  50% {
+    stroke-width: 6;
+    filter: drop-shadow(0 0 18px color-mix(in srgb, var(--orange-strong) 66%, transparent));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ux-gamepad-slot.is-teach-target {
+    filter: drop-shadow(0 0 10px color-mix(in srgb, var(--orange-strong) 48%, transparent));
+  }
+  .ux-gamepad-slot.is-teach-target .ux-gamepad-button-well,
+  .ux-gamepad-slot.is-teach-target .ux-gamepad-stick-well,
+  .ux-gamepad-slot.is-teach-target .ux-gamepad-dpad-cross,
+  .ux-gamepad-slot.is-teach-target .ux-gamepad-pill,
+  .ux-gamepad-slot.is-teach-target .ux-gamepad-shoulder-shape {
+    animation: none;
+    stroke-width: 5;
+  }
+}
 
 /* Sync Orb primitive: playable game count with artwork progress ring and sweep head. */
 .ux-sync-orb-stage { min-width: 0; }

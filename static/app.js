@@ -1375,11 +1375,27 @@ function controllerProgrammerRoot() {
 function bindControllerProgramming() {
   const panel = document.querySelector('[data-view-panel="controllers"]');
   if (!panel) return;
+  const TEACH_SWEEP_ORDER = [
+    { control: 'A', label: 'A' },
+    { control: 'B', label: 'B' },
+    { control: 'X', label: 'X' },
+    { control: 'Y', label: 'Y' },
+    { control: 'L1', label: 'L1' },
+    { control: 'R1', label: 'R1' },
+    { control: 'L2', label: 'L2' },
+    { control: 'R2', label: 'R2' },
+    { control: 'Select', label: 'Select' },
+    { control: 'Start', label: 'Start' },
+    { control: 'Left Stick X', label: 'Left Stick' },
+    { control: 'Right Stick X', label: 'Right Stick' },
+    { control: 'D-pad', label: 'D-pad' },
+  ];
   let selected = null;
   let bindingStartedAt = 0;
   let bindingTimeoutShown = false;
   let programmerTimer = null;
   let programmerPaused = false;
+  let teachIndex = -1;
   const intervalMs = 60;
   const bindingTimeoutMs = 3000;
 
@@ -1417,7 +1433,23 @@ function bindControllerProgramming() {
     });
   };
 
-  const setBindingListenState = (root, control) => {
+  const clearTeachTarget = (root) => {
+    root.classList.remove('is-teaching');
+    delete root.dataset.teachControl;
+    root.querySelectorAll('.is-teach-target').forEach((node) => node.classList.remove('is-teach-target'));
+    root.querySelector('[data-controller-teach-skip]')?.setAttribute('hidden', '');
+    root.querySelector('[data-controller-teach-exit]')?.setAttribute('hidden', '');
+    root.querySelector('[data-action="controllers-save-profile"]')?.classList.remove('controller-save-layout--cue');
+  };
+
+  const selectProgrammerControl = (root, control) => {
+    selected = control;
+    root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => {
+      node.classList.toggle('is-selected', node.dataset.controllerControl === control);
+    });
+  };
+
+  const setBindingListenState = (root, control, options = {}) => {
     root.classList.toggle('is-binding', Boolean(control));
     if (control) root.dataset.bindingTarget = control;
     else delete root.dataset.bindingTarget;
@@ -1426,12 +1458,53 @@ function bindControllerProgramming() {
     const state = root.querySelector('[data-controller-programmer-state]');
     if (!state) return;
     if (control) {
-      state.textContent = `Now press ${control} on your controller`;
+      state.textContent = options.text || `Now press ${control} on your controller`;
       state.classList.add('controller-map-bind-state--active');
     } else {
-      state.textContent = 'Tap a control on the gamepad to begin';
-      state.classList.remove('controller-map-bind-state--active');
+      state.textContent = options.text || 'Tap a control on the gamepad to begin';
+      state.classList.toggle('controller-map-bind-state--active', Boolean(options.active));
     }
+  };
+
+  const clearTeachMode = (root, message = 'Tap a control on the gamepad to begin') => {
+    teachIndex = -1;
+    selected = null;
+    clearTeachTarget(root);
+    root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.remove('is-selected'));
+    setBindingListenState(root, null, { text: message });
+  };
+
+  const setTeachStep = (root, index) => {
+    if (index >= TEACH_SWEEP_ORDER.length) {
+      teachIndex = -1;
+      selected = null;
+      clearTeachTarget(root);
+      const save = root.querySelector('[data-action="controllers-save-profile"]');
+      if (save) {
+        save.classList.add('controller-save-layout--cue');
+        save.addEventListener('animationend', () => save.classList.remove('controller-save-layout--cue'), { once: true });
+      }
+      root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.remove('is-selected'));
+      setBindingListenState(root, null, { text: 'Teaching complete — save your layout', active: true });
+      return;
+    }
+    teachIndex = index;
+    clearTeachTarget(root);
+    const step = TEACH_SWEEP_ORDER[teachIndex];
+    root.classList.add('is-teaching');
+    root.dataset.teachControl = step.control;
+    root.querySelector('[data-controller-teach-skip]')?.removeAttribute('hidden');
+    root.querySelector('[data-controller-teach-exit]')?.removeAttribute('hidden');
+    root.querySelectorAll(`[data-gamepad-slot][data-controller-control="${CSS.escape(step.control)}"], [data-gamepad-slot] [data-controller-control="${CSS.escape(step.control)}"]`).forEach((node) => {
+      (node.closest('[data-gamepad-slot]') || node).classList.add('is-teach-target');
+    });
+    selectProgrammerControl(root, step.control);
+    setBindingListenState(root, step.control, { text: `Press ${step.label} on your controller (${teachIndex + 1} of ${TEACH_SWEEP_ORDER.length})` });
+  };
+
+  const advanceTeachStep = (root) => {
+    if (teachIndex < 0) return;
+    setTeachStep(root, teachIndex + 1);
   };
 
   const bindControlButtons = (root) => {
@@ -1441,8 +1514,8 @@ function bindControllerProgramming() {
         event.preventDefault();
         const control = button.dataset.controllerControl || '';
         if (!control || control === 'D-pad') return;
-        selected = control;
-        root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.toggle('is-selected', node === button));
+        if (teachIndex >= 0) clearTeachMode(root);
+        selectProgrammerControl(root, control);
         setBindingListenState(root, control);
         PopupManager.showToast(`Tap detected — now press ${control} on your real controller`, 'info');
       };
@@ -1457,8 +1530,8 @@ function bindControllerProgramming() {
         event.preventDefault();
         const control = button.dataset.controllerControl || '';
         if (!control) return;
-        selected = control;
-        root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.toggle('is-selected', node === button));
+        if (teachIndex >= 0) clearTeachMode(root);
+        selectProgrammerControl(root, control);
         setBindingListenState(root, control);
         PopupManager.showToast(`Now press ${control} on your real controller`, 'info');
       });
@@ -1505,16 +1578,18 @@ function bindControllerProgramming() {
         PopupManager.showToast('No button detected. Pause or quit your game first — running games often keep the controller.', 'info');
       }
       if (input) {
-        const result = await postJson('/api/actions/controllers-bind', scopedControllerBody(root, { control: selected, binding: input }));
-        root.querySelectorAll(`[data-controller-control="${selected}"], [data-binding-control="${selected}"]`).forEach((node) => {
+        const capturedControl = selected;
+        const result = await postJson('/api/actions/controllers-bind', scopedControllerBody(root, { control: capturedControl, binding: input }));
+        root.querySelectorAll(`[data-controller-control="${CSS.escape(capturedControl)}"], [data-binding-control="${CSS.escape(capturedControl)}"]`).forEach((node) => {
           if (node.dataset.bindingControl) node.textContent = formatControllerBinding(result.stdout || input);
           const label = node.querySelector?.('[data-controller-binding-label], span, em') || node.closest?.('[data-gamepad-slot]')?.querySelector?.('[data-controller-binding-label]');
           if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
         });
-        PopupManager.showToast(result.message || `${selected} mapped`, result.ok ? 'success' : 'error');
+        PopupManager.showToast(result.message || `${capturedControl} mapped`, result.ok ? 'success' : 'error');
         selected = null;
         setBindingListenState(root, null);
         root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.remove('is-selected'));
+        if (result.ok && teachIndex >= 0) advanceTeachStep(root);
       }
     }
   };
@@ -1594,6 +1669,39 @@ function bindControllerProgramming() {
     bindProfileCards(root);
     bindControlButtons(root);
     bindModalActions(root);
+    const teach = root.querySelector('[data-controller-teach-start]:not([data-controller-teach-bound])');
+    if (teach) {
+      teach.dataset.controllerTeachBound = 'true';
+      teach.addEventListener('click', (event) => {
+        event.preventDefault();
+        clearTeachMode(root);
+        setTeachStep(root, 0);
+      });
+    }
+    const skip = root.querySelector('[data-controller-teach-skip]:not([data-controller-teach-skip-bound])');
+    if (skip) {
+      skip.dataset.controllerTeachSkipBound = 'true';
+      skip.addEventListener('click', (event) => {
+        event.preventDefault();
+        advanceTeachStep(root);
+      });
+    }
+    const exit = root.querySelector('[data-controller-teach-exit]:not([data-controller-teach-exit-bound])');
+    if (exit) {
+      exit.dataset.controllerTeachExitBound = 'true';
+      exit.addEventListener('click', (event) => {
+        event.preventDefault();
+        clearTeachMode(root);
+      });
+    }
+    if (!root.dataset.controllerTeachEscBound) {
+      root.dataset.controllerTeachEscBound = 'true';
+      root.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape' || teachIndex < 0) return;
+        event.preventDefault();
+        clearTeachMode(root);
+      });
+    }
     const readout = root.querySelector('[data-controller-broadcast-readout]');
     if (readout) readout.textContent = 'Live';
     programmerTimer = ArcadiaControllerTrainerStream.subscribe('controller-programmer', async (merged) => {
