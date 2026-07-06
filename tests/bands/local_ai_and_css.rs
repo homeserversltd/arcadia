@@ -223,7 +223,9 @@
         status.controllers.detected_count = 0;
         status.controllers.state = "receiver-only".to_string();
         status.controllers.recovery.state = "receiver-only".to_string();
-        status.controllers.recovery.title = "Receiver only".to_string();
+        status.controllers.recovery.title = receiver_only_display_title(
+            "usb-8BitDo_8BitDo_Ultimate_2C_Wireless_Controller_2D377104CC-if02-hidraw",
+        );
         status.controllers.recovery.detail = "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.".to_string();
         status.controllers.recovery.action = "Restart the console".to_string();
 
@@ -249,7 +251,11 @@
             assert!(controllers_html.contains(required), "missing truthful recovery surface: {required}");
         }
         assert!(!controllers_html.contains("/dev/input"), "main controls pane leaked raw device path");
+        assert!(!controllers_html.contains("2D377104CC"), "main controls pane leaked receiver serial");
+        assert!(!controllers_html.contains("if02"), "main controls pane leaked receiver interface suffix");
         assert!(!controllers_html.contains("hidraw"), "main controls pane leaked raw hidraw detail");
+        assert!(!controllers_html.contains("8BitDo 8BitDo"), "main controls pane leaked doubled vendor word");
+        assert!(controllers_html.contains("8BitDo Ultimate 2C Wireless Controller receiver"));
         assert!(!controllers_html.contains("event0"), "main controls pane leaked raw event number");
         assert!(!controllers_html.contains("event1"), "main controls pane leaked raw event number");
         assert!(APP_CSS.contains(".controls-recovery { display: grid;"));
