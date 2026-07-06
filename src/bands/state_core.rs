@@ -195,6 +195,8 @@ pub struct ControllerBindingStatus {
     pub control: String,
     pub binding: String,
     pub pressed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub axis_value: Option<i16>,
 }
 
 #[derive(Clone, Serialize)]

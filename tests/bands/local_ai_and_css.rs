@@ -321,6 +321,7 @@
             control: "A".to_string(),
             binding: "button 0".to_string(),
             pressed: true,
+            axis_value: None,
         });
         let rendered = ui::layout(&status).into_string();
         let controllers_start = rendered
@@ -660,6 +661,34 @@
     }
 
 
+
+
+
+    #[test]
+    fn controller_mappings_panel_renders_control_major_full_vocabulary() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+        let panel_start = rendered.find("data-controller-mapping-major=\"control\"").expect("control-major mapping panel rendered");
+        let panel_end = rendered[panel_start..].find("</section>").map(|offset| panel_start + offset).expect("mapping panel closes");
+        let panel = &rendered[panel_start..panel_end];
+        let expected = [
+            "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "L3", "R3", "Select", "Start",
+            "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right",
+            "Left Stick X", "Left Stick Y", "Right Stick X", "Right Stick Y",
+        ];
+        assert_eq!(panel.matches("data-controller-bind-row=\"true\"").count(), expected.len());
+        for control in expected {
+            assert!(panel.contains(&format!("data-controller-control=\"{control}\"")), "missing control-major row for {control}");
+        }
+        for required in ["AX0", "AX1", "AX3", "AX4", "D-pad"] {
+            assert!(panel.contains(required), "missing friendly binding value {required}");
+        }
+        assert!(include_str!("../../src/bands/ui/controllers.rs").contains("\"Unbound\".to_string()"));
+    }
 
     #[test]
     fn controller_profile_writers_stage_every_known_emulator() {

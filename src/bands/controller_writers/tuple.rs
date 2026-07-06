@@ -28,6 +28,7 @@ fn default_controller_bindings() -> Vec<ControllerBindingStatus> {
         control: control.to_string(),
         binding: binding.to_string(),
         pressed: false,
+        axis_value: None,
     })
     .collect()
 }
@@ -127,7 +128,31 @@ fn load_controller_library() -> ControllerLibrary {
     if library.controllers.is_empty() {
         migrate_legacy_default_profile(&mut library);
     }
+    if heal_controller_library(&mut library) {
+        let _ = save_controller_library(&library);
+    }
     library
+}
+
+fn value_shaped_axis_binding(input: &str) -> bool {
+    let trimmed = input.trim();
+    let Some(raw_value) = trimmed.strip_prefix("axis ") else {
+        return false;
+    };
+    let Ok(value) = raw_value.parse::<i32>() else {
+        return false;
+    };
+    value.unsigned_abs() >= 1000
+}
+
+fn heal_controller_library(library: &mut ControllerLibrary) -> bool {
+    let mut changed = false;
+    for record in library.controllers.values_mut() {
+        let before = record.tuples.len();
+        record.tuples.retain(|tuple| !value_shaped_axis_binding(&tuple.input));
+        changed |= record.tuples.len() != before;
+    }
+    changed
 }
 
 fn save_controller_library(library: &ControllerLibrary) -> std::io::Result<()> {
@@ -147,10 +172,14 @@ fn bindings_from_tuples(tuples: &[ControllerTupleRecord]) -> Vec<ControllerBindi
     }
     let mut bindings = Vec::with_capacity(tuples.len());
     for tuple in tuples {
+        if value_shaped_axis_binding(&tuple.input) {
+            continue;
+        }
         bindings.push(ControllerBindingStatus {
             control: canonical_control_name(&tuple.control),
             binding: tuple.input.clone(),
             pressed: false,
+            axis_value: None,
         });
     }
     if bindings.is_empty() {
@@ -230,6 +259,9 @@ fn migrate_legacy_default_profile(library: &mut ControllerLibrary) {
         let Some(input) = input else {
             continue;
         };
+        if value_shaped_axis_binding(input) {
+            continue;
+        }
         tuples.push(ControllerTupleRecord {
             control: canonical_control_name(control),
             input: input.to_string(),
@@ -562,11 +594,13 @@ fn upsert_binding(bindings: &mut Vec<ControllerBindingStatus>, control: &str, in
         existing.control = canonical;
         existing.binding = input.to_string();
         existing.pressed = false;
+        existing.axis_value = None;
     } else {
         bindings.push(ControllerBindingStatus {
             control: canonical,
             binding: input.to_string(),
             pressed: false,
+            axis_value: None,
         });
     }
 }
@@ -696,5 +730,49 @@ fn is_writable_dir(path: &Path) -> bool {
             true
         }
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod controller_tuple_tests {
+    use super::*;
+
+    fn tuple(control: &str, input: &str) -> ControllerTupleRecord {
+        ControllerTupleRecord { control: control.to_string(), input: input.to_string() }
+    }
+
+    #[test]
+    fn value_shaped_axis_bindings_are_healed_without_dropping_real_axis_indices() {
+        assert!(value_shaped_axis_binding("axis -12381"));
+        assert!(value_shaped_axis_binding("axis 27917"));
+        assert!(!value_shaped_axis_binding("axis 0"));
+        assert!(!value_shaped_axis_binding("axis 12"));
+        assert!(!value_shaped_axis_binding("hat 0 up"));
+        assert!(!value_shaped_axis_binding("button 7"));
+
+        let bindings = bindings_from_tuples(&[
+            tuple("Left Stick X", "axis -12381"),
+            tuple("Right Stick Y", "axis 4"),
+            tuple("D-pad Up", "hat 0 up"),
+        ]);
+        assert!(!bindings.iter().any(|binding| binding.binding == "axis -12381"));
+        assert!(bindings.iter().any(|binding| binding.control == "Right Stick Y" && binding.binding == "axis 4"));
+        assert!(bindings.iter().any(|binding| binding.control == "D-pad Up" && binding.binding == "hat 0 up"));
+    }
+
+    #[test]
+    fn library_heal_drops_saved_garbage_axis_tuples_only() {
+        let mut library = empty_controller_library();
+        library.controllers.insert("pad".to_string(), ControllerRecord {
+            id: "pad".to_string(), name: "Pad".to_string(), handler: "js0".to_string(), path: "/dev/input/js0".to_string(), glyph: "GP".to_string(), transport: "USB".to_string(), kind: "gamepad".to_string(), layout_style: "Default".to_string(), first_seen: "test".to_string(), last_seen: "test".to_string(),
+            tuples: vec![tuple("Right Stick X", "axis -27917"), tuple("Right Stick Y", "axis 4"), tuple("Select", "button 6")],
+            tuning: ControllerTuningStatus::defaults(),
+        });
+        assert!(heal_controller_library(&mut library));
+        let record = library.controllers.get("pad").expect("pad record");
+        assert_eq!(record.tuples.len(), 2);
+        assert!(!record.tuples.iter().any(|tuple| tuple.input == "axis -27917"));
+        assert!(record.tuples.iter().any(|tuple| tuple.input == "axis 4"));
+        assert!(record.tuples.iter().any(|tuple| tuple.input == "button 6"));
     }
 }

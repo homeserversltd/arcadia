@@ -42,6 +42,8 @@ fn controller_capture_rearms_close_gate_and_timer_starts_at_gate_open() {
         !APP_JS.contains("bindingStartedAt = control ? Date.now() : 0"),
         "no-input timer must not start when the still-held press arms the binding"
     );
+    assert!(APP_JS.contains("function controllerCaptureAxisInput(axis) {\n  return axis?.binding || null;"));
+    assert!(!APP_JS.contains("return `axis ${axis.binding}`"), "axis capture must not prefix raw magnitude fallback");
 }
 
 #[test]
@@ -62,9 +64,11 @@ const gateOpens = [];
 const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
 const press0 = {{ control: 'button 0', binding: 'button 0' }};
 const press1 = {{ control: 'button 1', binding: 'button 1' }};
-const axis2 = {{ control: 'axis 2', binding: '0.61' }};
-const leftStickY = normalizeControllerInputEvents({{ pressed: [], axes: [{{ control: 'Axis 1', binding: '1' }}] }});
+const axis2 = {{ control: 'axis 2', binding: 'axis 2', axisValue: 19988 }};
+const leftStickY = normalizeControllerInputEvents({{ pressed: [], axes: [{{ control: 'Axis 1', binding: 'axis 1', axisValue: -27917 }}] }});
 assert(leftStickY.axes[0].control === 'Left Stick Y', 'axis 1 normalizes to Left Stick Y');
+assert(leftStickY.axes[0].binding === 'axis 1', 'axis binding stays identity, not magnitude');
+assert(leftStickY.axes[0].axisValue === -27917, 'axis magnitude rides separately');
 const dpadDirections = normalizeControllerInputEvents({{
   pressed: [
     {{ control: 'D-pad Up', binding: 'hat 0 up' }},
@@ -105,13 +109,15 @@ gate.reset();
 assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === null, 'resting axis chatter while closed must not capture');
 assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === null, 'level axis chatter stays ignored');
 assert(gate.observe({{ pressed: [], axes: [] }}).releaseGateOpen === true, 'axis gate opens only after active axis absence');
-assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === 'axis 2', 'fresh axis edge after absence captures');
+assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === 'axis 2', 'fresh axis edge after absence captures identity');
+assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === null, 'same axis identity with same or changed value does not re-fire');
 
 // Directional teach steps bind their distinct physical tuple, not a sibling.
 gate.reset();
 assert(gate.observe({{ pressed: [], axes: [axis1] }}).input === null, 'held stick-y edge must not capture on arm');
 assert(gate.observe({{ pressed: [], axes: [] }}).releaseGateOpen === true, 'stick-y direction waits for neutral');
-assert(gate.observe({{ pressed: [], axes: [axis1] }}).input === 'axis 1', 'fresh stick-y edge captures axis 1');
+assert(gate.observe({{ pressed: [], axes: [axis1] }}).input === 'axis 1', 'fresh stick-y edge captures stable axis identity');
+assert(gate.observe({{ pressed: [], axes: [{{ ...axis1, axisValue: -12381 }}] }}).input === null, 'same axis identity with new magnitude does not re-fire');
 gate.reset();
 assert(gate.observe({{ pressed: [dpadDown], axes: [] }}).input === null, 'held dpad direction must not capture on arm');
 assert(gate.observe({{ pressed: [], axes: [] }}).releaseGateOpen === true, 'dpad direction waits for release');
