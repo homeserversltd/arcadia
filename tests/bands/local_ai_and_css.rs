@@ -532,6 +532,10 @@
         assert!(APP_JS.contains("/api/actions/controllers-select"));
         assert!(APP_JS.contains("controllerId"));
         assert!(APP_JS.contains("hydrateControllerBindings"));
+        assert!(APP_JS.contains("controllerBindingMap"));
+        assert!(APP_JS.contains("CONTROLLER_CANONICAL_CONTROL_SET"));
+        assert!(APP_JS.contains("CONTROLLER_DEFAULT_BINDING_TO_CONTROL"));
+        assert!(APP_JS.contains("node.closest('[data-controller-bind-row]')?.setAttribute('data-controller-binding-state'"));
         assert!(APP_JS.contains("updateControllerPoolSelection"));
         assert!(APP_JS.contains("openControllerModal"));
         assert!(VIEWPORT_CSS.contains(".controller-pool-scroll"));
