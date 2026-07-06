@@ -1480,7 +1480,7 @@ function hydrateControllerBindings(root, bindings) {
     const control = node.dataset.controllerControl || '';
     const binding = map.get(control);
     if (!binding) return;
-    const label = node.querySelector('[data-controller-binding-label], span, em');
+    const label = node.querySelector('[data-controller-binding-label]');
     if (label) label.textContent = compactGamepadBinding(binding);
   });
 }
@@ -1740,7 +1740,7 @@ function bindControllerProgramming() {
         const result = await postJson('/api/actions/controllers-bind', scopedControllerBody(root, { control: capturedControl, binding: input }));
         root.querySelectorAll(`[data-controller-control="${CSS.escape(capturedControl)}"], [data-binding-control="${CSS.escape(capturedControl)}"]`).forEach((node) => {
           if (node.dataset.bindingControl) node.textContent = formatControllerBinding(result.stdout || input);
-          const label = node.querySelector?.('[data-controller-binding-label], span, em') || node.closest?.('[data-gamepad-slot]')?.querySelector?.('[data-controller-binding-label]');
+          const label = node.querySelector?.('[data-controller-binding-label]') || node.closest?.('[data-gamepad-slot]')?.querySelector?.('[data-controller-binding-label]');
           if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
         });
         PopupManager.showToast(result.message || `${capturedControl} mapped`, result.ok ? 'success' : 'error');
