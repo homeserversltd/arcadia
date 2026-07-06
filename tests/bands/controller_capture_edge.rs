@@ -66,7 +66,7 @@ const press0 = {{ control: 'button 0', binding: 'button 0' }};
 const press1 = {{ control: 'button 1', binding: 'button 1' }};
 const axis2 = {{ control: 'axis 2', binding: 'axis 2', axisValue: 19988 }};
 const leftStickY = normalizeControllerInputEvents({{ pressed: [], axes: [{{ control: 'Axis 1', binding: 'axis 1', axisValue: -27917 }}] }});
-assert(leftStickY.axes[0].control === 'Left Stick Y', 'axis 1 normalizes to Left Stick Y');
+assert(leftStickY.axes[0].control === 'Axis 1', 'server generic axis label stays generic when unbound');
 assert(leftStickY.axes[0].binding === 'axis 1', 'axis binding stays identity, not magnitude');
 assert(leftStickY.axes[0].axisValue === -27917, 'axis magnitude rides separately');
 const dpadDirections = normalizeControllerInputEvents({{
