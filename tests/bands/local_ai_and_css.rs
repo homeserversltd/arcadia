@@ -272,7 +272,7 @@
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
             "data-controller-gamepad-programmer",
-            "data-gamepad-layout-version=\"4\"",
+            "data-gamepad-layout-version=\"5\"",
             "data-gamepad-slot=\"face-a\"",
             "data-gamepad-slot=\"system-start\"",
             "data-gamepad-slot=\"face-x\"",
@@ -452,6 +452,62 @@
         assert!(controller_backend.contains("action_controllers_forget"));
         assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-forget"));
     }
+
+    #[test]
+    fn gamepad_mock_render_seats_labels_and_catches_trigger_stack_collisions() {
+        fn attr_i32(tag: &str, name: &str) -> i32 {
+            let needle = format!("{name}=\"");
+            let start = tag.find(&needle).unwrap_or_else(|| panic!("missing {name} in {tag}")) + needle.len();
+            let rest = &tag[start..];
+            let end = rest.find('\"').unwrap_or_else(|| panic!("unterminated {name} in {tag}"));
+            rest[..end].parse::<i32>().unwrap_or_else(|_| panic!("invalid {name} in {tag}"))
+        }
+
+        fn group<'a>(html: &'a str, slot: &str) -> &'a str {
+            let needle = format!("data-gamepad-slot=\"{slot}\"");
+            let start = html.find(&needle).unwrap_or_else(|| panic!("missing slot {slot}"));
+            let end = html[start..].find("</g>").unwrap_or_else(|| panic!("unclosed slot {slot}"));
+            &html[start..start + end]
+        }
+
+        fn text_tag<'a>(group: &'a str, class: &str) -> &'a str {
+            let start = group.find(class).unwrap_or_else(|| panic!("missing text class {class}"));
+            let tag_start = group[..start].rfind("<text").unwrap_or(start);
+            let tag_end = group[start..].find('>').unwrap_or_else(|| panic!("unclosed text tag {class}"));
+            &group[tag_start..start + tag_end]
+        }
+
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.home.arpa/".to_string(),
+            product: "HomeConsole".to_string(),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+
+        let l2 = group(&rendered, "shoulder-l2");
+        let l2_label_y = attr_i32(text_tag(l2, "ux-gamepad-label"), "y");
+        let l2_binding_y = attr_i32(text_tag(l2, "ux-gamepad-binding"), "y");
+        assert_eq!((l2_label_y, l2_binding_y), (118, 139));
+        assert!(
+            l2_label_y + 16 <= l2_binding_y,
+            "mock-render trigger stack collision: L2 label baseline/central text overlaps binding"
+        );
+
+        for (slot, expected_x, expected_y) in [
+            ("stick-left", 284, 284),
+            ("stick-right", 608, 393),
+            ("system-select", 459, 344),
+            ("system-start", 541, 344),
+            ("face-y", 732, 289),
+            ("face-x", 681, 340),
+            ("face-b", 783, 340),
+            ("face-a", 732, 391),
+        ] {
+            let binding = text_tag(group(&rendered, slot), "ux-gamepad-binding");
+            assert_eq!((attr_i32(binding, "x"), attr_i32(binding, "y")), (expected_x, expected_y), "{slot} binding anchor drifted");
+        }
+    }
+
 
 
     #[test]
