@@ -533,34 +533,11 @@
 }
 .controller-map-stage__pad .ux-gamepad-body {
   width: 100%;
-  height: 100%;
   min-height: min(44dvh, 340px);
   max-height: none;
-  --ux-gamepad-stick-size: min(calc(96px * var(--ux-gamepad-programmer-control-scale)), 100%);
-  --ux-gamepad-face-btn-size: min(calc(52px * var(--ux-gamepad-programmer-control-scale)), 100%);
-  --ux-gamepad-dpad-size: min(calc(84px * var(--ux-gamepad-programmer-control-scale)), 100%);
-  --ux-gamepad-cublet-gap: var(--ux-gamepad-programmer-cublet-gap);
 }
-.controller-map-stage__pad .ux-gamepad-cublet > .ux-gamepad-control,
-.controller-map-stage__pad .ux-gamepad-cublet > .ux-gamepad-stick,
-.controller-map-stage__pad .ux-gamepad-cublet > .ux-gamepad-dpad {
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  justify-self: center;
-  align-self: center;
-}
-.controller-map-stage__pad .ux-gamepad-shoulder {
-  width: min(100%, calc(88px * var(--ux-gamepad-programmer-control-scale)));
-  min-height: calc(30px * var(--ux-gamepad-programmer-control-scale));
-}
-.controller-map-stage__pad .ux-gamepad-dpad {
-  width: min(var(--ux-gamepad-dpad-size), 100%);
-  height: min(var(--ux-gamepad-dpad-size), 100%);
-}
-.controller-map-stage__pad .ux-gamepad-system {
-  width: min(calc(72px * var(--ux-gamepad-programmer-control-scale)), 100%);
+.controller-map-stage__pad .ux-gamepad-body--anatomical {
+  aspect-ratio: 1000 / 620;
 }
 .modal-card--fullscreen .controller-map-stage__pad .ux-gamepad-stage {
   width: 100%;
