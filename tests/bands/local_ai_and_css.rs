@@ -219,7 +219,12 @@
             canonical_url: "http://console.home.arpa/".to_string(),
             product: "HomeConsole".to_string(),
         };
-        let status = console_status(&state);
+        let mut status = console_status(&state);
+        status.controllers.live_input.pressed.push(ControllerBindingStatus {
+            control: "A".to_string(),
+            binding: "button 0".to_string(),
+            pressed: true,
+        });
         let rendered = ui::layout(&status).into_string();
         let controllers_start = rendered
             .find("id=\"view-controllers\"")
@@ -267,22 +272,24 @@
             "data-controller-mapping-editor=\"default\"",
             "data-controller-face",
             "data-controller-gamepad-programmer",
-            "data-gamepad-layout-version=\"3\"",
-            "data-gamepad-cublet-cols=\"7\"",
+            "data-gamepad-layout-version=\"4\"",
             "data-gamepad-slot=\"face-a\"",
             "data-gamepad-slot=\"system-start\"",
             "data-gamepad-slot=\"face-x\"",
             "data-gamepad-slot=\"stick-left\"",
             "data-gamepad-slot=\"dpad\"",
-            "ux-gamepad-body--cublet-grid",
-            "ux-gamepad-cublet",
-            "ux-gamepad-cublet--start",
-            "ux-gamepad-cublet--face-x",
+            "data-controller-control=\"D-pad Up\"",
+            "data-controller-binding-label=\"true\"",
+            "ux-gamepad-body--anatomical",
+            "viewBox=\"0 0 1000 620\"",
+            "ux-gamepad-slot",
+            "ux-gamepad-system",
+            "ux-gamepad-face--x",
             "ux-gamepad-stick",
             "ux-gamepad-dpad",
             "ux-gamepad-shoulder",
-            "ux-gamepad-wing",
-            "ux-gamepad-bridge",
+            "ux-gamepad-shell",
+            "ux-gamepad-guide",
             "controller-profile-card",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
@@ -315,6 +322,12 @@
         ] {
             assert!(!controllers_html.contains(forbidden) && !rendered.contains(forbidden), "lazy controller pane prose survived: {forbidden}");
         }
+
+        assert!(!controllers_html.contains("ux-gamepad-body--cublet-grid"));
+        assert!(!controllers_html.contains("ux-gamepad-cublet"));
+        assert_eq!(controllers_html.matches("data-gamepad-slot=\"").count(), 13);
+        assert!(controllers_html.contains("<svg"));
+        assert!(controllers_html.contains("ux-gamepad-face ux-gamepad-face--a is-active"));
         assert!(APP_JS.contains("bindControllerLiveInput"));
         assert!(APP_JS.contains("const panel = document.querySelector('[data-view-panel=\"controllers\"]')"));
         assert!(APP_JS.contains("openControllerModal"));
@@ -340,26 +353,29 @@
         assert!(APP_CSS.contains(".controller-map-bindings .controls-binding-row"));
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_LAYOUT_MIN_GAP"));
         assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("gamepad_layout_overlap_report"));
-        assert!(UX_CSS.contains(".ux-gamepad-cublet"));
+        assert!(UX_CSS.contains(".ux-gamepad-slot"));
         assert!(UX_CSS.contains("[data-gamepad-slot]"));
-        assert!(UX_CSS.contains(".ux-gamepad-body--cublet-grid"));
-        assert!(UX_CSS.contains("grid-template-areas:"));
-        assert!(UX_CSS.contains(".ux-gamepad-cublet--start"));
-        assert!(UX_CSS.contains(".ux-gamepad-cublet--face-x"));
+        assert!(UX_CSS.contains(".ux-gamepad-body--anatomical"));
+        assert!(!UX_CSS.contains("grid-template-areas:"));
+        assert!(UX_CSS.contains(".ux-gamepad-system"));
+        assert!(UX_CSS.contains(".ux-gamepad-face--x"));
         assert!(APP_CSS.contains("max-height: none"));
-        assert!(UX_CSS.contains(".ux-gamepad-wing--left"));
-        assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("GAMEPAD_CUBLET_COLS"));
+        assert!(UX_CSS.contains(".ux-gamepad-shell"));
+        assert!(include_str!("../../src/bands/ui/gamepad_layout.rs").contains("viewBox=\"0 0 1000 620\""));
         assert!(APP_CSS.contains(".controller-pool-scroll"));
         assert!(APP_CSS.contains("repeat(auto-fill, minmax(168px, 1fr))"));
         assert!(UX_CSS.contains("--ux-controller-pool-card-min-height:"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-card-min-height)"));
         assert!(APP_CSS.contains("min-height: var(--ux-controller-pool-action-min-height)"));
-        assert!(UX_CSS.contains("--ux-gamepad-programmer-control-scale:"));
-        assert!(UX_CSS.contains("--ux-gamepad-programmer-cublet-gap:"));
+        assert!(!UX_CSS.contains("cublet"));
         assert!(APP_CSS.contains("min-height: min(62dvh, 520px)"));
-        assert!(APP_CSS.contains("calc(52px * var(--ux-gamepad-programmer-control-scale))"));
-        assert!(APP_CSS.contains("--ux-gamepad-cublet-gap: var(--ux-gamepad-programmer-cublet-gap)"));
-        assert!(APP_CSS.contains(".controller-map-stage__pad .ux-gamepad-cublet > .ux-gamepad-control"));
+        assert!(UX_CSS.contains(".ux-gamepad-hit"));
+        assert!(APP_CSS.contains(".controller-map-stage__pad .ux-gamepad-body--anatomical"));
+        assert!(UX_CSS.contains(".ux-gamepad-shell-highlight"));
+        assert!(APP_JS.contains("host.querySelectorAll('[data-gamepad-slot]')"));
+        assert!(APP_JS.contains("[data-gamepad-slot][data-controller-control]"));
+        assert!(APP_JS.contains("event.key === 'Enter' || event.key === ' '"));
+        assert!(APP_JS.contains("[data-controller-binding-label], span, em"));
         assert!(APP_CSS.contains("modal-card--fullscreen"));
         assert!(APP_CSS.contains("modal-overlay--fullscreen"));
         assert!(APP_JS.contains("clearOverlayVariants"));

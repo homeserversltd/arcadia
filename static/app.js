@@ -1264,7 +1264,7 @@ function updateControllerLiveInput(data) {
 function auditGamepadControlLayout(root, gapPx = 2) {
   const host = root || document.querySelector('[data-controller-gamepad-programmer]');
   if (!host) return { ok: false, error: 'gamepad programmer not found', overlaps: [], boxes: [] };
-  const nodes = [...host.querySelectorAll('.ux-gamepad-cublet[data-gamepad-slot]')].filter((node) => {
+  const nodes = [...host.querySelectorAll('[data-gamepad-slot]')].filter((node) => {
     const rect = node.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   });
@@ -1334,7 +1334,7 @@ function hydrateControllerBindings(root, bindings) {
     const control = node.dataset.controllerControl || '';
     const binding = map.get(control);
     if (!binding) return;
-    const label = node.querySelector('span, em');
+    const label = node.querySelector('[data-controller-binding-label], span, em');
     if (label) label.textContent = compactGamepadBinding(binding);
   });
 }
@@ -1435,9 +1435,9 @@ function bindControllerProgramming() {
   };
 
   const bindControlButtons = (root) => {
-    root.querySelectorAll('button[data-controller-control]:not([data-controller-control-bound])').forEach((button) => {
+    root.querySelectorAll('[data-gamepad-slot][data-controller-control]:not([data-controller-control-bound]), [data-gamepad-slot] [data-controller-control]:not([data-controller-control-bound])').forEach((button) => {
       button.dataset.controllerControlBound = 'true';
-      button.addEventListener('click', (event) => {
+      const activateControl = (event) => {
         event.preventDefault();
         const control = button.dataset.controllerControl || '';
         if (!control || control === 'D-pad') return;
@@ -1445,6 +1445,10 @@ function bindControllerProgramming() {
         root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.toggle('is-selected', node === button));
         setBindingListenState(root, control);
         PopupManager.showToast(`Tap detected — now press ${control} on your real controller`, 'info');
+      };
+      button.addEventListener('click', activateControl);
+      button.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') activateControl(event);
       });
     });
     root.querySelectorAll('[data-controller-bind-row]:not([data-controller-bind-row-bound])').forEach((button) => {
@@ -1504,7 +1508,7 @@ function bindControllerProgramming() {
         const result = await postJson('/api/actions/controllers-bind', scopedControllerBody(root, { control: selected, binding: input }));
         root.querySelectorAll(`[data-controller-control="${selected}"], [data-binding-control="${selected}"]`).forEach((node) => {
           if (node.dataset.bindingControl) node.textContent = formatControllerBinding(result.stdout || input);
-          const label = node.querySelector?.('span, em');
+          const label = node.querySelector?.('[data-controller-binding-label], span, em') || node.closest?.('[data-gamepad-slot]')?.querySelector?.('[data-controller-binding-label]');
           if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
         });
         PopupManager.showToast(result.message || `${selected} mapped`, result.ok ? 'success' : 'error');
