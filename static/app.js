@@ -1322,6 +1322,71 @@ function scopedControllerBody(root, extra = {}) {
   return controllerId ? { controllerId, ...extra } : { ...extra };
 }
 
+function controllerCaptureButtonKey(item) {
+  return item?.binding || item?.input || item?.control || '';
+}
+
+function controllerCaptureAxisKey(axis) {
+  return axis?.binding || axis?.input || axis?.control || '';
+}
+
+function controllerCaptureAxisInput(axis) {
+  const number = String(axis?.control || '').match(/(\d+)/);
+  if (number) return `axis ${number[1]}`;
+  if (axis?.binding) return `axis ${axis.binding}`;
+  return null;
+}
+
+function createControllerCaptureGate({ now = () => Date.now(), onGateOpen = () => {} } = {}) {
+  let previousPressed = new Set();
+  let previousActiveAxes = new Set();
+  let releaseGateOpen = false;
+  let gateOpenedAt = 0;
+
+  const reset = () => {
+    previousPressed = new Set();
+    previousActiveAxes = new Set();
+    releaseGateOpen = false;
+    gateOpenedAt = 0;
+  };
+
+  const observe = (merged) => {
+    const pressedItems = merged?.pressed || [];
+    const axisItems = merged?.axes || [];
+    const pressed = new Set(pressedItems.map(controllerCaptureButtonKey).filter(Boolean));
+    const activeAxes = new Set(axisItems.map(controllerCaptureAxisKey).filter(Boolean));
+    let input = null;
+
+    if (!releaseGateOpen && pressed.size === 0 && activeAxes.size === 0) {
+      releaseGateOpen = true;
+      gateOpenedAt = now();
+      onGateOpen(gateOpenedAt);
+    }
+
+    if (releaseGateOpen) {
+      const button = pressedItems.find((item) => {
+        const key = controllerCaptureButtonKey(item);
+        return key && !previousPressed.has(key);
+      });
+      if (button) {
+        input = button.binding || button.input || null;
+      } else {
+        const axis = axisItems.find((item) => {
+          const key = controllerCaptureAxisKey(item);
+          return key && !previousActiveAxes.has(key);
+        });
+        input = controllerCaptureAxisInput(axis);
+      }
+    }
+
+    previousPressed = pressed;
+    previousActiveAxes = activeAxes;
+    return { input, releaseGateOpen, gateOpenedAt };
+  };
+
+  return { reset, observe };
+}
+
 function hydrateControllerBindings(root, bindings) {
   if (!root) return;
   const map = new Map((bindings || []).map((item) => [item.control, item.binding]));
@@ -1398,6 +1463,17 @@ function bindControllerProgramming() {
   let teachIndex = -1;
   const intervalMs = 60;
   const bindingTimeoutMs = 3000;
+  const captureGate = createControllerCaptureGate({
+    onGateOpen: (openedAt) => {
+      bindingStartedAt = openedAt;
+      bindingTimeoutShown = false;
+    },
+  });
+  const resetCaptureGate = () => {
+    captureGate.reset();
+    bindingStartedAt = 0;
+    bindingTimeoutShown = false;
+  };
 
   const refreshModalBindings = async (root) => {
     try {
@@ -1444,6 +1520,7 @@ function bindControllerProgramming() {
 
   const selectProgrammerControl = (root, control) => {
     selected = control;
+    resetCaptureGate();
     root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => {
       node.classList.toggle('is-selected', node.dataset.controllerControl === control);
     });
@@ -1453,7 +1530,7 @@ function bindControllerProgramming() {
     root.classList.toggle('is-binding', Boolean(control));
     if (control) root.dataset.bindingTarget = control;
     else delete root.dataset.bindingTarget;
-    bindingStartedAt = control ? Date.now() : 0;
+    bindingStartedAt = 0;
     bindingTimeoutShown = false;
     const state = root.querySelector('[data-controller-programmer-state]');
     if (!state) return;
@@ -1469,6 +1546,7 @@ function bindControllerProgramming() {
   const clearTeachMode = (root, message = 'Tap a control on the gamepad to begin') => {
     teachIndex = -1;
     selected = null;
+    resetCaptureGate();
     clearTeachTarget(root);
     root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.remove('is-selected'));
     setBindingListenState(root, null, { text: message });
@@ -1478,6 +1556,7 @@ function bindControllerProgramming() {
     if (index >= TEACH_SWEEP_ORDER.length) {
       teachIndex = -1;
       selected = null;
+      resetCaptureGate();
       clearTeachTarget(root);
       const save = root.querySelector('[data-action="controllers-save-profile"]');
       if (save) {
@@ -1559,21 +1638,10 @@ function bindControllerProgramming() {
         axes.appendChild(pill);
       });
     }
-    const captureBinding = () => {
-      if (merged.pressed && merged.pressed.length) {
-        return merged.pressed[0].binding || merged.pressed[0].input || null;
-      }
-      if (merged.axes && merged.axes.length) {
-        const axis = merged.axes[0];
-        const number = String(axis.control || '').match(/(\d+)/);
-        if (number) return `axis ${number[1]}`;
-        if (axis.binding) return `axis ${axis.binding}`;
-      }
-      return null;
-    };
+    const capture = captureGate.observe(merged);
     if (selected) {
-      const input = captureBinding();
-      if (!input && bindingStartedAt && !bindingTimeoutShown && Date.now() - bindingStartedAt >= bindingTimeoutMs) {
+      const input = capture.input;
+      if (!input && capture.releaseGateOpen && bindingStartedAt && !bindingTimeoutShown && Date.now() - bindingStartedAt >= bindingTimeoutMs) {
         bindingTimeoutShown = true;
         PopupManager.showToast('No button detected. Pause or quit your game first — running games often keep the controller.', 'info');
       }
@@ -1670,6 +1738,7 @@ function bindControllerProgramming() {
 
   const startProgrammerLoop = (root) => {
     if (programmerTimer) { programmerTimer(); programmerTimer = null; }
+    resetCaptureGate();
     bindProfileCards(root);
     bindControlButtons(root);
     bindModalActions(root);

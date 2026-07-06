@@ -6,4 +6,5 @@ mod tests {
     include!("bands/home_sync_storage.rs");
     include!("bands/network_system.rs");
     include!("bands/local_ai_and_css.rs");
+    include!("bands/controller_capture_edge.rs");
 }
