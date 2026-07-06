@@ -561,17 +561,35 @@
 ").expect("teach order end") + order_start;
         let order = &APP_JS[order_start..order_end];
         let expected = [
-            "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "Select", "Start", "Left Stick X", "Right Stick X", "D-pad",
+            "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "Select", "Start",
+            "Left Stick X", "Left Stick Y", "Right Stick X", "Right Stick Y",
+            "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right",
         ];
         assert_eq!(order.matches("{ control:").count(), expected.len());
+        let tuple_source = include_str!("../../src/bands/controller_writers/tuple.rs");
         let mut cursor = 0;
         for control in expected {
             let needle = format!("control: '{control}'");
             let next = order[cursor..].find(&needle).unwrap_or_else(|| panic!("missing teach control {control}"));
             cursor += next + needle.len();
+            assert!(
+                tuple_source.contains(&format!("(\"{control}\",")),
+                "teach control {control} must exist in canonical binding vocabulary"
+            );
+        }
+        for required in [
+            "highlightSlot: 'stick-left'",
+            "highlightSlot: 'stick-right'",
+            "highlightSlot: 'dpad'",
+            "Push the left stick straight left (11 of 18)",
+            "Push the left stick straight up (12 of 18)",
+            "Press right on the D-pad (18 of 18)",
+        ] {
+            assert!(order.contains(required), "teach order missing {required}");
         }
         assert!(APP_JS.contains("root.dataset.teachControl = step.control"));
-        assert!(APP_JS.contains("Press ${step.label} on your controller (${teachIndex + 1} of ${TEACH_SWEEP_ORDER.length})"));
+        assert!(APP_JS.contains("const highlightSelector = step.highlightSlot"));
+        assert!(APP_JS.contains("setBindingListenState(root, step.control, { text: step.prompt"));
         assert!(APP_JS.contains("if (!result.ok && teachIndex >= 0)"));
         assert!(APP_JS.contains("setTeachStep(root, teachIndex)"));
         assert!(APP_JS.contains("clearTeachMode(root)"));

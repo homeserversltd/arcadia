@@ -47,8 +47,8 @@ fn controller_capture_rearms_close_gate_and_timer_starts_at_gate_open() {
 #[test]
 fn controller_capture_gate_script_kills_ghost_advance_sequence() {
     let helper_start = APP_JS
-        .find("function controllerCaptureButtonKey")
-        .expect("capture helper starts");
+        .find("const CONTROLLER_BUTTON_INDEX_LABELS")
+        .expect("controller input helpers start");
     let helper_end = APP_JS[helper_start..]
         .find("function hydrateControllerBindings")
         .map(|offset| helper_start + offset)
@@ -63,6 +63,20 @@ const assert = (condition, message) => {{ if (!condition) throw new Error(messag
 const press0 = {{ control: 'button 0', binding: 'button 0' }};
 const press1 = {{ control: 'button 1', binding: 'button 1' }};
 const axis2 = {{ control: 'axis 2', binding: '0.61' }};
+const leftStickY = normalizeControllerInputEvents({{ pressed: [], axes: [{{ control: 'Axis 1', binding: '1' }}] }});
+assert(leftStickY.axes[0].control === 'Left Stick Y', 'axis 1 normalizes to Left Stick Y');
+const dpadDirections = normalizeControllerInputEvents({{
+  pressed: [
+    {{ control: 'D-pad Up', binding: 'hat 0 up' }},
+    {{ control: 'D-pad Down', binding: 'hat 0 down' }},
+    {{ control: 'D-pad Left', binding: 'hat 0 left' }},
+    {{ control: 'D-pad Right', binding: 'hat 0 right' }},
+  ],
+  axes: []
+}});
+assert(new Set(dpadDirections.pressed.map((item) => item.binding)).size === 4, 'hat directions stay direction-distinct through normalization');
+const axis1 = leftStickY.axes[0];
+const dpadDown = dpadDirections.pressed[1];
 
 const gate = createControllerCaptureGate({{ now: () => now, onGateOpen: (openedAt) => gateOpens.push(openedAt) }});
 
@@ -92,6 +106,16 @@ assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === null, 'resting a
 assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === null, 'level axis chatter stays ignored');
 assert(gate.observe({{ pressed: [], axes: [] }}).releaseGateOpen === true, 'axis gate opens only after active axis absence');
 assert(gate.observe({{ pressed: [], axes: [axis2] }}).input === 'axis 2', 'fresh axis edge after absence captures');
+
+// Directional teach steps bind their distinct physical tuple, not a sibling.
+gate.reset();
+assert(gate.observe({{ pressed: [], axes: [axis1] }}).input === null, 'held stick-y edge must not capture on arm');
+assert(gate.observe({{ pressed: [], axes: [] }}).releaseGateOpen === true, 'stick-y direction waits for neutral');
+assert(gate.observe({{ pressed: [], axes: [axis1] }}).input === 'axis 1', 'fresh stick-y edge captures axis 1');
+gate.reset();
+assert(gate.observe({{ pressed: [dpadDown], axes: [] }}).input === null, 'held dpad direction must not capture on arm');
+assert(gate.observe({{ pressed: [], axes: [] }}).releaseGateOpen === true, 'dpad direction waits for release');
+assert(gate.observe({{ pressed: [dpadDown], axes: [] }}).input === 'hat 0 down', 'fresh dpad down captures its own hat direction');
 console.log(JSON.stringify({{ ok: true, gateOpens }}));
 "#
     );
