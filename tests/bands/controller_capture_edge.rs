@@ -145,3 +145,78 @@ console.log(JSON.stringify({{ ok: true, gateOpens }}));
         "node harness did not report success"
     );
 }
+
+#[test]
+fn controller_binding_hydration_keeps_grid_row_names_and_updates_pad_labels() {
+    let helper_start = APP_JS
+        .find("const CONTROLLER_BUTTON_INDEX_LABELS")
+        .expect("controller binding helpers start");
+    let helper_end = APP_JS[helper_start..]
+        .find("function hydrateControllerGamepad")
+        .map(|offset| helper_start + offset)
+        .expect("controller binding helpers end before alias");
+    let helper = &APP_JS[helper_start..helper_end];
+    let script = format!(
+        r#"
+{helper}
+const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
+class FakeNode {{
+  constructor(dataset = {{}}, children = []) {{
+    this.dataset = dataset;
+    this.children = children;
+    this.textContent = '';
+    this.attributes = {{}};
+    children.forEach((child) => child.parent = this);
+  }}
+  querySelector(selector) {{
+    if (selector.includes('[data-controller-binding-label]')) {{
+      const explicit = this.children.find((child) => child.dataset.controllerBindingLabel === 'true');
+      if (explicit) return explicit;
+    }}
+    if (selector.includes('s' + 'pan')) return this.children.find((child) => child.kind === 'span') || null;
+    if (selector.includes('e' + 'm')) return this.children.find((child) => child.kind === 'em') || null;
+    return null;
+  }}
+  querySelectorAll(selector) {{
+    if (selector === '[data-binding-control]') return this.children.filter((child) => child.dataset.bindingControl);
+    if (selector === '[data-controller-control]') return this.children.filter((child) => child.dataset.controllerControl);
+    return [];
+  }}
+  closest(selector) {{ return selector === '[data-controller-bind-row]' && this.parent?.dataset.controllerBindRow ? this.parent : null; }}
+  setAttribute(name, value) {{ this.attributes[name] = value; }}
+}}
+const rowName = new FakeNode({{}}, []); rowName.kind = 'span'; rowName.textContent = 'A';
+const rowValue = new FakeNode({{ bindingControl: 'A' }}, []); rowValue.kind = 'span'; rowValue.textContent = 'Unbound';
+const row = new FakeNode({{ controllerControl: 'A', controllerBindRow: 'true' }}, [rowName, rowValue]);
+const padLabel = new FakeNode({{ controllerBindingLabel: 'true' }}, []); padLabel.textContent = 'Unbound';
+const padSlot = new FakeNode({{ controllerControl: 'A' }}, [padLabel]);
+const root = new FakeNode({{}}, [row, rowValue, padSlot]);
+rowValue.parent = row;
+hydrateControllerBindings(root, [{{ control: 'A', binding: 'button 0' }}]);
+assert(rowName.textContent === 'A', `grid row name was stomped to ${{rowName.textContent}}`);
+assert(rowValue.textContent === '#1', `grid row value was not hydrated: ${{rowValue.textContent}}`);
+assert(row.attributes['data-controller-binding-state'] === 'bound', 'grid row bound state was not updated');
+assert(padLabel.textContent === 'B0', `pad binding label was not hydrated: ${{padLabel.textContent}}`);
+console.log(JSON.stringify({{ ok: true, rowName: rowName.textContent, rowValue: rowValue.textContent, padLabel: padLabel.textContent }}));
+"#
+    );
+
+    let output = Command::new("node")
+        .arg("-e")
+        .arg(script)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("node executes controller binding hydration harness");
+
+    assert!(
+        output.status.success(),
+        "node hydration harness failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("\"rowName\":\"A\""),
+        "node hydration harness did not preserve the canonical grid row name"
+    );
+}
