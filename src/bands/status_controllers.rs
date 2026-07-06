@@ -464,9 +464,9 @@ fn read_controller_input_with_timeout(device: Option<&ControllerDeviceStatus>, s
         let event_type = kind & 0x7f;
         let is_initial_state = kind & 0x80 != 0;
         if event_type == 0x01 && value != 0 {
-            pressed.push(ControllerBindingStatus { control: format!("Button {}", number), binding: format!("button {}", number), pressed: true });
+            pressed.push(ControllerBindingStatus { control: format!("Button {}", number), binding: format!("button {}", number), pressed: true, axis_value: None });
         } else if event_type == 0x02 && !is_initial_state && value.abs() > 6000 {
-            axes.push(ControllerBindingStatus { control: format!("Axis {}", number), binding: value.to_string(), pressed: true });
+            axes.push(ControllerBindingStatus { control: format!("Axis {}", number), binding: format!("axis {}", number), pressed: true, axis_value: Some(value) });
         }
     }
     ControllerInputStatus {
@@ -703,7 +703,10 @@ async fn action_controllers_test() -> (StatusCode, Json<ConsoleActionResponse>) 
         lines.push("Listening. Hold a button or move a stick while the test is open.".to_string());
     } else {
         lines.extend(input.pressed.iter().map(|b| format!("{} pressed", b.control)));
-        lines.extend(input.axes.iter().map(|a| format!("{} {}", a.control, a.binding)));
+        lines.extend(input.axes.iter().map(|a| match a.axis_value {
+            Some(value) => format!("{} {} {}", a.control, a.binding, value),
+            None => format!("{} {}", a.control, a.binding),
+        }));
     }
     (
         StatusCode::OK,
@@ -1066,3 +1069,44 @@ fn action_controllers_assign_emulator(
 }
 
 
+
+
+#[cfg(test)]
+mod controller_input_wire_tests {
+    use super::*;
+
+    fn js_event(time: u32, value: i16, kind: u8, number: u8) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(time.to_le_bytes());
+        bytes.extend(value.to_le_bytes());
+        bytes.push(kind);
+        bytes.push(number);
+        bytes
+    }
+
+    #[test]
+    fn axis_events_emit_identity_binding_and_separate_magnitude() {
+        let mut bytes = Vec::new();
+        bytes.extend(js_event(1, -12381, 0x02, 3));
+        bytes.extend(js_event(2, -27917, 0x02, 3));
+        bytes.extend(js_event(3, 1, 0x01, 7));
+        let events = parse_js_events(&bytes);
+        let mut axes = Vec::new();
+        let mut pressed = Vec::new();
+        for (_, value, kind, number) in events {
+            let event_type = kind & 0x7f;
+            let is_initial_state = kind & 0x80 != 0;
+            if event_type == 0x01 && value != 0 {
+                pressed.push(ControllerBindingStatus { control: format!("Button {}", number), binding: format!("button {}", number), pressed: true, axis_value: None });
+            } else if event_type == 0x02 && !is_initial_state && value.abs() > 6000 {
+                axes.push(ControllerBindingStatus { control: format!("Axis {}", number), binding: format!("axis {}", number), pressed: true, axis_value: Some(value) });
+            }
+        }
+        assert_eq!(pressed[0].binding, "button 7");
+        assert_eq!(axes.len(), 2);
+        assert!(axes.iter().all(|axis| axis.binding == "axis 3"));
+        assert_eq!(axes[0].axis_value, Some(-12381));
+        assert_eq!(axes[1].axis_value, Some(-27917));
+        assert!(!axes.iter().any(|axis| axis.binding == "axis -12381" || axis.binding == "axis -27917"));
+    }
+}
