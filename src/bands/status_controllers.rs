@@ -101,8 +101,8 @@ fn controller_recovery_status(devices: &[ControllerDeviceStatus]) -> ControllerR
         return ControllerRecoveryStatus {
             state: "receiver-only".to_string(),
             title: receiver,
-            detail: "Receiver is awake; no gamepad event surface is exposed yet.".to_string(),
-            action: "Wake or pair the controller".to_string(),
+            detail: "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.".to_string(),
+            action: "Restart the console".to_string(),
         };
     }
     ControllerRecoveryStatus {

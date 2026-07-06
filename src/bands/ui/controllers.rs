@@ -41,6 +41,12 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
+                section class="controls-recovery" aria-label="Controller recovery" data-controller-recovery hidden[status.controllers.recovery.state == "connected"] {
+                    strong data-controller-recovery-title { (status.controllers.recovery.title) }
+                    span data-controller-recovery-detail { (status.controllers.recovery.detail) }
+                    em data-controller-recovery-action { (status.controllers.recovery.action) }
+                }
+
                 section class="controls-card controls-card--games" aria-label="Game systems" {
                     div class="controls-card__head controls-card__head--games" {
                         div {
@@ -100,6 +106,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                             }
                             section class="controller-map-live" aria-label="Live preview" {
                                 span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Tap a control on the gamepad to begin" }
+                                p class="controls-map-recovery" data-controller-programmer-recovery hidden[status.controllers.recovery.state != "receiver-only"] { "Controller receiver found, but the console cannot read it as a gamepad yet. Restarting the console usually fixes this." }
                                 p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
                                 div class="controller-axis-strip" data-controller-programmer-axes {}
                                 p class="controls-map-hint" { "Press your controller to light up controls here." }
