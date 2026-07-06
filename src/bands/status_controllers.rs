@@ -97,13 +97,8 @@ fn controller_recovery_status(devices: &[ControllerDeviceStatus]) -> ControllerR
             action: "Map or assign profile".to_string(),
         };
     }
-    if let Some(receiver) = idle_receiver_label() {
-        return ControllerRecoveryStatus {
-            state: "receiver-only".to_string(),
-            title: receiver,
-            detail: "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.".to_string(),
-            action: "Restart the console".to_string(),
-        };
+    if let Some(recovery) = receiver_only_recovery_status() {
+        return recovery;
     }
     ControllerRecoveryStatus {
         state: "disconnected".to_string(),
@@ -113,21 +108,46 @@ fn controller_recovery_status(devices: &[ControllerDeviceStatus]) -> ControllerR
     }
 }
 
-fn idle_receiver_label() -> Option<String> {
+fn receiver_only_recovery_status() -> Option<ControllerRecoveryStatus> {
     for root in ["/dev/input/by-id", "/dev/hidraw0"] {
         if root == "/dev/hidraw0" && Path::new(root).exists() {
-            return Some("Receiver only".to_string());
+            return Some(gamepad_surface_missing_recovery("Receiver only"));
         }
         let Ok(entries) = fs::read_dir(root) else { continue; };
         for entry in entries.flatten() {
             let raw = entry.file_name().to_string_lossy().to_string();
-            let lowered = raw.to_ascii_lowercase();
-            if lowered.contains("8bitdo") && (lowered.contains("idle") || lowered.contains("hidraw")) {
-                return Some(receiver_only_display_title(&raw));
+            if let Some(recovery) = recovery_status_for_receiver_only_by_id(&raw) {
+                return Some(recovery);
             }
         }
     }
     None
+}
+
+fn recovery_status_for_receiver_only_by_id(raw: &str) -> Option<ControllerRecoveryStatus> {
+    let lowered = raw.to_ascii_lowercase();
+    if !lowered.contains("8bitdo") || !lowered.contains("hidraw") {
+        return None;
+    }
+    let title = receiver_only_display_title(raw);
+    if lowered.contains("idle") {
+        return Some(ControllerRecoveryStatus {
+            state: "receiver-idle".to_string(),
+            title,
+            detail: "Controller is asleep. Press any button on it to wake it.".to_string(),
+            action: "Wake the controller".to_string(),
+        });
+    }
+    Some(gamepad_surface_missing_recovery(&title))
+}
+
+fn gamepad_surface_missing_recovery(title: &str) -> ControllerRecoveryStatus {
+    ControllerRecoveryStatus {
+        state: "gamepad-surface-missing".to_string(),
+        title: title.to_string(),
+        detail: "Receiver is awake; no gamepad event surface is exposed yet. Restart the console to reload controller support.".to_string(),
+        action: "Restart the console".to_string(),
+    }
 }
 
 fn receiver_only_display_title(raw: &str) -> String {

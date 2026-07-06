@@ -516,7 +516,12 @@ function controllerPaneIsActive() {
 function controllerRecoveryNeedsRestart(recovery = {}) {
   const state = String(recovery.state || '').toLowerCase();
   const detail = String(recovery.detail || '').toLowerCase();
-  return state === 'receiver-only' || detail.includes('no gamepad event surface');
+  return state === 'gamepad-surface-missing' || detail.includes('no gamepad event surface');
+}
+
+function controllerRecoveryModalLine(recovery = {}) {
+  const state = String(recovery.state || '').toLowerCase();
+  return state === 'receiver-idle' || controllerRecoveryNeedsRestart(recovery);
 }
 
 function updateControllerRecoverySurfaces(root, recovery = {}) {
@@ -533,10 +538,10 @@ function updateControllerRecoverySurfaces(root, recovery = {}) {
     if (action) action.textContent = recovery.action || '';
   });
   root.querySelectorAll('[data-controller-programmer-recovery]').forEach((line) => {
-    const show = controllerRecoveryNeedsRestart(recovery);
+    const show = controllerRecoveryModalLine(recovery);
     line.hidden = !show;
     line.setAttribute('aria-hidden', String(!show));
-    if (show) line.textContent = 'Controller receiver found, but the console cannot read it as a gamepad yet. Restarting the console usually fixes this.';
+    if (show) line.textContent = recovery.detail || '';
   });
 }
 
