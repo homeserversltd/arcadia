@@ -1,8 +1,10 @@
 fn controllers_view(status: &ConsoleStatus) -> Markup {
     let connected = status.controllers.detected_count > 0;
+    let recovery_state = status.controllers.recovery.state.as_str();
+    let recovery_modal_line = recovery_state == "receiver-idle" || recovery_state == "gamepad-surface-missing";
     let hero_class = if connected {
         "available"
-    } else if status.controllers.state == "receiver-only" {
+    } else if matches!(status.controllers.state.as_str(), "receiver-idle" | "gamepad-surface-missing") {
         "starting"
     } else {
         "disabled"
@@ -106,7 +108,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                             }
                             section class="controller-map-live" aria-label="Live preview" {
                                 span class="system-status system-status--starting controller-map-bind-state" data-controller-programmer-state { "Tap a control on the gamepad to begin" }
-                                p class="controls-map-recovery" data-controller-programmer-recovery hidden[status.controllers.recovery.state != "receiver-only"] { "Controller receiver found, but the console cannot read it as a gamepad yet. Restarting the console usually fixes this." }
+                                p class="controls-map-recovery" data-controller-programmer-recovery hidden[!recovery_modal_line] { (status.controllers.recovery.detail) }
                                 p class="controls-live-device" data-controller-programmer-device { (status.controllers.live_input.device) }
                                 div class="controller-axis-strip" data-controller-programmer-axes {}
                                 p class="controls-map-hint" { "Press your controller to light up controls here." }
