@@ -149,19 +149,21 @@ fn friendly_binding_label(binding: &str) -> String {
     binding.to_string()
 }
 
-fn controller_bindings_grid(bindings: &[crate::ControllerBindingStatus], connected: bool) -> Markup {
+fn controller_bindings_grid(bindings: &[crate::ControllerBindingStatus], _connected: bool) -> Markup {
+    let canonical = crate::default_controller_bindings();
+    let binding_for = |control: &str| -> Option<&str> {
+        bindings.iter().find(|binding| binding.control == control).map(|binding| binding.binding.as_str())
+    };
     html! {
-        div class="controls-bindings" data-controller-mapping-editor="default" {
-            @if bindings.is_empty() {
-                p class="controls-bindings__empty" { "No mappings yet. Tap a control on the gamepad, then press the matching button on your controller." }
-            } @else {
-                @for binding in bindings {
-                    button class="controls-binding-row" type="button" data-controller-control=(binding.control) data-controller-bind-row="true" aria-label=(format!("{} mapped to {}", binding.control, friendly_binding_label(&binding.binding))) {
-                        span class="controls-binding-name" { (binding.control) }
-                        span class="controls-binding-arrow" aria-hidden="true" { "→" }
-                        span class="controls-binding-value" data-binding-control=(binding.control) {
-                            (friendly_binding_label(if connected { &binding.binding } else { "Waiting" }))
-                        }
+        div class="controls-bindings" data-controller-mapping-editor="default" data-controller-mapping-major="control" {
+            @for control in canonical {
+                @let binding = binding_for(&control.control);
+                @let label = binding.map(friendly_binding_label).unwrap_or_else(|| "Unbound".to_string());
+                button class="controls-binding-row" type="button" data-controller-control=(control.control) data-controller-bind-row="true" data-controller-binding-state=(if binding.is_some() { "bound" } else { "unbound" }) aria-label=(format!("{} mapped to {}", control.control, label)) {
+                    span class="controls-binding-name" { (control.control) }
+                    span class="controls-binding-arrow" aria-hidden="true" { "→" }
+                    span class="controls-binding-value" data-binding-control=(control.control) {
+                        (label)
                     }
                 }
             }
