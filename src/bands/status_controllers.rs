@@ -444,38 +444,14 @@ fn virtual_controller_device(status: &ControllerStatus, controller_id: &str) -> 
     controller_device_for_id(status, controller_id)
 }
 
+include!("controller_reader.rs");
+
 fn read_controller_input(device: Option<&ControllerDeviceStatus>) -> ControllerInputStatus {
-    read_controller_input_with_timeout(device, "0.18")
+    controller_reader_snapshot(device)
 }
 
 fn read_controller_input_fast(device: Option<&ControllerDeviceStatus>) -> ControllerInputStatus {
-    read_controller_input_with_timeout(device, "0.04")
-}
-
-fn read_controller_input_with_timeout(device: Option<&ControllerDeviceStatus>, sample_timeout: &str) -> ControllerInputStatus {
-    let Some(device) = device else {
-        return ControllerInputStatus { state: "waiting".to_string(), device: "No controller detected".to_string(), sample_path: String::new(), pressed: Vec::new(), axes: Vec::new() };
-    };
-    let sample_path = if device.path.contains("/dev/input/js") { device.path.clone() } else { first_js_path().unwrap_or_else(|| device.path.clone()) };
-    let events = sample_js_events(&sample_path, sample_timeout);
-    let mut pressed = Vec::new();
-    let mut axes = Vec::new();
-    for (_, value, kind, number) in events {
-        let event_type = kind & 0x7f;
-        let is_initial_state = kind & 0x80 != 0;
-        if event_type == 0x01 && value != 0 {
-            pressed.push(ControllerBindingStatus { control: format!("Button {}", number), binding: format!("button {}", number), pressed: true, axis_value: None });
-        } else if event_type == 0x02 && !is_initial_state && value.abs() > 6000 {
-            axes.push(ControllerBindingStatus { control: format!("Axis {}", number), binding: format!("axis {}", number), pressed: true, axis_value: Some(value) });
-        }
-    }
-    ControllerInputStatus {
-        state: if pressed.is_empty() && axes.is_empty() { "listening" } else { "active" }.to_string(),
-        device: device.name.clone(),
-        sample_path,
-        pressed,
-        axes,
-    }
+    controller_reader_snapshot_fast(device)
 }
 
 fn first_js_path() -> Option<String> {
@@ -486,26 +462,6 @@ fn first_js_path() -> Option<String> {
         }
     }
     None
-}
-
-fn sample_js_events(path: &str, sample_timeout: &str) -> Vec<(u32, i16, u8, u8)> {
-    let Ok(output) = Command::new("/usr/bin/env")
-        .args(["timeout", sample_timeout, "dd", &format!("if={}", path), "bs=8", "count=64", "status=none"])
-        .output()
-    else { return Vec::new(); };
-    parse_js_events(&output.stdout)
-}
-
-fn parse_js_events(bytes: &[u8]) -> Vec<(u32, i16, u8, u8)> {
-    let mut out = Vec::new();
-    for chunk in bytes.chunks_exact(8) {
-        let time = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-        let value = i16::from_le_bytes([chunk[4], chunk[5]]);
-        let kind = chunk[6];
-        let number = chunk[7];
-        out.push((time, value, kind, number));
-    }
-    out
 }
 
 fn emulator_controller_statuses() -> Vec<EmulatorControllerStatus> {
@@ -1075,38 +1031,92 @@ fn action_controllers_assign_emulator(
 mod controller_input_wire_tests {
     use super::*;
 
-    fn js_event(time: u32, value: i16, kind: u8, number: u8) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend(time.to_le_bytes());
-        bytes.extend(value.to_le_bytes());
-        bytes.push(kind);
-        bytes.push(number);
-        bytes
+    #[test]
+    fn axis_events_emit_identity_binding_and_separate_magnitude() {
+        let mut state = ControllerReaderState::new();
+        state.mark_open();
+        state.apply_event(ControllerJsEvent { time: 1, value: -12381, kind: 0x02, number: 3 });
+        state.apply_event(ControllerJsEvent { time: 2, value: -27917, kind: 0x02, number: 3 });
+        state.apply_event(ControllerJsEvent { time: 3, value: 1, kind: 0x01, number: 7 });
+        let (_, pressed, axes) = state.snapshot_bindings();
+        assert_eq!(pressed[0].binding, "button 7");
+        assert_eq!(axes.len(), 1);
+        assert!(axes.iter().all(|axis| axis.binding == "axis 3"));
+        assert_eq!(axes[0].axis_value, Some(-27917));
+        assert!(!axes.iter().any(|axis| axis.binding == "axis -12381" || axis.binding == "axis -27917"));
     }
 
     #[test]
-    fn axis_events_emit_identity_binding_and_separate_magnitude() {
-        let mut bytes = Vec::new();
-        bytes.extend(js_event(1, -12381, 0x02, 3));
-        bytes.extend(js_event(2, -27917, 0x02, 3));
-        bytes.extend(js_event(3, 1, 0x01, 7));
-        let events = parse_js_events(&bytes);
-        let mut axes = Vec::new();
-        let mut pressed = Vec::new();
-        for (_, value, kind, number) in events {
-            let event_type = kind & 0x7f;
-            let is_initial_state = kind & 0x80 != 0;
-            if event_type == 0x01 && value != 0 {
-                pressed.push(ControllerBindingStatus { control: format!("Button {}", number), binding: format!("button {}", number), pressed: true, axis_value: None });
-            } else if event_type == 0x02 && !is_initial_state && value.abs() > 6000 {
-                axes.push(ControllerBindingStatus { control: format!("Axis {}", number), binding: format!("axis {}", number), pressed: true, axis_value: Some(value) });
-            }
-        }
-        assert_eq!(pressed[0].binding, "button 7");
-        assert_eq!(axes.len(), 2);
-        assert!(axes.iter().all(|axis| axis.binding == "axis 3"));
-        assert_eq!(axes[0].axis_value, Some(-12381));
-        assert_eq!(axes[1].axis_value, Some(-27917));
-        assert!(!axes.iter().any(|axis| axis.binding == "axis -12381" || axis.binding == "axis -27917"));
+    fn missed_tap_between_polls_surfaces_one_rising_edge() {
+        let mut state = ControllerReaderState::new();
+        state.mark_open();
+        let (_, pressed_before, _) = state.snapshot_bindings();
+        assert!(pressed_before.is_empty());
+
+        state.apply_event(ControllerJsEvent { time: 10, value: 1, kind: 0x01, number: 6 });
+        state.apply_event(ControllerJsEvent { time: 20, value: 0, kind: 0x01, number: 6 });
+
+        let (_, first_snapshot, _) = state.snapshot_bindings();
+        assert_eq!(first_snapshot.len(), 1);
+        assert_eq!(first_snapshot[0].binding, "button 6");
+        assert!(first_snapshot[0].pressed);
+
+        let (_, second_snapshot, _) = state.snapshot_bindings();
+        assert!(second_snapshot.is_empty(), "tap edge must drain exactly once");
+    }
+
+    #[test]
+    fn regular_and_trainer_consumers_have_independent_edge_cursors() {
+        let mut state = ControllerReaderState::new();
+        state.mark_open();
+        state.apply_event(ControllerJsEvent { time: 10, value: 1, kind: 0x01, number: 6 });
+        state.apply_event(ControllerJsEvent { time: 20, value: 0, kind: 0x01, number: 6 });
+
+        let (_, regular_snapshot, _) = state.snapshot_bindings_for(ControllerSnapshotConsumer::Regular);
+        let (_, trainer_snapshot, _) = state.snapshot_bindings_for(ControllerSnapshotConsumer::Trainer);
+        assert_eq!(regular_snapshot.len(), 1);
+        assert_eq!(trainer_snapshot.len(), 1);
+        assert_eq!(regular_snapshot[0].binding, "button 6");
+        assert_eq!(trainer_snapshot[0].binding, "button 6");
+
+        let (_, regular_second, _) = state.snapshot_bindings_for(ControllerSnapshotConsumer::Regular);
+        let (_, trainer_second, _) = state.snapshot_bindings_for(ControllerSnapshotConsumer::Trainer);
+        assert!(regular_second.is_empty());
+        assert!(trainer_second.is_empty());
+    }
+
+    #[test]
+    fn held_state_remains_truthful_across_polls() {
+        let mut state = ControllerReaderState::new();
+        state.mark_open();
+        state.apply_event(ControllerJsEvent { time: 1, value: 1, kind: 0x01, number: 7 });
+
+        let (_, first_snapshot, _) = state.snapshot_bindings();
+        let (_, second_snapshot, _) = state.snapshot_bindings();
+        assert_eq!(first_snapshot[0].binding, "button 7");
+        assert_eq!(second_snapshot[0].binding, "button 7");
+
+        state.apply_event(ControllerJsEvent { time: 2, value: 0, kind: 0x01, number: 7 });
+        let (_, released_snapshot, _) = state.snapshot_bindings();
+        assert!(released_snapshot.is_empty());
+    }
+
+    #[test]
+    fn reader_state_recovers_after_device_vanish_and_reopen() {
+        let mut state = ControllerReaderState::new();
+        state.mark_open();
+        state.apply_event(ControllerJsEvent { time: 1, value: 1, kind: 0x01, number: 6 });
+        state.mark_closed();
+        let (connected_after_vanish, pressed_after_vanish, axes_after_vanish) = state.snapshot_bindings();
+        assert!(!connected_after_vanish);
+        assert!(pressed_after_vanish.is_empty());
+        assert!(axes_after_vanish.is_empty());
+
+        state.mark_open();
+        state.apply_event(ControllerJsEvent { time: 2, value: 1, kind: 0x01, number: 7 });
+        let (connected_after_reopen, pressed_after_reopen, _) = state.snapshot_bindings();
+        assert!(connected_after_reopen);
+        assert_eq!(pressed_after_reopen.len(), 1);
+        assert_eq!(pressed_after_reopen[0].binding, "button 7");
     }
 }
