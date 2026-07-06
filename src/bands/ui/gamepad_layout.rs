@@ -17,10 +17,10 @@ pub const GAMEPAD_LAYOUT_MIN_GAP: f32 = 0.01;
 /// Authoritative slot map for hit-region overlap audits and `data-gamepad-slot` wiring.
 /// Coordinates are normalized to the SVG `viewBox="0 0 1000 620"`.
 pub const GAMEPAD_INTERACTIVE_SLOTS: &[GamepadSlot] = &[
-    GamepadSlot { id: "shoulder-l2", control: "L2", x: 0.1580, y: 0.0742, w: 0.1260, h: 0.0800 },
-    GamepadSlot { id: "shoulder-l1", control: "L1", x: 0.2940, y: 0.1774, w: 0.1080, h: 0.0800 },
-    GamepadSlot { id: "shoulder-r2", control: "R2", x: 0.6160, y: 0.0742, w: 0.1260, h: 0.0800 },
-    GamepadSlot { id: "shoulder-r1", control: "R1", x: 0.7600, y: 0.1774, w: 0.1080, h: 0.0800 },
+    GamepadSlot { id: "shoulder-l2", control: "L2", x: 0.1580, y: 0.1032, w: 0.1260, h: 0.0800 },
+    GamepadSlot { id: "shoulder-l1", control: "L1", x: 0.2940, y: 0.1935, w: 0.1080, h: 0.0800 },
+    GamepadSlot { id: "shoulder-r2", control: "R2", x: 0.6160, y: 0.1032, w: 0.1260, h: 0.0800 },
+    GamepadSlot { id: "shoulder-r1", control: "R1", x: 0.7600, y: 0.1935, w: 0.1080, h: 0.0800 },
     GamepadSlot { id: "stick-left", control: "Left Stick X", x: 0.1800, y: 0.2935, w: 0.1500, h: 0.1700 },
     GamepadSlot { id: "dpad", control: "D-pad", x: 0.2060, y: 0.5655, w: 0.1220, h: 0.1600 },
     GamepadSlot { id: "system-select", control: "Select", x: 0.4120, y: 0.4581, w: 0.0580, h: 0.0700 },
