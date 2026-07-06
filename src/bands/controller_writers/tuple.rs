@@ -61,7 +61,7 @@ fn controller_bindings_for_profile(profile: &str) -> Vec<ControllerBindingStatus
     bindings
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ControllerTupleRecord {
     control: String,
@@ -148,9 +148,11 @@ fn value_shaped_axis_binding(input: &str) -> bool {
 fn heal_controller_library(library: &mut ControllerLibrary) -> bool {
     let mut changed = false;
     for record in library.controllers.values_mut() {
-        let before = record.tuples.len();
-        record.tuples.retain(|tuple| !value_shaped_axis_binding(&tuple.input));
-        changed |= record.tuples.len() != before;
+        let healed = sanitize_controller_tuples(&record.tuples);
+        if record.tuples != healed {
+            record.tuples = healed;
+            changed = true;
+        }
     }
     changed
 }
@@ -170,33 +172,99 @@ fn bindings_from_tuples(tuples: &[ControllerTupleRecord]) -> Vec<ControllerBindi
     if tuples.is_empty() {
         return default_controller_bindings();
     }
+    let tuples = sanitize_controller_tuples(tuples);
     let mut bindings = Vec::with_capacity(tuples.len());
     for tuple in tuples {
-        if value_shaped_axis_binding(&tuple.input) {
-            continue;
-        }
         bindings.push(ControllerBindingStatus {
-            control: canonical_control_name(&tuple.control),
+            control: tuple.control,
             binding: tuple.input.clone(),
             pressed: false,
             axis_value: None,
         });
     }
-    if bindings.is_empty() {
-        default_controller_bindings()
-    } else {
-        bindings
-    }
+    bindings
 }
 
 fn tuples_from_bindings(bindings: &[ControllerBindingStatus]) -> Vec<ControllerTupleRecord> {
-    bindings
+    let tuples = bindings
         .iter()
         .map(|binding| ControllerTupleRecord {
             control: canonical_control_name(&binding.control),
             input: binding.binding.clone(),
         })
+        .collect::<Vec<_>>();
+    sanitize_controller_tuples(&tuples)
+}
+
+fn sanitize_controller_tuples(tuples: &[ControllerTupleRecord]) -> Vec<ControllerTupleRecord> {
+    let mut by_control: BTreeMap<String, String> = BTreeMap::new();
+    for tuple in tuples {
+        if value_shaped_axis_binding(&tuple.input) {
+            continue;
+        }
+        let Some(control) = canonical_tuple_control(tuple) else {
+            continue;
+        };
+        by_control.insert(control, tuple.input.clone());
+    }
+    default_controller_bindings()
+        .into_iter()
+        .filter_map(|binding| {
+            by_control
+                .remove(&binding.control)
+                .map(|input| ControllerTupleRecord { control: binding.control, input })
+        })
         .collect()
+}
+
+fn canonical_tuple_control(tuple: &ControllerTupleRecord) -> Option<String> {
+    canonical_saved_control_name(&tuple.control)
+        .or_else(|| canonical_control_for_binding_label(&tuple.control))
+        .or_else(|| canonical_control_for_binding_label(&tuple.input))
+}
+
+fn canonical_saved_control_name(control: &str) -> Option<String> {
+    let canonical = canonical_control_name(control);
+    if is_canonical_control_name(&canonical) {
+        Some(canonical)
+    } else {
+        None
+    }
+}
+
+fn is_canonical_control_name(control: &str) -> bool {
+    default_controller_bindings()
+        .into_iter()
+        .any(|binding| binding.control == control)
+}
+
+fn canonical_control_for_binding_label(value: &str) -> Option<String> {
+    let binding = normalize_binding_label(value)?;
+    default_controller_bindings()
+        .into_iter()
+        .find(|default| default.binding == binding)
+        .map(|default| default.control)
+}
+
+fn normalize_binding_label(value: &str) -> Option<String> {
+    let raw = value.trim();
+    let lowered = raw.to_ascii_lowercase();
+    if lowered.starts_with("button ") || lowered.starts_with("axis ") || lowered.starts_with("hat 0 ") {
+        return Some(lowered);
+    }
+    if let Some(index) = lowered.strip_prefix('#') {
+        let number = index.trim().parse::<u32>().ok()?;
+        return number.checked_sub(1).map(|zero_based| format!("button {zero_based}"));
+    }
+    if let Some(index) = lowered.strip_prefix('b') {
+        let number = index.trim().parse::<u32>().ok()?;
+        return Some(format!("button {number}"));
+    }
+    if let Some(index) = lowered.strip_prefix("ax") {
+        let number = index.trim().parse::<u32>().ok()?;
+        return Some(format!("axis {number}"));
+    }
+    None
 }
 
 fn controller_id_for_device(device: &ControllerDeviceStatus) -> String {
@@ -774,5 +842,54 @@ mod controller_tuple_tests {
         assert!(!record.tuples.iter().any(|tuple| tuple.input == "axis -27917"));
         assert!(record.tuples.iter().any(|tuple| tuple.input == "axis 4"));
         assert!(record.tuples.iter().any(|tuple| tuple.input == "button 6"));
+    }
+
+    #[test]
+    fn library_heal_canonicalizes_bug_era_control_vocabulary_and_dedupes_last_written() {
+        let mut library = empty_controller_library();
+        library.controllers.insert("pad".to_string(), ControllerRecord {
+            id: "pad".to_string(), name: "Pad".to_string(), handler: "js0".to_string(), path: "/dev/input/js0".to_string(), glyph: "GP".to_string(), transport: "USB".to_string(), kind: "gamepad".to_string(), layout_style: "Default".to_string(), first_seen: "test".to_string(), last_seen: "test".to_string(),
+            tuples: vec![
+                tuple("B0", "button 0"),
+                tuple("#1", "button 0"),
+                tuple("Hat", "hat 0 up"),
+                tuple("Hat", "hat 0 down"),
+                tuple("Hat", "hat 0 left"),
+                tuple("Hat", "hat 0 right"),
+                tuple("AX1", "axis 1"),
+                tuple("AX1", "axis 9"),
+                tuple("garbage", "virtual:garbage"),
+            ],
+            tuning: ControllerTuningStatus::defaults(),
+        });
+
+        assert!(heal_controller_library(&mut library));
+        let record = library.controllers.get("pad").expect("pad record");
+        let controls = record.tuples.iter().map(|tuple| tuple.control.as_str()).collect::<Vec<_>>();
+        assert_eq!(controls, vec!["A", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "Left Stick Y"]);
+        assert_eq!(record.tuples.iter().find(|tuple| tuple.control == "Left Stick Y").map(|tuple| tuple.input.as_str()), Some("axis 9"));
+        assert!(!record.tuples.iter().any(|tuple| matches!(tuple.control.as_str(), "B0" | "#1" | "Hat" | "AX1")));
+    }
+
+    #[test]
+    fn bug_era_tuple_bindings_project_only_canonical_rows_with_unbound_gaps() {
+        let bindings = bindings_from_tuples(&[
+            tuple("B0", "button 0"),
+            tuple("B1", "button 1"),
+            tuple("Hat", "hat 0 up"),
+            tuple("Hat", "hat 0 down"),
+            tuple("Hat", "hat 0 left"),
+            tuple("Hat", "hat 0 right"),
+            tuple("AX1", "axis 1"),
+            tuple("AX4", "axis 4"),
+        ]);
+
+        assert_eq!(bindings.len(), 8);
+        for control in ["A", "B", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "Left Stick Y", "Right Stick Y"] {
+            assert!(bindings.iter().any(|binding| binding.control == control), "missing canonical binding {control}");
+        }
+        for stale in ["B0", "B1", "Hat", "AX1", "AX4"] {
+            assert!(!bindings.iter().any(|binding| binding.control == stale), "stale control {stale} survived");
+        }
     }
 }

@@ -1420,13 +1420,61 @@ function createControllerCaptureGate({ now = () => Date.now(), onGateOpen = () =
   return { reset, observe };
 }
 
+const CONTROLLER_CANONICAL_CONTROLS = [
+  'A', 'B', 'X', 'Y', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'Select', 'Start',
+  'D-pad Up', 'D-pad Down', 'D-pad Left', 'D-pad Right',
+  'Left Stick X', 'Left Stick Y', 'Right Stick X', 'Right Stick Y',
+];
+const CONTROLLER_CANONICAL_CONTROL_SET = new Set(CONTROLLER_CANONICAL_CONTROLS);
+const CONTROLLER_DEFAULT_BINDING_TO_CONTROL = new Map([
+  ['button 0', 'A'], ['button 1', 'B'], ['button 2', 'X'], ['button 3', 'Y'],
+  ['button 4', 'L1'], ['button 5', 'R1'], ['axis 2', 'L2'], ['axis 5', 'R2'],
+  ['button 8', 'L3'], ['button 9', 'R3'], ['button 6', 'Select'], ['button 7', 'Start'],
+  ['hat 0 up', 'D-pad Up'], ['hat 0 down', 'D-pad Down'], ['hat 0 left', 'D-pad Left'], ['hat 0 right', 'D-pad Right'],
+  ['axis 0', 'Left Stick X'], ['axis 1', 'Left Stick Y'], ['axis 3', 'Right Stick X'], ['axis 4', 'Right Stick Y'],
+]);
+
+function normalizeControllerBindingLabel(value) {
+  const raw = String(value || '').trim();
+  const lowered = raw.toLowerCase();
+  if (lowered.startsWith('button ') || lowered.startsWith('axis ') || lowered.startsWith('hat 0 ')) return lowered;
+  if (lowered.startsWith('#')) {
+    const parsed = Number.parseInt(lowered.slice(1), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? `button ${parsed - 1}` : '';
+  }
+  if (/^b\d+$/.test(lowered)) return `button ${lowered.slice(1)}`;
+  if (/^ax\d+$/.test(lowered)) return `axis ${lowered.slice(2)}`;
+  return '';
+}
+
+function canonicalControllerControlForBindingLabel(value) {
+  const binding = normalizeControllerBindingLabel(value);
+  return binding ? CONTROLLER_DEFAULT_BINDING_TO_CONTROL.get(binding) || '' : '';
+}
+
+function canonicalControllerBindingControl(item) {
+  const raw = String(item?.control || '').trim();
+  if (CONTROLLER_CANONICAL_CONTROL_SET.has(raw)) return raw;
+  return canonicalControllerControlForBindingLabel(raw) || canonicalControllerControlForBindingLabel(item?.binding);
+}
+
+function controllerBindingMap(bindings) {
+  const map = new Map();
+  (bindings || []).forEach((item) => {
+    const control = canonicalControllerBindingControl(item);
+    if (control) map.set(control, item.binding);
+  });
+  return map;
+}
+
 function hydrateControllerBindings(root, bindings) {
   if (!root) return;
-  const map = new Map((bindings || []).map((item) => [item.control, item.binding]));
+  const map = controllerBindingMap(bindings);
   root.querySelectorAll('[data-binding-control]').forEach((node) => {
     const control = node.dataset.bindingControl || '';
     const binding = map.get(control);
     node.textContent = binding ? formatControllerBinding(binding) : 'Unbound';
+    node.closest('[data-controller-bind-row]')?.setAttribute('data-controller-binding-state', binding ? 'bound' : 'unbound');
   });
   root.querySelectorAll('[data-controller-control]').forEach((node) => {
     const control = node.dataset.controllerControl || '';
