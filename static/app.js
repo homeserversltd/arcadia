@@ -1586,6 +1586,10 @@ function bindControllerProgramming() {
           if (label && result.stdout) label.textContent = formatControllerBinding(result.stdout);
         });
         PopupManager.showToast(result.message || `${capturedControl} mapped`, result.ok ? 'success' : 'error');
+        if (!result.ok && teachIndex >= 0) {
+          setTeachStep(root, teachIndex);
+          return;
+        }
         selected = null;
         setBindingListenState(root, null);
         root.querySelectorAll('[data-controller-control], [data-controller-bind-row]').forEach((node) => node.classList.remove('is-selected'));

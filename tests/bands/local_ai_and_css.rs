@@ -475,6 +475,8 @@
         }
         assert!(APP_JS.contains("root.dataset.teachControl = step.control"));
         assert!(APP_JS.contains("Press ${step.label} on your controller (${teachIndex + 1} of ${TEACH_SWEEP_ORDER.length})"));
+        assert!(APP_JS.contains("if (!result.ok && teachIndex >= 0)"));
+        assert!(APP_JS.contains("setTeachStep(root, teachIndex)"));
         assert!(APP_JS.contains("clearTeachMode(root)"));
         assert!(APP_JS.contains("event.key !== 'Escape'"));
         assert!(APP_JS.contains("advanceTeachStep(root)"));
@@ -484,6 +486,7 @@
         assert!(UX_CSS.contains(".ux-gamepad-slot.is-teach-target"));
         assert!(UX_CSS.contains("@media (prefers-reduced-motion: reduce)"));
         assert!(UX_CSS.contains("animation: none;"));
+        assert!(UX_CSS.contains(".controller-save-layout--cue { animation: none; }"));
     }
 
     #[test]
