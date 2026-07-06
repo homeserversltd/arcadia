@@ -290,15 +290,15 @@
 }
 .ux-gamepad-label {
   fill: var(--cream);
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 950;
   pointer-events: none;
 }
-.ux-gamepad-label--small { font-size: 20px; }
-.ux-gamepad-label--tiny { font-size: 13px; letter-spacing: .02em; }
+.ux-gamepad-label--small { font-size: 15px; }
+.ux-gamepad-label--tiny { font-size: 12px; letter-spacing: .02em; }
 .ux-gamepad-binding {
   fill: var(--muted);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 850;
   pointer-events: none;
 }
@@ -308,7 +308,7 @@
 }
 .ux-gamepad-guide text {
   fill: var(--orange-strong);
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 950;
 }
 .ux-gamepad-slot:hover .ux-gamepad-button-well,
