@@ -17,18 +17,18 @@ pub const GAMEPAD_LAYOUT_MIN_GAP: f32 = 0.01;
 /// Authoritative slot map for hit-region overlap audits and `data-gamepad-slot` wiring.
 /// Coordinates are normalized to the SVG `viewBox="0 0 1000 620"`.
 pub const GAMEPAD_INTERACTIVE_SLOTS: &[GamepadSlot] = &[
-    GamepadSlot { id: "shoulder-l2", control: "L2", x: 0.1580, y: 0.1032, w: 0.1260, h: 0.0800 },
-    GamepadSlot { id: "shoulder-l1", control: "L1", x: 0.2940, y: 0.1935, w: 0.1080, h: 0.0800 },
-    GamepadSlot { id: "shoulder-r2", control: "R2", x: 0.6160, y: 0.1032, w: 0.1260, h: 0.0800 },
-    GamepadSlot { id: "shoulder-r1", control: "R1", x: 0.7600, y: 0.1935, w: 0.1080, h: 0.0800 },
+    GamepadSlot { id: "shoulder-l2", control: "L2", x: 0.2030, y: 0.1768, w: 0.1360, h: 0.0400 },
+    GamepadSlot { id: "shoulder-l1", control: "L1", x: 0.1970, y: 0.2527, w: 0.1400, h: 0.0300 },
+    GamepadSlot { id: "shoulder-r2", control: "R2", x: 0.6610, y: 0.1768, w: 0.1360, h: 0.0400 },
+    GamepadSlot { id: "shoulder-r1", control: "R1", x: 0.6640, y: 0.2527, w: 0.1400, h: 0.0300 },
     GamepadSlot { id: "stick-left", control: "Left Stick X", x: 0.1800, y: 0.2935, w: 0.1500, h: 0.1700 },
     GamepadSlot { id: "dpad", control: "D-pad", x: 0.2060, y: 0.5655, w: 0.1220, h: 0.1600 },
     GamepadSlot { id: "system-select", control: "Select", x: 0.4120, y: 0.4581, w: 0.0580, h: 0.0700 },
     GamepadSlot { id: "system-start", control: "Start", x: 0.5020, y: 0.4581, w: 0.0580, h: 0.0700 },
-    GamepadSlot { id: "face-y", control: "Y", x: 0.7100, y: 0.3232, w: 0.0440, h: 0.0660 },
-    GamepadSlot { id: "face-x", control: "X", x: 0.6500, y: 0.4200, w: 0.0440, h: 0.0660 },
-    GamepadSlot { id: "face-b", control: "B", x: 0.7700, y: 0.4200, w: 0.0440, h: 0.0660 },
-    GamepadSlot { id: "face-a", control: "A", x: 0.7100, y: 0.5168, w: 0.0440, h: 0.0660 },
+    GamepadSlot { id: "face-y", control: "Y", x: 0.7100, y: 0.3290, w: 0.0440, h: 0.0660 },
+    GamepadSlot { id: "face-x", control: "X", x: 0.6590, y: 0.4200, w: 0.0440, h: 0.0660 },
+    GamepadSlot { id: "face-b", control: "B", x: 0.7610, y: 0.4200, w: 0.0440, h: 0.0660 },
+    GamepadSlot { id: "face-a", control: "A", x: 0.7100, y: 0.5023, w: 0.0440, h: 0.0660 },
     GamepadSlot { id: "stick-right", control: "Right Stick X", x: 0.5440, y: 0.6000, w: 0.1500, h: 0.1700 },
 ];
 

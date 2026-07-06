@@ -181,23 +181,23 @@ fn controller_silhouette(status: &ConsoleStatus, connected: bool) -> Markup {
             svg class="ux-gamepad-body ux-gamepad-body--anatomical" viewBox="0 0 1000 620" role="img" aria-label="Xbox-style programmable gamepad" {
                 path class="ux-gamepad-shell" d="M146 154 C226 98 332 116 386 172 C418 205 582 205 614 172 C668 116 774 98 854 154 C925 205 960 333 943 446 C930 536 873 598 792 598 C733 598 706 548 676 493 C646 438 608 419 500 419 C392 419 354 438 324 493 C294 548 267 598 208 598 C127 598 70 536 57 446 C40 333 75 205 146 154 Z" {}
                 path class="ux-gamepad-shell-highlight" d="M178 178 C254 136 334 150 390 204 C424 237 576 237 610 204 C666 150 746 136 822 178 C876 214 904 310 897 402 C880 354 844 321 794 309 C727 292 662 320 627 366 C594 343 553 332 500 332 C447 332 406 343 373 366 C338 320 273 292 206 309 C156 321 120 354 103 402 C96 310 124 214 178 178 Z" {}
-                (gamepad_svg_shoulder("shoulder-l2", "L2", "Left trigger", binding_for("L2"), active.contains(&"L2"), "ux-gamepad-trigger ux-gamepad-trigger--left", 191, 85, 160, 59))
-                (gamepad_svg_shoulder("shoulder-l1", "L1", "Left shoulder", binding_for("L1"), active.contains(&"L1"), "ux-gamepad-bumper ux-gamepad-bumper--left", 170, 139, 195, 45))
-                (gamepad_svg_shoulder("shoulder-r2", "R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-trigger ux-gamepad-trigger--right", 649, 85, 160, 59))
-                (gamepad_svg_shoulder("shoulder-r1", "R1", "Right shoulder", binding_for("R1"), active.contains(&"R1"), "ux-gamepad-bumper ux-gamepad-bumper--right", 636, 139, 195, 45))
-                (gamepad_svg_stick("stick-left", "Left Stick X", binding_for("Left Stick X"), active.contains(&"Left Stick X") || active.contains(&"Axis 0"), 284, 255, 70, 284, 285))
+                (gamepad_svg_shoulder("shoulder-l2", "L2", "Left trigger", binding_for("L2"), active.contains(&"L2"), "ux-gamepad-trigger ux-gamepad-trigger--left", 213, 101, 116, 42))
+                (gamepad_svg_shoulder("shoulder-l1", "L1", "Left shoulder", binding_for("L1"), active.contains(&"L1"), "ux-gamepad-bumper ux-gamepad-bumper--left", 197, 150, 140, 32))
+                (gamepad_svg_shoulder("shoulder-r2", "R2", "Right trigger", binding_for("R2"), active.contains(&"R2"), "ux-gamepad-trigger ux-gamepad-trigger--right", 671, 101, 116, 42))
+                (gamepad_svg_shoulder("shoulder-r1", "R1", "Right shoulder", binding_for("R1"), active.contains(&"R1"), "ux-gamepad-bumper ux-gamepad-bumper--right", 664, 150, 140, 32))
+                (gamepad_svg_stick("stick-left", "Left Stick X", binding_for("Left Stick X"), active.contains(&"Left Stick X") || active.contains(&"Axis 0"), 284, 255, 52, 284, 285))
                 (gamepad_svg_dpad(binding_for("D-pad"), active.contains(&"D-pad")))
                 (gamepad_svg_system("system-select", "Select", binding_for("Select"), active.contains(&"Select"), 420, 296, 78, 32, 404, 337))
                 g class="ux-gamepad-guide" aria-hidden="true" {
-                    circle cx="500" cy="248" r="25" {}
-                    text x="500" y="256" text-anchor="middle" { "H" }
+                    circle cx="500" cy="248" r="18" {}
+                    text x="500" y="253" text-anchor="middle" { "H" }
                 }
                 (gamepad_svg_system("system-start", "Start", binding_for("Start"), active.contains(&"Start"), 502, 296, 78, 32, 518, 337))
-                (gamepad_svg_face("face-y", "Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face--y", 732, 226, 732, 286))
-                (gamepad_svg_face("face-x", "X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face--x", 672, 286, 672, 346))
-                (gamepad_svg_face("face-b", "B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face--b", 792, 286, 792, 346))
-                (gamepad_svg_face("face-a", "A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face--a", 732, 346, 732, 406))
-                (gamepad_svg_stick("stick-right", "Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3"), 608, 396, 70, 608, 512))
+                (gamepad_svg_face("face-y", "Y", "Y button", binding_for("Y"), active.contains(&"Y"), "ux-gamepad-face--y", 732, 235, 732, 283))
+                (gamepad_svg_face("face-x", "X", "X button", binding_for("X"), active.contains(&"X"), "ux-gamepad-face--x", 681, 286, 681, 334))
+                (gamepad_svg_face("face-b", "B", "B button", binding_for("B"), active.contains(&"B"), "ux-gamepad-face--b", 783, 286, 783, 334))
+                (gamepad_svg_face("face-a", "A", "A button", binding_for("A"), active.contains(&"A"), "ux-gamepad-face--a", 732, 337, 732, 385))
+                (gamepad_svg_stick("stick-right", "Right Stick X", binding_for("Right Stick X"), active.contains(&"Right Stick X") || active.contains(&"Axis 3"), 608, 396, 52, 608, 512))
             }
         }
     }
@@ -234,9 +234,9 @@ fn gamepad_svg_face(
     html! {
         g class=(gamepad_slot_class(&format!("ux-gamepad-face {class_name}"), active)) data-gamepad-slot=(slot_id) data-controller-control=(label) role="button" tabindex="0" aria-label=(format!("{} mapped to {}", name, binding)) {
             (gamepad_hit_rect(cx - 38, cy - 38, 76, 92))
-            circle class="ux-gamepad-button-well" cx=(cx) cy=(cy) r="34" {}
-            circle class="ux-gamepad-button-cap" cx=(cx) cy=(cy) r="25" {}
-            text class="ux-gamepad-label" x=(cx) y=(cy + 8) text-anchor="middle" { (label) }
+            circle class="ux-gamepad-button-well" cx=(cx) cy=(cy) r="27" {}
+            circle class="ux-gamepad-button-cap" cx=(cx) cy=(cy) r="20" {}
+            text class="ux-gamepad-label" x=(cx) y=(cy + 6) text-anchor="middle" { (label) }
             text class="ux-gamepad-binding" data-controller-binding-label="true" x=(label_x) y=(binding_y) text-anchor="middle" { (gamepad_binding_label(binding)) }
         }
     }
@@ -246,10 +246,10 @@ fn gamepad_svg_stick(slot_id: &str, control: &str, binding: &str, active: bool, 
     let label = control.replace(" X", "").replace(" Y", "");
     html! {
         g class=(gamepad_slot_class("ux-gamepad-stick", active)) data-gamepad-slot=(slot_id) data-controller-control=(control) role="button" tabindex="0" aria-label=(format!("{} mapped to {}", control, binding)) {
-            (gamepad_hit_rect(cx - r - 34, cy - r - 34, (r + 34) * 2, (r + 34) * 2 + 34))
+            (gamepad_hit_rect(cx - r - 52, cy - r - 52, (r + 52) * 2, (r + 52) * 2 + 34))
             circle class="ux-gamepad-stick-well" cx=(cx) cy=(cy) r=(r) {}
-            circle class="ux-gamepad-stick-ring" cx=(cx) cy=(cy) r=(r - 14) {}
-            circle class="ux-gamepad-stick-cap" cx=(cx) cy=(cy) r=(r - 28) {}
+            circle class="ux-gamepad-stick-ring" cx=(cx) cy=(cy) r=(r - 10) {}
+            circle class="ux-gamepad-stick-cap" cx=(cx) cy=(cy) r=(r - 21) {}
             text class="ux-gamepad-label ux-gamepad-label--small" x=(cx) y=(cy + 7) text-anchor="middle" { (label) }
             text class="ux-gamepad-binding" data-controller-binding-label="true" x=(label_x) y=(binding_y) text-anchor="middle" { (gamepad_binding_label(binding)) }
         }
@@ -260,18 +260,18 @@ fn gamepad_svg_dpad(binding: &str, active: bool) -> Markup {
     html! {
         g class=(gamepad_slot_class("ux-gamepad-dpad", active)) data-gamepad-slot="dpad" data-controller-control="D-pad" role="button" tabindex="0" aria-label=(format!("D-pad mapped to {}", binding)) {
             (gamepad_hit_rect(206, 332, 162, 162))
-            path class="ux-gamepad-dpad-cross" d="M268 344 H308 V384 H348 V424 H308 V464 H268 V424 H228 V384 H268 Z" {}
+            path class="ux-gamepad-dpad-cross" d="M272 356 H304 V388 H336 V420 H304 V452 H272 V420 H240 V388 H272 Z" {}
             g data-controller-control="D-pad Up" role="button" tabindex="0" aria-label=(format!("D-pad Up mapped to {}", binding)) {
-                (gamepad_hit_rect(268, 344, 40, 40))
+                (gamepad_hit_rect(272, 356, 32, 32))
             }
             g data-controller-control="D-pad Left" role="button" tabindex="0" aria-label=(format!("D-pad Left mapped to {}", binding)) {
-                (gamepad_hit_rect(228, 384, 40, 40))
+                (gamepad_hit_rect(240, 388, 32, 32))
             }
             g data-controller-control="D-pad Right" role="button" tabindex="0" aria-label=(format!("D-pad Right mapped to {}", binding)) {
-                (gamepad_hit_rect(308, 384, 40, 40))
+                (gamepad_hit_rect(304, 388, 32, 32))
             }
             g data-controller-control="D-pad Down" role="button" tabindex="0" aria-label=(format!("D-pad Down mapped to {}", binding)) {
-                (gamepad_hit_rect(268, 424, 40, 40))
+                (gamepad_hit_rect(272, 420, 32, 32))
             }
             text class="ux-gamepad-label ux-gamepad-label--small" x="288" y="410" text-anchor="middle" { "D" }
             text class="ux-gamepad-binding" data-controller-binding-label="true" x="288" y="516" text-anchor="middle" { (gamepad_binding_label(binding)) }
@@ -280,13 +280,13 @@ fn gamepad_svg_dpad(binding: &str, active: bool) -> Markup {
 }
 
 fn gamepad_svg_system(slot_id: &str, label: &str, binding: &str, active: bool, x: i32, y: i32, width: i32, height: i32, label_x: i32, binding_y: i32) -> Markup {
-    let pill_x = x + (width - 68) / 2;
-    let pill_y = y + (height - 28) / 2;
+    let pill_x = x + (width - 54) / 2;
+    let pill_y = y + (height - 22) / 2;
     html! {
         g class=(gamepad_slot_class("ux-gamepad-system", active)) data-gamepad-slot=(slot_id) data-controller-control=(label) role="button" tabindex="0" aria-label=(format!("{} mapped to {}", label, binding)) {
             (gamepad_hit_rect(x - 8, y - 12, width + 16, height + 48))
-            rect class="ux-gamepad-pill" x=(pill_x) y=(pill_y) width="68" height="28" rx="14" ry="14" {}
-            text class="ux-gamepad-label ux-gamepad-label--tiny" x=(x + width / 2) y=(pill_y + 18) text-anchor="middle" { (label) }
+            rect class="ux-gamepad-pill" x=(pill_x) y=(pill_y) width="54" height="22" rx="11" ry="11" {}
+            text class="ux-gamepad-label ux-gamepad-label--tiny" x=(x + width / 2) y=(pill_y + 15) text-anchor="middle" { (label) }
             text class="ux-gamepad-binding" data-controller-binding-label="true" x=(label_x) y=(binding_y) text-anchor="middle" { (gamepad_binding_label(binding)) }
         }
     }
@@ -295,12 +295,13 @@ fn gamepad_svg_system(slot_id: &str, label: &str, binding: &str, active: bool, x
 fn gamepad_svg_shoulder(slot_id: &str, label: &str, name: &str, binding: &str, active: bool, class_name: &str, x: i32, y: i32, width: i32, height: i32) -> Markup {
     let center_x = x + width / 2;
     let is_trigger = class_name.contains("trigger");
-    let label_y = y + height / 2 - 2;
-    let binding_y = if is_trigger { y + height - 11 } else { y + height + 18 };
+    let label_y = if is_trigger { y + 19 } else { y + height / 2 - 2 };
+    let binding_y = if is_trigger { y + 31 } else { y + height + 18 };
+    let radius = std::cmp::min(17, height / 2);
     html! {
         g class=(gamepad_slot_class(class_name, active)) data-gamepad-slot=(slot_id) data-controller-control=(label) role="button" tabindex="0" aria-label=(format!("{} mapped to {}", name, binding)) {
             (gamepad_hit_rect(x - 10, y - 12, width + 20, height + 54))
-            rect class="ux-gamepad-shoulder-shape" x=(x) y=(y) width=(width) height=(height) rx="24" ry="24" {}
+            rect class="ux-gamepad-shoulder-shape" x=(x) y=(y) width=(width) height=(height) rx=(radius) ry=(radius) {}
             text class="ux-gamepad-label ux-gamepad-label--small" x=(center_x) y=(label_y) text-anchor="middle" dominant-baseline="central" { (label) }
             text class="ux-gamepad-binding" data-controller-binding-label="true" x=(center_x) y=(binding_y) text-anchor="middle" { (gamepad_binding_label(binding)) }
         }
