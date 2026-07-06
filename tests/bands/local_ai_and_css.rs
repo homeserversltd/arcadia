@@ -291,6 +291,10 @@
             "ux-gamepad-shell",
             "ux-gamepad-guide",
             "controller-profile-card",
+            "Teach me",
+            "data-controller-teach-start",
+            "data-controller-teach-skip",
+            "data-controller-teach-exit",
         ] {
             assert!(controllers_html.contains(required) || rendered.contains(required), "missing controller manager surface: {required}");
         }
@@ -451,6 +455,35 @@
         assert!(APP_CSS.contains(".modal-confirm__actions"));
         assert!(controller_backend.contains("action_controllers_forget"));
         assert!(include_str!("../../src/main.rs").contains("/api/actions/controllers-forget"));
+    }
+
+    #[test]
+    fn controller_teach_sweep_order_and_motion_walls_are_present() {
+        let order_start = APP_JS.find("const TEACH_SWEEP_ORDER = [").expect("teach order const");
+        let order_end = APP_JS[order_start..].find("];
+").expect("teach order end") + order_start;
+        let order = &APP_JS[order_start..order_end];
+        let expected = [
+            "A", "B", "X", "Y", "L1", "R1", "L2", "R2", "Select", "Start", "Left Stick X", "Right Stick X", "D-pad",
+        ];
+        assert_eq!(order.matches("{ control:").count(), expected.len());
+        let mut cursor = 0;
+        for control in expected {
+            let needle = format!("control: '{control}'");
+            let next = order[cursor..].find(&needle).unwrap_or_else(|| panic!("missing teach control {control}"));
+            cursor += next + needle.len();
+        }
+        assert!(APP_JS.contains("root.dataset.teachControl = step.control"));
+        assert!(APP_JS.contains("Press ${step.label} on your controller (${teachIndex + 1} of ${TEACH_SWEEP_ORDER.length})"));
+        assert!(APP_JS.contains("clearTeachMode(root)"));
+        assert!(APP_JS.contains("event.key !== 'Escape'"));
+        assert!(APP_JS.contains("advanceTeachStep(root)"));
+        assert!(APP_JS.contains("Teaching complete — save your layout"));
+        assert!(APP_JS.contains("controller-save-layout--cue"));
+        assert!(UX_CSS.contains("@keyframes ux-gamepad-teach-pulse"));
+        assert!(UX_CSS.contains(".ux-gamepad-slot.is-teach-target"));
+        assert!(UX_CSS.contains("@media (prefers-reduced-motion: reduce)"));
+        assert!(UX_CSS.contains("animation: none;"));
     }
 
     #[test]
