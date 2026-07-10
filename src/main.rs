@@ -55,6 +55,7 @@ include!("bands/status_network.rs");
 include!("bands/status_system.rs");
 include!("bands/status_library.rs");
 include!("bands/status_controllers.rs");
+include!("bands/benchmark.rs");
 include!("bands/local_ai_config.rs");
 include!("bands/local_ai_runtime.rs");
 include!("bands/surface.rs");
@@ -94,6 +95,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/root/events", get(api_root_events_route))
         .route("/api/root/events/renew", post(api_root_events_renew_route))
         .route("/api/status", get(status))
+        .route("/api/benchmark/status", get(benchmark_status_route))
+        .route("/api/benchmark/compose", post(benchmark_compose_route))
+        .route("/api/benchmark/uncompose", post(benchmark_uncompose_route))
+        .route("/api/benchmark/sample", post(benchmark_sample_route))
         .route("/api/storage/state", get(storage_state_route))
         .route("/api/storage/summary", get(storage_summary_route))
         .route("/api/storage/rescan-summary", post(storage_summary_route))
