@@ -32,6 +32,7 @@ pub struct ConsoleStatus {
     pub controllers: ControllerStatus,
     pub updates: UpdatesStatus,
     pub system: SystemAdminStatus,
+    pub benchmark: BenchmarkAggregate,
     pub ui_contract: UiContract,
 }
 

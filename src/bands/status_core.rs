@@ -5,7 +5,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
     let library = library_status(&storage);
     let hostname = hostname();
     ConsoleStatus {
-        schema: "arcadia.home_state.v1",
+        schema: "arcadia.home_state.v2",
         product: state.product.clone(),
         canonical_url: state.canonical_url.clone(),
         identity: IdentityStatus {
@@ -31,6 +31,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         controllers: controller_status(),
         updates: updates_status(),
         system: system_admin_status(&network, &hostname),
+        benchmark: benchmark_status(),
         library,
         storage,
         ui_contract: UiContract {
