@@ -17,13 +17,17 @@ fn caduceus_fetch_json(path: &str) -> Result<serde_json::Value, &'static str> {
     serde_json::from_str(&text).map_err(|_| "caduceus-http-invalid-json")
 }
 
-fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'static str> {
+fn caduceus_post_json_with_timeout(
+    path: &str,
+    body: &str,
+    timeout_seconds: &str,
+) -> Result<serde_json::Value, &'static str> {
     let url = caduceus_proxy_url(path);
     let output = Command::new("curl")
         .args([
             "-sS",
             "--max-time",
-            "300",
+            timeout_seconds,
             "-X",
             "POST",
             "-H",
@@ -38,6 +42,36 @@ fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'sta
         return Err("caduceus-http-empty-response");
     }
     serde_json::from_slice(&output.stdout).map_err(|_| "caduceus-http-invalid-json")
+}
+
+fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'static str> {
+    caduceus_post_json_with_timeout(path, body, "300")
+}
+
+/// Reflect one bounded Arcadia control result through Caduceus. Caduceus owns
+/// profile admission, redaction, schema completion, and the sole channel write.
+/// Telemetry cannot alter the action result it observes.
+fn caduceus_hyalos_reflect_action(action: &str, path: &str, ok: bool) -> bool {
+    let message = if ok {
+        format!("Arcadia control action completed: {action}")
+    } else {
+        format!("Arcadia control action failed: {action}")
+    };
+    let body = serde_json::json!({
+        "organ": "arcadia",
+        "kind": "control-action",
+        "level": if ok { "info" } else { "warn" },
+        "ok": ok,
+        "message": message,
+        "attributes_redacted": {
+            "action": action,
+            "caduceus_path": path,
+        },
+    });
+    let Ok(body) = serde_json::to_string(&body) else {
+        return false;
+    };
+    caduceus_post_json_with_timeout("/api/v1/hyalos/reflect", &body, "2").is_ok()
 }
 
 fn caduceus_proxy_error(path: &str, signal: &'static str) -> axum::response::Response {
@@ -233,6 +267,7 @@ fn run_caduceus_http_mutation(
     match caduceus_post_json(path, "{}") {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let _ = caduceus_hyalos_reflect_action(action, path, ok);
             let stdout = value
                 .get("body")
                 .and_then(|v| v.as_str())
@@ -267,11 +302,96 @@ fn run_caduceus_http_mutation(
                 }),
             )
         }
-        Err(signal) => console_action_error(
-            StatusCode::BAD_GATEWAY,
-            action,
-            "caduceus-http",
-            signal,
-        ),
+        Err(signal) => {
+            let _ = caduceus_hyalos_reflect_action(action, path, false);
+            console_action_error(
+                StatusCode::BAD_GATEWAY,
+                action,
+                "caduceus-http",
+                signal,
+            )
+        }
+    }
+}
+
+#[cfg(test)]
+mod hyalos_emitter_tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::{Shutdown, TcpListener},
+        sync::{Arc, Mutex, OnceLock},
+        thread,
+    };
+
+    static CADUCEUS_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    #[test]
+    fn hyalos_emitter_posts_a_bounded_arcadia_reflection_without_local_file_writes() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
+        let port = listener.local_addr().expect("mock caduceus address").port();
+        let captured = Arc::new(Mutex::new(String::new()));
+        let captured_thread = captured.clone();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("Arcadia reflection request");
+            let mut buf = [0u8; 8192];
+            let read = stream.read(&mut buf).expect("reflection request bytes");
+            *captured_thread.lock().unwrap() = String::from_utf8_lossy(&buf[..read]).to_string();
+            let response = r#"{"ok":true,"firstMissingSignal":"none"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            let _ = stream.shutdown(Shutdown::Write);
+        });
+
+        std::env::set_var("CADUCEUS_HTTP_BASE", format!("http://127.0.0.1:{port}"));
+        assert!(caduceus_hyalos_reflect_action("check-updates", "/api/v1/update/check", true));
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_HTTP_BASE");
+
+        let request = captured.lock().unwrap().clone();
+        assert!(request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"), "{request}");
+        let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+        let body: serde_json::Value = serde_json::from_str(body).expect("reflection JSON");
+        assert_eq!(body["organ"], "arcadia");
+        assert_eq!(body["kind"], "control-action");
+        assert_eq!(body["level"], "info");
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["attributes_redacted"]["action"], "check-updates");
+        assert_eq!(body["attributes_redacted"]["caduceus_path"], "/api/v1/update/check");
+
+        let source = include_str!("routes_caduceus.rs");
+        let direct_open = ["OpenOptions", "::new"].concat();
+        let direct_write = ["fs", "::write("].concat();
+        assert!(!source.contains(&direct_open));
+        assert!(!source.contains(&direct_write));
+    }
+
+    #[test]
+    fn hyalos_failure_does_not_change_a_successful_control_action() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
+        let port = listener.local_addr().expect("mock caduceus address").port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("control action request");
+            let mut buf = [0u8; 8192];
+            let _ = stream.read(&mut buf).expect("control action bytes");
+            let response = r#"{"ok":true,"body":"complete","firstMissingSignal":"none"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            let _ = stream.shutdown(Shutdown::Write);
+        });
+
+        std::env::set_var("CADUCEUS_HTTP_BASE", format!("http://127.0.0.1:{port}"));
+        let (status, Json(response)) = run_caduceus_http_mutation(
+            "check-updates",
+            "/api/v1/update/check",
+            "check complete",
+            "check failed",
+        );
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_HTTP_BASE");
+
+        assert_eq!(status, StatusCode::OK);
+        assert!(response.ok);
+        assert_eq!(response.action, "check-updates");
     }
 }
