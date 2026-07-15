@@ -235,6 +235,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/ai/token/revoke", post(ai_token_revoke))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/check-updates", post(action_check_updates))
+        .route(
+            "/api/debug/emit",
+            post(arcadia_debug_emit_route).layer(DefaultBodyLimit::max(16 * 1024)),
+        )
         .route("/api/harmonia/ledger", get(harmonia_ledger_route))
         .route("/api/caduceus/health", get(caduceus_health_proxy_route))
         .route(
