@@ -17,13 +17,17 @@ fn caduceus_fetch_json(path: &str) -> Result<serde_json::Value, &'static str> {
     serde_json::from_str(&text).map_err(|_| "caduceus-http-invalid-json")
 }
 
-fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'static str> {
+fn caduceus_post_json_with_timeout(
+    path: &str,
+    body: &str,
+    timeout_seconds: &str,
+) -> Result<serde_json::Value, &'static str> {
     let url = caduceus_proxy_url(path);
     let output = Command::new("curl")
         .args([
             "-sS",
             "--max-time",
-            "300",
+            timeout_seconds,
             "-X",
             "POST",
             "-H",
@@ -38,6 +42,94 @@ fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'sta
         return Err("caduceus-http-empty-response");
     }
     serde_json::from_slice(&output.stdout).map_err(|_| "caduceus-http-invalid-json")
+}
+
+fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'static str> {
+    caduceus_post_json_with_timeout(path, body, "300")
+}
+
+const ARCADIA_DEBUG_MAX_DEPTH: usize = 4;
+const ARCADIA_DEBUG_MAX_ITEMS: usize = 32;
+const ARCADIA_DEBUG_MAX_ARRAY_ITEMS: usize = 16;
+const ARCADIA_DEBUG_MAX_TEXT: usize = 512;
+
+fn arcadia_debug_kind_is_safe(kind: &str) -> bool {
+    !kind.is_empty()
+        && kind.len() <= 48
+        && kind.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && !kind.starts_with('-')
+        && !kind.ends_with('-')
+        && !kind.contains("--")
+}
+
+fn arcadia_debug_key_is_sensitive(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    ["token", "pin", "password", "headers", "localstorage", "dom"]
+        .iter()
+        .any(|needle| key.contains(needle))
+}
+
+fn arcadia_debug_trim_text(value: &str) -> String {
+    value.chars().take(ARCADIA_DEBUG_MAX_TEXT).collect()
+}
+
+fn sanitize_arcadia_debug_value(value: &serde_json::Value, depth: usize) -> Option<serde_json::Value> {
+    if depth > ARCADIA_DEBUG_MAX_DEPTH {
+        return None;
+    }
+    match value {
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => Some(value.clone()),
+        serde_json::Value::String(text) => Some(serde_json::Value::String(arcadia_debug_trim_text(text))),
+        serde_json::Value::Array(values) => Some(serde_json::Value::Array(
+            values
+                .iter()
+                .take(ARCADIA_DEBUG_MAX_ARRAY_ITEMS)
+                .filter_map(|value| sanitize_arcadia_debug_value(value, depth + 1))
+                .collect(),
+        )),
+        serde_json::Value::Object(values) => Some(serde_json::Value::Object(
+            values
+                .iter()
+                .filter(|(key, _)| !arcadia_debug_key_is_sensitive(key))
+                .take(ARCADIA_DEBUG_MAX_ITEMS)
+                .filter_map(|(key, value)| {
+                    sanitize_arcadia_debug_value(value, depth + 1)
+                        .map(|value| (key.clone(), value))
+                })
+                .collect(),
+        )),
+    }
+}
+
+fn arcadia_debug_reflection(body: &serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    let kind = body.get("kind").and_then(|value| value.as_str()).ok_or("debug-kind-required")?;
+    if !arcadia_debug_kind_is_safe(kind) {
+        return Err("debug-kind-invalid");
+    }
+    let payload = body.get("payload").unwrap_or(&serde_json::Value::Null);
+    Ok(serde_json::json!({
+        "organ": "arcadia",
+        "kind": kind,
+        "level": body.get("level").and_then(|value| value.as_str()).filter(|level| ["debug", "info", "warn"].contains(level)).unwrap_or("debug"),
+        "message": body.get("message").and_then(|value| value.as_str()).map(arcadia_debug_trim_text).unwrap_or_else(|| format!("Arcadia debug event: {kind}")),
+        "correlation_id": body.get("correlation_id").and_then(|value| value.as_str()).map(arcadia_debug_trim_text),
+        "attributes_redacted": sanitize_arcadia_debug_value(payload, 0).unwrap_or(serde_json::Value::Null),
+    }))
+}
+
+fn forward_arcadia_debug_reflection(reflection: &serde_json::Value) -> bool {
+    let Ok(rendered) = serde_json::to_string(reflection) else {
+        return false;
+    };
+    caduceus_post_json_with_timeout("/api/v1/hyalos/reflect", &rendered, "2").is_ok()
+}
+
+async fn arcadia_debug_emit_route(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
+    let Ok(reflection) = arcadia_debug_reflection(&body) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    let _ = forward_arcadia_debug_reflection(&reflection);
+    StatusCode::NO_CONTENT
 }
 
 fn caduceus_proxy_error(path: &str, signal: &'static str) -> axum::response::Response {
@@ -273,5 +365,70 @@ fn run_caduceus_http_mutation(
             "caduceus-http",
             signal,
         ),
+    }
+}
+
+#[cfg(test)]
+mod arcadia_debug_tests {
+    use super::*;
+    use std::{
+        io::{Read, Write},
+        net::{Shutdown, TcpListener},
+        sync::{Arc, Mutex, OnceLock},
+        thread,
+    };
+
+    static CADUCEUS_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    #[test]
+    fn debug_route_forwards_only_bounded_redacted_reflections() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
+        let port = listener.local_addr().expect("mock caduceus address").port();
+        let captured = Arc::new(Mutex::new(String::new()));
+        let captured_thread = captured.clone();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("Arcadia debug request");
+            let mut buf = [0u8; 8192];
+            let read = stream.read(&mut buf).expect("debug request bytes");
+            *captured_thread.lock().unwrap() = String::from_utf8_lossy(&buf[..read]).to_string();
+            let response = r#"{"ok":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+            let _ = stream.shutdown(Shutdown::Write);
+        });
+        let reflection = arcadia_debug_reflection(&serde_json::json!({
+            "kind": "runtime",
+            "message": "x".repeat(600),
+            "payload": {"token": "secret", "pin": "1234", "ok": true, "items": (0..40).collect::<Vec<_>>()}
+        })).expect("safe debug reflection");
+        std::env::set_var("CADUCEUS_HTTP_BASE", format!("http://127.0.0.1:{port}"));
+        assert!(forward_arcadia_debug_reflection(&reflection));
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_HTTP_BASE");
+
+        let request = captured.lock().unwrap().clone();
+        assert!(request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"), "{request}");
+        let body: serde_json::Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap_or("{}"))
+            .expect("reflection JSON");
+        assert_eq!(body["organ"], "arcadia");
+        assert_eq!(body["kind"], "runtime");
+        assert_eq!(body["attributes_redacted"]["ok"], true);
+        assert!(body["attributes_redacted"].get("token").is_none());
+        assert!(body["attributes_redacted"].get("pin").is_none());
+        assert_eq!(body["attributes_redacted"]["items"].as_array().unwrap().len(), ARCADIA_DEBUG_MAX_ARRAY_ITEMS);
+        assert_eq!(body["message"].as_str().unwrap().chars().count(), ARCADIA_DEBUG_MAX_TEXT);
+    }
+
+    #[test]
+    fn debug_route_rejects_unsafe_kind_and_removes_unconditional_control_emission() {
+        assert!(arcadia_debug_reflection(&serde_json::json!({"kind": "Control Action"})).is_err());
+        let source = include_str!("routes_caduceus.rs");
+        let main = include_str!("../main.rs");
+        assert!(main.contains("/api/debug/emit"));
+        assert!(source.contains("DefaultBodyLimit") || main.contains("DefaultBodyLimit::max(16 * 1024)"));
+        let legacy_emitter = ["caduceus_hyalos_", "reflect_action"].concat();
+        assert!(!source.contains(&legacy_emitter));
+        let channel_path = ["channel", ".jsonl"].concat();
+        assert!(!source.contains(&channel_path));
     }
 }
