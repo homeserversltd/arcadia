@@ -220,3 +220,65 @@ console.log(JSON.stringify({{ ok: true, rowName: rowName.textContent, rowValue: 
         "node hydration harness did not preserve the canonical grid row name"
     );
 }
+
+#[test]
+fn arcadia_debug_emitter_is_default_off_and_gated_through_same_origin() {
+    let start = APP_JS.find("const ArcadiaDebug = (() => {").expect("debug emitter starts");
+    let end = APP_JS[start..]
+        .find("const ArcadiaLoading")
+        .map(|offset| start + offset)
+        .expect("debug emitter ends before loading helper");
+    let emitter = &APP_JS[start..end];
+    let script = format!(
+        r#"
+const vm = require('vm');
+const emitter = {emitter:?};
+const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
+function run(search = '', storage = {{}}) {{
+  const calls = [];
+  const values = new Map(Object.entries(storage));
+  const context = {{
+    window: {{ location: {{ search }} }},
+    localStorage: {{ getItem: (key) => values.get(key) || null }},
+    fetch: (path, options) => {{ calls.push({{path, options}}); return Promise.resolve(); }},
+    URLSearchParams, Date, Set, String,
+  }};
+  context.window.window = context.window;
+  vm.runInNewContext(emitter, context);
+  return {{ debug: context.window.arcadiaDebug, calls }};
+}}
+let probe = run();
+assert(probe.debug.emit('runtime', {{ok:true}}) === false, 'default debug must be inert');
+assert(probe.debug.begin('runtime') === null, 'default debug must allocate no handle');
+assert(probe.calls.length === 0, 'default debug must not fetch');
+probe = run('?debug');
+assert(probe.debug.enabled('runtime'), '?debug must enable all safe kinds');
+assert(probe.debug.emit('runtime', {{ok:true}}), 'all-mode emits');
+assert(probe.calls.length === 1 && probe.calls[0].path === '/api/debug/emit', 'only same-origin Arcadia route may receive events');
+const handle = probe.debug.begin('runtime');
+probe.debug.mark(handle, {{step:'one'}}); probe.debug.settle(handle, {{ok:true}});
+const emitted = probe.calls.slice(-3).map((call) => JSON.parse(call.options.body).correlation_id);
+assert(emitted.every((id) => id === handle.correlation_id), 'begin, mark, and settle share one correlation id');
+probe = run('?debug=interaction,ui');
+assert(probe.debug.enabled('interaction') && !probe.debug.enabled('runtime'), 'URL selected kinds gate exactly');
+assert(probe.debug.emit('runtime') === false && probe.debug.emit('interaction'), 'URL kind gate remains inert outside selection');
+probe = run('', {{arcadiaDebug:'true'}});
+assert(probe.debug.enabled('request'), 'localStorage all-mode enables safe kinds');
+probe = run('', {{arcadiaDebugKinds:'navigation'}});
+assert(probe.debug.enabled('navigation') && !probe.debug.enabled('ui'), 'localStorage selected kinds gate exactly');
+console.log(JSON.stringify({{ok:true}}));
+"#
+    );
+    let output = Command::new("node")
+        .arg("-e")
+        .arg(script)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("node executes Arcadia debug emitter harness");
+    assert!(output.status.success(), "node emitter harness failed\n{}", String::from_utf8_lossy(&output.stderr));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"ok\":true"));
+    assert!(APP_JS.contains("window.arcadiaDebug = ArcadiaDebug"));
+    assert!(!APP_JS.contains("/api/v1/hyalos/reflect"));
+    assert!(!APP_JS.contains("channel.jsonl"));
+}

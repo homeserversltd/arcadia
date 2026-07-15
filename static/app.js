@@ -143,6 +143,68 @@ const PopupManager = (() => {
   return { showModal, closeModal, showConfirm, showToast, trapFocus };
 })();
 
+const ArcadiaDebug = (() => {
+  const SAFE_KINDS = new Set(['runtime', 'navigation', 'interaction', 'request', 'ui']);
+  let sequence = 0;
+  let ring = null;
+
+  function selectedKinds(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (!text || text === '0' || text === 'false') return new Set();
+    if (text === '1' || text === 'true') return new Set(SAFE_KINDS);
+    return new Set(text.split(',').map((kind) => kind.trim()).filter((kind) => SAFE_KINDS.has(kind)));
+  }
+
+  function gates() {
+    const params = new URLSearchParams(window.location?.search || '');
+    let enabled = params.has('debug') && !params.get('debug')
+      ? new Set(SAFE_KINDS)
+      : selectedKinds(params.get('debug'));
+    try {
+      for (const kind of selectedKinds(localStorage.getItem('arcadiaDebug'))) enabled.add(kind);
+      for (const kind of selectedKinds(localStorage.getItem('arcadiaDebugKinds'))) enabled.add(kind);
+    } catch (_) {}
+    return enabled;
+  }
+
+  function enabled(kind) {
+    return SAFE_KINDS.has(kind) && gates().has(kind);
+  }
+
+  function emit(kind, payload = {}, correlationId = '') {
+    if (!enabled(kind)) return false;
+    const correlation_id = correlationId || `arcadia-debug-${Date.now()}-${++sequence}`;
+    const event = { kind, correlation_id, payload };
+    (ring ||= []).push(event);
+    if (ring.length > 32) ring.shift();
+    try {
+      fetch('/api/debug/emit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(event),
+        keepalive: true,
+      }).catch(() => {});
+    } catch (_) {}
+    return correlation_id;
+  }
+
+  function begin(kind, payload = {}) {
+    const correlation_id = emit(kind, { phase: 'begin', ...payload });
+    return correlation_id ? { kind, correlation_id } : null;
+  }
+
+  function mark(handle, payload = {}) {
+    return handle && emit(handle.kind, { phase: 'mark', ...payload }, handle.correlation_id);
+  }
+
+  function settle(handle, payload = {}) {
+    return handle && emit(handle.kind, { phase: 'settle', ...payload }, handle.correlation_id);
+  }
+
+  return { enabled, emit, begin, mark, settle };
+})();
+window.arcadiaDebug = ArcadiaDebug;
+
 const ArcadiaLoading = (() => {
   let overlaySeq = 0;
 
