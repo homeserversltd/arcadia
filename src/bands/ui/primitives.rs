@@ -10,8 +10,8 @@ fn nav_button(label: &str, view: &str) -> Markup {
     html! { button class="btn btn--secondary" type="button" data-nav-target=(view) { (label) } }
 }
 
-fn modal_button(variant: ButtonVariant, label: &str, title: &str, body: &str) -> Markup {
-    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-modal-title=(title) data-modal-body=(body) { (label) } }
+fn modal_button(variant: ButtonVariant, label: &str, observation_action: &str, title: &str, body: &str) -> Markup {
+    html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-observation-action=(observation_action) data-modal-title=(title) data-modal-body=(body) { (label) } }
 }
 
 fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
