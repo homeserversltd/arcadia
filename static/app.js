@@ -23,8 +23,9 @@ const PopupManager = (() => {
   }
 
   let pendingConfirmResolve = null;
+  let openSurface = null;
 
-  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '' }) {
+  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '', surfaceId, parentSurfaceId = '' }) {
     const el = overlay();
     if (!el) return;
     previousFocus = document.activeElement;
@@ -39,6 +40,8 @@ const PopupManager = (() => {
     else target.textContent = body || '';
     actions()?.toggleAttribute('hidden', hideDefaultAction);
     el.hidden = false;
+    openSurface = { id: surfaceId || 'modal:unclassified', class: variant || 'modal', parent: parentSurfaceId };
+    window.ArcadiaObservationAdapters?.presenter(openSurface.id, openSurface.class, 'opened', openSurface.parent);
     document.dispatchEvent(new CustomEvent('arcadia:modal-open', { detail: { title: modalTitle || 'Arcadia Console', variant } }));
     const focusable = el.querySelector('button, [href], input, select, textarea, details, [tabindex]:not([tabindex="-1"])');
     focusable?.focus();
@@ -54,6 +57,8 @@ const PopupManager = (() => {
     document.body.classList.remove('modal-fullscreen-open');
     content().textContent = '';
     actions()?.removeAttribute('hidden');
+    if (openSurface) window.ArcadiaObservationAdapters?.presenter(openSurface.id, openSurface.class, 'closed', openSurface.parent);
+    openSurface = null;
     document.dispatchEvent(new CustomEvent('arcadia:modal-close'));
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
   }
@@ -102,7 +107,7 @@ const PopupManager = (() => {
       confirm.addEventListener('click', () => finishConfirm(true));
       confirmActions.append(cancel, confirm);
       body.append(messageNode, confirmActions);
-      showModal({ title, body, hideDefaultAction: true, variant });
+      showModal({ title, body, hideDefaultAction: true, variant, surfaceId: 'modal:confirm' });
       cancel.focus();
     });
   }
@@ -143,66 +148,10 @@ const PopupManager = (() => {
   return { showModal, closeModal, showConfirm, showToast, trapFocus };
 })();
 
-const ArcadiaDebug = (() => {
-  const SAFE_KINDS = new Set(['runtime', 'navigation', 'interaction', 'request', 'ui']);
-  let sequence = 0;
-  let ring = null;
-
-  function selectedKinds(value) {
-    const text = String(value || '').trim().toLowerCase();
-    if (!text || text === '0' || text === 'false') return new Set();
-    if (text === '1' || text === 'true') return new Set(SAFE_KINDS);
-    return new Set(text.split(',').map((kind) => kind.trim()).filter((kind) => SAFE_KINDS.has(kind)));
-  }
-
-  function gates() {
-    const params = new URLSearchParams(window.location?.search || '');
-    let enabled = params.has('debug') && !params.get('debug')
-      ? new Set(SAFE_KINDS)
-      : selectedKinds(params.get('debug'));
-    try {
-      for (const kind of selectedKinds(localStorage.getItem('arcadiaDebug'))) enabled.add(kind);
-      for (const kind of selectedKinds(localStorage.getItem('arcadiaDebugKinds'))) enabled.add(kind);
-    } catch (_) {}
-    return enabled;
-  }
-
-  function enabled(kind) {
-    return SAFE_KINDS.has(kind) && gates().has(kind);
-  }
-
-  function emit(kind, payload = {}, correlationId = '') {
-    if (!enabled(kind)) return false;
-    const correlation_id = correlationId || `arcadia-debug-${Date.now()}-${++sequence}`;
-    const event = { kind, correlation_id, payload };
-    (ring ||= []).push(event);
-    if (ring.length > 32) ring.shift();
-    try {
-      fetch('/api/debug/emit', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(event),
-        keepalive: true,
-      }).catch(() => {});
-    } catch (_) {}
-    return correlation_id;
-  }
-
-  function begin(kind, payload = {}) {
-    const correlation_id = emit(kind, { phase: 'begin', ...payload });
-    return correlation_id ? { kind, correlation_id } : null;
-  }
-
-  function mark(handle, payload = {}) {
-    return handle && emit(handle.kind, { phase: 'mark', ...payload }, handle.correlation_id);
-  }
-
-  function settle(handle, payload = {}) {
-    return handle && emit(handle.kind, { phase: 'settle', ...payload }, handle.correlation_id);
-  }
-
-  return { enabled, emit, begin, mark, settle };
-})();
+// The single Indra owner is loaded before this adapter. All ordinary app requests cross its same-origin seam.
+const ArcadiaDebug = window.IndraObservationReflection;
+const ArcadiaObservation = window.ArcadiaObservationAdapters;
+const fetch = ArcadiaObservation.request;
 window.arcadiaDebug = ArcadiaDebug;
 
 const ArcadiaLoading = (() => {
@@ -353,6 +302,7 @@ function bindNavigation() {
       if (active) panel.focus({ preventScroll: true });
     });
     try { localStorage.setItem('arcadia-active-view', next); } catch (_) {}
+    ArcadiaObservation.navigation(next);
     document.dispatchEvent(new CustomEvent('arcadia:view-change', { detail: { view: next } }));
   };
   window.activateArcadiaView = activate;
@@ -517,7 +467,7 @@ const ArcadiaControllerTrainerStream = (() => {
 
   function hasWatchers() { return subscribers.size > 0; }
   function close() {
-    if (state.source) state.source.close();
+    if (state.source) { state.source.close(); ArcadiaObservation.stream('controller-trainer-sse', 'closed'); }
     state.source = null;
   }
   async function fallbackSnapshot() {
@@ -541,6 +491,7 @@ const ArcadiaControllerTrainerStream = (() => {
     if (!hasWatchers() || state.source || document.visibilityState !== 'visible') return;
     if (!window.EventSource) { fallbackSnapshot(); return; }
     const source = new EventSource('/api/controllers/trainer/events');
+    ArcadiaObservation.stream('controller-trainer-sse', 'opened');
     state.source = source;
     source.addEventListener('lease', (event) => {
       try { state.lease = JSON.parse(event.data); } catch (_) {}
@@ -707,7 +658,12 @@ function bindHomeLoadSubscription() {
   };
   const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
   const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
-  const stopEvents = () => { if (state.source) state.source.close(); state.source = null; clearRenewal(); clearRetry(); };
+  const stopEvents = () => {
+    if (state.source) { state.source.close(); ArcadiaObservation.stream('home-root-sse', 'closed'); }
+    state.source = null;
+    clearRenewal();
+    clearRetry();
+  };
   const fetchSnapshotOnce = async () => {
     if (!homeIsActive() || state.inFlight) return;
     state.inFlight = true;
@@ -770,6 +726,7 @@ function bindHomeLoadSubscription() {
     if (state.source) return;
     try {
       const source = new EventSource('/api/root/events');
+      ArcadiaObservation.stream('home-root-sse', 'opened');
       state.source = source;
       const onRoot = (event) => {
         if (!homeIsActive()) return stopEvents();
@@ -963,6 +920,7 @@ function bindConsoleActions() {
       event.preventDefault();
       const action = button.dataset.action;
       const endpoint = button.dataset.endpoint;
+      ArcadiaObservation.action(action, 'invoked');
       if (action === 'sync-games' && !prepareSyncStart()) return;
       const original = button.textContent;
       if (action === 'storage-rescan') {
@@ -973,7 +931,7 @@ function bindConsoleActions() {
         return;
       }
       const body = await confirmationBodyFor(action);
-      if (body === null) return;
+      if (body === null) { ArcadiaObservation.action(action, 'refused'); return; }
       clearMessage('console-action-message');
       button.disabled = true;
       button.textContent = action === 'sync-games' ? 'Sync Running' : 'Running...';
@@ -985,8 +943,10 @@ function bindConsoleActions() {
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
+        ArcadiaObservation.action(action, data.ok ? 'settled' : 'refused');
         if (action === 'sync-games' && data.ok !== false) markOnboardingFirstSyncComplete(data);
       } catch (_) {
+        ArcadiaObservation.action(action, 'fault');
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
       } finally {
@@ -1052,7 +1012,7 @@ function storageModalShell(title, crumbs = ['Storage']) {
   const content = document.createElement('div');
   content.className = 'storage-detail-content';
   body.append(bar, content);
-  PopupManager.showModal({ title, body, hideDefaultAction: true });
+  PopupManager.showModal({ title, body, hideDefaultAction: true, surfaceId: 'modal:storage' });
   return content;
 }
 
@@ -1844,7 +1804,7 @@ function bindControllerProgramming() {
     const loadingHost = document.createElement('div');
     loadingHost.className = 'ux-loading-host ux-loading-host--fullscreen-modal';
     loadingHost.appendChild(ArcadiaLoading.spinner({ label: 'Opening controller map…', size: 'lg' }));
-    PopupManager.showModal({ title: 'Map buttons', body: loadingHost, hideDefaultAction: true, variant: 'fullscreen' });
+    PopupManager.showModal({ title: 'Map buttons', body: loadingHost, hideDefaultAction: true, variant: 'fullscreen', surfaceId: 'modal:controller-map' });
     try {
       const currentId = activeControllerId();
       if (targetId && targetId !== currentId) {
@@ -2154,7 +2114,7 @@ function bindControllerProgramming() {
       hydrateTunerSliders(body, entry?.tuning || state.profile?.tuning || {});
       const device = body.querySelector('[data-controller-tuner-device]');
       if (device) device.textContent = entry?.name || state.primaryDevice || 'No controller selected';
-      PopupManager.showModal({ title: 'Tune controller', body, hideDefaultAction: true });
+      PopupManager.showModal({ title: 'Tune controller', body, hideDefaultAction: true, surfaceId: 'modal:controller-tune' });
       const root = document.querySelector('[data-controller-tuner-modal]');
       if (root) startTunerLoop(root);
     } catch (_) {
@@ -2362,7 +2322,7 @@ function openSyncAddGamesModal() {
     input.click();
   });
   bindSyncDropzone(drop);
-  PopupManager.showModal({ title: 'Add games', body, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'Add games', body, hideDefaultAction: true, surfaceId: 'modal:add-games' });
 }
 
 function selectSyncGameKind(value, label, root) {
@@ -2668,7 +2628,7 @@ function openWifiNetworkPicker(state) {
   hidden.addEventListener('click', () => openHiddenNetworkModal());
   foot.appendChild(hidden);
   body.appendChild(foot);
-  PopupManager.showModal({ title: 'Wi-Fi', body, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'Wi-Fi', body, hideDefaultAction: true, surfaceId: 'modal:wifi' });
 }
 
 function wifiJoinSteps() {
@@ -2810,7 +2770,7 @@ function openWifiConnectModal(ssid = '', secured = true, saved = false, signalPe
       button.textContent = old;
     }
   });
-  PopupManager.showModal({ title: ssid ? 'Connect' : 'Hidden network', body: form, hideDefaultAction: true });
+  PopupManager.showModal({ title: ssid ? 'Connect' : 'Hidden network', body: form, hideDefaultAction: true, surfaceId: ssid ? 'modal:wifi-connect' : 'modal:wifi-hidden' });
   (secured ? form.querySelector('input[name="password"]') : ssidInput)?.focus();
 }
 
@@ -2835,7 +2795,7 @@ function openWiredDetailsModal() {
       ['Web console URL', state.appliance?.webOrigin || 'http://console.home.arpa'],
     ];
     rows.forEach(([label, value]) => body.appendChild(detailRow(label, value, label.includes('URL') || label.includes('address') || label === 'Gateway')));
-    PopupManager.showModal({ title: 'Wired LAN Details', body });
+    PopupManager.showModal({ title: 'Wired LAN Details', body, surfaceId: 'modal:wired-details' });
   }).catch(() => PopupManager.showToast('Network details unavailable', 'error'));
 }
 
@@ -2883,9 +2843,9 @@ function openIpSettingsModal() {
       dnsServers: dns,
     };
     const data = await postJson('/api/network/ip/apply', body);
-    PopupManager.showModal({ title: data.ok ? 'Network settings changed' : 'Network settings not applied', body: data.message || '' });
+    PopupManager.showModal({ title: data.ok ? 'Network settings changed' : 'Network settings not applied', body: data.message || '', surfaceId: 'modal:network-result' });
   });
-  PopupManager.showModal({ title: 'IP Settings', body: form, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'IP Settings', body: form, hideDefaultAction: true, surfaceId: 'modal:ip-settings' });
 }
 
 async function postNetworkAction(url, body, actionName) {
@@ -3057,7 +3017,7 @@ function bindLocalAIControls() {
     try {
       const state = await requestAIState();
       const a = state.activity || {};
-      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.' });
+      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
     } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
   }));
 }
@@ -3297,7 +3257,7 @@ async function openProviderKeysModal() {
       button.textContent = 'Save API Keys';
     }
   });
-  PopupManager.showModal({ title: 'Scraper API Keys', body, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'Scraper API Keys', body, hideDefaultAction: true, surfaceId: 'modal:scraper-keys' });
   await loadProviderKeyStatus();
   body.querySelector('input[name="steamgriddb_api_key"]')?.focus();
 }
@@ -3482,6 +3442,9 @@ bindSystemTrustAndAccessForms();
 bindLocalAIControls();
 initializeOnboarding();
 initializeGuiPinGate();
+ArcadiaObservation.runtime('boot', 'shell');
+ArcadiaObservation.currentness('shell-view', 'current');
+ArcadiaObservation.runtime('ready', 'shell');
 
 document.addEventListener('click', (event) => {
   const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
@@ -3491,7 +3454,7 @@ document.addEventListener('click', (event) => {
   const button = event.target.closest('.btn[data-modal-title]');
   if (!button) return;
   event.stopPropagation();
-  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody });
+  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody, surfaceId: 'modal:declared' });
 });
 
 document.addEventListener('keydown', (event) => {
