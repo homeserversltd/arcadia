@@ -39,6 +39,7 @@ const PopupManager = (() => {
     else target.textContent = body || '';
     actions()?.toggleAttribute('hidden', hideDefaultAction);
     el.hidden = false;
+    window.ArcadiaObservationAdapters?.presenter(`modal:${variant || 'standard'}`, variant || 'modal', 'opened');
     document.dispatchEvent(new CustomEvent('arcadia:modal-open', { detail: { title: modalTitle || 'Arcadia Console', variant } }));
     const focusable = el.querySelector('button, [href], input, select, textarea, details, [tabindex]:not([tabindex="-1"])');
     focusable?.focus();
@@ -54,6 +55,7 @@ const PopupManager = (() => {
     document.body.classList.remove('modal-fullscreen-open');
     content().textContent = '';
     actions()?.removeAttribute('hidden');
+    window.ArcadiaObservationAdapters?.presenter('modal:standard', 'modal', 'closed');
     document.dispatchEvent(new CustomEvent('arcadia:modal-close'));
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
   }
@@ -143,66 +145,10 @@ const PopupManager = (() => {
   return { showModal, closeModal, showConfirm, showToast, trapFocus };
 })();
 
-const ArcadiaDebug = (() => {
-  const SAFE_KINDS = new Set(['runtime', 'navigation', 'interaction', 'request', 'ui']);
-  let sequence = 0;
-  let ring = null;
-
-  function selectedKinds(value) {
-    const text = String(value || '').trim().toLowerCase();
-    if (!text || text === '0' || text === 'false') return new Set();
-    if (text === '1' || text === 'true') return new Set(SAFE_KINDS);
-    return new Set(text.split(',').map((kind) => kind.trim()).filter((kind) => SAFE_KINDS.has(kind)));
-  }
-
-  function gates() {
-    const params = new URLSearchParams(window.location?.search || '');
-    let enabled = params.has('debug') && !params.get('debug')
-      ? new Set(SAFE_KINDS)
-      : selectedKinds(params.get('debug'));
-    try {
-      for (const kind of selectedKinds(localStorage.getItem('arcadiaDebug'))) enabled.add(kind);
-      for (const kind of selectedKinds(localStorage.getItem('arcadiaDebugKinds'))) enabled.add(kind);
-    } catch (_) {}
-    return enabled;
-  }
-
-  function enabled(kind) {
-    return SAFE_KINDS.has(kind) && gates().has(kind);
-  }
-
-  function emit(kind, payload = {}, correlationId = '') {
-    if (!enabled(kind)) return false;
-    const correlation_id = correlationId || `arcadia-debug-${Date.now()}-${++sequence}`;
-    const event = { kind, correlation_id, payload };
-    (ring ||= []).push(event);
-    if (ring.length > 32) ring.shift();
-    try {
-      fetch('/api/debug/emit', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(event),
-        keepalive: true,
-      }).catch(() => {});
-    } catch (_) {}
-    return correlation_id;
-  }
-
-  function begin(kind, payload = {}) {
-    const correlation_id = emit(kind, { phase: 'begin', ...payload });
-    return correlation_id ? { kind, correlation_id } : null;
-  }
-
-  function mark(handle, payload = {}) {
-    return handle && emit(handle.kind, { phase: 'mark', ...payload }, handle.correlation_id);
-  }
-
-  function settle(handle, payload = {}) {
-    return handle && emit(handle.kind, { phase: 'settle', ...payload }, handle.correlation_id);
-  }
-
-  return { enabled, emit, begin, mark, settle };
-})();
+// The single Indra owner is loaded before this adapter. All ordinary app requests cross its same-origin seam.
+const ArcadiaDebug = window.IndraObservationReflection;
+const ArcadiaObservation = window.ArcadiaObservationAdapters;
+const fetch = ArcadiaObservation.request;
 window.arcadiaDebug = ArcadiaDebug;
 
 const ArcadiaLoading = (() => {
@@ -353,6 +299,7 @@ function bindNavigation() {
       if (active) panel.focus({ preventScroll: true });
     });
     try { localStorage.setItem('arcadia-active-view', next); } catch (_) {}
+    ArcadiaObservation.navigation(next);
     document.dispatchEvent(new CustomEvent('arcadia:view-change', { detail: { view: next } }));
   };
   window.activateArcadiaView = activate;
@@ -518,6 +465,7 @@ const ArcadiaControllerTrainerStream = (() => {
   function hasWatchers() { return subscribers.size > 0; }
   function close() {
     if (state.source) state.source.close();
+    ArcadiaObservation.stream('controller-trainer-sse', 'closed');
     state.source = null;
   }
   async function fallbackSnapshot() {
@@ -541,6 +489,7 @@ const ArcadiaControllerTrainerStream = (() => {
     if (!hasWatchers() || state.source || document.visibilityState !== 'visible') return;
     if (!window.EventSource) { fallbackSnapshot(); return; }
     const source = new EventSource('/api/controllers/trainer/events');
+    ArcadiaObservation.stream('controller-trainer-sse', 'opened');
     state.source = source;
     source.addEventListener('lease', (event) => {
       try { state.lease = JSON.parse(event.data); } catch (_) {}
@@ -707,7 +656,12 @@ function bindHomeLoadSubscription() {
   };
   const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
   const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
-  const stopEvents = () => { if (state.source) state.source.close(); state.source = null; clearRenewal(); clearRetry(); };
+  const stopEvents = () => {
+    if (state.source) { state.source.close(); ArcadiaObservation.stream('home-root-sse', 'closed'); }
+    state.source = null;
+    clearRenewal();
+    clearRetry();
+  };
   const fetchSnapshotOnce = async () => {
     if (!homeIsActive() || state.inFlight) return;
     state.inFlight = true;
@@ -770,6 +724,7 @@ function bindHomeLoadSubscription() {
     if (state.source) return;
     try {
       const source = new EventSource('/api/root/events');
+      ArcadiaObservation.stream('home-root-sse', 'opened');
       state.source = source;
       const onRoot = (event) => {
         if (!homeIsActive()) return stopEvents();
@@ -963,6 +918,7 @@ function bindConsoleActions() {
       event.preventDefault();
       const action = button.dataset.action;
       const endpoint = button.dataset.endpoint;
+      ArcadiaObservation.action(action, 'invoked');
       if (action === 'sync-games' && !prepareSyncStart()) return;
       const original = button.textContent;
       if (action === 'storage-rescan') {
@@ -973,7 +929,7 @@ function bindConsoleActions() {
         return;
       }
       const body = await confirmationBodyFor(action);
-      if (body === null) return;
+      if (body === null) { ArcadiaObservation.action(action, 'refused'); return; }
       clearMessage('console-action-message');
       button.disabled = true;
       button.textContent = action === 'sync-games' ? 'Sync Running' : 'Running...';
@@ -985,8 +941,10 @@ function bindConsoleActions() {
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
+        ArcadiaObservation.action(action, data.ok ? 'settled' : 'refused');
         if (action === 'sync-games' && data.ok !== false) markOnboardingFirstSyncComplete(data);
       } catch (_) {
+        ArcadiaObservation.action(action, 'fault');
         setMessage('console-action-message', 'Action request failed.', 'error');
         PopupManager.showToast('Action request failed', 'error');
       } finally {

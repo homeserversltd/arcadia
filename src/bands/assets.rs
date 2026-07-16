@@ -10,6 +10,13 @@ async fn js() -> Response {
         "application/javascript; charset=utf-8",
     )
 }
+
+async fn indra_observation_js() -> Response {
+    asset_owned(
+        INDRA_OBSERVATION_JS.to_string(),
+        "application/javascript; charset=utf-8",
+    )
+}
 async fn not_found() -> impl IntoResponse {
     (StatusCode::NOT_FOUND, "not found")
 }

@@ -62,6 +62,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                     }
                 }
                 (modal_root())
+                script src="/static/indra-observation.js" {}
                 script src="/static/app.js" {}
             }
         }
