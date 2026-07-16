@@ -235,7 +235,7 @@ function run(search = '', storage = {{}}) {{
   const context = {{
     window: {{ location: {{ search }}, fetch: (path, options) => {{ calls.push({{path, options}}); return Promise.resolve({{ok:true, status:204}}); }} }},
     document: {{ body: {{ dataset: {{}} }} }}, localStorage: {{ getItem: (key) => values.get(key) || null }},
-    URLSearchParams, URL, Date, Set, String, Object, Array, JSON, Math, Promise, performance: {{ now: () => 1 }},
+    URLSearchParams, URL, Date, Set, String, Object, Array, JSON, Math, Promise, TextEncoder, performance: {{ now: () => 1 }},
     setTimeout, clearTimeout, setInterval, clearInterval,
   }};
   context.window.window = context.window;
@@ -288,7 +288,7 @@ fn indra_source_census_routes_present_request_stream_action_and_presenter_seams(
     assert!(!APP_JS.contains("window.fetch("), "new unclassified direct fetches are refused by this census");
     assert_eq!(APP_JS.matches("new EventSource(").count(), 2, "both present EventSource families must remain classified stream inputs");
     assert!(indra.contains("source_class"));
-    assert!(indra.contains("noteDrop('buffer')"));
+    assert!(indra.contains("noteDrop(source || 'buffer', 'buffer')"));
     assert!(APP_JS.contains("ArcadiaObservation.navigation(next)"));
     assert!(APP_JS.contains("ArcadiaObservation.action(action, 'invoked')"));
     assert!(APP_JS.contains("ArcadiaObservationAdapters?.presenter"));

@@ -23,8 +23,9 @@ const PopupManager = (() => {
   }
 
   let pendingConfirmResolve = null;
+  let openSurface = null;
 
-  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '' }) {
+  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '', surfaceId, parentSurfaceId = '' }) {
     const el = overlay();
     if (!el) return;
     previousFocus = document.activeElement;
@@ -39,7 +40,8 @@ const PopupManager = (() => {
     else target.textContent = body || '';
     actions()?.toggleAttribute('hidden', hideDefaultAction);
     el.hidden = false;
-    window.ArcadiaObservationAdapters?.presenter(`modal:${variant || 'standard'}`, variant || 'modal', 'opened');
+    openSurface = { id: surfaceId || 'modal:unclassified', class: variant || 'modal', parent: parentSurfaceId };
+    window.ArcadiaObservationAdapters?.presenter(openSurface.id, openSurface.class, 'opened', openSurface.parent);
     document.dispatchEvent(new CustomEvent('arcadia:modal-open', { detail: { title: modalTitle || 'Arcadia Console', variant } }));
     const focusable = el.querySelector('button, [href], input, select, textarea, details, [tabindex]:not([tabindex="-1"])');
     focusable?.focus();
@@ -55,7 +57,8 @@ const PopupManager = (() => {
     document.body.classList.remove('modal-fullscreen-open');
     content().textContent = '';
     actions()?.removeAttribute('hidden');
-    window.ArcadiaObservationAdapters?.presenter('modal:standard', 'modal', 'closed');
+    if (openSurface) window.ArcadiaObservationAdapters?.presenter(openSurface.id, openSurface.class, 'closed', openSurface.parent);
+    openSurface = null;
     document.dispatchEvent(new CustomEvent('arcadia:modal-close'));
     if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
   }
@@ -104,7 +107,7 @@ const PopupManager = (() => {
       confirm.addEventListener('click', () => finishConfirm(true));
       confirmActions.append(cancel, confirm);
       body.append(messageNode, confirmActions);
-      showModal({ title, body, hideDefaultAction: true, variant });
+      showModal({ title, body, hideDefaultAction: true, variant, surfaceId: 'modal:confirm' });
       cancel.focus();
     });
   }
@@ -464,8 +467,7 @@ const ArcadiaControllerTrainerStream = (() => {
 
   function hasWatchers() { return subscribers.size > 0; }
   function close() {
-    if (state.source) state.source.close();
-    ArcadiaObservation.stream('controller-trainer-sse', 'closed');
+    if (state.source) { state.source.close(); ArcadiaObservation.stream('controller-trainer-sse', 'closed'); }
     state.source = null;
   }
   async function fallbackSnapshot() {
@@ -1010,7 +1012,7 @@ function storageModalShell(title, crumbs = ['Storage']) {
   const content = document.createElement('div');
   content.className = 'storage-detail-content';
   body.append(bar, content);
-  PopupManager.showModal({ title, body, hideDefaultAction: true });
+  PopupManager.showModal({ title, body, hideDefaultAction: true, surfaceId: 'modal:storage' });
   return content;
 }
 
@@ -1802,7 +1804,7 @@ function bindControllerProgramming() {
     const loadingHost = document.createElement('div');
     loadingHost.className = 'ux-loading-host ux-loading-host--fullscreen-modal';
     loadingHost.appendChild(ArcadiaLoading.spinner({ label: 'Opening controller map…', size: 'lg' }));
-    PopupManager.showModal({ title: 'Map buttons', body: loadingHost, hideDefaultAction: true, variant: 'fullscreen' });
+    PopupManager.showModal({ title: 'Map buttons', body: loadingHost, hideDefaultAction: true, variant: 'fullscreen', surfaceId: 'modal:controller-map' });
     try {
       const currentId = activeControllerId();
       if (targetId && targetId !== currentId) {
@@ -2112,7 +2114,7 @@ function bindControllerProgramming() {
       hydrateTunerSliders(body, entry?.tuning || state.profile?.tuning || {});
       const device = body.querySelector('[data-controller-tuner-device]');
       if (device) device.textContent = entry?.name || state.primaryDevice || 'No controller selected';
-      PopupManager.showModal({ title: 'Tune controller', body, hideDefaultAction: true });
+      PopupManager.showModal({ title: 'Tune controller', body, hideDefaultAction: true, surfaceId: 'modal:controller-tune' });
       const root = document.querySelector('[data-controller-tuner-modal]');
       if (root) startTunerLoop(root);
     } catch (_) {
@@ -2320,7 +2322,7 @@ function openSyncAddGamesModal() {
     input.click();
   });
   bindSyncDropzone(drop);
-  PopupManager.showModal({ title: 'Add games', body, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'Add games', body, hideDefaultAction: true, surfaceId: 'modal:add-games' });
 }
 
 function selectSyncGameKind(value, label, root) {
@@ -2626,7 +2628,7 @@ function openWifiNetworkPicker(state) {
   hidden.addEventListener('click', () => openHiddenNetworkModal());
   foot.appendChild(hidden);
   body.appendChild(foot);
-  PopupManager.showModal({ title: 'Wi-Fi', body, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'Wi-Fi', body, hideDefaultAction: true, surfaceId: 'modal:wifi' });
 }
 
 function wifiJoinSteps() {
@@ -2768,7 +2770,7 @@ function openWifiConnectModal(ssid = '', secured = true, saved = false, signalPe
       button.textContent = old;
     }
   });
-  PopupManager.showModal({ title: ssid ? 'Connect' : 'Hidden network', body: form, hideDefaultAction: true });
+  PopupManager.showModal({ title: ssid ? 'Connect' : 'Hidden network', body: form, hideDefaultAction: true, surfaceId: ssid ? 'modal:wifi-connect' : 'modal:wifi-hidden' });
   (secured ? form.querySelector('input[name="password"]') : ssidInput)?.focus();
 }
 
@@ -2793,7 +2795,7 @@ function openWiredDetailsModal() {
       ['Web console URL', state.appliance?.webOrigin || 'http://console.home.arpa'],
     ];
     rows.forEach(([label, value]) => body.appendChild(detailRow(label, value, label.includes('URL') || label.includes('address') || label === 'Gateway')));
-    PopupManager.showModal({ title: 'Wired LAN Details', body });
+    PopupManager.showModal({ title: 'Wired LAN Details', body, surfaceId: 'modal:wired-details' });
   }).catch(() => PopupManager.showToast('Network details unavailable', 'error'));
 }
 
@@ -2841,9 +2843,9 @@ function openIpSettingsModal() {
       dnsServers: dns,
     };
     const data = await postJson('/api/network/ip/apply', body);
-    PopupManager.showModal({ title: data.ok ? 'Network settings changed' : 'Network settings not applied', body: data.message || '' });
+    PopupManager.showModal({ title: data.ok ? 'Network settings changed' : 'Network settings not applied', body: data.message || '', surfaceId: 'modal:network-result' });
   });
-  PopupManager.showModal({ title: 'IP Settings', body: form, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'IP Settings', body: form, hideDefaultAction: true, surfaceId: 'modal:ip-settings' });
 }
 
 async function postNetworkAction(url, body, actionName) {
@@ -3015,7 +3017,7 @@ function bindLocalAIControls() {
     try {
       const state = await requestAIState();
       const a = state.activity || {};
-      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.' });
+      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
     } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
   }));
 }
@@ -3255,7 +3257,7 @@ async function openProviderKeysModal() {
       button.textContent = 'Save API Keys';
     }
   });
-  PopupManager.showModal({ title: 'Scraper API Keys', body, hideDefaultAction: true });
+  PopupManager.showModal({ title: 'Scraper API Keys', body, hideDefaultAction: true, surfaceId: 'modal:scraper-keys' });
   await loadProviderKeyStatus();
   body.querySelector('input[name="steamgriddb_api_key"]')?.focus();
 }
@@ -3440,6 +3442,9 @@ bindSystemTrustAndAccessForms();
 bindLocalAIControls();
 initializeOnboarding();
 initializeGuiPinGate();
+ArcadiaObservation.runtime('boot', 'shell');
+ArcadiaObservation.currentness('shell-view', 'current');
+ArcadiaObservation.runtime('ready', 'shell');
 
 document.addEventListener('click', (event) => {
   const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
@@ -3449,7 +3454,7 @@ document.addEventListener('click', (event) => {
   const button = event.target.closest('.btn[data-modal-title]');
   if (!button) return;
   event.stopPropagation();
-  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody });
+  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody, surfaceId: 'modal:declared' });
 });
 
 document.addEventListener('keydown', (event) => {
