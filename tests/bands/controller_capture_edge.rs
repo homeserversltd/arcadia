@@ -222,50 +222,44 @@ console.log(JSON.stringify({{ ok: true, rowName: rowName.textContent, rowValue: 
 }
 
 #[test]
-fn arcadia_debug_emitter_is_default_off_and_gated_through_same_origin() {
-    let start = APP_JS.find("const ArcadiaDebug = (() => {").expect("debug emitter starts");
-    let end = APP_JS[start..]
-        .find("const ArcadiaLoading")
-        .map(|offset| start + offset)
-        .expect("debug emitter ends before loading helper");
-    let emitter = &APP_JS[start..end];
+fn indra_observation_reflection_is_default_off_bounded_and_same_origin() {
+    let indra = include_str!("../../static/indra-observation.js");
     let script = format!(
         r#"
 const vm = require('vm');
-const emitter = {emitter:?};
+const indra = {indra:?};
 const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
 function run(search = '', storage = {{}}) {{
   const calls = [];
   const values = new Map(Object.entries(storage));
   const context = {{
-    window: {{ location: {{ search }} }},
-    localStorage: {{ getItem: (key) => values.get(key) || null }},
-    fetch: (path, options) => {{ calls.push({{path, options}}); return Promise.resolve(); }},
-    URLSearchParams, Date, Set, String,
+    window: {{ location: {{ search }}, fetch: (path, options) => {{ calls.push({{path, options}}); return Promise.resolve({{ok:true, status:204}}); }} }},
+    document: {{ body: {{ dataset: {{}} }} }}, localStorage: {{ getItem: (key) => values.get(key) || null }},
+    URLSearchParams, URL, Date, Set, String, Object, Array, JSON, Math, Promise, TextEncoder, performance: {{ now: () => 1 }},
+    setTimeout, clearTimeout, setInterval, clearInterval,
   }};
   context.window.window = context.window;
-  vm.runInNewContext(emitter, context);
-  return {{ debug: context.window.arcadiaDebug, calls }};
+  vm.runInNewContext(indra, context);
+  return {{ reflection: context.window.IndraObservationReflection, adapters: context.window.ArcadiaObservationAdapters, calls }};
 }}
 let probe = run();
-assert(probe.debug.emit('runtime', {{ok:true}}) === false, 'default debug must be inert');
-assert(probe.debug.begin('runtime') === null, 'default debug must allocate no handle');
+assert(probe.reflection.emit('runtime', {{secret:'never'}}) === false, 'default debug must be inert');
+assert(probe.reflection.begin('runtime') === null, 'default debug must allocate no handle');
 assert(probe.calls.length === 0, 'default debug must not fetch');
-probe = run('?debug');
-assert(probe.debug.enabled('runtime'), '?debug must enable all safe kinds');
-assert(probe.debug.emit('runtime', {{ok:true}}), 'all-mode emits');
-assert(probe.calls.length === 1 && probe.calls[0].path === '/api/debug/emit', 'only same-origin Arcadia route may receive events');
-const handle = probe.debug.begin('runtime');
-probe.debug.mark(handle, {{step:'one'}}); probe.debug.settle(handle, {{ok:true}});
-const emitted = probe.calls.slice(-3).map((call) => JSON.parse(call.options.body).correlation_id);
-assert(emitted.every((id) => id === handle.correlation_id), 'begin, mark, and settle share one correlation id');
-probe = run('?debug=interaction,ui');
-assert(probe.debug.enabled('interaction') && !probe.debug.enabled('runtime'), 'URL selected kinds gate exactly');
-assert(probe.debug.emit('runtime') === false && probe.debug.emit('interaction'), 'URL kind gate remains inert outside selection');
-probe = run('', {{arcadiaDebug:'true'}});
-assert(probe.debug.enabled('request'), 'localStorage all-mode enables safe kinds');
-probe = run('', {{arcadiaDebugKinds:'navigation'}});
-assert(probe.debug.enabled('navigation') && !probe.debug.enabled('ui'), 'localStorage selected kinds gate exactly');
+probe = run('?debug=true');
+const root = probe.reflection.begin('runtime', {{event:'boot', attributes:{{token:'no', safe:'yes'}}}});
+const child = probe.reflection.child('request', {{event:'begin', pathname:'https://example.test/private?a=1'}}, root);
+assert(root && child, 'enabled reflection must create bounded root and child');
+assert(probe.reflection.settle(root, {{outcome:'ready'}}), 'first terminal settles');
+assert(probe.reflection.settle(root, {{outcome:'duplicate'}}) === false, 'terminal outcome is exactly once');
+assert(probe.calls.every((call) => call.path === '/api/debug/emit'), 'only same-origin Arcadia route may receive events');
+const events = probe.calls.map((call) => JSON.parse(call.options.body));
+assert(events[0].kind === 'runtime' && events[1].parent_span_id === root.span_id, 'parent is emitted before child with bounded lineage');
+assert(events.every((event) => !JSON.stringify(event).includes('token') && !JSON.stringify(event).includes('private?a=1')), 'sensitive keys and full URLs are redacted');
+probe = run('?debug=false', {{arcadiaDebug:'true'}});
+assert(!probe.reflection.enabled('runtime') && probe.calls.length === 0, 'URL false overrides stored selection decisively');
+probe = run('?debug=0', {{arcadiaDebug:'true'}});
+assert(!probe.reflection.enabled('runtime'), 'URL zero overrides stored selection decisively');
 console.log(JSON.stringify({{ok:true}}));
 "#
     );
@@ -275,10 +269,28 @@ console.log(JSON.stringify({{ok:true}}));
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .expect("node executes Arcadia debug emitter harness");
-    assert!(output.status.success(), "node emitter harness failed\n{}", String::from_utf8_lossy(&output.stderr));
+        .expect("node executes Indra observation harness");
+    assert!(output.status.success(), "node Indra harness failed\n{}", String::from_utf8_lossy(&output.stderr));
     assert!(String::from_utf8_lossy(&output.stdout).contains("\"ok\":true"));
-    assert!(APP_JS.contains("window.arcadiaDebug = ArcadiaDebug"));
-    assert!(!APP_JS.contains("/api/v1/hyalos/reflect"));
-    assert!(!APP_JS.contains("channel.jsonl"));
+    assert!(indra.contains("const MAX_BYTES = 14 * 1024"));
+    assert!(indra.contains("/api/debug/emit"));
+    assert!(!indra.contains("/api/v1/hyalos/reflect"));
+    assert!(!indra.contains("channel.jsonl"));
+    assert!(APP_JS.contains("const ArcadiaObservation = window.ArcadiaObservationAdapters"));
+}
+
+#[test]
+fn indra_source_census_routes_present_request_stream_action_and_presenter_seams() {
+    let indra = include_str!("../../static/indra-observation.js");
+    let ui = include_str!("../../src/bands/ui/mod.rs");
+    assert!(ui.contains("/static/indra-observation.js"));
+    assert!(APP_JS.contains("const fetch = ArcadiaObservation.request"), "ordinary fetch is routed through one request seam");
+    assert!(!APP_JS.contains("window.fetch("), "new unclassified direct fetches are refused by this census");
+    assert_eq!(APP_JS.matches("new EventSource(").count(), 2, "both present EventSource families must remain classified stream inputs");
+    assert!(indra.contains("source_class"));
+    assert!(indra.contains("noteDrop(source || 'buffer', 'buffer')"));
+    assert!(APP_JS.contains("ArcadiaObservation.navigation(next)"));
+    assert!(APP_JS.contains("ArcadiaObservation.action(action, 'invoked')"));
+    assert!(APP_JS.contains("ArcadiaObservationAdapters?.presenter"));
+    assert!(indra.contains("pathname(path) === '/api/debug/emit'"), "debug delivery cannot recurse through ordinary request observation");
 }
