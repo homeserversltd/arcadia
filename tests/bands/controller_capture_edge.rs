@@ -294,3 +294,87 @@ fn indra_source_census_routes_present_request_stream_action_and_presenter_seams(
     assert!(APP_JS.contains("ArcadiaObservationAdapters?.presenter"));
     assert!(indra.contains("safePathname(path) === '/api/debug/emit'"), "debug delivery cannot recurse through ordinary request observation");
 }
+
+#[test]
+fn indra_observation_selection_lifecycle_governor_and_disposal_are_behavioral() {
+    let indra = include_str!("../../static/indra-observation.js");
+    let script = format!(
+        r#"
+const vm = require('vm');
+const indra = {indra:?};
+const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
+function probe(search = '', storage = {{}}, deferred = false) {{
+  const calls = [], installed = [], removed = [];
+  const values = new Map(Object.entries(storage));
+  function listener(owner) {{ return (type, fn, options) => installed.push({{ owner, type, fn, options }}); }}
+  const window = {{
+    location: {{ search }},
+    fetch: (path, options) => {{ calls.push({{ path, options }}); return deferred ? new Promise(() => {{}}) : Promise.resolve({{ ok: true, status: 204 }}); }},
+    addEventListener: listener('window'),
+    removeEventListener: (type) => removed.push(`window:${{type}}`),
+  }};
+  const document = {{
+    body: {{ dataset: {{}} }},
+    addEventListener: listener('document'),
+    removeEventListener: (type) => removed.push(`document:${{type}}`),
+  }};
+  const context = {{ window, document, localStorage: {{ getItem: (key) => values.get(key) || null }}, URLSearchParams, URL, Date, Set, String, Object, Array, JSON, Math, Promise, TextEncoder, performance: {{ now: () => 1 }}, setTimeout, clearTimeout, setInterval, clearInterval }};
+  window.window = window;
+  vm.runInNewContext(indra, context);
+  return {{ reflection: window.IndraObservationReflection, adapters: window.ArcadiaObservationAdapters, calls, installed, removed }};
+}}
+for (const [search, storage, expected] of [
+  ['?debug=', {{}}, ['runtime', 'navigation', 'interaction', 'request', 'ui']],
+  ['?debug=true', {{}}, ['runtime', 'navigation', 'interaction', 'request', 'ui']],
+  ['?debug=runtime,ui', {{}}, ['runtime', 'ui']],
+  ['?debug=unknown', {{}}, []],
+  ['?debug=false', {{ arcadiaDebug: 'true' }}, []],
+  ['?debug=0', {{ arcadiaDebugKinds: 'runtime' }}, []],
+  ['', {{ arcadiaDebug: 'true' }}, ['runtime', 'navigation', 'interaction', 'request', 'ui']],
+  ['', {{ arcadiaDebugKinds: 'request,ui' }}, ['request', 'ui']],
+]) {{
+  const current = probe(search, storage);
+  for (const kind of ['runtime', 'navigation', 'interaction', 'request', 'ui']) assert(current.reflection.enabled(kind) === expected.includes(kind), `selection failed for ${{search}}/${{kind}}`);
+}}
+let current = probe('', {{}}, true);
+assert(current.reflection.resources().listeners === 0 && current.calls.length === 0, 'default-off allocation must be zero');
+current = probe('?debug=runtime,interaction,request,ui', {{}}, true);
+assert(current.reflection.resources().listeners === 6 && current.installed.length === 6, 'enabled listener resources install once');
+const actionListener = current.installed.find((item) => item.owner === 'document' && item.type === 'click');
+actionListener.fn({{ type: 'click', target: {{ dataset: {{ observationAction: 'controller-device-details' }}, parentElement: null, getAttribute: () => null }} }});
+assert(current.calls.length === 1, 'one enabled capture seam reflects a stable action identifier');
+for (let i = 0; i < 40; i += 1) current.adapters.currentness('status-refresh', i % 2 ? 'changed' : 'stale');
+assert(current.calls.length <= 2, 'in-flight delivery is bounded under deferred fetch');
+assert(current.reflection.resources().queue <= 32 && current.reflection.resources().in_flight <= 2, 'queue and in-flight governor bounds hold');
+const root = current.reflection.begin('runtime', {{ event: 'boot' }});
+const child = current.reflection.child('request', {{ event: 'begin' }}, root);
+assert(current.reflection.mark(child, {{ event: 'mark' }}), 'nested mark is emitted');
+assert(current.reflection.settle(child, {{ outcome: 'ok' }}), 'nested settle is emitted');
+assert(!current.reflection.settle(child, {{ outcome: 'duplicate' }}), 'terminal event remains exactly once');
+const lifecycle = current.calls.map((call) => JSON.parse(call.options.body));
+assert(child.parent_span_id === root.span_id, 'nested handle preserves parent lineage');
+assert(new Set(lifecycle.map((event) => event.sequence)).size === lifecycle.length, 'sequences are unique');
+current.reflection.dispose();
+current.reflection.dispose();
+assert(current.removed.length === 6 && current.reflection.resources().queue === 0, 'dispose removes every installed listener once and clears queue');
+const afterDispose = current.calls.length;
+actionListener.fn({{ type: 'click', target: {{ dataset: {{ observationAction: 'controller-device-details' }}, parentElement: null, getAttribute: () => null }} }});
+assert(current.calls.length === afterDispose, 'disposed observer callbacks are inert');
+console.log(JSON.stringify({{ ok: true }}));
+"#
+    );
+    let output = Command::new("node")
+        .arg("-e")
+        .arg(script)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("node executes Indra governor harness");
+    assert!(
+        output.status.success(),
+        "node Indra governor harness failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("\"ok\":true"));
+}
