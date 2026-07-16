@@ -233,8 +233,8 @@ function run(search = '', storage = {{}}) {{
   const calls = [];
   const values = new Map(Object.entries(storage));
   const context = {{
-    window: {{ location: {{ search }}, fetch: (path, options) => {{ calls.push({{path, options}}); return Promise.resolve({{ok:true, status:204}}); }} }},
-    document: {{ body: {{ dataset: {{}} }} }}, localStorage: {{ getItem: (key) => values.get(key) || null }},
+    window: {{ location: {{ search }}, fetch: (path, options) => {{ calls.push({{path, options}}); return Promise.resolve({{ok:true, status:204}}); }}, addEventListener: () => {{}}, removeEventListener: () => {{}} }},
+    document: {{ body: {{ dataset: {{}} }}, addEventListener: () => {{}}, removeEventListener: () => {{}} }}, localStorage: {{ getItem: (key) => values.get(key) || null }},
     URLSearchParams, URL, Date, Set, String, Object, Array, JSON, Math, Promise, TextEncoder, performance: {{ now: () => 1 }},
     setTimeout, clearTimeout, setInterval, clearInterval,
   }};
@@ -288,9 +288,9 @@ fn indra_source_census_routes_present_request_stream_action_and_presenter_seams(
     assert!(!APP_JS.contains("window.fetch("), "new unclassified direct fetches are refused by this census");
     assert_eq!(APP_JS.matches("new EventSource(").count(), 2, "both present EventSource families must remain classified stream inputs");
     assert!(indra.contains("source_class"));
-    assert!(indra.contains("noteDrop(source || 'buffer', 'buffer')"));
+    assert!(indra.contains("noteDrop(input.attributes?.source_class || 'buffer', 'buffer')"));
     assert!(APP_JS.contains("ArcadiaObservation.navigation(next)"));
     assert!(APP_JS.contains("ArcadiaObservation.action(action, 'invoked')"));
     assert!(APP_JS.contains("ArcadiaObservationAdapters?.presenter"));
-    assert!(indra.contains("pathname(path) === '/api/debug/emit'"), "debug delivery cannot recurse through ordinary request observation");
+    assert!(indra.contains("safePathname(path) === '/api/debug/emit'"), "debug delivery cannot recurse through ordinary request observation");
 }

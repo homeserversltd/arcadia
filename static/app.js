@@ -66,6 +66,7 @@ const PopupManager = (() => {
   function finishConfirm(accepted) {
     const resolver = pendingConfirmResolve;
     pendingConfirmResolve = null;
+    window.ArcadiaObservationAdapters?.presenter('modal:confirm', 'confirm', accepted ? 'confirmed' : 'refused');
     closeModalSurface();
     if (resolver) resolver(accepted);
   }
@@ -482,6 +483,7 @@ const ArcadiaControllerTrainerStream = (() => {
     state.lastInput = merged;
     state.lastEvent = eventName;
     state.events += 1;
+    ArcadiaObservation.currentness('controller-trainer-sse', state.events === 1 ? 'current' : 'changed');
     subscribers.forEach((fn, key) => {
       try { fn(merged, { eventName, key, lease: state.lease }); }
       catch (error) { console.warn('controller trainer subscriber failed', key, error); }
@@ -503,7 +505,12 @@ const ArcadiaControllerTrainerStream = (() => {
     });
     source.addEventListener('heartbeat', (event) => { state.lastEvent = 'heartbeat'; try { state.lease = JSON.parse(event.data); } catch (_) {} });
     source.addEventListener('expired', () => { close(); if (hasWatchers()) setTimeout(connect, 300); });
-    source.onerror = () => { close(); if (hasWatchers()) setTimeout(connect, 800); };
+    source.onerror = () => {
+      ArcadiaObservation.runtime('degraded', 'controller-trainer-sse');
+      ArcadiaObservation.currentness('controller-trainer-sse', 'stale');
+      close();
+      if (hasWatchers()) setTimeout(connect, 800);
+    };
   }
   function subscribe(key, fn) {
     if (!key || typeof fn !== 'function') return () => {};
@@ -669,8 +676,17 @@ function bindHomeLoadSubscription() {
     state.inFlight = true;
     try {
       const res = await fetch('/api/root', { headers: { Accept: 'application/json' }, cache: 'no-store' });
-      if (res.ok) { apply(await res.json()); state.fallbackSnapshots += 1; }
+      if (res.ok) {
+        apply(await res.json());
+        state.fallbackSnapshots += 1;
+        ArcadiaObservation.currentness('status-refresh', state.fallbackSnapshots === 1 ? 'recovered' : 'changed');
+      } else {
+        ArcadiaObservation.runtime('degraded', 'status-refresh');
+        ArcadiaObservation.currentness('status-refresh', 'stale');
+      }
     } catch (_) {
+      ArcadiaObservation.runtime('fault', 'status-refresh');
+      ArcadiaObservation.currentness('status-refresh', 'stale');
       // Snapshot fallback stays silent; the card keeps its cached values.
     } finally {
       state.inFlight = false;
@@ -732,6 +748,7 @@ function bindHomeLoadSubscription() {
         if (!homeIsActive()) return stopEvents();
         try {
           apply(JSON.parse(event.data));
+          ArcadiaObservation.currentness('home-root-sse', state.events ? 'changed' : 'current');
           state.events += 1;
         } catch (_) {
           // Ignore malformed event payloads and keep the last known values.
@@ -773,6 +790,8 @@ function bindHomeLoadSubscription() {
       });
       source.onmessage = onRoot;
       source.onerror = () => {
+        ArcadiaObservation.runtime('degraded', 'home-root-sse');
+        ArcadiaObservation.currentness('home-root-sse', 'stale');
         stopEvents();
         if (homeIsActive()) {
           state.fallback = true;
@@ -3454,7 +3473,9 @@ document.addEventListener('click', (event) => {
   const button = event.target.closest('.btn[data-modal-title]');
   if (!button) return;
   event.stopPropagation();
-  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody, surfaceId: 'modal:declared' });
+  const declaredId = button.dataset.observationAction;
+  if (!declaredId || !/^[a-z][a-z0-9:_-]{0,79}$/i.test(declaredId)) return;
+  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody, surfaceId: `modal:declared:${declaredId}` });
 });
 
 document.addEventListener('keydown', (event) => {
