@@ -62,6 +62,27 @@ fn arcadia_debug_kind_is_safe(kind: &str) -> bool {
         && !kind.contains("--")
 }
 
+fn arcadia_debug_identifier_is_safe(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 80
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'_' | b'-'))
+        && value.as_bytes().first().is_some_and(|byte| byte.is_ascii_alphabetic())
+}
+
+fn arcadia_debug_pathname_is_safe(value: &str) -> bool {
+    value.starts_with('/')
+        && !value.starts_with("//")
+        && !value.contains("://")
+        && !value.contains('\n')
+        && !value.contains('\r')
+        && !value.split('/').any(|part| part == "..")
+        && value.len() <= 256
+}
+
+fn arcadia_debug_enum(value: Option<&str>, allowed: &[&str]) -> Option<String> {
+    value.filter(|item| allowed.contains(item)).map(arcadia_debug_trim_text)
+}
+
 fn arcadia_debug_key_is_sensitive(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
     ["token", "pin", "password", "headers", "localstorage", "dom"]
@@ -104,7 +125,9 @@ fn sanitize_arcadia_debug_value(value: &serde_json::Value, depth: usize) -> Opti
 fn arcadia_debug_reflection(body: &serde_json::Value) -> Result<serde_json::Value, &'static str> {
     let kind = body.get("kind").and_then(|value| value.as_str()).ok_or("debug-kind-required")?;
     if !arcadia_debug_kind_is_safe(kind) { return Err("debug-kind-invalid"); }
-    let string = |name: &str| body.get(name).and_then(|value| value.as_str()).map(arcadia_debug_trim_text);
+    let string = |name: &str| body.get(name).and_then(|value| value.as_str()).filter(|value| !value.chars().any(char::is_control)).map(arcadia_debug_trim_text);
+    let identifier = |name: &str| body.get(name).and_then(|value| value.as_str()).filter(|value| arcadia_debug_identifier_is_safe(value)).map(arcadia_debug_trim_text);
+    let pathname = body.get("pathname").and_then(|value| value.as_str()).filter(|value| arcadia_debug_pathname_is_safe(value)).map(arcadia_debug_trim_text);
     let number = |name: &str| body.get(name).and_then(|value| value.as_u64());
     let attributes = body
         .get("attributes")
@@ -114,11 +137,12 @@ fn arcadia_debug_reflection(body: &serde_json::Value) -> Result<serde_json::Valu
         .unwrap_or_default();
     Ok(serde_json::json!({
         "organ": "arcadia", "kind": kind,
-        "event": string("event"), "outcome": string("outcome"), "observed_at": string("observed_at"),
-        "correlation_id": string("correlation_id"), "span_id": string("span_id"), "parent_span_id": string("parent_span_id"),
-        "sequence": number("sequence"), "duration_ms": number("duration_ms"), "method": string("method"),
-        "pathname": string("pathname"), "status": number("status"), "surface_id": string("surface_id"),
-        "surface_class": string("surface_class"), "action_id": string("action_id"), "currentness": string("currentness"),
+        "event": arcadia_debug_enum(body.get("event").and_then(|value| value.as_str()), &["begin", "mark", "settled", "response", "fault", "action", "presenter", "runtime", "currentness", "stream", "view-change", "coalesced", "bounded", "boot", "ready", "status"]),
+        "outcome": arcadia_debug_enum(body.get("outcome").and_then(|value| value.as_str()), &["begin", "observed", "ok", "refused", "fault", "opened", "closed", "confirmed", "current", "changed", "stale", "recovered", "ready", "boot", "degraded", "dropped", "settled"]), "observed_at": string("observed_at"),
+        "correlation_id": identifier("correlation_id"), "span_id": identifier("span_id"), "parent_span_id": identifier("parent_span_id"),
+        "sequence": number("sequence"), "duration_ms": number("duration_ms"), "method": arcadia_debug_enum(body.get("method").and_then(|value| value.as_str()), &["GET", "POST", "PUT", "PATCH", "DELETE"]),
+        "pathname": pathname, "status": number("status"), "surface_id": identifier("surface_id"),
+        "surface_class": identifier("surface_class"), "action_id": identifier("action_id"), "currentness": arcadia_debug_enum(body.get("currentness").and_then(|value| value.as_str()), &["current", "changed", "stale", "recovered"]),
         "level": body.get("level").and_then(|value| value.as_str()).filter(|level| ["debug", "info", "warn"].contains(level)).unwrap_or("debug"),
         "message": body.get("message").and_then(|value| value.as_str()).map(arcadia_debug_trim_text).unwrap_or_else(|| format!("Arcadia debug event: {kind}")),
         "attributes_redacted": sanitize_arcadia_debug_value(&serde_json::Value::Object(attributes), 0).unwrap_or(serde_json::Value::Null),

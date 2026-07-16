@@ -123,7 +123,7 @@ fn controllers_view(status: &ConsoleStatus) -> Markup {
                             button class="btn btn--secondary" type="button" data-controller-teach-skip hidden { "Skip" }
                             button class="btn btn--secondary" type="button" data-controller-teach-exit hidden { "Exit teach" }
                             (action_button(ButtonVariant::Primary, "Save layout", "controllers-save-profile", "/api/actions/controllers-save-profile"))
-                            (modal_button(ButtonVariant::Secondary, "Help", "How controller mapping works", "HomeConsole remembers every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Tap Map, choose a control on the virtual pad, then press the matching button on your real controller.\n3. Check Your mappings on the right — that is the before/after readout.\n4. Save layout, then use Push mapping on each game system."))
+                            (modal_button(ButtonVariant::Secondary, "Help", "controller-mapping-help", "How controller mapping works", "HomeConsole remembers every gamepad it has seen.\n\n1. Pick a controller from Your controllers.\n2. Tap Map, choose a control on the virtual pad, then press the matching button on your real controller.\n3. Check Your mappings on the right — that is the before/after readout.\n4. Save layout, then use Push mapping on each game system."))
                         }
                     }
                 }
@@ -382,7 +382,7 @@ fn controller_tuner_stick_panel(side: &str, label: &str) -> Markup {
 
 fn controller_device_card(device: &crate::ControllerDeviceStatus) -> Markup {
     html! {
-        button class="btn controller-device-card controller-device-card--action" type="button" data-controller-device=(device.handler) data-modal-title=(format!("{} input details", device.name)) data-modal-body=(format!("Handler: {}\nPath: {}", device.handler, device.path)) aria-label=(format!("Open {} controller details", device.name)) {
+        button class="btn controller-device-card controller-device-card--action" type="button" data-controller-device=(device.handler) data-observation-action="controller-device-details" data-modal-title=(format!("{} input details", device.name)) data-modal-body=(format!("Handler: {}\nPath: {}", device.handler, device.path)) aria-label=(format!("Open {} controller details", device.name)) {
             div class="controller-device-glyph" aria-hidden="true" { (device.glyph) }
             div { strong { (device.name) } span { (device.transport) " · " (device.kind) " · " (device.state) } }
             span class="controller-card-action" { "Details" }
