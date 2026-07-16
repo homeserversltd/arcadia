@@ -103,17 +103,25 @@ fn sanitize_arcadia_debug_value(value: &serde_json::Value, depth: usize) -> Opti
 
 fn arcadia_debug_reflection(body: &serde_json::Value) -> Result<serde_json::Value, &'static str> {
     let kind = body.get("kind").and_then(|value| value.as_str()).ok_or("debug-kind-required")?;
-    if !arcadia_debug_kind_is_safe(kind) {
-        return Err("debug-kind-invalid");
-    }
-    let payload = body.get("payload").unwrap_or(&serde_json::Value::Null);
+    if !arcadia_debug_kind_is_safe(kind) { return Err("debug-kind-invalid"); }
+    let string = |name: &str| body.get(name).and_then(|value| value.as_str()).map(arcadia_debug_trim_text);
+    let number = |name: &str| body.get(name).and_then(|value| value.as_u64());
+    let attributes = body
+        .get("attributes")
+        .or_else(|| body.get("payload"))
+        .and_then(|value| value.as_object())
+        .cloned()
+        .unwrap_or_default();
     Ok(serde_json::json!({
-        "organ": "arcadia",
-        "kind": kind,
+        "organ": "arcadia", "kind": kind,
+        "event": string("event"), "outcome": string("outcome"), "observed_at": string("observed_at"),
+        "correlation_id": string("correlation_id"), "span_id": string("span_id"), "parent_span_id": string("parent_span_id"),
+        "sequence": number("sequence"), "duration_ms": number("duration_ms"), "method": string("method"),
+        "pathname": string("pathname"), "status": number("status"), "surface_id": string("surface_id"),
+        "surface_class": string("surface_class"), "action_id": string("action_id"), "currentness": string("currentness"),
         "level": body.get("level").and_then(|value| value.as_str()).filter(|level| ["debug", "info", "warn"].contains(level)).unwrap_or("debug"),
         "message": body.get("message").and_then(|value| value.as_str()).map(arcadia_debug_trim_text).unwrap_or_else(|| format!("Arcadia debug event: {kind}")),
-        "correlation_id": body.get("correlation_id").and_then(|value| value.as_str()).map(arcadia_debug_trim_text),
-        "attributes_redacted": sanitize_arcadia_debug_value(payload, 0).unwrap_or(serde_json::Value::Null),
+        "attributes_redacted": sanitize_arcadia_debug_value(&serde_json::Value::Object(attributes), 0).unwrap_or(serde_json::Value::Null),
     }))
 }
 
@@ -128,8 +136,7 @@ async fn arcadia_debug_emit_route(Json(body): Json<serde_json::Value>) -> impl I
     let Ok(reflection) = arcadia_debug_reflection(&body) else {
         return StatusCode::BAD_REQUEST;
     };
-    let _ = forward_arcadia_debug_reflection(&reflection);
-    StatusCode::NO_CONTENT
+    if forward_arcadia_debug_reflection(&reflection) { StatusCode::NO_CONTENT } else { StatusCode::SERVICE_UNAVAILABLE }
 }
 
 fn caduceus_proxy_error(path: &str, signal: &'static str) -> axum::response::Response {
@@ -398,6 +405,9 @@ mod arcadia_debug_tests {
         });
         let reflection = arcadia_debug_reflection(&serde_json::json!({
             "kind": "runtime",
+            "event": "ready", "outcome": "ok", "span_id": "span-root", "parent_span_id": "span-parent",
+            "sequence": 7, "duration_ms": 12, "pathname": "/api/root", "status": 200,
+            "surface_id": "modal:wifi", "action_id": "wifi-scan", "currentness": "current",
             "message": "x".repeat(600),
             "payload": {"token": "secret", "pin": "1234", "ok": true, "items": (0..40).collect::<Vec<_>>()}
         })).expect("safe debug reflection");
@@ -412,6 +422,17 @@ mod arcadia_debug_tests {
             .expect("reflection JSON");
         assert_eq!(body["organ"], "arcadia");
         assert_eq!(body["kind"], "runtime");
+        assert_eq!(body["event"], "ready");
+        assert_eq!(body["outcome"], "ok");
+        assert_eq!(body["span_id"], "span-root");
+        assert_eq!(body["parent_span_id"], "span-parent");
+        assert_eq!(body["sequence"], 7);
+        assert_eq!(body["duration_ms"], 12);
+        assert_eq!(body["pathname"], "/api/root");
+        assert_eq!(body["status"], 200);
+        assert_eq!(body["surface_id"], "modal:wifi");
+        assert_eq!(body["action_id"], "wifi-scan");
+        assert_eq!(body["currentness"], "current");
         assert_eq!(body["attributes_redacted"]["ok"], true);
         assert!(body["attributes_redacted"].get("token").is_none());
         assert!(body["attributes_redacted"].get("pin").is_none());
