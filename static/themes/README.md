@@ -3,13 +3,13 @@
 Arcadia themes live at this exact repo path:
 
 ```text
-/fulcrum/attachments/arcadia/static/themes/*.json
+static/themes/*.json
 ```
 
 Inside a Cibation worktree the same authoritative theme files live at:
 
 ```text
-/fulcrum/attachments/arcadia/.worktrees/<work-id-or-task>/static/themes/*.json
+static/themes/*.json (in any checkout or worktree)
 ```
 
 The filename stem is the theme name. `static/themes/crown-noir.json` becomes the propagated theme name `crown-noir` in generated CSS, generated JavaScript, the `<html data-theme="...">` state, localStorage, and the Arcadia header theme button.

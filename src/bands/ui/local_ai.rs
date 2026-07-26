@@ -125,7 +125,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
                 form class="settings-form settings-form--inline local-ai-port-form" id="ai-lan-form" data-active-port=(port) {
                     label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
-                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="192.168.123.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
+                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="10.0.0.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
                     p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
                     div class="inline-actions inline-actions--compact local-ai-actions" {
                         button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }

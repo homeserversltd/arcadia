@@ -53,7 +53,7 @@
     fn home_view_is_operational_surface_without_duplicate_navigation() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -283,7 +283,7 @@
     fn home_view_updates_available_and_service_states_are_truthful() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -327,7 +327,7 @@
     fn home_updates_card_surfaces_harmonia_check_and_module_readiness() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -396,7 +396,7 @@
     fn home_ai_model_card_surfaces_model_load_and_activity() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -434,7 +434,7 @@
     fn home_games_card_surfaces_games_and_artwork_counts() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -477,7 +477,7 @@
     fn header_games_chip_always_shows_library_total_not_sync_status_words() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -506,7 +506,7 @@
     fn home_games_card_total_matches_header_games_chip_as_detected_library_count() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -546,7 +546,7 @@
     fn home_storage_card_surfaces_games_ai_other_and_free_rows() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -599,12 +599,12 @@
     fn home_network_card_surfaces_copy_actions_and_status_chiplets() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
         status.network.online = true;
-        status.network.ip_address = "192.168.123.42".to_string();
+        status.network.ip_address = "192.0.2.42".to_string();
         status.network.internet_reachable = Some(true);
         status.network.lan_ai_reachable = true;
         status.local_ai.lan_inference_port = Some(7777);
@@ -625,9 +625,9 @@
             "Copy URL",
             "Copy IP",
             "Copy AI",
-            r#"data-copy-value="http://console.home.arpa""#,
-            r#"data-copy-value="192.168.123.42""#,
-            r#"data-copy-value="192.168.123.42:7777""#,
+            r#"data-copy-value="http://console.example.com""#,
+            r#"data-copy-value="192.0.2.42""#,
+            r#"data-copy-value="192.0.2.42:7777""#,
             "aria-label=\"Console Online\"",
             "aria-label=\"AI Online\"",
             "aria-label=\"Internet Online\"",
@@ -658,7 +658,7 @@
     fn home_view_has_no_idle_readiness_indicator() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -693,7 +693,7 @@
     fn local_ai_language_replaces_ai_model_jargon() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -765,7 +765,7 @@
     fn sync_view_is_appliance_fsm_without_raw_share_or_path_residue() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -808,11 +808,11 @@
             "Samba",
             "Samba for Windows",
             "Samba for Linux",
-            r#"\\console.home.arpa\games"#,
+            r#"\\console.example.com\games"#,
             r#"\\HOMECONSOLE\games"#,
-            "smb://console.home.arpa/games",
+            "smb://console.example.com/games",
             "smb://homeconsole/games",
-            "/home/owner/Games",
+            "/home/arcadia/Games",
             "games/gba",
             "games/ps2",
             "games/dos",
@@ -885,7 +885,7 @@
     fn sync_fsm_renders_before_during_and_after_as_appliance_states() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -911,7 +911,7 @@
         assert!(before.contains("Native"));
         assert!(before.contains("Added"));
         assert!(before.contains("Sync games"));
-        assert!(!before.contains("/home/owner/Games"));
+        assert!(!before.contains("/home/arcadia/Games"));
         assert!(!before.contains("Synced"));
         assert!(!before.contains("Completed"));
 
@@ -957,14 +957,14 @@
         assert!(!after.contains("Receipt ready"));
         assert!(!after.contains("Needs first sync"));
         assert!(!after.contains("Sync failed"));
-        assert!(!after.contains("/home/owner/Games"));
+        assert!(!after.contains("/home/arcadia/Games"));
     }
 
     #[test]
     fn sync_library_admission_board_is_premium_collection_surface() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1074,7 +1074,7 @@
     fn sync_admitted_game_list_is_dense_full_collection_not_ten_tile_cap() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1109,7 +1109,7 @@
     fn sync_orb_core_shows_library_total_not_admission_debt() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1137,7 +1137,7 @@
     fn sync_orb_ring_tracks_artwork_progress_against_added_games() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1171,7 +1171,7 @@
     fn sync_complaint_and_eject_states_are_appliance_actions_not_output_or_path_prompts() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1211,7 +1211,7 @@
         assert!(!eject.contains("games waiting"));
         assert!(!eject.contains("Sync needed"));
         assert!(!eject.contains("2 games were ejected and need attention"));
-        assert!(!eject.contains("/home/owner/Games"));
+        assert!(!eject.contains("/home/arcadia/Games"));
         assert!(!eject.contains("Folder"));
         assert!(!eject.contains("Path"));
     }
@@ -1242,7 +1242,7 @@
     fn sync_completed_and_zero_states_are_truthful_fixtures() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1288,7 +1288,7 @@
         assert!(zero_sync.contains("Add games"));
         assert!(zero_sync.contains("sync-shelf-empty"));
         assert!(!zero_sync.contains("0 new · 0 failed"));
-        assert!(!zero_sync.contains("/home/owner/Games"));
+        assert!(!zero_sync.contains("/home/arcadia/Games"));
         assert!(!zero_sync.contains("No ROMs"));
         assert!(!zero_sync.contains("No scan has run yet"));
     }
@@ -1359,7 +1359,7 @@
     fn api_root_object_is_decomposable_infinite_infinite_tree() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let root = api_root_object(&state);
@@ -1486,15 +1486,15 @@
     fn storage_game_roots_follow_homeconsole_runtime_hierarchy() {
         assert_eq!(
             game_system_storage_path("gba").to_string_lossy(),
-            "/home/owner/Games/roms/gba"
+            "/home/arcadia/Games/roms/gba"
         );
         assert_eq!(
             game_system_storage_path("ps2").to_string_lossy(),
-            "/home/owner/Games/isos/ps2"
+            "/home/arcadia/Games/isos/ps2"
         );
         assert_eq!(
             game_system_storage_path("dos").to_string_lossy(),
-            "/home/owner/Games/pc/dos"
+            "/home/arcadia/Games/pc/dos"
         );
 
         let registry = storage_registry(&network_status());
@@ -1505,8 +1505,8 @@
             .iter()
             .find(|root| root.id == "gba")
             .expect("gba root exists");
-        assert_eq!(gba.path, "/home/owner/Games/roms/gba");
-        assert_ne!(gba.path, "/home/owner/Games/gba");
+        assert_eq!(gba.path, "/home/arcadia/Games/roms/gba");
+        assert_ne!(gba.path, "/home/arcadia/Games/gba");
         assert_eq!(gba.samba_share_name, "games/gba");
     }
 
@@ -1552,7 +1552,7 @@
         fs::create_dir_all(shortcuts.parent().expect("shortcut parent")).expect("vdf dir created");
         fs::write(
             &shortcuts,
-            b"\x00AppName\x00Driven (GBA)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L /usr/lib/libretro/mgba_libretro.so /home/owner/Games/roms/gba/Driven.gba\x00",
+            b"\x00AppName\x00Driven (GBA)\x00Exe\x00/usr/bin/retroarch\x00LaunchOptions\x00-L /usr/lib/libretro/mgba_libretro.so /home/arcadia/Games/roms/gba/Driven.gba\x00",
         )
         .expect("vdf written");
         let entries = read_steam_shortcuts_file(&shortcuts, "/tmp/steam-userdata", "steam", "75467976");
@@ -1595,7 +1595,7 @@
     fn storage_view_answers_where_disk_space_went_safely() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -1657,7 +1657,7 @@
             "storage-table--games",
             "cleanup-grid",
             "data-storage-modal=\"category-free\"",
-            "/home/owner",
+            "/home/arcadia",
         ] {
             assert!(
                 !storage_html.contains(forbidden),
@@ -1675,7 +1675,7 @@
     fn restored_campaign_panes_keep_live_projection_hooks() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -1707,7 +1707,7 @@
     fn updates_view_is_harmonia_integration_with_module_controls() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -1779,7 +1779,7 @@
     fn updates_pane_family_is_in_living_state_and_root_tree() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let living = api_living_state_document(&state);
@@ -1840,7 +1840,7 @@
     fn updates_view_exposes_paginated_harmonia_ledger() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -1877,7 +1877,7 @@
     fn updates_view_collapses_available_side_when_zero_updates() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -1913,7 +1913,7 @@
     fn updates_view_surfaces_available_update_tiles_right_of_modules() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);

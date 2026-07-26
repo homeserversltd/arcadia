@@ -270,7 +270,7 @@ async fn ai_inference_set_lan_access(
                 &state,
                 false,
                 "inference-set-lan-access",
-                "LAN CIDR must be a private IPv4 CIDR such as 192.168.123.0/24.",
+                "LAN CIDR must be a private IPv4 CIDR such as 10.0.0.0/24.",
             );
         }
         cfg.lan_cidr = cidr.to_string();
