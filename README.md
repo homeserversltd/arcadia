@@ -1,78 +1,52 @@
 # Arcadia
 
-Arcadia is the pure Rust HomeConsole control surface served on the Arch gaming console.
+Arcadia is the HomeServer console GUI: a Rust web application for viewing and managing a HomeServer appliance from a browser.
 
-Current scaffold:
+## What it provides
 
-- `axum` backend
-- default bind: `0.0.0.0:8080`
-- canonical URL through console nftables: `http://console.example.com/`
-- routes:
-  - `/`
-  - `/health`
-  - `/api/status`
-  - `/static/app.css`
-  - `/static/app.js`
+- A responsive appliance dashboard for system status, storage, network, updates, games, and local AI.
+- An Axum HTTP service with health and status routes.
+- A theme system built from validated JSON theme files.
+- Server-Sent Events for live Home telemetry when the Home view is visible.
 
-Theme doctrine:
+## Run and build
 
-- Arcadia theme JSONs live at `static/themes/*.json`.
-- Inside a Cibation worktree they live at `static/themes/*.json (in any checkout or worktree)`.
-- The filename stem is the theme name propagated through generated CSS, generated JavaScript, `<html data-theme>`, localStorage, and the header theme button.
-- Each theme is one flat JSON singleton containing the complete variable set documented in `static/themes/README.md`.
-- `build.rs` validates the singleton JSONs at compile time and fails the build if a theme omits a required variable.
-
-
-UX library doctrine:
-
-- Arcadia shared UX CSS lives at `static/ux/`.
-- Arcadia UI work starts in the shared UX library and theme system. The library is the reliable path for appliance geometry, control rhythm, responsive behavior, and themeable surfaces.
-- `static/ux/arcadia-ux.css` owns reusable shell rhythm, component scale, action/control tracks, spacing, utility primitives, and ordinary text bounds.
-- `static/ux/arcadia-viewports.css` owns all tablet/phone viewport dialing; `static/app.css` must not grow new `@media` bands.
-- The served `/static/app.css` response is composed by Rust in this order: generated theme CSS, UX library CSS, app defaults, viewport CSS.
-- Theme JSONs remain skin/color/radius inputs only; responsive layout belongs in the UX library.
-- Feature selectors in `static/app.css` consume UX/theme variables for domain-specific composition. When button, card, row, or viewport geometry drifts, repair the shared track or its viewport-scoped consumption before adding local one-off sizing.
-
-System appliance doctrine:
-
-- `docs/system-appliance-front-panel.md` governs the System viewport.
-- System keeps power, remote access, secure web access, service health, and diagnostics capabilities, but presents them as a HomeConsole appliance front panel.
-- One job has one visible control; implementation duplicate nouns, permanent enable/disable pairs, and empty log/copy/download buttons are forbidden.
-- Raw service evidence belongs behind Diagnostics, not as front-panel button spam.
-
-Home telemetry broadcast doctrine:
-
-- `docs/home-telemetry-broadcast.md` governs the Home load live telemetry substrate.
-- `/api/root` remains the snapshot object tree; `/api/root/events` is the Server-Sent Events stream for watched Home telemetry.
-- Browser lifecycle is Home-active and visible only: open `EventSource('/api/root/events')` on Home, renew through `POST /api/root/events/renew`, close it when leaving Home or hiding the document.
-- `/api/root` is a one-shot snapshot fallback/retry bridge only when SSE is unavailable or errored; no Home load interval polling remains.
-- The stream emits `snapshot`, `lease`, `root`, `heartbeat`, and `expired` events and reuses `ApiRootObject` rather than duplicating telemetry readers.
-
-Run locally:
+Run a development instance:
 
 ```bash
 cargo run
 ```
 
-Build release:
+Build a release binary:
 
 ```bash
 cargo build --release
 ```
 
-Local development:
+For a production installation, place the release binary under your chosen application directory and manage it with your platform's service manager. Use a hostname and TLS configuration appropriate for your own network; the repository deliberately does not prescribe a private deployment address or host name.
 
-```bash
-cargo run
-```
+## Interface overview
 
-Deployment is environment-specific. Build with `cargo build --release`, install the binary using your platform service manager, and set `ARCADIA_BIND` and `ARCADIA_CANONICAL_URL` for the target host.
+- `/` serves the console.
+- `/health` provides a basic health response.
+- `/api/status` provides the current appliance status.
+- `/static/app.css` and `/static/app.js` serve the browser assets.
+- `/api/root` provides a Home telemetry snapshot.
+- `/api/root/events` and `/api/root/events/renew` provide the optional Home telemetry stream and lease renewal interface.
 
-Runtime service target:
+## Themes and UI composition
 
-```text
-ExecStart=/usr/local/bin/arcadia
-Environment=ARCADIA_BIND=0.0.0.0:8080
-```
+Theme files live in `static/themes/`. Each JSON filename becomes a selectable theme name and must provide the complete token set documented in `static/themes/README.md`. `build.rs` validates theme files at build time.
 
-Public-safe boundary: do not commit PINs, Keyman material, ROMs, BIOS files, save data, private receipts, provider credentials, or household secrets.
+Shared UI geometry and responsive rules live in `static/ux/`. `static/ux/arcadia-ux.css` defines reusable shell, control, spacing, and text primitives; `static/ux/arcadia-viewports.css` owns viewport-specific layout. `static/app.css` consumes those primitives for feature-specific composition and should not add viewport media rules.
+
+The served stylesheet is assembled in this order: generated theme CSS, shared UX CSS, application defaults, and viewport CSS.
+
+## System and telemetry contracts
+
+- `docs/system-appliance-front-panel.md` describes the System view's appliance-oriented interaction model.
+- `docs/home-telemetry-broadcast.md` describes the Home telemetry snapshot, event stream, browser lifecycle, and verification contract.
+
+## Security boundary
+
+Do not commit PINs, credentials, tokens, private keys, private certificates, personal data, game media, save data, or environment-specific deployment records. Configure those values only in the deployment environment.
