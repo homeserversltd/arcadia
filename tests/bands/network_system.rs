@@ -2,7 +2,7 @@
     fn network_view_and_home_contract_follow_sidebar_boundary() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://arcadia.home.arpa/".to_string(),
+            canonical_url: "http://arcadia.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -74,7 +74,7 @@
             "network-hub",
             "network-services-hub",
             "network-workbench",
-            "http://arcadia.home.arpa",
+            "http://arcadia.example.com",
         ] {
             assert!(
                 network_html.contains(required),
@@ -122,7 +122,7 @@
     fn network_state_payload_matches_appliance_contract() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let payload = network_state(&state);
@@ -153,7 +153,7 @@
     fn system_view_is_button_tile_and_ca_bundle_ingest() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);

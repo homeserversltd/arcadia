@@ -79,9 +79,9 @@ async fn main() -> anyhow_free::Result<()> {
         started_unix,
         canonical_url: env::var("ARCADIA_CANONICAL_URL").unwrap_or_else(|_| {
             if trust_status().mode == "https" {
-                "https://console.home.arpa/".to_string()
+                "https://console.example.com/".to_string()
             } else {
-                "http://console.home.arpa/".to_string()
+                "http://console.example.com/".to_string()
             }
         }),
         product: "HomeConsole".to_string(),
