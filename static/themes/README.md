@@ -1,18 +1,8 @@
-# Arcadia theme JSON doctrine
+# Arcadia theme files
 
-Arcadia themes live at this exact repo path:
+Arcadia themes are JSON files in `static/themes/`.
 
-```text
-static/themes/*.json
-```
-
-Inside a Cibation worktree the same authoritative theme files live at:
-
-```text
-static/themes/*.json (in any checkout or worktree)
-```
-
-The filename stem is the theme name. `static/themes/crown-noir.json` becomes the propagated theme name `crown-noir` in generated CSS, generated JavaScript, the `<html data-theme="...">` state, localStorage, and the Arcadia header theme button.
+The filename stem is the theme name. For example, `static/themes/crown-noir.json` produces the selectable theme name `crown-noir` in generated CSS and JavaScript, the `<html data-theme="...">` state, browser storage, and the console header control.
 
 Each theme is one flat JSON object. Every key below is required and every value is a CSS value string:
 
@@ -73,12 +63,12 @@ space-lg
 font-family
 ```
 
-Build authority:
+## Build behavior
 
-- `build.rs` validates every theme JSON at compile time.
-- Missing keys, empty strings, invalid JSON, or non-object JSON fail the build.
-- Generated CSS variables are emitted from the JSON singleton into `themes.css`.
-- Generated JavaScript emits `window.ARCADIA_THEMES`, using each filename stem as the canonical name.
-- `static/app.css` consumes the generated variables instead of owning theme color values directly.
+- `build.rs` validates every theme JSON file at compile time.
+- Missing keys, empty strings, invalid JSON, and non-object JSON fail the build.
+- The build emits CSS variables into `themes.css`.
+- The build emits `window.ARCADIA_THEMES`, using each filename stem as its canonical name.
+- `static/app.css` consumes generated variables instead of declaring theme color values directly.
 
-To add a theme, add one complete JSON file under `static/themes/`, run `cargo test`, and use the header theme button to cycle to the new filename-derived theme name.
+To add a theme, add one complete JSON file under `static/themes/`, run `cargo test`, and select the filename-derived theme name from the console header.
