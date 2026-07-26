@@ -1,10 +1,14 @@
 # Arcadia UI bands
 
-`src/ui.rs` is a thin hoist. The ordered child spine lives here.
+`src/ui.rs` is a thin include spine. The ordered UI bands live here:
 
-- `mod.rs` — imports, `VIEWS`, `layout`, include spine
-- `shell.rs` — header, sidebar, theme chips
-- `primitives.rs` — shared buttons, rows, helpers
-- Viewport bands — one file per focused viewport
+- `mod.rs` — imports, views, layout, and include spine.
+- `shell.rs` — header, sidebar, and theme controls.
+- `primitives.rs` — shared buttons, rows, and helpers.
+- Viewport bands — one focused file for each major console view.
 
-Proof: `cargo test` in the arcadia worktree.
+Run the Arcadia test suite from the repository root to verify UI contracts:
+
+```bash
+cargo test
+```

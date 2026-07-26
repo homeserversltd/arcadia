@@ -1,29 +1,27 @@
 # Arcadia Rust bands
 
-Arcadia applies the infinite-infinite strut to the Rust service body.
+Arcadia organizes the Rust service into small, inspectable bands.
 
-`src/main.rs` is the thin process/router face. The band files here hold coherent transition surfaces and remain intentionally small enough to keep each responsibility inspectable.
+`src/main.rs` is the thin process and router entry point. The files in this directory hold coherent application surfaces. `src/ui.rs` is a thin include spine into `bands/ui/`, whose ordered view bands cover the shell, Home, synchronization, storage, local AI, controllers, network, access PIN, updates, system view, and shared primitives.
 
-`src/ui.rs` is a thin hoist into `bands/ui/` — ordered viewport child bands (`shell`, `home`, `sync`, `storage`, `local_ai`, `controllers`, `network`, `access_pin`, `updates`, `system`, `primitives`).
-
-This tranche uses crate-root `include!` bands to preserve existing privacy and behavior while removing the 7k-line monolith. Later tranches may promote these bands into explicit Rust modules once each boundary has typed public interfaces.
+The current crate-root `include!` arrangement preserves existing behavior while keeping the service's internal boundaries readable. A later refactor may promote bands to explicit Rust modules once each boundary has a typed public interface.
 
 ## Home telemetry broadcast band
 
-`api_root.rs` owns both the `/api/root` snapshot and the `/api/root/events` live stream. The stream is SSE-first because Home load telemetry is server-to-browser only.
+`api_root.rs` owns both the `/api/root` snapshot and the `/api/root/events` live stream. The stream is SSE-first because Home telemetry travels from server to browser.
 
 Implementation rules:
 
-- Keep `/api/root` as canonical snapshot authority.
-- Register `/api/root/events` beside `/api/root` in `src/main.rs`.
-- Register `/api/root/events/renew` as the client last-contact renewal route.
-- Emit `snapshot`, `lease`, one-per-second `root`, `heartbeat`, and `expired` events.
-- Keep `HOME_TELEMETRY_LEASES` as the server-side lease map until a broader hub is needed.
-- Use `api_root_object(&state)` for the initial SSE `snapshot` and `/api/root` one-shot fallback.
-- Use `api_root_telemetry_tick(&state)` for one-per-second SSE `root` events so ticks read `/proc` telemetry only.
+- Keep `/api/root` as the canonical snapshot route.
+- Register `/api/root/events` and `/api/root/events/renew` in `src/main.rs`.
+- Use the renewal route to record current client contact.
+- Emit `snapshot`, `lease`, periodic `root`, `heartbeat`, and `expired` events.
+- Keep the server-side lease map until a broader telemetry hub is needed.
+- Reuse `api_root_object(&state)` for the initial SSE snapshot and the `/api/root` fallback.
+- Use `api_root_telemetry_tick(&state)` for periodic SSE telemetry reads.
 - Do not duplicate telemetry readers outside `api_telemetry_node()`.
-- Static browser code in `static/app.js` opens the stream only while Home is active and visible, renews the lease before expiry, and closes it on off-Home/hidden transitions.
-- `/api/root` is a one-shot snapshot fallback and retry bridge only; do not restore interval polling for Home load telemetry.
+- Open the browser stream only while Home is active and visible; renew before expiry and close it when the view becomes inactive or hidden.
+- Keep `/api/root` as a one-shot fallback and retry bridge; do not restore interval polling for Home telemetry.
 
 Focused proof:
 
