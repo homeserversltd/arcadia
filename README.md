@@ -6,7 +6,7 @@ Current scaffold:
 
 - `axum` backend
 - default bind: `0.0.0.0:8080`
-- canonical URL through console nftables: `http://console.home.arpa/`
+- canonical URL through console nftables: `http://console.example.com/`
 - routes:
   - `/`
   - `/health`
@@ -16,8 +16,8 @@ Current scaffold:
 
 Theme doctrine:
 
-- Arcadia theme JSONs live at `/fulcrum/attachments/arcadia/static/themes/*.json`.
-- Inside a Cibation worktree they live at `/fulcrum/attachments/arcadia/.worktrees/<work-id-or-task>/static/themes/*.json`.
+- Arcadia theme JSONs live at `static/themes/*.json`.
+- Inside a Cibation worktree they live at `static/themes/*.json (in any checkout or worktree)`.
 - The filename stem is the theme name propagated through generated CSS, generated JavaScript, `<html data-theme>`, localStorage, and the header theme button.
 - Each theme is one flat JSON singleton containing the complete variable set documented in `static/themes/README.md`.
 - `build.rs` validates the singleton JSONs at compile time and fails the build if a theme omits a required variable.
@@ -25,7 +25,7 @@ Theme doctrine:
 
 UX library doctrine:
 
-- Arcadia shared UX CSS lives at `/fulcrum/attachments/arcadia/static/ux/`.
+- Arcadia shared UX CSS lives at `static/ux/`.
 - Arcadia UI work starts in the shared UX library and theme system. The library is the reliable path for appliance geometry, control rhythm, responsive behavior, and themeable surfaces.
 - `static/ux/arcadia-ux.css` owns reusable shell rhythm, component scale, action/control tracks, spacing, utility primitives, and ordinary text bounds.
 - `static/ux/arcadia-viewports.css` owns all tablet/phone viewport dialing; `static/app.css` must not grow new `@media` bands.
@@ -60,13 +60,13 @@ Build release:
 cargo build --release
 ```
 
-Manual live bridge while the update manager is being crafted:
+Local development:
 
 ```bash
-rsync -a --delete ./ root@192.168.123.54:/opt/arcadia-src/
-ssh root@192.168.123.54 'cd /opt/arcadia-src && cargo build --release'
-ssh root@192.168.123.54 'install -m 0755 /opt/arcadia-src/target/release/arcadia /usr/local/bin/arcadia'
+cargo run
 ```
+
+Deployment is environment-specific. Build with `cargo build --release`, install the binary using your platform service manager, and set `ARCADIA_BIND` and `ARCADIA_CANONICAL_URL` for the target host.
 
 Runtime service target:
 

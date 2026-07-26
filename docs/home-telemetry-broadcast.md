@@ -191,7 +191,7 @@ curl -fsS -X POST http://127.0.0.1:8080/api/root/events/renew \
 
 Expected renewal evidence includes `kind: homeTelemetryLease`, `lastContactUnix`, `renewAfterSeconds`, and `expiresAtUnix`. Expired or unknown leases return `410 Gone` with `kind: homeTelemetryLeaseExpired`.
 
-Browser proof on `http://console.home.arpa/` or the target IP should show:
+Browser proof on `http://localhost:8080/` or the target IP should show:
 
 - Home active: `hasSource: true`, `readyState: 1`, `events > 0`, `polls: 0`, `fallback: false`.
 - After switching away from Home: `hasSource: false`, timer absent, polls still `0`.

@@ -2811,7 +2811,7 @@ function openWiredDetailsModal() {
       ['Gateway', e.gateway || a.gateway || 'Unknown'],
       ['DNS servers', (e.dnsServers || a.dnsServers || []).join(', ') || 'Unknown'],
       ['Hostname', state.appliance?.hostname || 'homeconsole'],
-      ['Web console URL', state.appliance?.webOrigin || 'http://console.home.arpa'],
+      ['Web console URL', state.appliance?.webOrigin || 'http://console.example.com'],
     ];
     rows.forEach(([label, value]) => body.appendChild(detailRow(label, value, label.includes('URL') || label.includes('address') || label === 'Gateway')));
     PopupManager.showModal({ title: 'Wired LAN Details', body, surfaceId: 'modal:wired-details' });
@@ -2843,10 +2843,10 @@ function openIpSettingsModal() {
   form.autocomplete = 'off';
   form.innerHTML = `
     <label><span>Mode</span><select class="field" name="mode"><option value="dhcp" selected>Automatic DHCP</option><option value="manual">Manual IPv4</option></select></label>
-    <label><span>IP address</span><input class="field" name="ip" inputmode="numeric" placeholder="192.168.123.54"></label>
+    <label><span>IP address</span><input class="field" name="ip" inputmode="numeric" placeholder="192.0.2.54"></label>
     <label><span>Subnet prefix</span><input class="field" name="prefixLength" inputmode="numeric" placeholder="24"></label>
-    <label><span>Gateway</span><input class="field" name="gateway" inputmode="numeric" placeholder="192.168.123.1"></label>
-    <label><span>DNS servers</span><input class="field" name="dnsServers" placeholder="192.168.123.1 1.1.1.1"></label>
+    <label><span>Gateway</span><input class="field" name="gateway" inputmode="numeric" placeholder="192.0.2.1"></label>
+    <label><span>DNS servers</span><input class="field" name="dnsServers" placeholder="192.0.2.1 1.1.1.1"></label>
     <p class="warning">Changing IP settings may disconnect the web console. Confirm reachability after applying or roll back.</p>
     <div class="inline-actions"><button class="btn btn--primary" type="submit">Apply Settings</button><button class="btn btn--secondary" type="button" data-network-action="rollback-ip">Rollback</button><button class="btn btn--secondary" type="button" data-modal-cancel>Cancel</button></div>`;
   form.querySelector('[data-modal-cancel]')?.addEventListener('click', () => PopupManager.closeModal());
@@ -3044,12 +3044,12 @@ function bindLocalAIControls() {
 function localAIPortPayload() {
   const form = document.getElementById('ai-lan-form');
   const rawPort = form?.querySelector('input[name="port"]')?.value.trim() || '';
-  const lanCidr = form?.querySelector('input[name="lanCidr"]')?.value.trim() || '192.168.123.0/24';
+  const lanCidr = form?.querySelector('input[name="lanCidr"]')?.value.trim() || '10.0.0.0/24';
   if (!/^\d+$/.test(rawPort)) throw new Error('Port must be a whole number.');
   const port = Number(rawPort);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be between 1024 and 65535.');
   if ([22, 80, 443, 445, 8080].includes(port)) throw new Error('That port is reserved for HomeConsole services.');
-  if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(lanCidr)) throw new Error('LAN CIDR must look like 192.168.123.0/24.');
+  if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(lanCidr)) throw new Error('LAN CIDR must look like 10.0.0.0/24.');
   return { port, lanCidr };
 }
 

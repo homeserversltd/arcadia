@@ -502,7 +502,7 @@ fn emulator_controller_status(
 
 fn retroarch_autoconfig_exists() -> bool {
     Path::new("/home/steam/.config/retroarch/autoconfig/udev").exists()
-        || Path::new("/home/owner/.config/retroarch/autoconfig/udev").exists()
+        || Path::new("/home/arcadia/.config/retroarch/autoconfig/udev").exists()
 }
 
 fn command_available(command: &str) -> bool {
@@ -519,7 +519,7 @@ fn shell_quote(value: &str) -> String {
 
 fn home_path_exists(path: &str) -> bool {
     let candidates = if let Some(tail) = path.strip_prefix("~/") {
-        vec![format!("/home/owner/{}", tail), format!("/home/steam/{}", tail)]
+        vec![format!("/home/arcadia/{}", tail), format!("/home/steam/{}", tail)]
     } else {
         vec![path.to_string()]
     };
