@@ -1,20 +1,20 @@
 # Arcadia UX library
 
-This directory is the canonical agent-facing UX substrate for Arcadia. Arcadia UI work starts here: reusable layout, component scale, control/action tracks, viewport policy, and ordinary text bounds belong in this library before feature selectors receive domain-specific composition.
+This directory contains Arcadia's shared UX library: reusable layout, component scale, control tracks, responsive policy, and ordinary text bounds. Build shared behavior here before adding feature-specific selectors.
 
-Files:
+## Files
 
-- `arcadia-ux.css` owns shell rhythm, component scale, control/action tracks, spacing, readable text bounds, and utility primitives.
-- `arcadia-viewports.css` owns all responsive viewport dialing. Desktop is the unqualified baseline; tablet/phone changes live in the two media bands here.
-- `../themes/*.json` owns skin values only: color, radius, spacing constants, and theme surfaces. Theme JSON does not own layout breakpoints or per-viewport selector surgery.
+- `arcadia-ux.css` owns shell rhythm, component scale, control tracks, spacing, readable text bounds, and utility primitives.
+- `arcadia-viewports.css` owns responsive layout. Desktop is the baseline; tablet and phone changes live in its media bands.
+- `../themes/*.json` owns visual tokens such as color, radius, spacing, and surface values. Theme files do not own layout breakpoints or per-viewport selector changes.
 
-Agent contract:
+## Contribution contract
 
 1. Add or adjust shared UX variables in `arcadia-ux.css`.
-2. Put tablet/phone layout changes in `arcadia-viewports.css`.
-3. Keep `static/app/**` composable modules for view/component composition that consumes UX/theme variables and is not viewport-specific. `static/app.css` is a hoist only; `build.rs` composes the spine into `APP_CSS`.
-4. Do not add new `@media` blocks to `static/app.css`; the Rust test suite enforces this.
-5. Keep ordinary human-facing text within 12px through 22px unless a special display surface is explicitly ordered.
-6. Prove visible control geometry with rendered DOM readback when a change touches buttons, cards, action rows, or viewport fit.
-7. Pane-blind living-state style binding uses `data-bind-style-var="--var:path"`; values come from curated API document strings and are written only to CSS custom properties.
-8. High-bandwidth pane widgets register through `ArcadiaProjector.registerWidget(name, fn)`. The projector remains pane-blind: the widget receives the living-state document and may mount a scoped transport only while its visible presenter is active. The first declared valve is `controllersPane`, which combines `controllers` living-state readbacks with `/api/controllers/trainer/events` for 60ms trainer lighting and closes the stream when the pane/modal leaves focus.
+2. Put tablet and phone layout changes in `arcadia-viewports.css`.
+3. Keep `static/app/**` for view and component composition that consumes UX or theme variables and is not viewport-specific. `static/app.css` is an include spine; `build.rs` composes it into `APP_CSS`.
+4. Do not add new `@media` blocks to `static/app.css`; the Rust test suite enforces this boundary.
+5. Keep ordinary user-facing text within 12px through 22px unless a display surface explicitly needs a different scale.
+6. Verify rendered control geometry when a change affects buttons, cards, action rows, or viewport fit.
+7. Pane-independent living-state style binding uses `data-bind-style-var="--var:path"`; curated API document strings are written only to CSS custom properties.
+8. High-bandwidth pane widgets register with `ArcadiaProjector.registerWidget(name, fn)`. A widget receives the living-state document and may mount a scoped transport only while its visible presenter is active. The `controllersPane` widget combines controller readbacks with `/api/controllers/trainer/events` for trainer lighting and closes the stream when its pane or modal loses focus.
