@@ -433,8 +433,8 @@ fn gamescope_inventory() -> GameScopeInventory {
 fn desktop_gamescope_entries() -> Vec<GameScopeInstalledGame> {
     let mut entries = Vec::new();
     for root in [
-        "/home/owner/.local/share/applications",
-        "/home/owner/.steam/steam/userdata",
+        "/home/arcadia/.local/share/applications",
+        "/home/arcadia/.steam/steam/userdata",
     ] {
         collect_desktop_gamescope_entries(Path::new(root), root, &mut entries, 5);
     }
@@ -617,7 +617,7 @@ fn steam_user_from_shortcuts_path(path: &Path) -> Option<String> {
 fn owner_from_steam_root(root: &str) -> &'static str {
     if root.starts_with("/home/steam/") {
         "steam"
-    } else if root.starts_with("/home/owner/") {
+    } else if root.starts_with("/home/arcadia/") {
         "owner"
     } else {
         "unknown"

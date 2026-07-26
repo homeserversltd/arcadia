@@ -42,10 +42,10 @@
     #[test]
     fn network_status_parses_ip_addr_global_fallback() {
         let text =
-            "2: enp1s0    inet 192.168.123.54/24 brd 192.168.123.255 scope global dynamic enp1s0\n";
+            "2: enp1s0    inet 192.0.2.54/24 brd 192.0.2.255 scope global dynamic enp1s0\n";
         assert_eq!(
             parse_global_ipv4_address(text),
-            Some("192.168.123.54".to_string())
+            Some("192.0.2.54".to_string())
         );
     }
 
@@ -53,7 +53,7 @@
     fn provider_keys_ui_exposes_api_key_not_username_password() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -103,7 +103,7 @@
     fn desktop_fit_defers_heavy_detail_from_default_panes() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
@@ -132,7 +132,7 @@
     fn theme_system_is_rendered_and_served_through_unified_assets() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
@@ -176,7 +176,7 @@
     fn header_currentness_chips_have_lucide_icons_tooltips_and_theme_control() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
@@ -214,7 +214,7 @@
     fn gui_pin_access_uses_toast_not_inline_success_popup() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
@@ -229,7 +229,7 @@
     fn access_pin_view_is_router_style_single_toggle_panel() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();

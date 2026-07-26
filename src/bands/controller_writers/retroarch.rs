@@ -106,7 +106,7 @@ fn retroarch_deploy_paths(device_name: &str) -> Vec<PathBuf> {
     let file = format!("{}.cfg", safe_file_stem(device_name));
     [
         format!("/home/steam/.config/retroarch/autoconfig/udev/{file}"),
-        format!("/home/owner/.config/retroarch/autoconfig/udev/{file}"),
+        format!("/home/arcadia/.config/retroarch/autoconfig/udev/{file}"),
     ]
     .into_iter()
     .map(PathBuf::from)

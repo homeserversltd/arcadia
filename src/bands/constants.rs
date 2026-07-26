@@ -25,28 +25,28 @@ const HARMONIA_HOMECONSOLE_LEDGER: &str = "/var/lib/harmonia/receipts/homeconsol
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
 const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
 const SYSTEMD_RUN_BIN: &str = "/usr/bin/systemd-run";
-const GAMES_ROOT: &str = "/home/owner/Games";
-const ARTWORK_ROOT: &str = "/home/owner/Games/artwork";
+const GAMES_ROOT: &str = "/home/arcadia/Games";
+const ARTWORK_ROOT: &str = "/home/arcadia/Games/artwork";
 const TEMP_CLEAN_ROOTS: [&str; 2] = ["/tmp", "/var/tmp"];
 const MODEL_SCAN_ROOTS: [&str; 4] = [
-    "/home/owner",
+    "/home/arcadia",
     "/opt",
     "/var/lib",
-    "/var/opt/hermes/workspace/model-library/models",
+    "/var/lib/arcadia/model-library/models",
 ];
 const MODEL_EXTENSIONS: [&str; 3] = ["gguf", "safetensors", "onnx"];
-const MODEL_LIBRARY_ROOT: &str = "/var/opt/hermes/workspace/model-library";
+const MODEL_LIBRARY_ROOT: &str = "/var/lib/arcadia/model-library";
 const MODEL_LIBRARY_MANIFEST_PATH: &str =
-    "/var/opt/hermes/workspace/model-library/manifests/acquisition.json";
+    "/var/lib/arcadia/model-library/manifests/acquisition.json";
 const MODEL_LIBRARY_CATALOG_PATH: &str =
-    "/var/opt/hermes/workspace/model-library/catalog/catalog.json";
+    "/var/lib/arcadia/model-library/catalog/catalog.json";
 const GAME_SYSTEMS: [&str; 13] = [
     "gba", "genesis", "snes", "nes", "ps1", "n64", "ps2", "sega-cd", "psp", "gamecube", "wii",
     "dos", "arcade",
 ];
 const STEAM_USERDATA_ROOTS: [&str; 2] = [
     "/home/steam/.local/share/Steam/userdata",
-    "/home/owner/.steam/steam/userdata",
+    "/home/arcadia/.steam/steam/userdata",
 ];
 
 fn game_system_storage_path(system: &str) -> PathBuf {

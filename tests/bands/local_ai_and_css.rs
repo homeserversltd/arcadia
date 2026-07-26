@@ -2,7 +2,7 @@
     fn local_ai_state_payload_matches_manager_contract() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let payload = local_ai_state(&state);
@@ -26,7 +26,7 @@
     fn appliance_shell_renders_required_viewports_and_no_vault_indicator() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -183,7 +183,7 @@
     fn local_ai_buttons_use_shared_consistent_sizing() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let status = console_status(&state);
@@ -216,7 +216,7 @@
     fn controller_recovery_splits_idle_wake_from_missing_gamepad_surface() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let idle = recovery_status_for_receiver_only_by_id(
@@ -292,7 +292,7 @@
     fn nominal_controller_recovery_keeps_empty_chrome_hidden() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -313,7 +313,7 @@
     fn controllers_view_is_single_pane_for_controller_mapping() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let mut status = console_status(&state);
@@ -636,7 +636,7 @@
 
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
@@ -673,7 +673,7 @@
     fn controller_mappings_panel_renders_control_major_full_vocabulary() {
         let state = AppState {
             started_unix: 0,
-            canonical_url: "http://console.home.arpa/".to_string(),
+            canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
