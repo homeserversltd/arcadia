@@ -18,7 +18,7 @@ use std::{
     env, fs,
     fs::OpenOptions,
     io::Write,
-    net::{Ipv4Addr, SocketAddr, TcpStream},
+    net::{Ipv4Addr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
@@ -30,6 +30,7 @@ use std::{
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
 
+mod serving;
 mod ui;
 
 // Arcadia infinite-infinite bands: keep main.rs as the thin process face,
@@ -72,16 +73,16 @@ async fn main() -> anyhow_free::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let bind = env::var("ARCADIA_BIND").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
-    let addr: SocketAddr = bind.parse()?;
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let serve_config = serving::ServeConfig::from_env_and_args(&args)?;
     let started_unix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let state = Arc::new(AppState {
         started_unix,
         canonical_url: env::var("ARCADIA_CANONICAL_URL").unwrap_or_else(|_| {
-            if trust_status().mode == "https" {
-                "https://console.example.com/".to_string()
+            if serve_config.https_bind.is_some() {
+                "https://console.home.arpa/".to_string()
             } else {
-                "http://console.example.com/".to_string()
+                "http://console.home.arpa/".to_string()
             }
         }),
         product: "HomeConsole".to_string(),
@@ -398,9 +399,42 @@ async fn main() -> anyhow_free::Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let listener = TcpListener::bind(addr).await?;
-    tracing::info!(%addr, "arcadia listening");
-    axum::serve(listener, app).await?;
+    let http = match serve_config.http_bind {
+        Some(addr) => {
+            let listener = TcpListener::bind(addr).await?;
+            tracing::info!(%addr, "arcadia HTTP listener ready");
+            Some(listener)
+        }
+        None => None,
+    };
+    let https = match (
+        serve_config.https_bind,
+        serve_config.tls_cert.as_ref(),
+        serve_config.tls_key.as_ref(),
+    ) {
+        (Some(addr), Some(cert), Some(key)) => {
+            let tls = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+            tracing::info!(%addr, cert = %cert.display(), "arcadia HTTPS listener ready");
+            Some((addr, tls))
+        }
+        (None, None, None) => None,
+        _ => unreachable!("ServeConfig validates HTTPS certificate and key together"),
+    };
+
+    match (http, https) {
+        (Some(listener), Some((addr, tls))) => {
+            let http_server = axum::serve(listener, app.clone());
+            let https_server = axum_server::bind_rustls(addr, tls).serve(app.into_make_service());
+            tokio::try_join!(http_server, https_server)?;
+        }
+        (Some(listener), None) => axum::serve(listener, app).await?,
+        (None, Some((addr, tls))) => {
+            axum_server::bind_rustls(addr, tls)
+                .serve(app.into_make_service())
+                .await?;
+        }
+        (None, None) => return Err("no HTTP or HTTPS listener configured".into()),
+    }
     Ok(())
 }
 
