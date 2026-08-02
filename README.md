@@ -23,7 +23,7 @@ Build a release binary:
 cargo build --release
 ```
 
-For a production installation, place the release binary under your chosen application directory and manage it with your platform's service manager. Use a hostname and TLS configuration appropriate for your own network; the repository deliberately does not prescribe a private deployment address or host name.
+For a production installation, place the release binary under your chosen application directory and manage it with your platform's service manager. Arcadia can serve native Rust TLS directly for `https://console.home.arpa/`; certificate and key material are always supplied by the deployment environment, never embedded in the binary. See [native HTTPS serving](docs/https-serving.md).
 
 ## Interface overview
 
