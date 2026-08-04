@@ -203,6 +203,33 @@ async fn caduceus_update_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/update/status").await
 }
 
+async fn caduceus_cert_status_proxy_route() -> impl IntoResponse {
+    caduceus_json_proxy("/api/v1/cert/status").await
+}
+
+async fn caduceus_cert_trust_install_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut payload = body.as_object().cloned().unwrap_or_default();
+    payload
+        .entry("bundle".to_string())
+        .or_insert_with(|| serde_json::json!("/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt"));
+    let rendered = serde_json::to_string(&serde_json::Value::Object(payload))
+        .unwrap_or_else(|_| "{\"bundle\":\"/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt\"}".to_string());
+    match caduceus_post_json("/api/v1/cert/trust-install", &rendered) {
+        Ok(value) => {
+            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let status = if ok {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/cert/trust-install", signal),
+    }
+}
+
 async fn caduceus_update_now_proxy_route() -> impl IntoResponse {
     match caduceus_post_json("/api/v1/update/now", "{}") {
         Ok(value) => {
