@@ -45,6 +45,7 @@ include!("bands/routes_ai_models.rs");
 include!("bands/routes_ai_runtime.rs");
 include!("bands/routes_ai_settings.rs");
 include!("bands/routes_caduceus.rs");
+include!("bands/caduceus_access.rs");
 include!("bands/console_system_actions.rs");
 include!("bands/console_access_actions.rs");
 include!("bands/provider_keys.rs");
@@ -193,6 +194,18 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/system/trust/root-ca", post(action_install_root_ca))
         .route("/api/system/trust/mode", post(action_set_trust_mode))
         .route("/api/actions/restart-arcadia", post(action_restart_arcadia))
+        .route(
+            "/api/v1/attendance/open",
+            post(caduceus_attendance_open_route).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
+        .route(
+            "/api/v1/attendance/validate",
+            post(caduceus_attendance_validate_route),
+        )
+        .route(
+            "/api/v1/attendance/invalidate",
+            post(caduceus_attendance_invalidate_route),
+        )
         .route("/api/gui-pin/status", get(gui_pin_status_route))
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))

@@ -15,6 +15,7 @@
     "routes-ai-runtime",
     "routes-ai-settings",
     "routes-caduceus",
+    "caduceus-access",
     "console-system-actions",
     "console-access-actions",
     "provider-keys",
