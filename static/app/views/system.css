@@ -52,7 +52,7 @@
 }
 .system-ca-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
   padding: clamp(16px, 2vw, 22px);
@@ -203,4 +203,42 @@
 .system-ca-form .inline-actions .btn {
   min-width: 180px;
   border-radius: 16px;
+}
+.household-trust-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--ux-grid-gap);
+  min-width: 0;
+  padding: var(--ux-card-padding);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 38%, var(--line));
+  border-radius: var(--ux-button-radius);
+  background: color-mix(in srgb, var(--theme-field-surface) 76%, transparent);
+}
+.household-trust-card__head {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ux-control-gap);
+  min-width: 0;
+}
+.household-trust-card__head > span { font-size: var(--ux-text-md); font-weight: 900; }
+.household-trust-card__fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ux-control-gap);
+  min-width: 0;
+}
+.household-trust-card .system-field { padding: 7px 8px; }
+.household-trust-card .system-field em { font-size: 9px; }
+.household-trust-card .system-field strong { font-size: var(--ux-text-xs); }
+.household-trust-card > .btn { min-height: var(--ux-button-min-height); align-self: end; white-space: nowrap; }
+.household-trust-card__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow: hidden;
+  color: var(--bad);
+  font-size: var(--ux-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
