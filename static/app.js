@@ -251,6 +251,29 @@ async function checkGuiPinStatus() {
   return await res.json();
 }
 
+const caduceusDocument = `arcadia-${crypto.randomUUID()}`;
+let caduceusAttendance = null;
+
+function caduceusAttendanceHeaders() {
+  const headers = { 'x-caduceus-document': caduceusDocument };
+  if (caduceusAttendance) headers['x-caduceus-attendance'] = caduceusAttendance;
+  return headers;
+}
+
+function clearCaduceusAttendance() {
+  caduceusAttendance = null;
+}
+
+function invalidateCaduceusAttendance() {
+  if (!caduceusAttendance) return;
+  fetch('/api/v1/attendance/invalidate', {
+    method: 'POST',
+    headers: { accept: 'application/json', ...caduceusAttendanceHeaders() },
+    keepalive: true,
+  }).catch(() => {});
+  clearCaduceusAttendance();
+}
+
 function openArcadia() {
   document.body.classList.add('pin-open');
   document.body.dataset.guiPinRequired = 'false';
@@ -270,8 +293,8 @@ async function initializeGuiPinGate() {
     if (status.pin_required) keepGuiPinGate(); else openArcadia();
     setPinIndicator(Boolean(status.pin_required));
   } catch (_) {
-    openArcadia();
-    PopupManager.showToast('GUI PIN status unavailable; opening Arcadia', 'error');
+    keepGuiPinGate();
+    PopupManager.showToast('PIN attendance status unavailable. Arcadia remains locked.', 'error');
   }
 }
 
@@ -832,13 +855,21 @@ function bindGuiPinUnlock() {
     button.disabled = true;
     button.textContent = 'Opening...';
     try {
-      const data = await postJson('/pre-unlock', { pin: input.value });
+      const data = await postJson('/api/v1/attendance/open', { pin: input.value }, { attendance: false });
       input.value = '';
-      if (data.ok) { openArcadia(); PopupManager.showToast('Arcadia opened', 'success'); }
-      else { error.textContent = data.message || 'GUI PIN rejected.'; error.hidden = false; }
+      if (data.ok && typeof data.attendance === 'string') {
+        caduceusAttendance = data.attendance;
+        openArcadia();
+        PopupManager.showToast('Arcadia opened', 'success');
+      } else {
+        clearCaduceusAttendance();
+        error.textContent = data.firstMissingSignal || 'PIN attendance refused.';
+        error.hidden = false;
+      }
     } catch (_) {
       input.value = '';
-      error.textContent = 'GUI PIN request failed.';
+      clearCaduceusAttendance();
+      error.textContent = 'PIN attendance is unavailable. Arcadia remains locked.';
       error.hidden = false;
     } finally {
       button.disabled = false;
@@ -3127,10 +3158,14 @@ function formatTransferRate(bytesPerSec) {
   return mb >= 10 ? `${Math.round(mb)} MB/s` : `${mb.toFixed(1)} MB/s`;
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, { attendance = true } = {}) {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      ...(attendance ? caduceusAttendanceHeaders() : { 'x-caduceus-document': caduceusDocument }),
+    },
     body: JSON.stringify(body),
   });
   let data = {};
@@ -3534,6 +3569,7 @@ bindSystemTrustAndAccessForms();
 bindLocalAIControls();
 initializeOnboarding();
 initializeGuiPinGate();
+window.addEventListener('pagehide', invalidateCaduceusAttendance);
 ArcadiaObservation.runtime('boot', 'shell');
 ArcadiaObservation.currentness('shell-view', 'current');
 ArcadiaObservation.runtime('ready', 'shell');
