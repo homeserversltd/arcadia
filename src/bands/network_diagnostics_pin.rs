@@ -119,25 +119,15 @@ fn valid_ipv4(value: &str) -> bool {
 }
 
 async fn pre_unlock(
-    Json(body): Json<GuiPinUnlockRequest>,
+    _body: Json<GuiPinUnlockRequest>,
 ) -> (StatusCode, Json<GuiPinActionResponse>) {
-    if body.pin.is_empty() {
-        return gui_pin_response(
-            StatusCode::BAD_REQUEST,
-            false,
-            gui_pin_required(),
-            "verify-pin",
-            helper_exists(GUI_PIN_VERIFY_HELPER),
-            "GUI PIN is required.",
-        );
-    }
-
-    run_gui_pin_helper(
-        GUI_PIN_VERIFY_HELPER,
+    gui_pin_response(
+        StatusCode::GONE,
+        false,
+        gui_pin_required(),
         "verify-pin",
-        &[body.pin.as_str()],
-        "GUI PIN accepted.",
-        "GUI PIN rejected.",
+        false,
+        "GUI PIN attendance is now verified by Caduceus.",
     )
 }
 
