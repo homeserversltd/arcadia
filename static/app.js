@@ -3389,6 +3389,79 @@ function bindHarmoniaModules() {
 }
 
 function bindSystemTrustAndAccessForms() {
+  const trustPanel = document.querySelector('.system-ca-panel');
+  if (trustPanel && !trustPanel.querySelector('[data-household-trust]')) {
+    const card = document.createElement('section');
+    card.className = 'household-trust-card';
+    card.dataset.householdTrust = 'true';
+    card.setAttribute('aria-label', 'Household trust');
+    card.innerHTML = `
+      <div class="household-trust-card__head"><span>Household trust</span><b class="system-status system-status--unknown" data-household-trust-state>Checking</b></div>
+      <div class="household-trust-card__fields">
+        <span class="system-field"><em>CA bundle</em><strong data-household-trust-installed>—</strong></span>
+        <span class="system-field system-field--anchor"><em>Fingerprint</em><strong data-household-trust-fingerprint>—</strong></span>
+        <span class="system-field"><em>Role</em><strong data-household-trust-role>—</strong></span>
+      </div>
+      <p class="household-trust-card__error" data-household-trust-error hidden></p>
+      <button class="btn btn--primary" type="button" data-household-trust-install>Install CA bundle</button>`;
+    const rootCaForm = trustPanel.querySelector('#root-ca-form');
+    trustPanel.insertBefore(card, rootCaForm || null);
+
+    const field = (name) => card.querySelector(`[data-household-trust-${name}]`);
+    const receipt = (data, fallback) => data.first_missing_signal || data.firstMissingSignal || data.message || fallback;
+    const refresh = async () => {
+      let data;
+      try {
+        data = await getJson('/api/caduceus/v1/cert/status');
+      } catch (_) {
+        data = {
+          ok: false,
+          schema: 'arcadia.caduceus.proxy.error.v1',
+          command: 'cert status',
+          first_missing_signal: 'caduceus-http-unreachable',
+        };
+      }
+      const error = field('error');
+      const state = field('state');
+      if (data.ok === false) {
+        field('installed').textContent = 'Unavailable';
+        field('fingerprint').textContent = '—';
+        field('role').textContent = data.role || data.profile || '—';
+        state.textContent = 'Unavailable';
+        state.className = 'system-status system-status--error';
+        error.textContent = `${data.schema || 'caduceus error'} · ${data.command || 'cert status'} · ${receipt(data, 'caduceus-unreachable')}`;
+        error.hidden = false;
+        return data;
+      }
+      const installed = data.bundle_installed === true;
+      field('installed').textContent = installed ? 'Installed' : 'Not installed';
+      field('fingerprint').textContent = data.ca_fingerprint ? String(data.ca_fingerprint).slice(0, 20) : '—';
+      field('role').textContent = data.role || data.profile || '—';
+      state.textContent = installed ? 'Installed' : 'Not installed';
+      state.className = `system-status system-status--${installed ? 'available' : 'unknown'}`;
+      error.hidden = true;
+      return data;
+    };
+
+    card.querySelector('[data-household-trust-install]').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const label = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Installing…';
+      try {
+        const data = await postJson('/api/caduceus/v1/cert/trust-install', {});
+        PopupManager.showToast(receipt(data, data.ok ? 'CA bundle installed' : 'CA bundle not installed'), data.ok ? 'success' : 'error');
+      } catch (_) {
+        PopupManager.showToast('CA bundle request failed', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+        await refresh();
+      }
+    });
+    refresh();
+  }
+
   const keyForm = document.getElementById('ssh-key-form');
   if (keyForm) {
     keyForm.addEventListener('submit', async (event) => {
