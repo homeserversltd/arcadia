@@ -71,12 +71,14 @@
             "priority-strip",
             "home-operational-grid",
             "home-operational-grid--dashboard",
-            "load-orb",
-            "load-spark-bank",
+            "loadChart",
+            "load-chart-wrap",
+            "load-average-readouts",
+            "memory-usage",
             "data-load-card",
             r#"data-load-retry-ms="5000""#,
-            "data-load-orb",
-            "data-load-spark-value",
+            "data-load-readout-value",
+            "data-memory-bar",
             "data-load-chip-value",
             "Temp",
             "I/O",
@@ -196,12 +198,7 @@
             assert!(APP_CSS.contains(required), "home grid row CSS missing {required}");
         }
         assert!(APP_CSS.contains(".load-home-card"));
-        assert!(APP_CSS.contains(".load-orb"));
-        assert!(APP_CSS.contains(".load-orb::before"));
-        assert!(APP_CSS.contains("mask: radial-gradient"));
-        assert!(APP_CSS.contains(".load-spark"));
         assert!(APP_CSS.contains(".load-telemetry-grid"));
-        assert!(APP_CSS.contains("conic-gradient"));
         assert!(APP_JS.contains("function bindHomeLoadSubscription()"));
         assert!(APP_JS.contains("window.arcadiaHomeLoadSubscriptionState = state"));
         assert!(APP_JS.contains("new EventSource('/api/root/events')"));
@@ -226,6 +223,10 @@
         assert!(APP_JS.contains("readBytesPerSec"));
         assert!(APP_JS.contains("writeBytesPerSec"));
         assert!(APP_JS.contains("usagePercent"));
+        assert!(APP_JS.contains("new window.Chart"));
+        assert!(APP_JS.contains("chartCpuUsage"));
+        assert!(APP_JS.contains("chartCpuTemperature"));
+        assert!(APP_JS.contains("data.memory"));
         assert!(!APP_JS.contains("[data-load-headline]"));
         assert!(APP_JS.contains("fmtLoadAvgPct"));
         assert!(!APP_JS.contains("function bindHomeLoadPolling()"));

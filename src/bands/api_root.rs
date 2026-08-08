@@ -1562,6 +1562,7 @@ fn api_updates_node(status: &ConsoleStatus) -> ApiObjectNode {
 fn api_telemetry_node() -> ApiObjectNode {
     let cpu_temp = cpu_temperature_celsius();
     let cpu_usage = cpu_usage_percent();
+    let memory = memory_usage();
     let load = load_average();
     let disk_io = disk_io_counters();
     let io_pressure = pressure_avg10_percent("/proc/pressure/io");
@@ -1574,6 +1575,7 @@ fn api_telemetry_node() -> ApiObjectNode {
         summary: serde_json::json!({
             "cpuTemperatureCelsius": cpu_temp,
             "cpuUsagePercent": cpu_usage,
+            "memory": memory,
             "loadAverage": load,
             "diskIo": disk_io,
             "ioPressureAvg10": io_pressure,
@@ -1581,6 +1583,7 @@ fn api_telemetry_node() -> ApiObjectNode {
         metrics: vec![
             api_metric_value("cpuTemperatureCelsius", "CPU temperature", serde_json::json!(cpu_temp), Some("celsius"), None),
             api_metric_value("cpuUsagePercent", "CPU usage", serde_json::json!(cpu_usage), Some("percent"), None),
+            api_metric_value("memoryUsedBytes", "Memory used", memory.get("usedBytes").cloned().unwrap_or(serde_json::Value::Null), Some("bytes"), None),
             api_metric_value("load1", "Load average 1m", load.get("oneMinute").cloned().unwrap_or(serde_json::Value::Null), None, None),
             api_metric_value("diskReadRate", "Disk read rate", disk_io.get("readBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
             api_metric_value("diskWriteRate", "Disk write rate", disk_io.get("writeBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
@@ -1588,11 +1591,13 @@ fn api_telemetry_node() -> ApiObjectNode {
         ],
         data: serde_json::json!({
             "cpu": { "temperatureCelsius": cpu_temp, "usagePercent": cpu_usage },
+            "memory": memory,
             "load": load,
             "io": { "disk": disk_io, "pressureAvg10": io_pressure },
         }),
         children: vec![
             api_leaf("cpu", "CPU", "telemetry", "observed", "/api/root", serde_json::json!({"temperatureCelsius": cpu_temp, "usagePercent": cpu_usage})),
+            api_leaf("memory", "Memory", "telemetry", "observed", "/api/root", memory),
             api_leaf("load", "Load", "telemetry", "observed", "/api/root", load),
             api_leaf("io", "I/O", "telemetry", "observed", "/api/root", disk_io),
         ],
@@ -1894,4 +1899,22 @@ fn disk_io_counters() -> serde_json::Value {
         "readBytesPerSec": read_bytes_per_sec,
         "writeBytesPerSec": write_bytes_per_sec,
     }))
+}
+
+fn memory_usage() -> serde_json::Value {
+    let Some(raw) = fs::read_to_string("/proc/meminfo").ok() else {
+        return serde_json::json!({"available": false});
+    };
+    let fields = raw.lines().filter_map(|line| {
+        let (key, value) = line.split_once(":")?;
+        let kib = value.split_whitespace().next()?.parse::<u64>().ok()?;
+        Some((key, kib.saturating_mul(1024)))
+    }).collect::<HashMap<&str, u64>>();
+    let Some(total_bytes) = fields.get("MemTotal").copied() else {
+        return serde_json::json!({"available": false});
+    };
+    let available_bytes = fields.get("MemAvailable").copied().or_else(|| fields.get("MemFree").copied()).unwrap_or(0).min(total_bytes);
+    let used_bytes = total_bytes.saturating_sub(available_bytes);
+    let used_percent = if total_bytes == 0 { 0.0 } else { ((used_bytes as f64 / total_bytes as f64) * 1000.0).round() / 10.0 };
+    serde_json::json!({"available": true, "totalBytes": total_bytes, "availableBytes": available_bytes, "usedBytes": used_bytes, "usedPercent": used_percent})
 }

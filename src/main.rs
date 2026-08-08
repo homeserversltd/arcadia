@@ -415,6 +415,7 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/pre-unlock", post(pre_unlock))
         .route("/static/app.css", get(css))
         .route("/static/indra-observation.js", get(indra_observation_js))
+        .route("/static/vendor/chart.umd.min.js", get(vendor_chart_js))
         .route("/static/app.js", get(js))
         .fallback(not_found)
         .layer(TraceLayer::new_for_http())

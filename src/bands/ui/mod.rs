@@ -1,7 +1,7 @@
 use maud::{html, Markup, PreEscaped, DOCTYPE};
 
 use crate::{
-    cpu_temperature_celsius, cpu_usage_percent, disk_io_counters, human_size, load_average,
+    cpu_temperature_celsius, disk_io_counters, human_size, load_average, memory_usage,
     pressure_avg10_percent, AiModelStorageStatus, ButtonVariant, ConsoleStatus, GameSystemTally,
     StorageCategoryStatus,
 };
@@ -62,6 +62,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                     }
                 }
                 (modal_root())
+                script src="/static/vendor/chart.umd.min.js" {}
                 script src="/static/indra-observation.js" {}
                 script src="/static/app.js" {}
             }
