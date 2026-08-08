@@ -3,6 +3,7 @@ const UX_CSS: &str = include_str!("../../static/ux/arcadia-ux.css");
 const VIEWPORT_CSS: &str = include_str!("../../static/ux/arcadia-viewports.css");
 const APP_JS: &str = include_str!("../../static/app.js");
 const INDRA_OBSERVATION_JS: &str = include_str!("../../static/indra-observation.js");
+const VENDOR_CHART_JS: &str = include_str!("../../static/vendor/chart.umd.min.js");
 const THEME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.css"));
 const THEME_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.js"));
 const GUI_PIN_STATE_PATH: &str = "/var/lib/homeconsole/gui-pin-access.json";

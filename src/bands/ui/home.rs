@@ -147,58 +147,36 @@ fn home_storage_everything_else_size(status: &ConsoleStatus) -> String {
 }
 
 fn home_load_card() -> Markup {
-    let cpu_usage = cpu_usage_percent();
     let load = load_average();
     let one = json_number(&load, "oneMinute");
     let five = json_number(&load, "fiveMinute");
     let fifteen = json_number(&load, "fifteenMinute");
-    let cores = std::thread::available_parallelism()
-        .map(|count| count.get() as f64)
-        .unwrap_or(1.0)
-        .max(1.0);
-    let load_percent = cpu_usage
-        .map(|value| value.clamp(0.0, 100.0).round() as u8)
-        .unwrap_or(0);
-    let load_state = if load_percent >= 90 {
-        "warn"
-    } else if cpu_usage.is_some() {
-        "ok"
-    } else {
-        "idle"
-    };
+    let cores = std::thread::available_parallelism().map(|count| count.get() as f64).unwrap_or(1.0).max(1.0);
     let temp = cpu_temperature_celsius();
-    let temp_label = temp
-        .map(|value| format!("{value:.1}°C"))
-        .unwrap_or_else(|| "—".to_string());
-    let temp_state = match temp {
-        Some(value) if value >= 82.0 => "warn",
-        Some(_) => "ok",
-        None => "idle",
-    };
+    let temp_label = temp.map(|value| format!("{value:.1}°C")).unwrap_or_else(|| "—".to_string());
+    let temp_state = match temp { Some(value) if value >= 82.0 => "warn", Some(_) => "ok", None => "idle" };
     let io_pressure = pressure_avg10_percent("/proc/pressure/io");
-    let io_label = io_pressure
-        .map(|value| format!("{value:.1}%"))
-        .unwrap_or_else(|| "—".to_string());
-    let io_state = match io_pressure {
-        Some(value) if value >= 10.0 => "warn",
-        Some(_) => "ok",
-        None => "idle",
-    };
+    let io_label = io_pressure.map(|value| format!("{value:.1}%")).unwrap_or_else(|| "—".to_string());
+    let io_state = match io_pressure { Some(value) if value >= 10.0 => "warn", Some(_) => "ok", None => "idle" };
     let disk = disk_io_counters();
     let read_rate = json_u64(&disk, "readBytesPerSec");
     let write_rate = json_u64(&disk, "writeBytesPerSec");
+    let memory = memory_usage();
+    let memory_total = json_u64(&memory, "totalBytes").unwrap_or(0);
+    let memory_used = json_u64(&memory, "usedBytes").unwrap_or(0);
+    let memory_percent = json_number(&memory, "usedPercent").unwrap_or(0.0).clamp(0.0, 100.0);
     html! {
         article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" {
             div class="card-head" aria-label="Load" { h3 { "Load" } }
-            div class="load-orb-row" {
-                div class=(format!("load-orb load-orb--{}", load_state)) style=(format!("--load-pct:{};", load_percent)) aria-label=(format!("{} percent load", load_percent)) data-load-orb {
-                    span data-load-percent { (load_percent) "%" }
-                }
-                div class="load-spark-bank" aria-label="Load average" {
-                    (load_spark("1m", "oneMinute", one, cores))
-                    (load_spark("5m", "fiveMinute", five, cores))
-                    (load_spark("15m", "fifteenMinute", fifteen, cores))
-                }
+            div class="load-chart-wrap" { canvas id="loadChart" aria-label="CPU usage and temperature chart" role="img" {} }
+            div class="load-average-readouts" aria-label="Load average" {
+                (load_readout("1m", "oneMinute", one, cores))
+                (load_readout("5m", "fiveMinute", five, cores))
+                (load_readout("15m", "fifteenMinute", fifteen, cores))
+            }
+            div class="memory-usage" aria-label="System RAM used" {
+                div class="memory-usage__line" { span { "RAM" } strong data-memory-used { (human_size(memory_used)) } span data-memory-total { " / " (human_size(memory_total)) } }
+                div class="memory-usage__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=(format!("{memory_percent:.0}")) { i style=(format!("width:{memory_percent:.1}%;")) data-memory-bar {} }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
                 (load_chip("Temp", "cpu", &temp_label, temp_state))
@@ -210,20 +188,9 @@ fn home_load_card() -> Markup {
     }
 }
 
-fn load_spark(label: &str, key: &str, value: Option<f64>, cores: f64) -> Markup {
-    let width = value
-        .map(|number| ((number / cores) * 100.0).clamp(0.0, 100.0).round() as u8)
-        .unwrap_or(0);
-    let display = value
-        .map(|number| format!("{:.1}%", (number / cores) * 100.0))
-        .unwrap_or_else(|| "—".to_string());
-    html! {
-        div class="load-spark" data-load-spark=(key) {
-            span { (label) }
-            i { em style=(format!("width:{}%;", width)) data-load-spark-bar=(key) {} }
-            strong data-load-spark-value=(key) { (display) }
-        }
-    }
+fn load_readout(label: &str, key: &str, value: Option<f64>, cores: f64) -> Markup {
+    let display = value.map(|number| format!("{:.1}%", (number / cores) * 100.0)).unwrap_or_else(|| "—".to_string());
+    html! { div class="load-average-readout" data-load-readout=(key) { span { (label) } strong data-load-readout-value=(key) { (display) } } }
 }
 
 fn load_chip(label: &str, key: &str, value: &str, state: &str) -> Markup {

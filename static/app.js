@@ -642,6 +642,10 @@ function bindHomeLoadSubscription() {
     fallbackSnapshots: 0,
     fallback: false,
     cachedRoot: null,
+    chart: null,
+    chartLabels: [],
+    chartCpuUsage: [],
+    chartCpuTemperature: [],
     lastContactUnix: null,
     expiresAtUnix: null,
   };
@@ -657,11 +661,68 @@ function bindHomeLoadSubscription() {
   const fmtLoadAvgPct = (value, cores) => value == null ? '—' : `${((value / Math.max(1, cores)) * 100).toFixed(1)}%`;
   const fmtTemp = (value) => value == null ? '—' : `${value.toFixed(1)}°C`;
   const fmtPressure = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
-  const updateSpark = (key, value, cores) => {
-    const pct = value == null ? 0 : Math.max(0, Math.min(100, Math.round((value / Math.max(1, cores)) * 100)));
-    setText(`[data-load-spark-value="${key}"]`, fmtLoadAvgPct(value, cores));
-    const bar = card.querySelector(`[data-load-spark-bar="${key}"]`);
-    if (bar) bar.style.width = `${pct}%`;
+  const formatBytes = (value) => {
+    if (value == null || value < 0) return '—';
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  };
+  const updateChart = (usage, temperature) => {
+    const canvas = card.querySelector('#loadChart');
+    if (!canvas || typeof window.Chart !== 'function') return;
+    state.chartLabels.push(new Date().toLocaleTimeString([], { minute: '2-digit', second: '2-digit' }));
+    state.chartCpuUsage.push(usage);
+    state.chartCpuTemperature.push(temperature);
+    while (state.chartLabels.length > 60) { state.chartLabels.shift(); state.chartCpuUsage.shift(); state.chartCpuTemperature.shift(); }
+    if (!state.chart) {
+      state.chart = new window.Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: state.chartLabels,
+          datasets: [
+            {
+              label: 'CPU usage',
+              data: state.chartCpuUsage,
+              borderColor: '#5dc9ff',
+              backgroundColor: 'rgba(93, 201, 255, 0.12)',
+              tension: 0.25,
+              pointRadius: 0,
+              yAxisID: 'usage',
+            },
+            {
+              label: 'CPU temperature',
+              data: state.chartCpuTemperature,
+              borderColor: '#f5a65b',
+              backgroundColor: 'rgba(245, 166, 91, 0.12)',
+              tension: 0.25,
+              pointRadius: 0,
+              yAxisID: 'temperature',
+            },
+          ],
+        },
+        options: {
+          animation: false,
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            usage: {
+              position: 'left',
+              min: 0,
+              max: 100,
+              ticks: { callback: (value) => `${value}%` },
+            },
+            temperature: {
+              position: 'right',
+              ticks: { callback: (value) => `${value}°C` },
+              grid: { drawOnChartArea: false },
+            },
+            x: { display: false },
+          },
+        },
+      });
+    } else state.chart.update('none');
   };
   const apply = (root) => {
     state.cachedRoot = root;
@@ -675,20 +736,21 @@ function bindHomeLoadSubscription() {
     const fifteen = number(load.fifteenMinute);
     const cores = Number(navigator.hardwareConcurrency || 1);
     const usage = number(data.cpu?.usagePercent);
-    const pct = usage == null ? 0 : Math.max(0, Math.min(100, Math.round(usage)));
-    setText('[data-load-percent]', `${pct}%`);
-    const orb = card.querySelector('[data-load-orb]');
-    if (orb) {
-      orb.style.setProperty('--load-pct', pct);
-      orb.setAttribute('aria-label', `${pct} percent load`);
-      orb.classList.toggle('load-orb--warn', pct >= 90);
-      orb.classList.toggle('load-orb--ok', pct < 90 && usage != null);
-      orb.classList.toggle('load-orb--idle', usage == null);
-    }
-    updateSpark('oneMinute', one, cores);
-    updateSpark('fiveMinute', five, cores);
-    updateSpark('fifteenMinute', fifteen, cores);
     const temp = number(data.cpu?.temperatureCelsius);
+    setText('[data-load-readout-value="oneMinute"]', fmtLoadAvgPct(one, cores));
+    setText('[data-load-readout-value="fiveMinute"]', fmtLoadAvgPct(five, cores));
+    setText('[data-load-readout-value="fifteenMinute"]', fmtLoadAvgPct(fifteen, cores));
+    updateChart(usage, temp);
+    const memory = data.memory || {};
+    const memoryPercent = number(memory.usedPercent);
+    const memoryUsed = number(memory.usedBytes);
+    const memoryTotal = number(memory.totalBytes);
+    setText('[data-memory-used]', formatBytes(memoryUsed));
+    setText('[data-memory-total]', memoryTotal == null ? '' : ` / ${formatBytes(memoryTotal)}`);
+    const memoryBar = card.querySelector('[data-memory-bar]');
+    const memoryProgress = card.querySelector('.memory-usage__bar');
+    if (memoryBar && memoryPercent != null) memoryBar.style.width = String(Math.max(0, Math.min(100, memoryPercent))) + '%';
+    if (memoryProgress && memoryPercent != null) memoryProgress.setAttribute('aria-valuenow', String(Math.round(Math.max(0, Math.min(100, memoryPercent)))));
     const pressure = number(io.pressureAvg10);
     setChip('cpu', fmtTemp(temp), temp == null ? 'idle' : (temp >= 82 ? 'warn' : 'ok'));
     setChip('io', fmtPressure(pressure), pressure == null ? 'idle' : (pressure >= 10 ? 'warn' : 'ok'));
