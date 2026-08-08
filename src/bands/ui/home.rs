@@ -175,8 +175,11 @@ fn home_load_card() -> Markup {
                 (load_readout("15m", "fifteenMinute", fifteen, cores))
             }
             div class="memory-usage" aria-label="System RAM used" {
-                div class="memory-usage__line" { span { "RAM" } strong data-memory-used { (human_size(memory_used)) } span data-memory-total { " / " (human_size(memory_total)) } }
-                div class="memory-usage__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=(format!("{memory_percent:.0}")) { i style=(format!("width:{memory_percent:.1}%;")) data-memory-bar {} }
+                div class="storage-bar storage-bar--home" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=(format!("{memory_percent:.0}")) data-memory-bar {
+                    span class="storage-segment storage-segment--other" style=(format!("width: {memory_percent:.0}%")) data-memory-used-segment {}
+                    span class="storage-segment storage-segment--free" style=(format!("width: {:.0}%", 100.0 - memory_percent)) data-memory-free-segment {}
+                }
+                div class="state-rows state-rows--compact" { div class="home-detail-row" { span { "RAM used:" } strong data-memory-used { (human_size(memory_used)) } span data-memory-total { " / " (human_size(memory_total)) } } }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
                 (load_chip("Temp", "cpu", &temp_label, temp_state))

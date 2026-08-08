@@ -747,10 +747,13 @@ function bindHomeLoadSubscription() {
     const memoryTotal = number(memory.totalBytes);
     setText('[data-memory-used]', formatBytes(memoryUsed));
     setText('[data-memory-total]', memoryTotal == null ? '' : ` / ${formatBytes(memoryTotal)}`);
-    const memoryBar = card.querySelector('[data-memory-bar]');
-    const memoryProgress = card.querySelector('.memory-usage__bar');
-    if (memoryBar && memoryPercent != null) memoryBar.style.width = String(Math.max(0, Math.min(100, memoryPercent))) + '%';
-    if (memoryProgress && memoryPercent != null) memoryProgress.setAttribute('aria-valuenow', String(Math.round(Math.max(0, Math.min(100, memoryPercent)))));
+    const boundedMemoryPercent = memoryPercent == null ? null : Math.max(0, Math.min(100, memoryPercent));
+    const memoryUsedSegment = card.querySelector("[data-memory-used-segment]");
+    const memoryFreeSegment = card.querySelector("[data-memory-free-segment]");
+    const memoryProgress = card.querySelector("[data-memory-bar]");
+    if (memoryUsedSegment && boundedMemoryPercent != null) memoryUsedSegment.style.width = String(boundedMemoryPercent) + "%";
+    if (memoryFreeSegment && boundedMemoryPercent != null) memoryFreeSegment.style.width = String(100 - boundedMemoryPercent) + "%";
+    if (memoryProgress && boundedMemoryPercent != null) memoryProgress.setAttribute("aria-valuenow", String(Math.round(boundedMemoryPercent)));
     const pressure = number(io.pressureAvg10);
     setChip('cpu', fmtTemp(temp), temp == null ? 'idle' : (temp >= 82 ? 'warn' : 'ok'));
     setChip('io', fmtPressure(pressure), pressure == null ? 'idle' : (pressure >= 10 ? 'warn' : 'ok'));
