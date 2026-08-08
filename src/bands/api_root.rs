@@ -1915,6 +1915,12 @@ fn memory_usage() -> serde_json::Value {
     };
     let available_bytes = fields.get("MemAvailable").copied().or_else(|| fields.get("MemFree").copied()).unwrap_or(0).min(total_bytes);
     let used_bytes = total_bytes.saturating_sub(available_bytes);
-    let used_percent = if total_bytes == 0 { 0.0 } else { ((used_bytes as f64 / total_bytes as f64) * 1000.0).round() / 10.0 };
+    let used_percent = if total_bytes == 0 {
+        0
+    } else {
+        ((used_bytes as f64 / total_bytes as f64) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as u8
+    };
     serde_json::json!({"available": true, "totalBytes": total_bytes, "availableBytes": available_bytes, "usedBytes": used_bytes, "usedPercent": used_percent})
 }
