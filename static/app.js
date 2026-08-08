@@ -328,12 +328,14 @@ function bindNavigation() {
       button.classList.toggle('is-active', active);
       button.setAttribute('aria-current', active ? 'page' : 'false');
     });
+    let activePanel;
     panels.forEach((panel) => {
       const active = panel.dataset.viewPanel === next;
       panel.classList.toggle('is-active', active);
       panel.hidden = !active;
-      if (active) panel.focus({ preventScroll: true });
+      if (active) activePanel = panel;
     });
+    if (activePanel) requestAnimationFrame(() => activePanel.focus({ preventScroll: true }));
     try { localStorage.setItem('arcadia-active-view', next); } catch (_) {}
     ArcadiaObservation.navigation(next);
     document.dispatchEvent(new CustomEvent('arcadia:view-change', { detail: { view: next } }));
