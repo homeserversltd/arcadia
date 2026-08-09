@@ -29,6 +29,13 @@ use std::{
 };
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+use tracing::{Event as TracingEvent, Id, Level, Subscriber};
+use tracing_subscriber::{
+    layer::{Context as TracingContext, SubscriberExt},
+    registry::LookupSpan,
+    util::SubscriberInitExt,
+    Layer,
+};
 
 mod serving;
 mod ui;
@@ -68,10 +75,129 @@ include!("bands/storage_cleanup.rs");
 include!("bands/api_root.rs");
 include!("bands/anyhow_free.rs");
 
+const ARCADIA_HYALOS_MESSAGE_MAX_CHARS: usize = 512;
+
+#[derive(Default)]
+struct ArcadiaHyalosFields {
+    correlation_id: Option<String>,
+    message: Option<String>,
+}
+
+impl tracing::field::Visit for ArcadiaHyalosFields {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        let value = format!("{value:?}");
+        match field.name() {
+            "correlation_id" => self.correlation_id = Some(value),
+            "message" => self.message = Some(value),
+            _ => {}
+        }
+    }
+}
+
+struct ArcadiaHyalosLayer;
+
+impl ArcadiaHyalosLayer {
+    fn forwards(level: &Level) -> bool {
+        matches!(*level, Level::ERROR | Level::WARN | Level::INFO)
+    }
+
+    fn reflect(
+        kind: &'static str,
+        level: &Level,
+        target: &str,
+        name: &str,
+        mut fields: ArcadiaHyalosFields,
+    ) {
+        if !Self::forwards(level) {
+            return;
+        }
+        let message = fields
+            .message
+            .take()
+            .unwrap_or_else(|| format!("{kind}: {name}"));
+        let reflection = serde_json::json!({
+            "organ": "arcadia",
+            "kind": kind,
+            "level": level.as_str().to_ascii_lowercase(),
+            "message": message.chars().take(ARCADIA_HYALOS_MESSAGE_MAX_CHARS).collect::<String>(),
+            "world": "backend",
+            "correlation_id": fields.correlation_id,
+            "attributes_redacted": { "target": target, "name": name },
+        });
+        let Ok(body) = serde_json::to_string(&reflection) else {
+            return;
+        };
+        let _ = std::thread::Builder::new()
+            .name("arcadia-hyalos".to_string())
+            .spawn(move || {
+                let _ = caduceus_post_json_with_timeout("/api/v1/hyalos/reflect", &body, "2");
+            });
+    }
+}
+
+impl<S> Layer<S> for ArcadiaHyalosLayer
+where
+    S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
+    fn on_event(&self, event: &TracingEvent<'_>, _context: TracingContext<'_, S>) {
+        let metadata = event.metadata();
+        let mut fields = ArcadiaHyalosFields::default();
+        event.record(&mut fields);
+        Self::reflect(
+            "tracing-event",
+            metadata.level(),
+            metadata.target(),
+            metadata.name(),
+            fields,
+        );
+    }
+
+    fn on_new_span(
+        &self,
+        attributes: &tracing::span::Attributes<'_>,
+        _id: &Id,
+        _context: TracingContext<'_, S>,
+    ) {
+        let metadata = attributes.metadata();
+        let mut fields = ArcadiaHyalosFields::default();
+        attributes.record(&mut fields);
+        Self::reflect(
+            "tracing-span",
+            metadata.level(),
+            metadata.target(),
+            metadata.name(),
+            fields,
+        );
+    }
+
+    fn on_record(
+        &self,
+        id: &Id,
+        values: &tracing::span::Record<'_>,
+        context: TracingContext<'_, S>,
+    ) {
+        let Some(span) = context.span(id) else {
+            return;
+        };
+        let metadata = span.metadata();
+        let mut fields = ArcadiaHyalosFields::default();
+        values.record(&mut fields);
+        Self::reflect(
+            "tracing-span",
+            metadata.level(),
+            metadata.target(),
+            metadata.name(),
+            fields,
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow_free::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .finish()
+        .with(ArcadiaHyalosLayer)
         .init();
 
     let args = env::args().skip(1).collect::<Vec<_>>();
