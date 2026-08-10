@@ -40,6 +40,7 @@
             "view-controllers",
             "view-network",
             "view-access-pin",
+            "view-vault",
             "view-updates",
             "view-system",
         ] {
@@ -76,6 +77,8 @@
             "data-chip-kind=\"uptime\"",
             "data-chip-kind=\"local-ai\"",
             "data-chip-kind=\"pin\"",
+            "Vault",
+            "data-chip-kind=\"vault\"",
         ] {
             assert!(
                 header_html.contains(required),
@@ -87,7 +90,6 @@
             "GameScope",
             "Storage",
             "UI contract",
-            "Vault status",
         ] {
             assert!(
                 !header_html.contains(forbidden),
@@ -95,7 +97,6 @@
             );
         }
         assert!(!rendered.contains("smb:://"));
-        assert!(!rendered.contains("Vault"));
         assert!(rendered.contains("HTTPS bundle"));
 
         assert!(

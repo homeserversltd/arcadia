@@ -3,11 +3,7 @@ fn caduceus_http_base() -> String {
 }
 
 fn caduceus_proxy_url(path: &str) -> String {
-    format!(
-        "{}{}",
-        caduceus_http_base().trim_end_matches('/'),
-        path
-    )
+    format!("{}{}", caduceus_http_base().trim_end_matches('/'), path)
 }
 
 fn caduceus_fetch_json(path: &str) -> Result<serde_json::Value, &'static str> {
@@ -56,7 +52,9 @@ const ARCADIA_DEBUG_MAX_TEXT: usize = 512;
 fn arcadia_debug_kind_is_safe(kind: &str) -> bool {
     !kind.is_empty()
         && kind.len() <= 48
-        && kind.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && kind
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
         && !kind.starts_with('-')
         && !kind.ends_with('-')
         && !kind.contains("--")
@@ -65,8 +63,13 @@ fn arcadia_debug_kind_is_safe(kind: &str) -> bool {
 fn arcadia_debug_identifier_is_safe(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 80
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'_' | b'-'))
-        && value.as_bytes().first().is_some_and(|byte| byte.is_ascii_alphabetic())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'_' | b'-'))
+        && value
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphabetic())
 }
 
 fn arcadia_debug_pathname_is_safe(value: &str) -> bool {
@@ -80,7 +83,9 @@ fn arcadia_debug_pathname_is_safe(value: &str) -> bool {
 }
 
 fn arcadia_debug_enum(value: Option<&str>, allowed: &[&str]) -> Option<String> {
-    value.filter(|item| allowed.contains(item)).map(arcadia_debug_trim_text)
+    value
+        .filter(|item| allowed.contains(item))
+        .map(arcadia_debug_trim_text)
 }
 
 fn arcadia_debug_key_is_sensitive(key: &str) -> bool {
@@ -94,13 +99,20 @@ fn arcadia_debug_trim_text(value: &str) -> String {
     value.chars().take(ARCADIA_DEBUG_MAX_TEXT).collect()
 }
 
-fn sanitize_arcadia_debug_value(value: &serde_json::Value, depth: usize) -> Option<serde_json::Value> {
+fn sanitize_arcadia_debug_value(
+    value: &serde_json::Value,
+    depth: usize,
+) -> Option<serde_json::Value> {
     if depth > ARCADIA_DEBUG_MAX_DEPTH {
         return None;
     }
     match value {
-        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => Some(value.clone()),
-        serde_json::Value::String(text) => Some(serde_json::Value::String(arcadia_debug_trim_text(text))),
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            Some(value.clone())
+        }
+        serde_json::Value::String(text) => {
+            Some(serde_json::Value::String(arcadia_debug_trim_text(text)))
+        }
         serde_json::Value::Array(values) => Some(serde_json::Value::Array(
             values
                 .iter()
@@ -114,8 +126,7 @@ fn sanitize_arcadia_debug_value(value: &serde_json::Value, depth: usize) -> Opti
                 .filter(|(key, _)| !arcadia_debug_key_is_sensitive(key))
                 .take(ARCADIA_DEBUG_MAX_ITEMS)
                 .filter_map(|(key, value)| {
-                    sanitize_arcadia_debug_value(value, depth + 1)
-                        .map(|value| (key.clone(), value))
+                    sanitize_arcadia_debug_value(value, depth + 1).map(|value| (key.clone(), value))
                 })
                 .collect(),
         )),
@@ -123,11 +134,30 @@ fn sanitize_arcadia_debug_value(value: &serde_json::Value, depth: usize) -> Opti
 }
 
 fn arcadia_debug_reflection(body: &serde_json::Value) -> Result<serde_json::Value, &'static str> {
-    let kind = body.get("kind").and_then(|value| value.as_str()).ok_or("debug-kind-required")?;
-    if !arcadia_debug_kind_is_safe(kind) { return Err("debug-kind-invalid"); }
-    let string = |name: &str| body.get(name).and_then(|value| value.as_str()).filter(|value| !value.chars().any(char::is_control)).map(arcadia_debug_trim_text);
-    let identifier = |name: &str| body.get(name).and_then(|value| value.as_str()).filter(|value| arcadia_debug_identifier_is_safe(value)).map(arcadia_debug_trim_text);
-    let pathname = body.get("pathname").and_then(|value| value.as_str()).filter(|value| arcadia_debug_pathname_is_safe(value)).map(arcadia_debug_trim_text);
+    let kind = body
+        .get("kind")
+        .and_then(|value| value.as_str())
+        .ok_or("debug-kind-required")?;
+    if !arcadia_debug_kind_is_safe(kind) {
+        return Err("debug-kind-invalid");
+    }
+    let string = |name: &str| {
+        body.get(name)
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.chars().any(char::is_control))
+            .map(arcadia_debug_trim_text)
+    };
+    let identifier = |name: &str| {
+        body.get(name)
+            .and_then(|value| value.as_str())
+            .filter(|value| arcadia_debug_identifier_is_safe(value))
+            .map(arcadia_debug_trim_text)
+    };
+    let pathname = body
+        .get("pathname")
+        .and_then(|value| value.as_str())
+        .filter(|value| arcadia_debug_pathname_is_safe(value))
+        .map(arcadia_debug_trim_text);
     let number = |name: &str| body.get(name).and_then(|value| value.as_u64());
     let attributes = body
         .get("attributes")
@@ -160,7 +190,11 @@ async fn arcadia_debug_emit_route(Json(body): Json<serde_json::Value>) -> impl I
     let Ok(reflection) = arcadia_debug_reflection(&body) else {
         return StatusCode::BAD_REQUEST;
     };
-    if forward_arcadia_debug_reflection(&reflection) { StatusCode::NO_CONTENT } else { StatusCode::SERVICE_UNAVAILABLE }
+    if forward_arcadia_debug_reflection(&reflection) {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 fn caduceus_proxy_error(path: &str, signal: &'static str) -> axum::response::Response {
@@ -199,6 +233,29 @@ async fn caduceus_health_api_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/health").await
 }
 
+async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
+    caduceus_json_proxy("/api/v1/vault/status").await
+}
+async fn caduceus_vault_unlock_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    caduceus_json_post_proxy("/api/v1/vault/unlock", body)
+}
+async fn caduceus_vault_auto_decrypt_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    caduceus_json_post_proxy("/api/v1/vault/auto-decrypt", body)
+}
+fn caduceus_json_post_proxy(
+    path: &'static str,
+    body: serde_json::Value,
+) -> axum::response::Response {
+    let rendered = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    match caduceus_post_json(path, &rendered) {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(signal) => caduceus_proxy_error(path, signal),
+    }
+}
 async fn caduceus_update_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/update/status").await
 }
@@ -211,11 +268,14 @@ async fn caduceus_cert_trust_install_proxy_route(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let mut payload = body.as_object().cloned().unwrap_or_default();
-    payload
-        .entry("bundle".to_string())
-        .or_insert_with(|| serde_json::json!("/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt"));
-    let rendered = serde_json::to_string(&serde_json::Value::Object(payload))
-        .unwrap_or_else(|_| "{\"bundle\":\"/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt\"}".to_string());
+    payload.entry("bundle".to_string()).or_insert_with(|| {
+        serde_json::json!("/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt")
+    });
+    let rendered =
+        serde_json::to_string(&serde_json::Value::Object(payload)).unwrap_or_else(|_| {
+            "{\"bundle\":\"/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt\"}"
+                .to_string()
+        });
     match caduceus_post_json("/api/v1/cert/trust-install", &rendered) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -307,7 +367,8 @@ async fn caduceus_update_service_toggle_proxy_route(
     } else {
         serde_json::json!({ "state": "on" })
     };
-    let rendered = serde_json::to_string(&payload).unwrap_or_else(|_| "{\"state\":\"on\"}".to_string());
+    let rendered =
+        serde_json::to_string(&payload).unwrap_or_else(|_| "{\"state\":\"on\"}".to_string());
     match caduceus_post_json("/api/v1/update/service/toggle", &rendered) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error("/api/v1/update/service/toggle", signal),
@@ -358,8 +419,8 @@ async fn caduceus_local_ai_runtime_update_proxy_route() -> impl IntoResponse {
 async fn caduceus_profile_module_toggle_proxy_route(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let rendered =
-        serde_json::to_string(&body).unwrap_or_else(|_| "{\"module_id\":\"\",\"enabled\":false}".to_string());
+    let rendered = serde_json::to_string(&body)
+        .unwrap_or_else(|_| "{\"module_id\":\"\",\"enabled\":false}".to_string());
     match caduceus_post_json("/api/v1/profile/module/toggle", &rendered) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -417,12 +478,9 @@ fn run_caduceus_http_mutation(
                 }),
             )
         }
-        Err(signal) => console_action_error(
-            StatusCode::BAD_GATEWAY,
-            action,
-            "caduceus-http",
-            signal,
-        ),
+        Err(signal) => {
+            console_action_error(StatusCode::BAD_GATEWAY, action, "caduceus-http", signal)
+        }
     }
 }
 
@@ -440,7 +498,10 @@ mod arcadia_debug_tests {
 
     #[test]
     fn debug_route_forwards_only_bounded_redacted_reflections() {
-        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
         let port = listener.local_addr().expect("mock caduceus address").port();
         let captured = Arc::new(Mutex::new(String::new()));
@@ -468,9 +529,13 @@ mod arcadia_debug_tests {
         std::env::remove_var("CADUCEUS_HTTP_BASE");
 
         let request = captured.lock().unwrap().clone();
-        assert!(request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"), "{request}");
-        let body: serde_json::Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap_or("{}"))
-            .expect("reflection JSON");
+        assert!(
+            request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"),
+            "{request}"
+        );
+        let body: serde_json::Value =
+            serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap_or("{}"))
+                .expect("reflection JSON");
         assert_eq!(body["organ"], "arcadia");
         assert_eq!(body["kind"], "runtime");
         assert_eq!(body["event"], "ready");
@@ -487,8 +552,17 @@ mod arcadia_debug_tests {
         assert_eq!(body["attributes_redacted"]["ok"], true);
         assert!(body["attributes_redacted"].get("token").is_none());
         assert!(body["attributes_redacted"].get("pin").is_none());
-        assert_eq!(body["attributes_redacted"]["items"].as_array().unwrap().len(), ARCADIA_DEBUG_MAX_ARRAY_ITEMS);
-        assert_eq!(body["message"].as_str().unwrap().chars().count(), ARCADIA_DEBUG_MAX_TEXT);
+        assert_eq!(
+            body["attributes_redacted"]["items"]
+                .as_array()
+                .unwrap()
+                .len(),
+            ARCADIA_DEBUG_MAX_ARRAY_ITEMS
+        );
+        assert_eq!(
+            body["message"].as_str().unwrap().chars().count(),
+            ARCADIA_DEBUG_MAX_TEXT
+        );
     }
 
     #[test]
@@ -497,7 +571,10 @@ mod arcadia_debug_tests {
         let source = include_str!("routes_caduceus.rs");
         let main = include_str!("../main.rs");
         assert!(main.contains("/api/debug/emit"));
-        assert!(source.contains("DefaultBodyLimit") || main.contains("DefaultBodyLimit::max(16 * 1024)"));
+        assert!(
+            source.contains("DefaultBodyLimit")
+                || main.contains("DefaultBodyLimit::max(16 * 1024)")
+        );
         let legacy_emitter = ["caduceus_hyalos_", "reflect_action"].concat();
         assert!(!source.contains(&legacy_emitter));
         let channel_path = ["channel", ".jsonl"].concat();

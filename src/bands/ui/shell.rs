@@ -26,7 +26,10 @@ fn header(status: &ConsoleStatus) -> Markup {
             library_games_total_tip(status, "sync state is unavailable"),
         )
     } else {
-        ("good", library_games_total_tip(status, "no queued sync changes"))
+        (
+            "good",
+            library_games_total_tip(status, "no queued sync changes"),
+        )
     };
     let sync_label = games_total_label;
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
@@ -97,6 +100,7 @@ fn header(status: &ConsoleStatus) -> Markup {
                 (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system", None))
                 (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai", None))
                 (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin", None))
+                (currentness_status_chip("vault", "Vault", if status.vault.mounted { "Unlocked" } else { "Locked" }, if status.vault.mounted { "good" } else { "warn" }, if status.vault.mounted { "Vault is unlocked" } else { "Vault must be unlocked" }, "vault", None))
                 (theme_cycle_button())
             }
         }
@@ -158,6 +162,8 @@ fn chip_icon(kind: &str, value: &str) -> &'static str {
         "local-ai" => "bot",
         "pin" if value == "Open" => "unlock-keyhole",
         "pin" => "lock-keyhole",
+        "vault" if value == "Unlocked" => "unlock-keyhole",
+        "vault" => "lock-keyhole",
         _ => "circle-dot",
     }
 }
@@ -249,4 +255,3 @@ fn view_shell(id: &str, _eyebrow: &str, _title: &str, _explanation: &str, body: 
         }
     }
 }
-

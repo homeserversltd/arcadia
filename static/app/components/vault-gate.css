@@ -1,0 +1,11 @@
+/* Arcadia composable: components/vault-gate.css */
+.vault-auth-container { position: fixed; inset: 0; z-index: 9998; display: grid; place-items: center; padding: 18px; background: radial-gradient(circle at 70% 20%, color-mix(in srgb, var(--theme-accent) 16%, transparent), transparent 20rem), var(--aubergine-0); }
+.vault-auth-container[data-required="false"], body.vault-open .vault-auth-container, body[data-vault-mounted="true"] .vault-auth-container { opacity: 0; visibility: hidden; pointer-events: none; }
+body[data-vault-mounted="false"] .app-shell { opacity: 0; visibility: hidden; pointer-events: none; }
+.vault-auth-card { width: min(100%, 430px); padding: 26px; border: 1px solid var(--line); border-radius: 28px; background: linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 50%, transparent)); box-shadow: 0 25px 70px var(--shadow); }
+.vault-auth-card h1 { margin: 14px 0 2px; font-size: 22px; }
+.vault-auth-card h2 { margin: 0; color: var(--orange-strong); }
+.vault-auth-card p { color: var(--muted); }
+.vault-panel { display: grid; gap: var(--ux-grid-gap); }
+.settings-form--vault { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ux-control-gap); }
+.settings-form--vault .field { flex: 1 1 190px; }

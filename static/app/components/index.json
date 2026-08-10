@@ -3,6 +3,7 @@
   "children": [
     "primitives.css",
     "pin-gate.css",
+    "vault-gate.css",
     "loading.css",
     "modal-toast-system.css"
   ]
