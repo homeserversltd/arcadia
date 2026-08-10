@@ -125,7 +125,6 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
                 form class="settings-form settings-form--inline local-ai-port-form" id="ai-lan-form" data-active-port=(port) {
                     label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
-                    label { span { "LAN CIDR" } input class="field" name="lanCidr" value="10.0.0.0/24" autocomplete="off" aria-describedby="ai-port-help"; }
                     p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
                     div class="inline-actions inline-actions--compact local-ai-actions" {
                         button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
@@ -171,10 +170,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Client handoff" {
                 div class="system-field-grid" {
                     (system_field("Hermes/Pi base URL", if api_ready { &base_url } else { "Enable API first" }))
-                    (system_field("Token", "Configured/redacted by backend"))
-                    (system_field("Secret receipts", "Redacted"))
                 }
-                div class="inline-actions local-ai-actions" { button class="btn btn--secondary" type="button" data-ai-action="token-generate" { "Generate token" } button class="btn btn--danger" type="button" data-ai-action="token-revoke" { "Revoke token" } }
             }
 
             section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Settings" {
@@ -201,7 +197,6 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 div id="ai-activity" class="system-field-grid" { (system_field("Operation", if api_ready { "serving client calls" } else { "idle" })) (system_field("Last error", "Read from /api/ai/state")) }
                 details class="collapsible-log" { summary { "llama.cpp update" } pre { code { "Read from backend logs." } } }
                 details class="collapsible-log" { summary { "Model import/load" } pre { code { "Read from backend logs." } } }
-                details class="collapsible-log" { summary { "Nginx/firewall" } pre { code { "Read from backend receipts." } } }
             }
             div id="ai-message" class="message" hidden {}
         },

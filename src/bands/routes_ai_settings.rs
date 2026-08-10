@@ -96,18 +96,6 @@ async fn ai_settings_save(
         }
         cfg.lan_port = v;
     }
-    if let Some(v) = body.lan_cidr {
-        if !valid_lan_cidr(&v) {
-            return ai_action(
-                StatusCode::BAD_REQUEST,
-                &state,
-                false,
-                "settings-save",
-                "LAN CIDR must be private and valid.",
-            );
-        }
-        cfg.lan_cidr = v;
-    }
     if let Some(v) = body.cors_origins {
         cfg.cors_origins = v
             .into_iter()
@@ -144,65 +132,6 @@ async fn ai_settings_save(
     )
 }
 
-async fn ai_token_generate(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<TokenActionRequest>,
-) -> (StatusCode, Json<AIActionResponse>) {
-    if body.confirm.as_deref() != Some("GENERATE_TOKEN") {
-        return ai_action(
-            StatusCode::BAD_REQUEST,
-            &state,
-            false,
-            "token-generate",
-            "Confirm token generation.",
-        );
-    }
-    let token = command_stdout("openssl", &["rand", "-hex", "32"])
-        .unwrap_or_else(|| format!("arcadia-{}", now_rfc3339_like().replace([':', '-'], "")));
-    if let Some(parent) = Path::new(LOCAL_AI_TOKEN_PATH).parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let ok = fs::write(LOCAL_AI_TOKEN_PATH, token).is_ok();
-    secure_file(Path::new(LOCAL_AI_TOKEN_PATH), 0o600);
-    ai_action(
-        if ok {
-            StatusCode::OK
-        } else {
-            StatusCode::INTERNAL_SERVER_ERROR
-        },
-        &state,
-        ok,
-        "token-generate",
-        if ok {
-            "Local client token generated. Secret value is stored redacted."
-        } else {
-            "Local client token could not be generated."
-        },
-    )
-}
-
-async fn ai_token_revoke(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<TokenActionRequest>,
-) -> (StatusCode, Json<AIActionResponse>) {
-    if body.confirm.as_deref() != Some("REVOKE_TOKEN") {
-        return ai_action(
-            StatusCode::BAD_REQUEST,
-            &state,
-            false,
-            "token-revoke",
-            "Confirm token revocation.",
-        );
-    }
-    let _ = fs::remove_file(LOCAL_AI_TOKEN_PATH);
-    ai_action(
-        StatusCode::OK,
-        &state,
-        true,
-        "token-revoke",
-        "Local client token revoked.",
-    )
-}
 fn ai_action(
     status: StatusCode,
     state: &AppState,

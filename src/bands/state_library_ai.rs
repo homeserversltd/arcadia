@@ -198,7 +198,6 @@ pub struct AISettingsState {
     pub batch: u32,
     pub concurrency: u32,
     pub request_limit: u32,
-    pub lan_cidr: String,
     pub cors_origins: Vec<String>,
     pub log_level: String,
 }
@@ -208,11 +207,8 @@ pub struct AISettingsState {
 pub struct AIClientHandoffState {
     pub endpoint: Option<String>,
     pub openai_base_url: Option<String>,
-    pub token_configured: bool,
-    pub token_preview: Option<String>,
     pub hermes_hint: String,
     pub pi_hint: String,
-    pub secret_values_recorded: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -283,8 +279,6 @@ pub struct InferenceState {
     pub api_mode: Option<String>,
     pub request_count: Option<u64>,
     pub last_request_at: Option<String>,
-    pub nginx_configured: bool,
-    pub firewall_configured: bool,
     pub health_path: String,
 }
 
@@ -344,7 +338,6 @@ struct InferenceSetRequest {
 struct InferenceLanRequest {
     enabled: bool,
     port: Option<u16>,
-    lan_cidr: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -360,15 +353,8 @@ struct AISettingsRequest {
     concurrency: Option<u32>,
     request_limit: Option<u32>,
     lan_port: Option<u16>,
-    lan_cidr: Option<String>,
     cors_origins: Option<Vec<String>>,
     log_level: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TokenActionRequest {
-    confirm: Option<String>,
 }
 
 #[derive(Serialize)]

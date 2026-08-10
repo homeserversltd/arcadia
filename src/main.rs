@@ -377,8 +377,6 @@ async fn main() -> anyhow_free::Result<()> {
         )
         .route("/api/ai/inference/test", post(ai_inference_test))
         .route("/api/ai/settings", post(ai_settings_save))
-        .route("/api/ai/token/generate", post(ai_token_generate))
-        .route("/api/ai/token/revoke", post(ai_token_revoke))
         .route("/api/actions/update-gui", post(action_update_gui))
         .route("/api/actions/check-updates", post(action_check_updates))
         .route(
