@@ -8,6 +8,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
         service: "arcadia",
         product: state.product.clone(),
         version: env!("CARGO_PKG_VERSION"),
+        build_sha: option_env!("ARCADIA_BUILD_SHA"),
         started_unix: state.started_unix,
     })
 }
