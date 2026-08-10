@@ -303,8 +303,6 @@ pub struct AIActivityState {
     pub current_operation: String,
     pub last_error: Option<String>,
     pub runtime_update_log: String,
-    pub model_download_log: String,
-    pub model_load_log: String,
     pub inference_server_log: String,
 }
 
