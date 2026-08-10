@@ -2387,6 +2387,54 @@ function bindControllerLiveInput() {
   refresh();
 }
 
+function formatSyncLedgerDuration(value) {
+  if (value === null || value === undefined || value === '') return 'duration unavailable';
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n} ms` : String(value);
+}
+
+function renderSyncLedger(data) {
+  const root = document.querySelector('[data-sync-ledger]');
+  if (!root) return;
+  const status = root.querySelector('[data-sync-ledger-status]');
+  const list = root.querySelector('[data-sync-ledger-list]');
+  if (!data?.ok) {
+    if (status) status.textContent = 'Ledger unavailable';
+    if (list) list.innerHTML = `<div class="sync-ledger-empty">The appliance ledger is unavailable right now.</div>`;
+    return;
+  }
+  const entries = Array.isArray(data.entries) ? data.entries : [];
+  if (status) status.textContent = `${entries.length} recent run${entries.length === 1 ? '' : 's'}`;
+  if (!list) return;
+  list.textContent = '';
+  if (!entries.length) { list.innerHTML = '<div class="sync-ledger-empty">No Sync runs recorded yet.</div>'; return; }
+  entries.forEach((entry) => {
+    const card = document.createElement('article');
+    card.className = `sync-ledger-entry sync-ledger-entry--${entry.result || 'unknown'}`;
+    const head = document.createElement('div'); head.className = 'sync-ledger-entry-head';
+    const title = document.createElement('strong'); title.textContent = entry.result || 'Unknown outcome';
+    const time = document.createElement('time'); time.textContent = entry.time || 'Time unavailable';
+    head.append(title, time); card.appendChild(head);
+    const meta = document.createElement('div'); meta.className = 'sync-ledger-meta';
+    [
+      ['Outcome', entry.result || 'unknown'],
+      ['Duration', formatSyncLedgerDuration(entry.duration)],
+      ['Runtime', entry['runtime-not-checked'] ? 'not checked' : 'checked'],
+      ['Counts', entry.counts ? JSON.stringify(entry.counts) : 'not reported'],
+    ].forEach(([label, value]) => { const chip = document.createElement('span'); chip.innerHTML = `<em>${escapeHtml(label)}</em><strong>${escapeHtml(value)}</strong>`; meta.appendChild(chip); });
+    card.appendChild(meta);
+    if (entry.receipt_ref && entry.receipt_ref !== null) { const receipt = document.createElement('a'); receipt.className = 'sync-ledger-receipt'; const ref = String(entry.receipt_ref); receipt.href = /^https?:\/\//i.test(ref) ? ref : '/api/caduceus/v1/receipts/latest'; receipt.textContent = 'Receipt ready'; receipt.target = '_blank'; receipt.rel = 'noreferrer'; card.appendChild(receipt); }
+    if (entry.outcomes && entry.outcomes !== null) { const details = document.createElement('details'); details.innerHTML = `<summary>Show game outcomes</summary><pre>${escapeHtml(JSON.stringify(entry.outcomes, null, 2))}</pre>`; card.appendChild(details); }
+    list.appendChild(card);
+  });
+}
+
+async function loadSyncLedger() {
+  if (!document.querySelector('[data-sync-ledger]')) return;
+  try { renderSyncLedger(await getJson('/api/sync/ledger')); }
+  catch (_) { renderSyncLedger({ ok: false }); }
+}
+
 function bindStorageModals() {
   document.querySelectorAll('[data-storage-modal]').forEach((button) => button.addEventListener('click', () => openStorageModal(button.dataset.storageModal)));
   document.querySelectorAll('[data-storage-cleanup]').forEach((button) => button.addEventListener('click', () => {

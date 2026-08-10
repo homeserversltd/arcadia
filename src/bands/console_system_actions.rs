@@ -356,11 +356,70 @@ async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
     )
 }
 
+#[derive(Serialize)]
+struct SyncLedgerResponse {
+    schema: &'static str,
+    ok: bool,
+    entries: Vec<SyncLedgerEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure: Option<SyncLedgerFailure>,
+}
+
+#[derive(Serialize)]
+struct SyncLedgerFailure { kind: &'static str, signal: &'static str, path: &'static str }
+
+#[derive(Serialize)]
+struct SyncLedgerEntry {
+    time: String,
+    result: String,
+    duration: serde_json::Value,
+    counts: serde_json::Value,
+    #[serde(rename = "runtime-not-checked")]
+    runtime_not_checked: bool,
+    receipt_ref: serde_json::Value,
+    outcomes: serde_json::Value,
+}
+
+async fn sync_ledger_route() -> (StatusCode, Json<SyncLedgerResponse>) {
+    const PATH: &str = "/api/v1/hyalos/tail?kind=sync-run&count=100";
+    let value = match caduceus_fetch_json(PATH) {
+        Ok(value) => value,
+        Err(signal) => return (StatusCode::SERVICE_UNAVAILABLE, Json(SyncLedgerResponse {
+            schema: "arcadia.sync.ledger.v1", ok: false, entries: Vec::new(),
+            failure: Some(SyncLedgerFailure { kind: "caduceus-unavailable", signal, path: PATH }),
+        })),
+    };
+    let events = value.get("events").or_else(|| value.get("items")).unwrap_or(&value);
+    let entries = events.as_array().map(|items| items.iter().map(sync_ledger_entry).collect()).unwrap_or_default();
+    (StatusCode::OK, Json(SyncLedgerResponse { schema: "arcadia.sync.ledger.v1", ok: true, entries, failure: None }))
+}
+
+fn sync_ledger_entry(event: &serde_json::Value) -> SyncLedgerEntry {
+    let attrs = event.get("attributes_redacted").unwrap_or(&serde_json::Value::Null);
+    let pick = |key: &str| event.get(key).or_else(|| attrs.get(key)).cloned().unwrap_or(serde_json::Value::Null);
+    SyncLedgerEntry {
+        time: event.get("timestamp").or_else(|| event.get("time")).or_else(|| event.get("created_at")).and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+        result: event.get("result").and_then(|v| v.as_str()).or_else(|| event.get("ok").and_then(|v| v.as_bool()).map(|ok| if ok { "success" } else { "error" })).unwrap_or("unknown").to_string(),
+        duration: sync_ledger_json_value(event.get("duration").or_else(|| event.get("duration_ms")).or_else(|| event.get("durationMs")).or_else(|| attrs.get("duration")).or_else(|| attrs.get("duration_ms")).cloned().unwrap_or(serde_json::Value::Null)),
+        counts: sync_ledger_json_value(pick("counts")), runtime_not_checked: true,
+        receipt_ref: event.get("receipt_ref").or_else(|| event.get("receiptRef")).or_else(|| attrs.get("receipt_ref")).or_else(|| attrs.get("receiptRef")).cloned().unwrap_or(serde_json::Value::Null),
+        outcomes: sync_ledger_json_value(pick("outcomes")),
+    }
+}
+
+fn sync_ledger_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(text) => serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text)),
+        value => value,
+    }
+}
+
 const MAX_SYNC_UPLOAD_FILES: u64 = 32;
 const MAX_SYNC_UPLOAD_BYTES: usize = 256 * 1024 * 1024;
 const MAX_SYNC_UPLOAD_TOTAL_BYTES: usize = 512 * 1024 * 1024;
 
 async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let started = std::time::Instant::now();
     let mut accepted = 0u64;
     let mut rejected = 0u64;
     let mut selected_system: Option<String> = None;
@@ -492,7 +551,7 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
     let ok = accepted > 0 && rejected == 0;
     let partial = accepted > 0 && rejected > 0;
     let receipt = serde_json::json!({
-        "family": "arcadia.sync.upload.v1",
+        "family": "arcadia.sync.run.v1",
         "ok": ok || partial,
         "selected_system": selected_system.as_deref().map(platform_display_name),
         "accepted": accepted,
@@ -504,6 +563,17 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
     let _ = fs::write(
         "/var/lib/arcadia/sync-upload-latest/run.json",
         serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".to_string()),
+    );
+
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let counts = serde_json::to_string(&serde_json::json!({"accepted": accepted, "rejected": rejected}))
+        .unwrap_or_else(|_| "{}".to_string());
+    let outcomes = serde_json::to_string(&staged).unwrap_or_else(|_| "[]".to_string());
+    tracing::info!(
+        kind = "sync-run", ok = accepted > 0, result = if accepted > 0 { "success" } else { "error" },
+        duration_ms, counts = counts.as_str(), outcomes = outcomes.as_str(),
+        receipt_ref = "/var/lib/arcadia/sync-upload-latest/run.json",
+        "sync upload outcome"
     );
 
     let status = if accepted > 0 { StatusCode::OK } else { StatusCode::BAD_REQUEST };
