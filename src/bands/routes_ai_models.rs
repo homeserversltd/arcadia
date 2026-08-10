@@ -287,11 +287,8 @@ async fn ai_model_import(
         }
         if fs::write(&dest, &bytes).is_ok() {
             secure_file(&dest, 0o640);
-            append_local_ai_log(&format!(
-                "imported {} bytes into {}",
-                bytes.len(),
-                dest.display()
-            ));
+            // ArcadiaHyalosLayer forwards this event to Caduceus Hyalos; it is not written to a sidecar file.
+            tracing::info!("imported {} bytes into {}", bytes.len(), dest.display());
             return ai_action(
                 StatusCode::OK,
                 &state,

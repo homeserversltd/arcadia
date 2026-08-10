@@ -3216,7 +3216,7 @@ function bindLocalAIControls() {
     try {
       const state = await requestAIState();
       const a = state.activity || {};
-      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.modelDownloadLog, a.modelLoadLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
+      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
     } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
   }));
 }

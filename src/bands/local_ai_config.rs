@@ -95,8 +95,6 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
             runtime_update_log: redacted_log(
                 "/var/lib/harmonia/receipts/local-ai-runtime-latest/events.jsonl",
             ),
-            model_download_log: redacted_log("/var/lib/arcadia/local-ai-download.log"),
-            model_load_log: redacted_log("/var/log/arcadia-local-ai.log"),
             inference_server_log: redacted_log("/var/log/llama-server.log"),
         },
         settings: ai_settings_state(&cfg),
@@ -234,17 +232,6 @@ fn secure_file(path: &Path, mode: u32) {
         let mut perms = meta.permissions();
         perms.set_mode(mode);
         let _ = fs::set_permissions(path, perms);
-    }
-}
-
-fn append_local_ai_log(line: &str) {
-    let _ = fs::create_dir_all("/var/log");
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/var/log/arcadia-local-ai.log")
-    {
-        let _ = writeln!(file, "{} {}", now_rfc3339_like(), line);
     }
 }
 
