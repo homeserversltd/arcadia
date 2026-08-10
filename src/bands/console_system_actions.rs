@@ -400,10 +400,17 @@ fn sync_ledger_entry(event: &serde_json::Value) -> SyncLedgerEntry {
     SyncLedgerEntry {
         time: event.get("timestamp").or_else(|| event.get("time")).or_else(|| event.get("created_at")).and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
         result: event.get("result").and_then(|v| v.as_str()).or_else(|| event.get("ok").and_then(|v| v.as_bool()).map(|ok| if ok { "success" } else { "error" })).unwrap_or("unknown").to_string(),
-        duration: event.get("duration").or_else(|| event.get("duration_ms")).or_else(|| event.get("durationMs")).or_else(|| attrs.get("duration")).or_else(|| attrs.get("duration_ms")).cloned().unwrap_or(serde_json::Value::Null),
-        counts: pick("counts"), runtime_not_checked: true,
+        duration: sync_ledger_json_value(event.get("duration").or_else(|| event.get("duration_ms")).or_else(|| event.get("durationMs")).or_else(|| attrs.get("duration")).or_else(|| attrs.get("duration_ms")).cloned().unwrap_or(serde_json::Value::Null)),
+        counts: sync_ledger_json_value(pick("counts")), runtime_not_checked: true,
         receipt_ref: event.get("receipt_ref").or_else(|| event.get("receiptRef")).or_else(|| attrs.get("receipt_ref")).or_else(|| attrs.get("receiptRef")).cloned().unwrap_or(serde_json::Value::Null),
-        outcomes: pick("outcomes"),
+        outcomes: sync_ledger_json_value(pick("outcomes")),
+    }
+}
+
+fn sync_ledger_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(text) => serde_json::from_str(&text).unwrap_or(serde_json::Value::String(text)),
+        value => value,
     }
 }
 
@@ -412,6 +419,7 @@ const MAX_SYNC_UPLOAD_BYTES: usize = 256 * 1024 * 1024;
 const MAX_SYNC_UPLOAD_TOTAL_BYTES: usize = 512 * 1024 * 1024;
 
 async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let started = std::time::Instant::now();
     let mut accepted = 0u64;
     let mut rejected = 0u64;
     let mut selected_system: Option<String> = None;
@@ -557,10 +565,14 @@ async fn action_add_games_upload(mut multipart: Multipart) -> (StatusCode, Json<
         serde_json::to_string_pretty(&receipt).unwrap_or_else(|_| "{}".to_string()),
     );
 
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let counts = serde_json::to_string(&serde_json::json!({"accepted": accepted, "rejected": rejected}))
+        .unwrap_or_else(|_| "{}".to_string());
+    let outcomes = serde_json::to_string(&staged).unwrap_or_else(|_| "[]".to_string());
     tracing::info!(
         kind = "sync-run", ok = accepted > 0, result = if accepted > 0 { "success" } else { "error" },
-        counts = ?serde_json::json!({"accepted": accepted, "rejected": rejected}),
-        outcomes = ?staged, receipt_ref = "/var/lib/arcadia/sync-upload-latest/run.json",
+        duration_ms, counts = counts.as_str(), outcomes = outcomes.as_str(),
+        receipt_ref = "/var/lib/arcadia/sync-upload-latest/run.json",
         "sync upload outcome"
     );
 

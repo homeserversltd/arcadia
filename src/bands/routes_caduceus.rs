@@ -455,11 +455,17 @@ fn run_caduceus_http_mutation(
                 .unwrap_or("")
                 .to_string();
             if action == "sync-games" {
+                let duration_ms = serde_json::to_string(
+                    value.get("durationMs").or_else(|| value.get("duration_ms")).unwrap_or(&serde_json::Value::Null),
+                )
+                .unwrap_or_else(|_| "null".to_string());
+                let counts = serde_json::to_string(value.get("counts").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_else(|_| "null".to_string());
+                let outcomes = serde_json::to_string(value.get("outcomes").unwrap_or(&serde_json::Value::Null))
+                    .unwrap_or_else(|_| "null".to_string());
                 tracing::info!(
                     kind = "sync-run", ok, result = if ok { "success" } else { "error" },
-                    duration_ms = ?value.get("durationMs").or_else(|| value.get("duration_ms")).unwrap_or(&serde_json::Value::Null),
-                    counts = ?value.get("counts").unwrap_or(&serde_json::Value::Null),
-                    outcomes = ?value.get("outcomes").unwrap_or(&serde_json::Value::Null),
+                    duration_ms = duration_ms.as_str(), counts = counts.as_str(), outcomes = outcomes.as_str(),
                     receipt_ref = ?value.get("receiptRef").or_else(|| value.get("receipt_ref")).unwrap_or(&serde_json::Value::Null),
                     "sync games outcome"
                 );
