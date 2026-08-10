@@ -206,7 +206,7 @@
 }
 .household-trust-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--ux-grid-gap);
   min-width: 0;
   padding: var(--ux-card-padding);
@@ -223,12 +223,20 @@
   min-width: 0;
 }
 .household-trust-card__head > span { font-size: var(--ux-text-md); font-weight: 900; }
+.household-trust-card__copy { margin: 0; color: var(--muted); font-size: var(--ux-text-sm); }
+.household-trust-card__action { display: grid; gap: var(--ux-control-gap); min-width: 0; }
+.household-trust-card__action > label { font-size: var(--ux-text-xs); font-weight: 800; }
+.household-trust-card__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ux-control-gap); min-width: 0; }
+.household-trust-card__controls .btn { min-height: var(--ux-button-min-height); white-space: nowrap; }
 .household-trust-card__fields {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--ux-control-gap);
   min-width: 0;
 }
+.system-manual-install { color: var(--muted); }
+.system-manual-install > summary { cursor: pointer; font-size: var(--ux-text-sm); font-weight: 800; }
+.system-manual-install[open] > summary { margin-bottom: var(--ux-grid-gap); }
 .household-trust-card .system-field { padding: 7px 8px; }
 .household-trust-card .system-field em { font-size: 9px; }
 .household-trust-card .system-field strong { font-size: var(--ux-text-xs); }

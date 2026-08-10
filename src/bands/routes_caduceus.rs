@@ -264,6 +264,12 @@ async fn caduceus_cert_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/cert/status").await
 }
 
+async fn caduceus_cert_trust_fetch_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    caduceus_json_post_proxy("/api/v1/cert/trust-fetch", body)
+}
+
 async fn caduceus_cert_trust_install_proxy_route(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {

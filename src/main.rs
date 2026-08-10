@@ -406,6 +406,10 @@ async fn main() -> anyhow_free::Result<()> {
             get(caduceus_cert_status_proxy_route),
         )
         .route(
+            "/api/caduceus/v1/cert/trust-fetch",
+            post(caduceus_cert_trust_fetch_proxy_route),
+        )
+        .route(
             "/api/caduceus/v1/cert/trust-install",
             post(caduceus_cert_trust_install_proxy_route),
         )

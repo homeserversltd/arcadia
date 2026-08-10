@@ -23,8 +23,8 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                             strong { (if trust.mode == "https" { "ON" } else { "HTTP" }) }
                         }
                         div class="system-ca-copy" {
-                            strong { "HTTPS bundle" }
-                            p { "Add a PEM certificate or CA bundle for this console. Only one bundle is active at a time." }
+                            strong { "Household trust" }
+                            p { "Fetch the HomeServer certificate bundle automatically, or use a manual bundle when needed." }
                         }
                     }
                     div class="system-ca-state" {
@@ -33,20 +33,23 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         span class="system-field system-field--anchor" { em { "Anchor" } strong { (trust.ca_path) } }
                         @if let Some(expiry) = trust.ca_not_after.as_deref() { (system_field("Expires", expiry)) }
                     }
-                    form id="root-ca-form" class="settings-form system-ca-form" autocomplete="off" enctype="multipart/form-data" {
-                        label class="system-upload-drop" {
-                            input type="file" name="ca_bundle_file" accept=".pem,.crt,.cer,.bundle,.chain,text/plain,application/x-pem-file,application/pem-certificate-chain" {}
-                            span class="system-upload-face" {
-                                strong { "Certificate bundle" }
-                                em { "Select PEM / CRT file" }
+                    details class="system-manual-install" {
+                        summary { "Manual install" }
+                        form id="root-ca-form" class="settings-form system-ca-form" autocomplete="off" enctype="multipart/form-data" {
+                            label class="system-upload-drop" {
+                                input type="file" name="ca_bundle_file" accept=".pem,.crt,.cer,.bundle,.chain,text/plain,application/x-pem-file,application/pem-certificate-chain" {}
+                                span class="system-upload-face" {
+                                    strong { "Certificate bundle" }
+                                    em { "Select PEM / CRT file" }
+                                }
                             }
+                            label class="system-ca-paste" {
+                                span { "Paste PEM bundle" }
+                                textarea class="field field--textarea" name="ca_bundle" rows="5" placeholder="-----BEGIN CERTIFICATE-----" {}
+                            }
+                            div class="inline-actions" { button class="btn btn--secondary" type="submit" { "Install manual bundle" } }
+                            div id="root-ca-message" class="message" hidden {}
                         }
-                        label class="system-ca-paste" {
-                            span { "Paste PEM bundle" }
-                            textarea class="field field--textarea" name="ca_bundle" rows="5" placeholder="-----BEGIN CERTIFICATE-----" {}
-                        }
-                        div class="inline-actions" { button class="btn btn--primary" type="submit" { "Upload CA Bundle" } }
-                        div id="root-ca-message" class="message" hidden {}
                     }
                 }
             }
