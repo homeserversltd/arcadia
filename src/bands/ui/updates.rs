@@ -37,6 +37,7 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                                         span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
                                         span class="harmonia-module-copy updates-module-copy" {
                                             strong data-bind="label" {}
+                                            span data-bind="description" {}
                                             span data-bind="id" {}
                                         }
                                     }
@@ -122,9 +123,13 @@ fn harmonia_update_availability_pane(status: &crate::UpdatesStatus) -> Markup {
                 span data-bind="updatesPane.pendingUpdates" { (harmonia_pending_label(status.pending_updates)) }
             }
             @if tiles.is_empty() {
-                div class="harmonia-zero-updates" data-zero-updates="true" {
+                div class="harmonia-zero-updates" data-zero-updates="true" data-harmonia-last-run="true" {
                     strong { "Zero updates available" }
                     span { (harmonia_update_pressure_label(status)) }
+                    div class="updates-last-run" {
+                        b { "Last run" }
+                        span { "Loading the latest module results…" }
+                    }
                 }
             } @else {
                 div class="updates-update-heading" { (harmonia_update_modules_heading(tiles.len())) }
@@ -166,7 +171,8 @@ fn harmonia_update_tiles(status: &crate::UpdatesStatus) -> Vec<(&str, &str, Stri
         ));
     }
 
-    if tiles.is_empty() && (!status.check_ok || status.check_changed || status.pending_updates > 0) {
+    if tiles.is_empty() && (!status.check_ok || status.check_changed || status.pending_updates > 0)
+    {
         tiles.push((
             "enabled-modules",
             "Enabled modules",
@@ -187,11 +193,19 @@ fn harmonia_module_row(module: &crate::HarmoniaModuleStatus, current_version: &s
         "disabled"
     };
     let status_label = if module.enabled {
-        if module.present { "Enabled" } else { "Update needed" }
+        if module.present {
+            "Enabled"
+        } else {
+            "Update needed"
+        }
     } else {
         "Disabled"
     };
-    let version = if module.present { current_version } else { "Pending" };
+    let version = if module.present {
+        current_version
+    } else {
+        "Pending"
+    };
     html! {
         article class=(format!("harmonia-module updates-module harmonia-module--{}", module.state)) data-harmonia-module=(module.id) data-module-enabled=(module.enabled) data-bind-class="updatesPane.modules.stateClass" {
             label class="harmonia-module-switch updates-module-switch" data-harmonia-module-switch-row=(module.id) {
@@ -199,6 +213,9 @@ fn harmonia_module_row(module: &crate::HarmoniaModuleStatus, current_version: &s
                 span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
                 span class="harmonia-module-copy updates-module-copy" {
                     strong { (module.label) }
+                    @if !module.description.is_empty() {
+                        span class="updates-module-description" { (&module.description) }
+                    }
                     span { (module.id) }
                 }
             }
