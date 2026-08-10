@@ -454,6 +454,16 @@ fn run_caduceus_http_mutation(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            if action == "sync-games" {
+                tracing::info!(
+                    kind = "sync-run", ok, result = if ok { "success" } else { "error" },
+                    duration_ms = ?value.get("durationMs").or_else(|| value.get("duration_ms")).unwrap_or(&serde_json::Value::Null),
+                    counts = ?value.get("counts").unwrap_or(&serde_json::Value::Null),
+                    outcomes = ?value.get("outcomes").unwrap_or(&serde_json::Value::Null),
+                    receipt_ref = ?value.get("receiptRef").or_else(|| value.get("receipt_ref")).unwrap_or(&serde_json::Value::Null),
+                    "sync games outcome"
+                );
+            }
             (
                 if ok {
                     StatusCode::OK

@@ -86,6 +86,15 @@ fn sync_view(status: &ConsoleStatus) -> Markup {
                 (sync_system_blades(status))
                 (sync_admitted_shelf(status))
                 div class="sync-board-proof" aria-label="Latest sync receipt" data-last-sync=(status.library.last_sync) {}
+                section class="sync-ledger" aria-label="Sync ledger" data-sync-ledger="true" {
+                    div class="sync-ledger-head" {
+                        div { h2 { "Sync ledger" } p { "Recent Sync runs from the appliance record." } }
+                        span data-sync-ledger-status { "Loading..." }
+                    }
+                    div class="sync-ledger-list" data-sync-ledger-list {
+                        div class="sync-ledger-empty" { "Reading the latest Sync runs..." }
+                    }
+                }
             }
             div id="console-action-message" class="message" hidden {}
         },
@@ -109,8 +118,7 @@ fn sync_art_progress_pct(status: &ConsoleStatus) -> u8 {
     if added == 0 {
         return 0;
     }
-    ((status.library.artwork_paired_total.saturating_mul(100)) / added)
-        .min(100) as u8
+    ((status.library.artwork_paired_total.saturating_mul(100)) / added).min(100) as u8
 }
 
 fn sync_artwork_lane_label(artwork_paired: u64, added: u64) -> String {
@@ -146,7 +154,11 @@ fn sync_lane_chip(label: &str, value: u64, tone: &str) -> Markup {
 }
 
 fn sync_lane_chip_str(label: &str, value: &str, tone: &str) -> Markup {
-    let bind = if label == "Artwork" { "sync.artwork" } else { "sync.total" };
+    let bind = if label == "Artwork" {
+        "sync.artwork"
+    } else {
+        "sync.total"
+    };
     html! { span class=(format!("sync-lane-chip sync-lane-chip--{}", tone)) { em { (label) } strong data-bind=(bind) { (value) } } }
 }
 

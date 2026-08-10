@@ -81,15 +81,64 @@ const ARCADIA_HYALOS_MESSAGE_MAX_CHARS: usize = 512;
 struct ArcadiaHyalosFields {
     correlation_id: Option<String>,
     message: Option<String>,
+    kind: Option<String>,
+    result: Option<String>,
+    ok: Option<bool>,
+    attributes: BTreeMap<String, serde_json::Value>,
+}
+
+impl ArcadiaHyalosFields {
+    fn record_text(&mut self, field: &tracing::field::Field, value: String) {
+        match field.name() {
+            "correlation_id" => self.correlation_id = Some(value),
+            "message" => self.message = Some(value),
+            "kind" => self.kind = Some(value),
+            "result" => self.result = Some(value),
+            name if name != "ok" && self.attributes.len() < 32 => {
+                self.attributes
+                    .insert(name.to_string(), serde_json::Value::String(value));
+            }
+            _ => {}
+        }
+    }
 }
 
 impl tracing::field::Visit for ArcadiaHyalosFields {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        let value = format!("{value:?}");
-        match field.name() {
-            "correlation_id" => self.correlation_id = Some(value),
-            "message" => self.message = Some(value),
-            _ => {}
+        self.record_text(field, format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.record_text(field, value.to_string());
+    }
+
+    fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+        if field.name() == "ok" {
+            self.ok = Some(value);
+        } else if self.attributes.len() < 32 {
+            self.attributes
+                .insert(field.name().to_string(), serde_json::Value::Bool(value));
+        }
+    }
+
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        if self.attributes.len() < 32 {
+            self.attributes
+                .insert(field.name().to_string(), serde_json::json!(value));
+        }
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        if self.attributes.len() < 32 {
+            self.attributes
+                .insert(field.name().to_string(), serde_json::json!(value));
+        }
+    }
+
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        if self.attributes.len() < 32 {
+            self.attributes
+                .insert(field.name().to_string(), serde_json::json!(value));
         }
     }
 }
@@ -115,6 +164,16 @@ impl ArcadiaHyalosLayer {
             .message
             .take()
             .unwrap_or_else(|| format!("{kind}: {name}"));
+        let kind = fields.kind.take().unwrap_or_else(|| kind.to_string());
+        let mut attributes = fields.attributes;
+        attributes.insert(
+            "target".to_string(),
+            serde_json::Value::String(target.to_string()),
+        );
+        attributes.insert(
+            "name".to_string(),
+            serde_json::Value::String(name.to_string()),
+        );
         let reflection = serde_json::json!({
             "organ": "arcadia",
             "kind": kind,
@@ -122,7 +181,9 @@ impl ArcadiaHyalosLayer {
             "message": message.chars().take(ARCADIA_HYALOS_MESSAGE_MAX_CHARS).collect::<String>(),
             "world": "backend",
             "correlation_id": fields.correlation_id,
-            "attributes_redacted": { "target": target, "name": name },
+            "ok": fields.ok,
+            "result": fields.result,
+            "attributes_redacted": attributes,
         });
         let Ok(body) = serde_json::to_string(&reflection) else {
             return;
@@ -465,6 +526,7 @@ async fn main() -> anyhow_free::Result<()> {
         )
         .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))
+        .route("/api/sync/ledger", get(sync_ledger_route))
         .route(
             "/api/actions/add-games",
             post(action_add_games_upload).layer(DefaultBodyLimit::max(MAX_SYNC_UPLOAD_TOTAL_BYTES)),
