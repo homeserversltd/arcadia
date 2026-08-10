@@ -345,9 +345,26 @@ fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
             } else {
                 "missing"
             };
+            let manifest = read_json_value(
+                &module_root
+                    .join(&id)
+                    .join("manifest.json")
+                    .to_string_lossy(),
+            );
+            let label = manifest
+                .as_ref()
+                .and_then(|value| receipt_string(value, "label"))
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| harmonia_module_label(&id));
+            let description = manifest
+                .as_ref()
+                .and_then(|value| receipt_string(value, "description"))
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_default();
             HarmoniaModuleStatus {
-                label: harmonia_module_label(&id),
+                label,
                 id,
+                description,
                 enabled: enabled_flag,
                 present,
                 state: state.to_string(),

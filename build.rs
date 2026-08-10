@@ -61,6 +61,13 @@ const REQUIRED: &[&str] = &[
 ];
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=ARCADIA_BUILD_SHA");
+    if let Ok(build_sha) = env::var("ARCADIA_BUILD_SHA") {
+        if is_git_sha(&build_sha) {
+            println!("cargo:rustc-env=ARCADIA_BUILD_SHA={build_sha}");
+        }
+    }
+
     compose_app_css();
     println!("cargo:rerun-if-changed=static/themes");
     println!("cargo:rerun-if-changed=static/app");
@@ -115,6 +122,10 @@ fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     fs::write(out.join("themes.css"), css).expect("write generated themes.css");
     fs::write(out.join("themes.js"), manifest).expect("write generated themes.js");
+}
+
+fn is_git_sha(value: &str) -> bool {
+    value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn compose_app_css() {

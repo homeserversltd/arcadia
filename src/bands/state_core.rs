@@ -11,6 +11,8 @@ pub struct Health {
     service: &'static str,
     product: String,
     version: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    build_sha: Option<&'static str>,
     started_unix: u64,
 }
 

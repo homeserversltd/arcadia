@@ -248,12 +248,29 @@ async fn caduceus_vault_auto_decrypt_proxy_route(
 ) -> Response {
     caduceus_vault_auto_decrypt_route(headers, Json(body)).await
 }
+fn caduceus_json_post_proxy(
+    path: &'static str,
+    body: serde_json::Value,
+) -> axum::response::Response {
+    let rendered = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    match caduceus_post_json(path, &rendered) {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(signal) => caduceus_proxy_error(path, signal),
+    }
+}
+
 async fn caduceus_update_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/update/status").await
 }
 
 async fn caduceus_cert_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/cert/status").await
+}
+
+async fn caduceus_cert_trust_fetch_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    caduceus_json_post_proxy("/api/v1/cert/trust-fetch", body)
 }
 
 async fn caduceus_cert_trust_install_proxy_route(

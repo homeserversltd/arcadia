@@ -3490,41 +3490,85 @@ function ledgerValue(value) {
   return String(value);
 }
 
+function harmoniaLedgerValue(entry, names, fallback = '') {
+  const raw = entry.entry || {};
+  for (const name of names) {
+    if (raw[name] !== undefined && raw[name] !== null && raw[name] !== '') return raw[name];
+    if (entry[name] !== undefined && entry[name] !== null && entry[name] !== '') return entry[name];
+  }
+  return fallback;
+}
+
+function harmoniaModuleLabel(moduleId) {
+  const module = document.querySelector(`[data-harmonia-module="${CSS.escape(String(moduleId || ''))}"]`);
+  return module?.querySelector('.updates-module-copy strong')?.textContent?.trim() || moduleLabelFromId(moduleId);
+}
+
+function harmoniaLedgerRuns(entries) {
+  const runs = new Map();
+  (entries || []).forEach((entry) => {
+    const runId = String(harmoniaLedgerValue(entry, ['run_id', 'runId'], entry.stamp || `entry-${entry.ordinal}`));
+    const stampedAt = Number(harmoniaLedgerValue(entry, ['stamped_at_unix_ms', 'stampedAtUnixMs'], 0)) || 0;
+    const recordedStamp = harmoniaLedgerValue(entry, ['stamp', 'timestamp', 'stamped_at'], '');
+    const stamp = recordedStamp || (stampedAt ? new Date(stampedAt).toLocaleString() : entry.stamp || '—');
+    const run = runs.get(runId) || { id: runId, stampedAt, stamp, entries: [] };
+    run.stampedAt = Math.max(run.stampedAt, stampedAt);
+    if (stamp !== '—') run.stamp = stamp;
+    run.entries.push(entry);
+    runs.set(runId, run);
+  });
+  return [...runs.values()].sort((a, b) => b.stampedAt - a.stampedAt || String(b.stamp).localeCompare(String(a.stamp)));
+}
+
+function harmoniaLedgerModuleRow(entry) {
+  const moduleId = String(harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId || 'suite'));
+  const version = String(harmoniaLedgerValue(entry, ['module_version', 'moduleVersion'], '—'));
+  const ok = harmoniaLedgerValue(entry, ['ok'], entry.ok) !== false;
+  const changed = harmoniaLedgerValue(entry, ['changed'], entry.changed) === true;
+  const signal = String(harmoniaLedgerValue(entry, ['first_missing_signal', 'firstMissingSignal'], entry.firstMissingSignal || 'none'));
+  const row = document.createElement('div');
+  row.className = 'harmonia-ledger-module-row';
+  row.innerHTML = `<div><strong>${escapeHtml(harmoniaModuleLabel(moduleId))}</strong><span>${escapeHtml(moduleId)} · ${escapeHtml(version)}</span></div><b class="system-status system-status--${ok ? 'available' : 'error'}">${ok ? (changed ? 'Changed' : 'OK') : 'Failed'}</b>`;
+  if (!ok) {
+    const reason = document.createElement('span');
+    reason.className = 'harmonia-ledger-failure';
+    reason.textContent = signal;
+    row.appendChild(reason);
+  }
+  const details = document.createElement('details');
+  details.className = 'harmonia-ledger-json';
+  const summary = document.createElement('summary');
+  summary.textContent = 'Entry JSON';
+  const pre = document.createElement('pre');
+  pre.textContent = JSON.stringify(entry.entry || {}, null, 2);
+  details.append(summary, pre);
+  row.appendChild(details);
+  return row;
+}
+
 function renderHarmoniaLedgerPage(content, data) {
   content.textContent = '';
   const page = data.page || 1;
   const totalPages = data.totalPages || 1;
-  const entries = data.entries || [];
+  const runs = harmoniaLedgerRuns(data.entries || []);
   const meta = document.createElement('div');
   meta.className = 'harmonia-ledger-meta';
   meta.innerHTML = `<strong>${escapeHtml(data.message || 'Harmonia ledger')}</strong><span>${escapeHtml(data.ledgerPath || '')}</span>`;
   content.appendChild(meta);
   const list = document.createElement('div');
   list.className = 'harmonia-ledger-list';
-  if (!entries.length) {
-    list.innerHTML = '<div class="empty-state"><strong>No ledger entries found.</strong></div>';
-  }
-  entries.forEach((entry) => {
-    const row = document.createElement('article');
-    row.className = 'harmonia-ledger-row';
-    row.innerHTML = `
-      <div><strong>${escapeHtml(entry.stamp || `entry-${entry.ordinal}`)}</strong><span>${escapeHtml(entry.schema || 'ledger')}</span></div>
-      <b class="system-status system-status--${entry.ok === false ? 'error' : 'available'}">${entry.ok === false ? 'Failed' : 'OK'}</b>
-      <div class="harmonia-ledger-fields">
-        <span><em>Profile</em><strong>${escapeHtml(ledgerValue(entry.profileId))}</strong></span>
-        <span><em>Module</em><strong>${escapeHtml(ledgerValue(entry.moduleId))}</strong></span>
-        <span><em>Changed</em><strong>${escapeHtml(ledgerValue(entry.changed))}</strong></span>
-        <span><em>Signal</em><strong>${escapeHtml(ledgerValue(entry.firstMissingSignal))}</strong></span>
-      </div>`;
-    const details = document.createElement('details');
-    details.className = 'harmonia-ledger-json';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Entry JSON';
-    const pre = document.createElement('pre');
-    pre.textContent = JSON.stringify(entry.entry || {}, null, 2);
-    details.append(summary, pre);
-    row.appendChild(details);
-    list.appendChild(row);
+  if (!runs.length) list.innerHTML = '<div class="empty-state"><strong>No ledger entries found.</strong></div>';
+  runs.forEach((run) => {
+    const card = document.createElement('article');
+    card.className = 'harmonia-ledger-run';
+    const failed = run.entries.filter((entry) => harmoniaLedgerValue(entry, ['ok'], entry.ok) === false).length;
+    const changed = run.entries.filter((entry) => harmoniaLedgerValue(entry, ['changed'], entry.changed) === true).length;
+    card.innerHTML = `<header><div><strong>${escapeHtml(run.stamp)}</strong><span>Run ${escapeHtml(run.id)}</span></div><b class="system-status system-status--${failed ? 'error' : 'available'}">${run.entries.length - failed} OK · ${failed} failed · ${changed} changed</b></header>`;
+    const modules = document.createElement('div');
+    modules.className = 'harmonia-ledger-modules';
+    run.entries.forEach((entry) => modules.appendChild(harmoniaLedgerModuleRow(entry)));
+    card.appendChild(modules);
+    list.appendChild(card);
   });
   content.appendChild(list);
   const pager = document.createElement('div');
@@ -3539,6 +3583,82 @@ function renderHarmoniaLedgerPage(content, data) {
   next.addEventListener('click', () => loadHarmoniaLedgerPage(page + 1, content));
   pager.append(prev, count, next);
   content.appendChild(pager);
+}
+
+function renderHarmoniaLastRun(entries) {
+  const root = document.querySelector('[data-harmonia-last-run]');
+  const run = harmoniaLedgerRuns(entries)[0];
+  if (!root || !run) return;
+  const failed = run.entries.filter((entry) => harmoniaLedgerValue(entry, ['ok'], entry.ok) === false);
+  const changed = run.entries.filter((entry) => harmoniaLedgerValue(entry, ['changed'], entry.changed) === true).length;
+  const ok = run.entries.length - failed.length;
+  const detail = root.querySelector('.updates-last-run');
+  if (!detail) return;
+  detail.textContent = '';
+  const heading = document.createElement('b');
+  heading.textContent = 'Last run';
+  const summary = document.createElement('span');
+  summary.textContent = `${run.stamp} · ${ok} OK · ${failed.length} failed · ${changed} changed`;
+  detail.append(heading, summary);
+  if (failed.length) {
+    const failures = document.createElement('ul');
+    failures.className = 'updates-last-run-failures';
+    failed.forEach((entry) => {
+      const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId || 'suite');
+      const signal = harmoniaLedgerValue(entry, ['first_missing_signal', 'firstMissingSignal'], entry.firstMissingSignal || 'none');
+      const item = document.createElement('li');
+      item.textContent = `${harmoniaModuleLabel(moduleId)} · ${signal}`;
+      failures.appendChild(item);
+    });
+    detail.appendChild(failures);
+  }
+}
+
+function renderHarmoniaLedgerAvailability(entries) {
+  const pane = document.querySelector('[data-harmonia-update-pane]');
+  if (!pane) return;
+  let tiles = pane.querySelector('[data-harmonia-update-tiles]');
+  const generic = tiles?.querySelector('[data-update-kind="enabled-modules"]');
+  const zero = pane.querySelector('[data-zero-updates]');
+  if (!generic && !zero) return;
+  const named = (entries || []).filter((entry) => {
+    const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId);
+    return moduleId && (harmoniaLedgerValue(entry, ['ok'], entry.ok) === false || harmoniaLedgerValue(entry, ['changed'], entry.changed) === true);
+  });
+  if (!named.length) return;
+  if (!tiles) {
+    zero?.remove();
+    const heading = document.createElement('div');
+    heading.className = 'updates-update-heading';
+    heading.textContent = named.length === 1 ? '1 module needs update' : `${named.length} modules need update`;
+    tiles = document.createElement('div');
+    tiles.className = 'harmonia-update-tiles';
+    tiles.dataset.harmoniaUpdateTiles = 'true';
+    pane.append(heading, tiles);
+  }
+  tiles.textContent = '';
+  named.forEach((entry) => {
+    const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId);
+    const version = harmoniaLedgerValue(entry, ['module_version', 'moduleVersion'], '—');
+    const failed = harmoniaLedgerValue(entry, ['ok'], entry.ok) === false;
+    const reason = failed
+      ? harmoniaLedgerValue(entry, ['first_missing_signal', 'firstMissingSignal'], entry.firstMissingSignal || 'none')
+      : 'Pending changes reported by the latest run';
+    const tile = document.createElement('article');
+    tile.className = 'harmonia-update-tile harmonia-update-tile--module';
+    tile.dataset.updateKind = String(moduleId);
+    tile.innerHTML = `<strong>${escapeHtml(harmoniaModuleLabel(moduleId))}</strong><b>${escapeHtml(String(version))}</b><span>${escapeHtml(String(reason))}</span>`;
+    tiles.appendChild(tile);
+  });
+}
+
+async function hydrateHarmoniaLedgerSummary() {
+  if (!document.querySelector('[data-harmonia-update-pane], [data-harmonia-last-run]')) return;
+  try {
+    const data = await getJson('/api/harmonia/ledger?page=1&per_page=25');
+    renderHarmoniaLastRun(data.entries || []);
+    renderHarmoniaLedgerAvailability(data.entries || []);
+  } catch (_) {}
 }
 
 async function loadHarmoniaLedgerPage(page, content) {
@@ -3557,6 +3677,7 @@ function openHarmoniaLedger() {
 }
 
 function bindHarmoniaModules() {
+  hydrateHarmoniaLedgerSummary();
   document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
   document.addEventListener('change', (event) => {
     const input = event.target.closest?.('[data-harmonia-module-switch]');
@@ -3574,29 +3695,46 @@ function bindSystemTrustAndAccessForms() {
     card.setAttribute('aria-label', 'Household trust');
     card.innerHTML = `
       <div class="household-trust-card__head"><span>Household trust</span><b class="system-status system-status--unknown" data-household-trust-state>Checking</b></div>
+      <p class="household-trust-card__copy">Fetch the HomeServer certificate bundle and install it on this console.</p>
+      <div class="household-trust-card__action">
+        <label for="household-trust-server">HomeServer address</label>
+        <div class="household-trust-card__controls">
+          <input class="field" id="household-trust-server" data-household-trust-server inputmode="numeric" autocomplete="off" placeholder="HomeServer IP address">
+          <button class="btn btn--primary" type="button" data-household-trust-fetch>Fetch &amp; Install</button>
+        </div>
+      </div>
       <div class="household-trust-card__fields">
         <span class="system-field"><em>CA bundle</em><strong data-household-trust-installed>—</strong></span>
         <span class="system-field system-field--anchor"><em>Fingerprint</em><strong data-household-trust-fingerprint>—</strong></span>
         <span class="system-field"><em>Role</em><strong data-household-trust-role>—</strong></span>
       </div>
-      <p class="household-trust-card__error" data-household-trust-error hidden></p>
-      <button class="btn btn--primary" type="button" data-household-trust-install>Install CA bundle</button>`;
-    const rootCaForm = trustPanel.querySelector('#root-ca-form');
-    trustPanel.insertBefore(card, rootCaForm || null);
+      <p class="household-trust-card__error" data-household-trust-error hidden></p>`;
+    const rootCaFallback = trustPanel.querySelector('.system-manual-install');
+    trustPanel.insertBefore(card, rootCaFallback || null);
 
     const field = (name) => card.querySelector(`[data-household-trust-${name}]`);
-    const receipt = (data, fallback) => data.first_missing_signal || data.firstMissingSignal || data.message || fallback;
+    const receipt = (data, fallback) => data.first_missing_signal || data.firstMissingSignal || data.refusal_reason || data.refusalReason || data.message || fallback;
+    const fingerprint = (data) => data.ca_fingerprint || data.fingerprint || data.bundle_fingerprint || '—';
+    const presentReceipt = (data) => {
+      const error = field('error');
+      if (data.ok === false) {
+        error.textContent = receipt(data, 'HomeServer request was refused');
+        error.hidden = false;
+        return;
+      }
+      const shownFingerprint = fingerprint(data);
+      field('installed').textContent = 'Installed';
+      field('state').textContent = 'Installed';
+      field('state').className = 'system-status system-status--available';
+      if (shownFingerprint !== '—') field('fingerprint').textContent = String(shownFingerprint).slice(0, 20);
+      error.hidden = true;
+    };
     const refresh = async () => {
       let data;
       try {
         data = await getJson('/api/caduceus/v1/cert/status');
       } catch (_) {
-        data = {
-          ok: false,
-          schema: 'arcadia.caduceus.proxy.error.v1',
-          command: 'cert status',
-          first_missing_signal: 'caduceus-http-unreachable',
-        };
+        data = { ok: false, first_missing_signal: 'caduceus-http-unreachable' };
       }
       const error = field('error');
       const state = field('state');
@@ -3606,36 +3744,56 @@ function bindSystemTrustAndAccessForms() {
         field('role').textContent = data.role || data.profile || '—';
         state.textContent = 'Unavailable';
         state.className = 'system-status system-status--error';
-        error.textContent = `${data.schema || 'caduceus error'} · ${data.command || 'cert status'} · ${receipt(data, 'caduceus-unreachable')}`;
+        error.textContent = receipt(data, 'Caduceus is unavailable');
         error.hidden = false;
         return data;
       }
       const installed = data.bundle_installed === true;
       field('installed').textContent = installed ? 'Installed' : 'Not installed';
-      field('fingerprint').textContent = data.ca_fingerprint ? String(data.ca_fingerprint).slice(0, 20) : '—';
+      field('fingerprint').textContent = String(fingerprint(data)).slice(0, 20);
       field('role').textContent = data.role || data.profile || '—';
       state.textContent = installed ? 'Installed' : 'Not installed';
       state.className = `system-status system-status--${installed ? 'available' : 'unknown'}`;
       error.hidden = true;
       return data;
     };
+    const prefillGateway = async () => {
+      try {
+        const network = await requestNetworkState();
+        const gateway = network.activeConnection?.gateway;
+        if (gateway) field('server').value = gateway;
+      } catch (_) {}
+    };
 
-    card.querySelector('[data-household-trust-install]').addEventListener('click', async (event) => {
+    card.querySelector('[data-household-trust-fetch]').addEventListener('click', async (event) => {
       const button = event.currentTarget;
+      const server = field('server').value.trim();
+      if (!server) {
+        field('error').textContent = 'Enter the HomeServer address.';
+        field('error').hidden = false;
+        field('server').focus();
+        return;
+      }
       const label = button.textContent;
       button.disabled = true;
-      button.textContent = 'Installing…';
+      button.textContent = 'Fetching…';
+      let response;
       try {
-        const data = await postJson('/api/caduceus/v1/cert/trust-install', {});
-        PopupManager.showToast(receipt(data, data.ok ? 'CA bundle installed' : 'CA bundle not installed'), data.ok ? 'success' : 'error');
+        response = await postJson('/api/caduceus/v1/cert/trust-fetch', { server });
+        presentReceipt(response);
+        PopupManager.showToast(response.ok ? `Installed${fingerprint(response) === '—' ? '' : ` · ${fingerprint(response)}`}` : receipt(response, 'HomeServer request was refused'), response.ok ? 'success' : 'error');
       } catch (_) {
-        PopupManager.showToast('CA bundle request failed', 'error');
+        field('error').textContent = 'HomeServer request failed.';
+        field('error').hidden = false;
+        PopupManager.showToast('HomeServer request failed', 'error');
       } finally {
         button.disabled = false;
         button.textContent = label;
         await refresh();
+        if (response?.ok) presentReceipt(response);
       }
     });
+    prefillGateway();
     refresh();
   }
 
