@@ -408,49 +408,30 @@ fn vault_status() -> VaultStatus {
             mounted: value
                 .get("mounted")
                 .and_then(|item| item.as_bool())
-                .unwrap_or(true),
+                .unwrap_or(false),
             auto_decrypt_enabled: value
                 .get("auto_decrypt_enabled")
                 .and_then(|item| item.as_bool())
-                .unwrap_or(true),
+                .unwrap_or(false),
         },
         Err(signal) => {
             tracing::warn!(
                 signal,
-                "Caduceus vault status unavailable; leaving Arcadia open"
+                "Caduceus vault status unavailable; keeping Arcadia closed"
             );
             VaultStatus {
-                mounted: true,
-                auto_decrypt_enabled: true,
+                mounted: false,
+                auto_decrypt_enabled: false,
             }
         }
     }
 }
 
 fn gui_pin_status() -> GuiPinStatus {
-    let reset_helper_present = helper_exists(GUI_PIN_RESET_HELPER);
     GuiPinStatus {
-        pin_required: gui_pin_required(),
-        state_path: GUI_PIN_STATE_PATH,
-        access_helper_present: helper_exists(GUI_PIN_ACCESS_HELPER),
-        pin_change_helper_present: helper_exists(GUI_PIN_CHANGE_HELPER),
-        pin_reset_helper_present: reset_helper_present,
-        pin_storage: "keyman-redacted",
-        default_reset_available: reset_helper_present,
+        pin_required: true,
+        authority: "caduceus-attendance",
     }
-}
-
-fn gui_pin_required() -> bool {
-    fs::read_to_string(GUI_PIN_STATE_PATH)
-        .map(|state| {
-            let normalized = state.to_ascii_lowercase();
-            normalized.contains("pin_required=true")
-                || normalized.contains("pin_required: true")
-                || normalized.contains("\"pin_required\":true")
-                || normalized.trim() == "required"
-                || normalized.trim() == "true"
-        })
-        .unwrap_or(false)
 }
 
 fn helper_exists(path: &str) -> bool {

@@ -6,11 +6,6 @@ const INDRA_OBSERVATION_JS: &str = include_str!("../../static/indra-observation.
 const VENDOR_CHART_JS: &str = include_str!("../../static/vendor/chart.umd.min.js");
 const THEME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.css"));
 const THEME_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.js"));
-const GUI_PIN_STATE_PATH: &str = "/var/lib/homeconsole/gui-pin-access.json";
-const GUI_PIN_VERIFY_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-verify";
-const GUI_PIN_ACCESS_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-access";
-const GUI_PIN_CHANGE_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-change";
-const GUI_PIN_RESET_HELPER: &str = "/usr/local/sbin/homeconsole-gui-pin-reset-default";
 const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
 const PROVIDER_KEY_NAMES: [(&str, &str); 3] = [
     ("steamgriddb", "STEAMGRIDDB_API_KEY"),

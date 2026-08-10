@@ -23,7 +23,7 @@
     }
 
     #[test]
-    fn appliance_shell_renders_required_viewports_and_no_vault_indicator() {
+    fn appliance_shell_renders_eight_viewports_and_system_access() {
         let state = AppState {
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
@@ -39,8 +39,6 @@
             "view-local-ai",
             "view-controllers",
             "view-network",
-            "view-access-pin",
-            "view-vault",
             "view-updates",
             "view-system",
         ] {
@@ -52,7 +50,6 @@
             "Local AI",
             "Controls",
             "Updates",
-            "Access\nPIN",
         ] {
             assert!(rendered.contains(indicator), "missing {indicator}");
         }
@@ -98,6 +95,10 @@
         }
         assert!(!rendered.contains("smb:://"));
         assert!(rendered.contains("HTTPS bundle"));
+        assert!(rendered.contains("system-access-panel"));
+        assert!(rendered.contains("Caduceus attendance is required"));
+        assert!(!rendered.contains("view-access-pin"));
+        assert!(!rendered.contains("view-vault"));
 
         assert!(
             !rendered.contains("data-view=\"games\""),

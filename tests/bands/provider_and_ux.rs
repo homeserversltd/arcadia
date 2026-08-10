@@ -226,45 +226,23 @@
     }
 
     #[test]
-    fn access_pin_view_is_router_style_single_toggle_panel() {
-        let state = AppState {
-            started_unix: 0,
-            canonical_url: "http://console.example.com/".to_string(),
-            product: "HomeConsole".to_string(),
-        };
+    fn system_view_contains_the_single_access_section() {
+        let state = AppState { started_unix: 0, canonical_url: "http://console.example.com/".to_string(), product: "HomeConsole".to_string() };
         let rendered = ui::layout(&console_status(&state)).into_string();
-        let access_start = rendered
-            .find("<section id=\"view-access-pin\"")
-            .expect("access pin view starts");
-        let access_end = rendered[access_start..]
-            .find("<section id=\"view-updates\"")
-            .map(|offset| access_start + offset)
-            .expect("updates view follows access pin");
-        let access_html = &rendered[access_start..access_end];
-
-        for required in [
-            "Access mode",
-            "Require PIN for console access",
-            "Change access PIN",
-            "Default / reset PIN",
-            "Reset PIN to default",
-            "configured factory/default value",
-            "settings-action-row",
-            "settings-action-row--destructive",
-            "data-pin-required-toggle",
-            "role=\"switch\"",
-        ] {
-            assert!(access_html.contains(required), "missing {required}");
+        let system_start = rendered.find("<section id=\"view-system\"").expect("system view starts");
+        let system_html = &rendered[system_start..];
+        for required in ["system-access-panel", "Vault status", "Access mode", "Require PIN for console access", "Change access PIN", "Default / reset PIN", "Reset PIN to default", "Caduceus action", "data-pin-required-toggle", "role=\"switch\""] {
+            assert!(system_html.contains(required), "missing {required}");
         }
-        assert!(!access_html.contains("Require GUI PIN"));
-        assert!(!access_html.contains("Open Without PIN"));
-        assert_eq!(access_html.matches("data-pin-required-toggle").count(), 1);
+        assert!(!rendered.contains("view-access-pin"));
+        assert!(!rendered.contains("view-vault"));
+        assert_eq!(system_html.matches("data-pin-required-toggle").count(), 1);
     }
 
     #[test]
     fn access_pin_script_persists_toggle_validates_change_and_confirms_reset() {
         assert!(APP_JS.contains("postJson('/api/gui-pin/access', { pin_required: nextRequired })"));
-        assert!(APP_JS.contains("renderGuiPinMode(Boolean(data.pin_required))"));
+        assert!(APP_JS.contains("renderGuiPinMode(data.pin_required !== false)"));
         assert!(APP_JS.contains("New PIN confirmation does not match."));
         assert!(APP_JS.contains("New PIN must be at least 4 characters."));
         assert!(APP_JS

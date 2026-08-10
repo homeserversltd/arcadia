@@ -279,7 +279,7 @@ function renderVaultMode({ mounted, auto_decrypt_enabled: autoDecrypt }) {
 
 async function initializeVaultGate() {
   try { renderVaultMode(await checkVaultStatus()); }
-  catch (_) { renderVaultMode({ mounted: true, auto_decrypt_enabled: true }); PopupManager.showToast('Vault status is unavailable. HomeConsole remains open.', 'error'); }
+  catch (_) { renderVaultMode({ mounted: false, auto_decrypt_enabled: false }); PopupManager.showToast('Vault custody is unavailable. HomeConsole remains closed.', 'error'); }
 }
 
 function bindVaultUnlockForm(id, messageId) {
@@ -351,14 +351,14 @@ function invalidateCaduceusAttendance() {
 }
 
 function updateArcadiaShellVisibility() {
-  const pinRequired = document.body.dataset.guiPinRequired === 'true';
   const vaultMounted = document.body.dataset.vaultMounted !== 'false';
-  document.getElementById('app')?.toggleAttribute('aria-hidden', pinRequired || !vaultMounted);
+  document.getElementById('app')?.toggleAttribute('aria-hidden', !caduceusAttendance || !vaultMounted);
+  document.querySelectorAll('[data-admin-projection]').forEach((node) => { node.textContent = caduceusAttendance ? 'Admin' : 'Guest'; });
 }
 
 function openArcadia() {
   document.body.classList.add('pin-open');
-  document.body.dataset.guiPinRequired = 'false';
+  document.body.dataset.guiPinRequired = 'true';
   updateArcadiaShellVisibility();
 }
 
@@ -370,14 +370,11 @@ function keepGuiPinGate() {
 }
 
 async function initializeGuiPinGate() {
-  try {
-    const status = await checkGuiPinStatus();
-    if (status.pin_required) keepGuiPinGate(); else openArcadia();
-    setPinIndicator(Boolean(status.pin_required));
-  } catch (_) {
-    keepGuiPinGate();
-    PopupManager.showToast('PIN attendance status unavailable. Arcadia remains locked.', 'error');
-  }
+  try { await checkGuiPinStatus(); } catch (_) {}
+  // A loaded document never inherits a prior attendance or local access decision.
+  clearCaduceusAttendance();
+  keepGuiPinGate();
+  setPinIndicator(true);
 }
 
 function setPinIndicator(required) {
@@ -1044,7 +1041,7 @@ function bindGuiPinAccess() {
       try {
         const data = await postJson('/api/gui-pin/access', { pin_required: nextRequired });
         PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved'), data.ok ? 'success' : 'error');
-        if (data.ok) renderGuiPinMode(Boolean(data.pin_required));
+        if (data.ok) renderGuiPinMode(data.pin_required !== false);
         else renderGuiPinMode(previousRequired);
       } catch (_) {
         renderGuiPinMode(previousRequired);
@@ -3366,7 +3363,7 @@ function bindGuiPinResetDefault() {
       if (data.ok) clearMessage('gui-pin-reset-message');
       else setMessage('gui-pin-reset-message', data.message || 'PIN reset failed.', 'error');
       PopupManager.showToast(data.message || (data.ok ? 'PIN reset to default' : 'PIN reset failed'), data.ok ? 'success' : 'error');
-      if (data.ok) renderGuiPinMode(Boolean(data.pin_required));
+      if (data.ok) renderGuiPinMode(data.pin_required !== false);
     } catch (_) {
       setMessage('gui-pin-reset-message', 'PIN reset request failed.', 'error');
       PopupManager.showToast('PIN reset request failed', 'error');

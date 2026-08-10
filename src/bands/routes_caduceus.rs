@@ -237,24 +237,16 @@ async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/vault/status").await
 }
 async fn caduceus_vault_unlock_proxy_route(
+    headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    caduceus_json_post_proxy("/api/v1/vault/unlock", body)
+) -> Response {
+    caduceus_vault_unlock_route(headers, Json(body)).await
 }
 async fn caduceus_vault_auto_decrypt_proxy_route(
+    headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    caduceus_json_post_proxy("/api/v1/vault/auto-decrypt", body)
-}
-fn caduceus_json_post_proxy(
-    path: &'static str,
-    body: serde_json::Value,
-) -> axum::response::Response {
-    let rendered = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    match caduceus_post_json(path, &rendered) {
-        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
-        Err(signal) => caduceus_proxy_error(path, signal),
-    }
+) -> Response {
+    caduceus_vault_auto_decrypt_route(headers, Json(body)).await
 }
 async fn caduceus_update_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/update/status").await
