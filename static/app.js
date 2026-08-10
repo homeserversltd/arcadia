@@ -3157,8 +3157,6 @@ function bindLocalAIControls() {
         else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
         else if (action === 'lan-enable') await applyLocalAIPort(true);
         else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
-        else if (action === 'token-generate') { if (window.confirm('Generate a new local client token? Existing client configs may need updating.')) await postAI('/api/ai/token/generate', { confirm: 'GENERATE_TOKEN' }, 'Token generated'); }
-        else if (action === 'token-revoke') { if (window.confirm('Revoke the local client token?')) await postAI('/api/ai/token/revoke', { confirm: 'REVOKE_TOKEN' }, 'Token revoked'); }
         else if (action === 'hf-list-files') await fetchHFFiles();
         else if (action === 'hf-download') await downloadHFModel();
       } catch (_) {
@@ -3224,13 +3222,11 @@ function bindLocalAIControls() {
 function localAIPortPayload() {
   const form = document.getElementById('ai-lan-form');
   const rawPort = form?.querySelector('input[name="port"]')?.value.trim() || '';
-  const lanCidr = form?.querySelector('input[name="lanCidr"]')?.value.trim() || '10.0.0.0/24';
   if (!/^\d+$/.test(rawPort)) throw new Error('Port must be a whole number.');
   const port = Number(rawPort);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Port must be between 1024 and 65535.');
   if ([22, 80, 443, 445, 8080].includes(port)) throw new Error('That port is reserved for HomeConsole services.');
-  if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(lanCidr)) throw new Error('LAN CIDR must look like 10.0.0.0/24.');
-  return { port, lanCidr };
+  return { port };
 }
 
 async function saveLocalAIPort() {
@@ -3241,7 +3237,7 @@ async function saveLocalAIPort() {
     PopupManager.showToast(error.message, 'error');
     return null;
   }
-  return await postAI('/api/ai/settings', { lanPort: payload.port, lanCidr: payload.lanCidr }, 'Local AI port saved');
+  return await postAI('/api/ai/settings', { lanPort: payload.port }, 'Local AI port saved');
 }
 
 async function applyLocalAIPort(enableLan) {
@@ -3252,7 +3248,7 @@ async function applyLocalAIPort(enableLan) {
     PopupManager.showToast(error.message, 'error');
     return null;
   }
-  return await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port, lanCidr: payload.lanCidr }, 'LAN access applied');
+  return await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port }, 'LAN access applied');
 }
 
 function hfForm() { return document.querySelector('[data-hf-installer]'); }

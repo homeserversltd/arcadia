@@ -72,8 +72,6 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
             api_mode: Some("openai-compatible".to_string()),
             request_count: None,
             last_request_at: None,
-            nginx_configured: Path::new(LOCAL_AI_NGINX_CONF).exists(),
-            firewall_configured: Path::new(LOCAL_AI_FIREWALL_RECEIPT).exists(),
             health_path: "/health".to_string(),
         },
         hardware: AIHardwareState {
@@ -108,7 +106,6 @@ struct LocalAiConfig {
     api_enabled: bool,
     lan_enabled: bool,
     lan_port: u16,
-    lan_cidr: String,
     selected_model_id: Option<String>,
     start_api_on_boot: bool,
     auto_load_last_model: bool,
@@ -130,7 +127,6 @@ impl Default for LocalAiConfig {
             api_enabled: false,
             lan_enabled: false,
             lan_port: DEFAULT_LAN_INFERENCE_PORT,
-            lan_cidr: "10.0.0.0/24".to_string(),
             selected_model_id: None,
             start_api_on_boot: false,
             auto_load_last_model: false,
@@ -180,7 +176,6 @@ fn ai_settings_state(cfg: &LocalAiConfig) -> AISettingsState {
         batch: cfg.batch,
         concurrency: cfg.concurrency,
         request_limit: cfg.request_limit,
-        lan_cidr: cfg.lan_cidr.clone(),
         cors_origins: cfg.cors_origins.clone(),
         log_level: cfg.log_level.clone(),
     }
@@ -191,39 +186,16 @@ fn ai_client_handoff(
     listening: bool,
     endpoint: String,
 ) -> AIClientHandoffState {
-    let token = fs::read_to_string(LOCAL_AI_TOKEN_PATH)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
     AIClientHandoffState {
         endpoint: (cfg.api_enabled && listening).then(|| endpoint.clone()),
         openai_base_url: (cfg.api_enabled && listening).then(|| format!("{}/v1", endpoint.trim_end_matches('/'))),
-        token_configured: token.is_some(),
-        token_preview: token.as_ref().map(|t| format!("{}…{}", &t[..t.len().min(4)], &t[t.len().saturating_sub(4)..])),
-        hermes_hint: "Set local provider base URL to the redacted OpenAI-compatible endpoint shown here; keep token material in Hermes env/config, not logs.".to_string(),
+        hermes_hint: "Set local provider base URL to the OpenAI-compatible endpoint shown here.".to_string(),
         pi_hint: "Use the LAN endpoint only from trusted home LAN clients; internal-only mode is console-local.".to_string(),
-        secret_values_recorded: false,
     }
 }
 
 fn valid_lan_port(port: u16) -> bool {
     (1024..=65535).contains(&port) && !matches!(port, 22 | 80 | 443 | 445 | 8080)
-}
-
-fn valid_lan_cidr(cidr: &str) -> bool {
-    let Some((addr, prefix)) = cidr.split_once('/') else {
-        return false;
-    };
-    let Ok(prefix) = prefix.parse::<u8>() else {
-        return false;
-    };
-    if !(8..=32).contains(&prefix) {
-        return false;
-    }
-    let Ok(ip) = addr.parse::<Ipv4Addr>() else {
-        return false;
-    };
-    ip.is_private()
 }
 
 fn secure_file(path: &Path, mode: u32) {
@@ -234,31 +206,3 @@ fn secure_file(path: &Path, mode: u32) {
         let _ = fs::set_permissions(path, perms);
     }
 }
-
-fn apply_lan_exposure(cfg: &LocalAiConfig) -> Result<(), String> {
-    if !cfg.lan_enabled {
-        let _ = fs::remove_file(LOCAL_AI_NGINX_CONF);
-        let _ = fs::remove_file(LOCAL_AI_FIREWALL_RECEIPT);
-        let _ = Command::new(SYSTEMCTL_BIN)
-            .args(["reload", "nginx"])
-            .status();
-        return Ok(());
-    }
-    if !valid_lan_port(cfg.lan_port) || !valid_lan_cidr(&cfg.lan_cidr) {
-        return Err("invalid LAN exposure config".into());
-    }
-    let _ = fs::remove_file(LOCAL_AI_NGINX_CONF);
-    if let Some(parent) = Path::new(LOCAL_AI_FIREWALL_RECEIPT).parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    fs::write(
-        LOCAL_AI_FIREWALL_RECEIPT,
-        format!(
-            "lan_port={}\nlan_cidr={}\npublic_exposure=false\nmode=direct-llama-server-lan-bind\n",
-            cfg.lan_port, cfg.lan_cidr
-        ),
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-

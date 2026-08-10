@@ -205,7 +205,6 @@ async fn ai_inference_set_enabled(
     if !body.enabled {
         cfg.lan_enabled = false;
         let _ = stop_llama_server();
-        let _ = apply_lan_exposure(&cfg);
     }
     let ok = save_ai_config(&cfg).is_ok();
     ai_action(
@@ -263,21 +262,8 @@ async fn ai_inference_set_lan_access(
         }
         cfg.lan_port = port;
     }
-    if let Some(cidr) = body.lan_cidr.as_deref() {
-        if !valid_lan_cidr(cidr) {
-            return ai_action(
-                StatusCode::BAD_REQUEST,
-                &state,
-                false,
-                "inference-set-lan-access",
-                "LAN CIDR must be a private IPv4 CIDR such as 10.0.0.0/24.",
-            );
-        }
-        cfg.lan_cidr = cidr.to_string();
-    }
     cfg.lan_enabled = body.enabled;
-    let apply = apply_lan_exposure(&cfg);
-    let ok = apply.is_ok() && save_ai_config(&cfg).is_ok();
+    let ok = save_ai_config(&cfg).is_ok();
     ai_action(
         if ok {
             StatusCode::OK
@@ -290,7 +276,7 @@ async fn ai_inference_set_lan_access(
         if ok && body.enabled {
             "LAN access applied through the trusted-home-LAN port."
         } else if ok {
-            "LAN access disabled and proxy/firewall state removed where possible."
+            "LAN access disabled."
         } else {
             "LAN access could not be applied; previous config remains active."
         },
