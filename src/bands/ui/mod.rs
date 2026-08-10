@@ -6,7 +6,7 @@ use crate::{
     StorageCategoryStatus,
 };
 
-const VIEWS: [(&str, &str, &str); 9] = [
+const VIEWS: [(&str, &str, &str); 10] = [
     ("home", "⌂", "Home"),
     ("sync", "↻", "Sync"),
     ("storage", "▰", "Storage"),
@@ -14,6 +14,7 @@ const VIEWS: [(&str, &str, &str); 9] = [
     ("controllers", "◈", "Controls"),
     ("network", "◌", "Network"),
     ("access-pin", "●", "Access\nPIN"),
+    ("vault", "▣", "Vault"),
     ("updates", "⬆", "Updates"),
     ("system", "⚙", "System"),
 ];
@@ -27,6 +28,7 @@ include!("gamepad_layout.rs");
 include!("controllers.rs");
 include!("network.rs");
 include!("access_pin.rs");
+include!("vault.rs");
 include!("updates.rs");
 include!("system.rs");
 include!("primitives.rs");
@@ -42,9 +44,10 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 script { (theme_boot_script()) }
                 link rel="stylesheet" href="/static/app.css";
             }
-            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required=(status.gui_pin.pin_required) {
+            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required=(status.gui_pin.pin_required) data-vault-mounted=(status.vault.mounted) {
                 (gui_pin_gate(status))
-                div id="app" class="app-shell" aria-hidden=(status.gui_pin.pin_required) {
+                (vault_unlock_gate(status))
+                div id="app" class="app-shell" aria-hidden=(status.gui_pin.pin_required || !status.vault.mounted) {
                     (header(status))
                     div class="workspace" {
                         (sidebar_launcher())
@@ -56,6 +59,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (controllers_view(status))
                             (network_view(status))
                             (access_pin_view(status))
+                            (vault_view(status))
                             (updates_view(status))
                             (system_view(status))
                         }

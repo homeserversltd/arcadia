@@ -24,6 +24,7 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         },
         runtime: runtime_status(state.started_unix),
         gui_pin: gui_pin_status(),
+        vault: vault_status(),
         surfaces,
         samba,
         network: network.clone(),
@@ -192,4 +193,3 @@ fn network_state_from_parts(product: &str, canonical_url: Option<&str>) -> Netwo
         services,
     }
 }
-

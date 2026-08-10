@@ -138,11 +138,16 @@ fn updates_status() -> UpdatesStatus {
     } else {
         suite_signal.clone()
     };
-    let profile_id = receipt_string(&receipt, "profile_id").unwrap_or_else(|| "homeconsole".to_string());
-    let identity = receipt_string(&receipt, "identity").unwrap_or_else(|| "homeconsole".to_string());
+    let profile_id =
+        receipt_string(&receipt, "profile_id").unwrap_or_else(|| "homeconsole".to_string());
+    let identity =
+        receipt_string(&receipt, "identity").unwrap_or_else(|| "homeconsole".to_string());
     let module_count = receipt_usize(&receipt, "module_count").unwrap_or(profile.len());
     let operation_count = receipt_usize(&receipt, "operation_count").unwrap_or(0);
-    let arcadia_ok = arcadia.as_ref().and_then(|v| receipt_bool(v, "ok")).unwrap_or(false);
+    let arcadia_ok = arcadia
+        .as_ref()
+        .and_then(|v| receipt_bool(v, "ok"))
+        .unwrap_or(false);
     let state = if check.is_some() && !check_ok && check_missing_signal != "none" {
         "repair_pending"
     } else if suite.is_some() && !suite_ok && suite_signal != "none" {
@@ -156,13 +161,8 @@ fn updates_status() -> UpdatesStatus {
     };
     let modules = harmonia_module_statuses(&profile);
     let last_update_run = harmonia_last_run_label(suite_receipt, check_receipt);
-    let pending_updates = harmonia_pending_updates(
-        &modules,
-        check.as_ref(),
-        suite.as_ref(),
-        check_ok,
-        suite_ok,
-    );
+    let pending_updates =
+        harmonia_pending_updates(&modules, check.as_ref(), suite.as_ref(), check_ok, suite_ok);
     UpdatesStatus {
         state: state.to_string(),
         current_version: current,
@@ -181,7 +181,10 @@ fn updates_status() -> UpdatesStatus {
         pending_updates,
         latest_receipt: suite_receipt.to_string(),
         latest_check_receipt: check_receipt.to_string(),
-        module_root: format!("{}/modules", HOMECONSOLE_PROFILE.trim_end_matches("/index.json")),
+        module_root: format!(
+            "{}/modules",
+            HOMECONSOLE_PROFILE.trim_end_matches("/index.json")
+        ),
         modules,
     }
 }
@@ -253,7 +256,9 @@ fn harmonia_pending_updates(
 }
 
 fn read_json_value(path: &str) -> Option<serde_json::Value> {
-    fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok())
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
 }
 
 fn receipt_string(value: &serde_json::Value, key: &str) -> Option<String> {
@@ -273,7 +278,12 @@ fn harmonia_profile_modules() -> Vec<String> {
         .and_then(|json| {
             json.get("modules")
                 .and_then(|modules| modules.as_array())
-                .map(|modules| modules.iter().filter_map(|m| m.as_str().map(str::to_string)).collect())
+                .map(|modules| {
+                    modules
+                        .iter()
+                        .filter_map(|m| m.as_str().map(str::to_string))
+                        .collect()
+                })
         })
         .filter(|modules: &Vec<String>| !modules.is_empty())
         .unwrap_or_else(|| {
@@ -295,7 +305,10 @@ fn harmonia_profile_modules() -> Vec<String> {
 
 fn harmonia_all_known_modules(enabled: &[String]) -> Vec<String> {
     let mut modules = enabled.to_vec();
-    let module_root = Path::new(HOMECONSOLE_PROFILE).parent().unwrap_or_else(|| Path::new("/etc/harmonia/profiles/homeconsole")).join("modules");
+    let module_root = Path::new(HOMECONSOLE_PROFILE)
+        .parent()
+        .unwrap_or_else(|| Path::new("/etc/harmonia/profiles/homeconsole"))
+        .join("modules");
     if let Ok(entries) = fs::read_dir(module_root) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -313,12 +326,18 @@ fn harmonia_all_known_modules(enabled: &[String]) -> Vec<String> {
 
 fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
     let all = harmonia_all_known_modules(enabled);
-    let module_root = Path::new(HOMECONSOLE_PROFILE).parent().unwrap_or_else(|| Path::new("/etc/harmonia/profiles/homeconsole")).join("modules");
+    let module_root = Path::new(HOMECONSOLE_PROFILE)
+        .parent()
+        .unwrap_or_else(|| Path::new("/etc/harmonia/profiles/homeconsole"))
+        .join("modules");
     all.into_iter()
         .map(|id| {
             let enabled_flag = enabled.iter().any(|module| module == &id);
             let present = module_root.join(&id).exists();
-            let receipt_path = format!("/var/lib/harmonia/receipts/homeconsole-update-latest/modules/{}/run.json", id);
+            let receipt_path = format!(
+                "/var/lib/harmonia/receipts/homeconsole-update-latest/modules/{}/run.json",
+                id
+            );
             let state = if !enabled_flag {
                 "disabled"
             } else if present {
@@ -380,6 +399,31 @@ fn format_duration(total_seconds: u64) -> String {
         format!("{hours}h {minutes}m")
     } else {
         format!("{minutes}m")
+    }
+}
+
+fn vault_status() -> VaultStatus {
+    match caduceus_fetch_json("/api/v1/vault/status") {
+        Ok(value) => VaultStatus {
+            mounted: value
+                .get("mounted")
+                .and_then(|item| item.as_bool())
+                .unwrap_or(true),
+            auto_decrypt_enabled: value
+                .get("auto_decrypt_enabled")
+                .and_then(|item| item.as_bool())
+                .unwrap_or(true),
+        },
+        Err(signal) => {
+            tracing::warn!(
+                signal,
+                "Caduceus vault status unavailable; leaving Arcadia open"
+            );
+            VaultStatus {
+                mounted: true,
+                auto_decrypt_enabled: true,
+            }
+        }
     }
 }
 

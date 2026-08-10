@@ -22,6 +22,7 @@ pub struct ConsoleStatus {
     pub arcadia: ArcadiaStatus,
     pub runtime: RuntimeStatus,
     pub gui_pin: GuiPinStatus,
+    pub vault: VaultStatus,
     pub identity: IdentityStatus,
     pub surfaces: SurfaceStatus,
     pub samba: SambaStatus,
@@ -237,6 +238,12 @@ pub struct UiContract {
     pub button_variants: [&'static str; 3],
     pub composition: &'static str,
     pub modal: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+pub struct VaultStatus {
+    pub mounted: bool,
+    pub auto_decrypt_enabled: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -497,4 +504,3 @@ pub struct AiModelDiskStatus {
     pub size: String,
     pub status: &'static str,
 }
-

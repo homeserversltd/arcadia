@@ -333,6 +333,12 @@ async fn main() -> anyhow_free::Result<()> {
             post(caduceus_attendance_invalidate_route),
         )
         .route("/api/gui-pin/status", get(gui_pin_status_route))
+        .route("/api/vault/status", get(caduceus_vault_status_proxy_route))
+        .route("/api/vault/unlock", post(caduceus_vault_unlock_proxy_route))
+        .route(
+            "/api/vault/auto-decrypt",
+            post(caduceus_vault_auto_decrypt_proxy_route),
+        )
         .route("/api/gui-pin/access", post(set_gui_pin_access))
         .route("/api/gui-pin/change", post(change_gui_pin))
         .route("/api/provider-keys/status", get(provider_keys_status))

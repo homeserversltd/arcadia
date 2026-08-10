@@ -251,6 +251,73 @@ async function checkGuiPinStatus() {
   return await res.json();
 }
 
+async function checkVaultStatus() {
+  const res = await fetch('/api/vault/status', { headers: { accept: 'application/json' } });
+  if (!res.ok) throw new Error('Vault status request failed');
+  return await res.json();
+}
+
+function setVaultIndicator(mounted) {
+  document.querySelectorAll('[data-chip-kind="vault"]').forEach((badge) => {
+    badge.setAttribute('aria-label', mounted ? 'Vault: Unlocked' : 'Vault: Locked');
+    badge.classList.toggle('status-badge--good', mounted);
+    badge.classList.toggle('status-badge--warn', !mounted);
+    const value = badge.querySelector('strong');
+    if (value) value.textContent = mounted ? 'Unlocked' : 'Locked';
+  });
+}
+
+function renderVaultMode({ mounted, auto_decrypt_enabled: autoDecrypt }) {
+  document.body.dataset.vaultMounted = String(Boolean(mounted));
+  document.body.classList.toggle('vault-open', Boolean(mounted));
+  updateArcadiaShellVisibility();
+  setVaultIndicator(Boolean(mounted));
+  document.querySelectorAll('[data-vault-auto-decrypt-toggle]').forEach((toggle) => { toggle.checked = Boolean(autoDecrypt); });
+  document.querySelectorAll('[data-vault-mode-label]').forEach((node) => { node.textContent = mounted ? 'Unlocked' : 'Locked'; });
+  document.querySelectorAll('[data-vault-mode-copy]').forEach((node) => { node.textContent = autoDecrypt ? 'Automatically decrypts when the console starts.' : 'Unlock required after the console starts.'; });
+}
+
+async function initializeVaultGate() {
+  try { renderVaultMode(await checkVaultStatus()); }
+  catch (_) { renderVaultMode({ mounted: true, auto_decrypt_enabled: true }); PopupManager.showToast('Vault status is unavailable. HomeConsole remains open.', 'error'); }
+}
+
+function bindVaultUnlockForm(id, messageId) {
+  const form = document.getElementById(id);
+  if (!form) return;
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = form.querySelector('input[name="password"]');
+    const button = form.querySelector('button[type="submit"]');
+    const message = document.getElementById(messageId);
+    if (!input?.value) { if (message) { message.textContent = 'Vault password is required'; message.hidden = false; } return; }
+    if (message) message.hidden = true;
+    button.disabled = true; button.textContent = 'Unlocking...';
+    try {
+      const data = await postJson('/api/vault/unlock', { password: input.value });
+      input.value = '';
+      if (data.success) { renderVaultMode({ mounted: true, auto_decrypt_enabled: document.querySelector('[data-vault-auto-decrypt-toggle]')?.checked ?? true }); PopupManager.showToast(data.message || 'Vault unlocked', 'success'); }
+      else if (message) { message.textContent = data.message || 'Vault could not be unlocked.'; message.hidden = false; }
+    } catch (_) { input.value = ''; if (message) { message.textContent = 'Vault unlock request failed.'; message.hidden = false; } }
+    finally { button.disabled = false; button.textContent = 'Unlock Vault'; }
+  });
+}
+
+function bindVaultAccess() {
+  document.querySelectorAll('[data-vault-auto-decrypt-toggle]').forEach((toggle) => {
+    toggle.addEventListener('change', async () => {
+      const enabled = Boolean(toggle.checked);
+      toggle.disabled = true;
+      try {
+        const data = await postJson('/api/vault/auto-decrypt', { enabled });
+        if (data.success) { renderVaultMode({ mounted: document.body.dataset.vaultMounted !== 'false', auto_decrypt_enabled: Boolean(data.auto_decrypt_enabled) }); PopupManager.showToast(data.message || 'Vault startup setting saved', 'success'); }
+        else { toggle.checked = !enabled; PopupManager.showToast(data.message || 'Vault startup setting not saved', 'error'); }
+      } catch (_) { toggle.checked = !enabled; PopupManager.showToast('Vault startup request failed.', 'error'); }
+      finally { toggle.disabled = false; }
+    });
+  });
+}
+
 function randomUuid() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -283,16 +350,22 @@ function invalidateCaduceusAttendance() {
   clearCaduceusAttendance();
 }
 
+function updateArcadiaShellVisibility() {
+  const pinRequired = document.body.dataset.guiPinRequired === 'true';
+  const vaultMounted = document.body.dataset.vaultMounted !== 'false';
+  document.getElementById('app')?.toggleAttribute('aria-hidden', pinRequired || !vaultMounted);
+}
+
 function openArcadia() {
   document.body.classList.add('pin-open');
   document.body.dataset.guiPinRequired = 'false';
-  document.getElementById('app')?.removeAttribute('aria-hidden');
+  updateArcadiaShellVisibility();
 }
 
 function keepGuiPinGate() {
   document.body.classList.remove('pin-open');
   document.body.dataset.guiPinRequired = 'true';
-  document.getElementById('app')?.setAttribute('aria-hidden', 'true');
+  updateArcadiaShellVisibility();
   document.querySelector('.field--pin')?.focus();
 }
 
@@ -3638,6 +3711,9 @@ bindProviderKeys();
 bindHarmoniaModules();
 bindGuiPinUnlock();
 bindGuiPinAccess();
+bindVaultUnlockForm('vault-unlock-form', 'vault-auth-error');
+bindVaultUnlockForm('vault-settings-unlock-form', 'vault-settings-unlock-message');
+bindVaultAccess();
 bindGuiPinChange();
 bindGuiPinResetDefault();
 bindNetworkControls();
@@ -3645,6 +3721,7 @@ bindSystemTrustAndAccessForms();
 bindLocalAIControls();
 initializeOnboarding();
 initializeGuiPinGate();
+initializeVaultGate();
 window.addEventListener('pagehide', invalidateCaduceusAttendance);
 ArcadiaObservation.runtime('boot', 'shell');
 ArcadiaObservation.currentness('shell-view', 'current');
