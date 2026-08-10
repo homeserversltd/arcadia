@@ -1,37 +1,4 @@
 fn header(status: &ConsoleStatus) -> Markup {
-    let sync_delta = status.library.unsynced_added
-        + status.library.unsynced_changed
-        + status.library.unsynced_removed;
-    let games_total = library_games_total(status);
-    let games_total_label = games_total.to_string();
-    let (sync_class, sync_tip) = if status.library.last_sync_state == "running" {
-        ("warn", library_games_total_tip(status, "syncing now"))
-    } else if status.library.last_sync_state == "error" {
-        ("bad", library_games_total_tip(status, "last sync failed"))
-    } else if !sync_has_history(status) {
-        (
-            "idle",
-            library_games_total_tip(status, "no verified sync receipt yet"),
-        )
-    } else if status.library.last_sync_state == "success" {
-        ("idle", library_games_total_tip(status, "library current"))
-    } else if status.library.sync_needed || sync_delta > 0 {
-        (
-            "warn",
-            library_games_total_tip(status, "folder changes are queued for sync"),
-        )
-    } else if status.library.sync_state == "unknown" {
-        (
-            "idle",
-            library_games_total_tip(status, "sync state is unavailable"),
-        )
-    } else {
-        (
-            "good",
-            library_games_total_tip(status, "no queued sync changes"),
-        )
-    };
-    let sync_label = games_total_label;
     let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
         "available" => (
             "Available".to_string(),
@@ -94,13 +61,12 @@ fn header(status: &ConsoleStatus) -> Markup {
                 div { h1 { "HomeConsole" } }
             }
             div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
-                (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network", None))
-                (currentness_status_chip("sync", "Games", &sync_label, sync_class, &sync_tip, "sync", Some(games_total)))
-                (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates", None))
-                (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system", None))
-                (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai", None))
-                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin", None))
-                (currentness_status_chip("vault", "Vault", if status.vault.mounted { "Unlocked" } else { "Locked" }, if status.vault.mounted { "good" } else { "warn" }, if status.vault.mounted { "Vault is unlocked" } else { "Vault must be unlocked" }, "vault", None))
+                (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
+                (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
+                (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
+                (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
+                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin"))
+                (currentness_status_chip("vault", "Vault", if status.vault.mounted { "Unlocked" } else { "Locked" }, if status.vault.mounted { "good" } else { "warn" }, if status.vault.mounted { "Vault is unlocked" } else { "Vault must be unlocked" }, "vault"))
                 (theme_cycle_button())
             }
         }
@@ -133,22 +99,13 @@ fn currentness_status_chip(
     class: &str,
     help: &str,
     target: &str,
-    games_total: Option<u64>,
 ) -> Markup {
     let icon = chip_icon(kind, value);
     html! {
-        @if let Some(total) = games_total {
-            button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) data-games-total=(total.to_string()) aria-label=(format!("{}: {}", label, value)) {
-                span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
-                span class="chip-copy" { (label) }
-                strong data-games-total-value { (value) }
-            }
-        } @else {
-            button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) aria-label=(format!("{}: {}", label, value)) {
-                span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
-                span class="chip-copy" { (label) }
-                strong { (value) }
-            }
+        button class=(format!("status-badge status-badge--{} status-badge--nav status-badge--currentness", class)) type="button" data-nav-target=(target) data-chip-kind=(kind) data-tooltip=(help) aria-label=(format!("{}: {}", label, value)) {
+            span class="chip-icon" aria-hidden="true" { (lucide_icon(icon)) }
+            span class="chip-copy" { (label) }
+            strong { (value) }
         }
     }
 }
@@ -156,7 +113,6 @@ fn currentness_status_chip(
 fn chip_icon(kind: &str, value: &str) -> &'static str {
     match kind {
         "network" => "network",
-        "games" => "gamepad-2",
         "updates" => "badge-check",
         "uptime" => "clock-3",
         "local-ai" => "bot",
@@ -173,9 +129,6 @@ fn lucide_icon(name: &str) -> Markup {
     let body = match name {
         "network" => {
             r#"<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M12 8v4m-7 4v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/>"#
-        }
-        "gamepad-2" => {
-            r#"<line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68A4.68 4.68 0 0 0 2 9.68v6.64a2.68 2.68 0 0 0 4.66 1.8l1.7-1.9A2 2 0 0 1 9.85 15h4.3a2 2 0 0 1 1.49.66l1.7 1.9A2.68 2.68 0 0 0 22 15.76V9.68A4.68 4.68 0 0 0 17.32 5Z"/>"#
         }
         "badge-check" => {
             r#"<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/>"#
