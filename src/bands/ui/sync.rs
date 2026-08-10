@@ -244,12 +244,6 @@ fn library_games_total(status: &ConsoleStatus) -> u64 {
     status.library.total_detected_games
 }
 
-fn library_games_total_tip(status: &ConsoleStatus, detail: &str) -> String {
-    let total = library_games_total(status);
-    let artwork = library_artwork_lane_label(status);
-    format!("{total} games · {artwork} artwork · {detail}")
-}
-
 fn library_artwork_lane_label(status: &ConsoleStatus) -> String {
     sync_artwork_lane_label(
         status.library.artwork_paired_total,
