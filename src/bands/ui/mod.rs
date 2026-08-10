@@ -6,15 +6,13 @@ use crate::{
     StorageCategoryStatus,
 };
 
-const VIEWS: [(&str, &str, &str); 10] = [
+const VIEWS: [(&str, &str, &str); 8] = [
     ("home", "⌂", "Home"),
     ("sync", "↻", "Sync"),
     ("storage", "▰", "Storage"),
     ("local-ai", "◉", "Local AI"),
     ("controllers", "◈", "Controls"),
     ("network", "◌", "Network"),
-    ("access-pin", "●", "Access\nPIN"),
-    ("vault", "▣", "Vault"),
     ("updates", "⬆", "Updates"),
     ("system", "⚙", "System"),
 ];
@@ -27,8 +25,6 @@ include!("local_ai.rs");
 include!("gamepad_layout.rs");
 include!("controllers.rs");
 include!("network.rs");
-include!("access_pin.rs");
-include!("vault.rs");
 include!("updates.rs");
 include!("system.rs");
 include!("primitives.rs");
@@ -44,10 +40,10 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 script { (theme_boot_script()) }
                 link rel="stylesheet" href="/static/app.css";
             }
-            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required=(status.gui_pin.pin_required) data-vault-mounted=(status.vault.mounted) {
+            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required="true" data-vault-mounted=(status.vault.mounted) {
                 (gui_pin_gate(status))
                 (vault_unlock_gate(status))
-                div id="app" class="app-shell" aria-hidden=(status.gui_pin.pin_required || !status.vault.mounted) {
+                div id="app" class="app-shell" aria-hidden="true" {
                     (header(status))
                     div class="workspace" {
                         (sidebar_launcher())
@@ -58,8 +54,6 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                             (ai_model_view(status))
                             (controllers_view(status))
                             (network_view(status))
-                            (access_pin_view(status))
-                            (vault_view(status))
                             (updates_view(status))
                             (system_view(status))
                         }

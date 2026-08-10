@@ -62,11 +62,12 @@ fn header(status: &ConsoleStatus) -> Markup {
             }
             div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
                 (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
+                (currentness_status_chip("sync", "Games", "Library", "idle", "Game library and sync", "sync"))
                 (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
                 (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
                 (currentness_status_chip("local-ai", "AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
-                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "access-pin"))
-                (currentness_status_chip("vault", "Vault", if status.vault.mounted { "Unlocked" } else { "Locked" }, if status.vault.mounted { "good" } else { "warn" }, if status.vault.mounted { "Vault is unlocked" } else { "Vault must be unlocked" }, "vault"))
+                (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "system"))
+                (currentness_status_chip("vault", "Vault", if status.vault.mounted { "Unlocked" } else { "Locked" }, if status.vault.mounted { "good" } else { "warn" }, if status.vault.mounted { "Vault is unlocked" } else { "Vault must be unlocked" }, "system"))
                 (theme_cycle_button())
             }
         }

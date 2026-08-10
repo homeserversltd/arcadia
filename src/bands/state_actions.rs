@@ -16,27 +16,6 @@ impl ButtonVariant {
 }
 
 #[derive(Deserialize)]
-struct GuiPinUnlockRequest {
-    pin: String,
-}
-
-#[derive(Deserialize)]
-struct GuiPinAccessRequest {
-    pin_required: bool,
-}
-
-#[derive(Deserialize)]
-struct PinChangeRequest {
-    current_pin: String,
-    new_pin: String,
-}
-
-#[derive(Deserialize)]
-struct PinResetRequest {
-    confirm: String,
-}
-
-#[derive(Deserialize)]
 struct ProviderKeysRequest {
     steamgriddb_api_key: Option<String>,
     thegamesdb_api_key: Option<String>,
@@ -101,15 +80,6 @@ struct ConsoleActionResponse {
     stderr: String,
 }
 
-#[derive(Serialize)]
-struct GuiPinActionResponse {
-    ok: bool,
-    pin_required: bool,
-    action: &'static str,
-    helper_present: bool,
-    message: String,
-}
-
 #[derive(Deserialize)]
 struct WifiConnectRequest {
     ssid: String,
@@ -120,13 +90,11 @@ struct WifiForgetRequest {
     ssid: String,
 }
 
-
 #[derive(Deserialize)]
 struct HarmoniaModuleToggleRequest {
     module_id: String,
     enabled: bool,
 }
-
 
 #[derive(Deserialize)]
 struct HarmoniaLedgerQuery {

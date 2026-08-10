@@ -55,8 +55,8 @@
             .expect("network view starts");
         let network_end = network_start
             + rendered[network_start..]
-                .find("<section id=\"view-access-pin\"")
-                .expect("access follows network");
+                .find("<section id=\"view-updates\"")
+                .expect("updates follows network");
         let network_html = &rendered[network_start..network_end];
         for required in [
             "Online",

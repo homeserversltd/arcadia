@@ -339,8 +339,8 @@ async fn main() -> anyhow_free::Result<()> {
             "/api/vault/auto-decrypt",
             post(caduceus_vault_auto_decrypt_proxy_route),
         )
-        .route("/api/gui-pin/access", post(set_gui_pin_access))
-        .route("/api/gui-pin/change", post(change_gui_pin))
+        .route("/api/gui-pin/access", post(caduceus_pin_access_route))
+        .route("/api/gui-pin/change", post(caduceus_pin_change_route))
         .route("/api/provider-keys/status", get(provider_keys_status))
         .route("/api/provider-keys/save", post(save_provider_keys))
         .route(
@@ -545,8 +545,7 @@ async fn main() -> anyhow_free::Result<()> {
             "/api/actions/restart-gamescope",
             post(action_restart_gamescope),
         )
-        .route("/api/gui-pin/reset-default", post(reset_gui_pin_default))
-        .route("/pre-unlock", post(pre_unlock))
+        .route("/api/gui-pin/reset-default", post(caduceus_pin_reset_route))
         .route("/static/app.css", get(css))
         .route("/static/indra-observation.js", get(indra_observation_js))
         .route("/static/vendor/chart.umd.min.js", get(vendor_chart_js))

@@ -251,12 +251,7 @@ pub struct VaultStatus {
 #[derive(Clone, Serialize)]
 pub struct GuiPinStatus {
     pub pin_required: bool,
-    pub state_path: &'static str,
-    pub access_helper_present: bool,
-    pub pin_change_helper_present: bool,
-    pub pin_reset_helper_present: bool,
-    pub pin_storage: &'static str,
-    pub default_reset_available: bool,
+    pub authority: &'static str,
 }
 
 #[derive(Clone, Serialize)]

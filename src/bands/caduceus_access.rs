@@ -114,7 +114,11 @@ impl CaduceusAccessClient {
         )
     }
 
-    fn attendance_invalidate(&self, attendance: &AttendanceProof, document: &str) -> AttendanceCall {
+    fn attendance_invalidate(
+        &self,
+        attendance: &AttendanceProof,
+        document: &str,
+    ) -> AttendanceCall {
         self.call(
             AttendanceOperation::Invalidate,
             serde_json::json!({"attendance": attendance.expose(), "documentId": document, "documentIncarnation": document}),
@@ -179,18 +183,28 @@ fn attendance_io_code(stage: &str, error: &std::io::Error) -> &'static str {
         std::io::ErrorKind::ConnectionRefused if stage == "connect" => {
             "caduceus-attendance-connect-refused"
         }
-        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => "caduceus-attendance-timeout",
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => {
+            "caduceus-attendance-timeout"
+        }
         _ if stage == "connect" => "caduceus-attendance-connect-failed",
         _ => "caduceus-attendance-write-failed",
     }
 }
 
-fn parse_attendance_response(operation: AttendanceOperation, stream: &mut TcpStream) -> AttendanceCall {
+fn parse_attendance_response(
+    operation: AttendanceOperation,
+    stream: &mut TcpStream,
+) -> AttendanceCall {
     use std::io::{BufRead, BufReader, Read};
 
     let mut reader = BufReader::new(stream);
     let mut status_line = String::new();
-    if reader.read_line(&mut status_line).ok().filter(|bytes| *bytes > 0).is_none() {
+    if reader
+        .read_line(&mut status_line)
+        .ok()
+        .filter(|bytes| *bytes > 0)
+        .is_none()
+    {
         return AttendanceCall::refused(0, "caduceus-attendance-bad-receipt");
     }
     let status = status_line
@@ -224,7 +238,9 @@ fn parse_attendance_response(operation: AttendanceOperation, stream: &mut TcpStr
             }
         }
     }
-    let Some(content_length) = content_length.filter(|length| *length <= CADUCEUS_ACCESS_MAX_RESPONSE) else {
+    let Some(content_length) =
+        content_length.filter(|length| *length <= CADUCEUS_ACCESS_MAX_RESPONSE)
+    else {
         return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
     };
     let mut body = vec![0; content_length];
@@ -237,12 +253,19 @@ fn parse_attendance_response(operation: AttendanceOperation, stream: &mut TcpStr
     let Some(object) = value.as_object() else {
         return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
     };
-    let ok = object.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let ok = object
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     let code = object
         .get("code")
         .or_else(|| object.get("firstMissingSignal"))
         .and_then(serde_json::Value::as_str)
-        .unwrap_or(if ok { "none" } else { "caduceus-attendance-refused" });
+        .unwrap_or(if ok {
+            "none"
+        } else {
+            "caduceus-attendance-refused"
+        });
     if !(200..300).contains(&status) || !ok {
         return AttendanceCall::refused(status, code);
     }
@@ -294,17 +317,26 @@ fn json_content_type(headers: &axum::http::HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split(';').next())
         .map(str::trim)
-        .is_some_and(|value| value.eq_ignore_ascii_case("application/json") || value.to_ascii_lowercase().ends_with("+json"))
+        .is_some_and(|value| {
+            value.eq_ignore_ascii_case("application/json")
+                || value.to_ascii_lowercase().ends_with("+json")
+        })
 }
 
 fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {
-    let Some(origin) = headers.get(header::ORIGIN).and_then(|value| value.to_str().ok()) else {
+    let Some(origin) = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+    else {
         return false;
     };
     let Some((scheme, authority)) = origin.split_once("://") else {
         return false;
     };
-    if !matches!(scheme, "http" | "https") || authority.is_empty() || authority.contains(['/', '?', '#', '@']) {
+    if !matches!(scheme, "http" | "https")
+        || authority.is_empty()
+        || authority.contains(['/', '?', '#', '@'])
+    {
         return false;
     }
     let host = headers
@@ -313,7 +345,9 @@ fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.split(',').next())
         .map(str::trim);
-    let Some(host) = host else { return false; };
+    let Some(host) = host else {
+        return false;
+    };
     let normalized_origin = normalized_authority(authority, scheme);
     let normalized_host = normalized_authority(host, scheme);
     if normalized_origin.is_none() || normalized_origin != normalized_host {
@@ -393,16 +427,29 @@ async fn caduceus_attendance_open_route(
         return attendance_refusal(StatusCode::FORBIDDEN, "caduceus-attendance-origin-refused");
     }
     if !json_content_type(&headers) || body.len() > CADUCEUS_ACCESS_MAX_REQUEST {
-        return attendance_refusal(StatusCode::BAD_REQUEST, "caduceus-attendance-request-invalid");
+        return attendance_refusal(
+            StatusCode::BAD_REQUEST,
+            "caduceus-attendance-request-invalid",
+        );
     }
     let Ok(body) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return attendance_refusal(StatusCode::BAD_REQUEST, "caduceus-attendance-request-invalid");
+        return attendance_refusal(
+            StatusCode::BAD_REQUEST,
+            "caduceus-attendance-request-invalid",
+        );
     };
-    let Some(pin) = body.get("pin").and_then(serde_json::Value::as_str).filter(|pin| !pin.is_empty() && pin.len() <= 256) else {
+    let Some(pin) = body
+        .get("pin")
+        .and_then(serde_json::Value::as_str)
+        .filter(|pin| !pin.is_empty() && pin.len() <= 256)
+    else {
         return attendance_refusal(StatusCode::BAD_REQUEST, "caduceus-attendance-pin-required");
     };
     let Some(document) = document_incarnation_from_headers(&headers) else {
-        return attendance_refusal(StatusCode::BAD_REQUEST, "caduceus-attendance-document-required");
+        return attendance_refusal(
+            StatusCode::BAD_REQUEST,
+            "caduceus-attendance-document-required",
+        );
     };
     let call = CaduceusAccessClient::default().attendance_open(pin, &document);
     let status = attendance_failure_status(&call);
@@ -411,7 +458,10 @@ async fn caduceus_attendance_open_route(
 
 async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> Response {
     let Some(document) = document_incarnation_from_headers(&headers) else {
-        return attendance_refusal(StatusCode::BAD_REQUEST, "caduceus-attendance-document-required");
+        return attendance_refusal(
+            StatusCode::BAD_REQUEST,
+            "caduceus-attendance-document-required",
+        );
     };
     let Some(attendance) = attendance_from_headers(&headers) else {
         return attendance_refusal(StatusCode::UNAUTHORIZED, "caduceus-attendance-required");
@@ -423,7 +473,10 @@ async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> R
 
 async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) -> Response {
     let Some(document) = document_incarnation_from_headers(&headers) else {
-        return attendance_refusal(StatusCode::BAD_REQUEST, "caduceus-attendance-document-required");
+        return attendance_refusal(
+            StatusCode::BAD_REQUEST,
+            "caduceus-attendance-document-required",
+        );
     };
     let Some(attendance) = attendance_from_headers(&headers) else {
         return attendance_refusal(StatusCode::UNAUTHORIZED, "caduceus-attendance-required");
@@ -431,4 +484,173 @@ async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) ->
     let call = CaduceusAccessClient::default().attendance_invalidate(&attendance, &document);
     let status = attendance_failure_status(&call);
     (status, Json(attendance_projection(call))).into_response()
+}
+
+// Caduceus keeps custody of every administrative action. Arcadia validates the
+// current document attendance before forwarding the same document/proof pair to
+// Caduceus; neither value is logged or persisted here.
+fn caduceus_attended_json_call(
+    path: &'static str,
+    headers: &axum::http::HeaderMap,
+    body: serde_json::Value,
+) -> Result<serde_json::Value, AttendanceCall> {
+    let document = document_incarnation_from_headers(headers)
+        .ok_or_else(|| AttendanceCall::refused(400, "caduceus-attendance-document-required"))?;
+    let attendance = attendance_from_headers(headers)
+        .ok_or_else(|| AttendanceCall::refused(401, "caduceus-attendance-required"))?;
+    let client = CaduceusAccessClient::default();
+    let validation = client.attendance_validate(&attendance, &document);
+    if !validation.ok {
+        return Err(validation);
+    }
+    let encoded = serde_json::to_vec(&body)
+        .map_err(|_| AttendanceCall::refused(400, "caduceus-action-request-invalid"))?;
+    if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
+        return Err(AttendanceCall::refused(
+            400,
+            "caduceus-action-request-invalid",
+        ));
+    }
+    let authority = caduceus_loopback_authority(&client.base)
+        .ok_or_else(|| AttendanceCall::refused(503, "caduceus-attendance-base-invalid"))?;
+    let mut stream = TcpStream::connect_timeout(&authority, CADUCEUS_ACCESS_TIMEOUT)
+        .map_err(|error| AttendanceCall::refused(503, attendance_io_code("connect", &error)))?;
+    stream
+        .set_read_timeout(Some(CADUCEUS_ACCESS_TIMEOUT))
+        .and_then(|_| stream.set_write_timeout(Some(CADUCEUS_ACCESS_TIMEOUT)))
+        .map_err(|_| AttendanceCall::refused(503, "caduceus-attendance-socket-config-failed"))?;
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nX-Caduceus-Document: {document}\r\nX-Caduceus-Attendance: {}\r\nContent-Length: {}\r\n\r\n",
+        caduceus_host_header(&client.base), attendance.expose(), encoded.len()
+    );
+    stream
+        .write_all(request.as_bytes())
+        .and_then(|_| stream.write_all(&encoded))
+        .map_err(|_| AttendanceCall::refused(503, "caduceus-attendance-write-failed"))?;
+    use std::io::{BufRead, BufReader, Read};
+    let mut reader = BufReader::new(stream);
+    let mut status_line = String::new();
+    reader
+        .read_line(&mut status_line)
+        .ok()
+        .filter(|count| *count > 0)
+        .ok_or_else(|| AttendanceCall::refused(503, "caduceus-action-bad-receipt"))?;
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(0);
+    let mut content_length = None;
+    let mut header_bytes = 0usize;
+    loop {
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
+        if line.is_empty() {
+            return Err(AttendanceCall::refused(
+                status,
+                "caduceus-action-bad-receipt",
+            ));
+        }
+        header_bytes += line.len();
+        if header_bytes > 4096 {
+            return Err(AttendanceCall::refused(
+                status,
+                "caduceus-action-bad-receipt",
+            ));
+        }
+        if line == "\r\n" {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value.trim().parse::<usize>().ok();
+            }
+        }
+    }
+    let length = content_length
+        .filter(|value| *value <= CADUCEUS_ACCESS_MAX_RESPONSE)
+        .ok_or_else(|| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
+    let mut response = vec![0; length];
+    reader
+        .read_exact(&mut response)
+        .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
+    let value = serde_json::from_slice::<serde_json::Value>(&response)
+        .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
+    let ok = value
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    if !(200..300).contains(&status) || !ok {
+        let code = value
+            .get("code")
+            .or_else(|| value.get("firstMissingSignal"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("caduceus-action-refused");
+        return Err(AttendanceCall::refused(status, code));
+    }
+    Ok(value)
+}
+
+fn caduceus_action_response(result: Result<serde_json::Value, AttendanceCall>) -> Response {
+    match result {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(call) => attendance_refusal(attendance_failure_status(&call), &call.code),
+    }
+}
+
+async fn caduceus_pin_access_route(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    caduceus_action_response(caduceus_attended_json_call(
+        "/api/v1/access/pin/mode",
+        &headers,
+        body,
+    ))
+}
+
+async fn caduceus_pin_change_route(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    caduceus_action_response(caduceus_attended_json_call(
+        "/api/v1/access/pin/change",
+        &headers,
+        body,
+    ))
+}
+
+async fn caduceus_pin_reset_route(
+    headers: axum::http::HeaderMap,
+    Json(_body): Json<serde_json::Value>,
+) -> Response {
+    caduceus_action_response(caduceus_attended_json_call(
+        "/api/v1/access/pin/reset-default",
+        &headers,
+        serde_json::json!({"action":"reset-default"}),
+    ))
+}
+
+async fn caduceus_vault_unlock_route(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    caduceus_action_response(caduceus_attended_json_call(
+        "/api/v1/vault/unlock",
+        &headers,
+        body,
+    ))
+}
+
+async fn caduceus_vault_auto_decrypt_route(
+    headers: axum::http::HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    caduceus_action_response(caduceus_attended_json_call(
+        "/api/v1/vault/auto-decrypt",
+        &headers,
+        body,
+    ))
 }
