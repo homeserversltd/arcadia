@@ -69,6 +69,7 @@ pub struct UpdatesStatus {
 pub struct HarmoniaModuleStatus {
     pub id: String,
     pub label: String,
+    pub description: String,
     pub enabled: bool,
     pub present: bool,
     pub state: String,

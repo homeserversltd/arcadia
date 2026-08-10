@@ -234,7 +234,12 @@ body.modal-fullscreen-open { overflow: hidden; }
 .harmonia-ledger-meta strong { color: var(--cream); font-size: 13px; }
 .harmonia-ledger-meta span { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .harmonia-ledger-list { display: grid; gap: 8px; max-height: min(58vh, 520px); overflow: auto; padding-right: 3px; }
-.harmonia-ledger-row { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 66%, transparent); }
+.harmonia-ledger-row, .harmonia-ledger-run { display: grid; gap: 7px; padding: 9px; border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--theme-field-surface) 66%, transparent); }
+.harmonia-ledger-run > header, .harmonia-ledger-module-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; align-items: start; }
+.harmonia-ledger-run > header > div, .harmonia-ledger-module-row > div { display: grid; gap: 2px; min-width: 0; }
+.harmonia-ledger-modules { display: grid; gap: 5px; }
+.harmonia-ledger-module-row { padding-top: 6px; border-top: 1px solid var(--line); }
+.harmonia-ledger-failure { grid-column: 1 / -1; color: var(--danger); font-size: 11px; overflow-wrap: anywhere; }
 .harmonia-ledger-row > div:first-child { display: grid; gap: 2px; }
 .harmonia-ledger-row strong { color: var(--cream); font-size: 13px; }
 .harmonia-ledger-row span { color: var(--muted); font-size: 11px; }
