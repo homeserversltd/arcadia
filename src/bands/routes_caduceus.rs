@@ -13,12 +13,27 @@ fn caduceus_fetch_json(path: &str) -> Result<serde_json::Value, &'static str> {
     serde_json::from_str(&text).map_err(|_| "caduceus-http-invalid-json")
 }
 
+const CADUCEUS_STAFF_SCHEMA: &str = "caduceus.staff.v1";
+
+fn caduceus_staff_envelope(path: &str, body: serde_json::Value) -> serde_json::Value {
+    let intent_path = path.trim_matches('/').replace('/', ".");
+    let intent_id = format!("arcadia.staff.{intent_path}-{}", uuid::Uuid::new_v4());
+    serde_json::json!({
+        "schema": CADUCEUS_STAFF_SCHEMA,
+        "intent_id": intent_id,
+        "transition": path,
+        "payload": body,
+    })
+}
+
 fn caduceus_post_json_with_timeout(
     path: &str,
     body: &str,
     timeout_seconds: &str,
 ) -> Result<serde_json::Value, &'static str> {
     let url = caduceus_proxy_url(path);
+    let body = caduceus_staff_envelope(path, serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({})));
+    let body = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
     let output = Command::new("curl")
         .args([
             "-sS",
@@ -29,7 +44,7 @@ fn caduceus_post_json_with_timeout(
             "-H",
             "Content-Type: application/json",
             "-d",
-            body,
+            &body,
             &url,
         ])
         .output()
@@ -183,7 +198,7 @@ fn forward_arcadia_debug_reflection(reflection: &serde_json::Value) -> bool {
     let Ok(rendered) = serde_json::to_string(reflection) else {
         return false;
     };
-    caduceus_post_json_with_timeout("/api/v1/hyalos/reflect", &rendered, "2").is_ok()
+    caduceus_post_json_with_timeout("/api/v1/log/reflect", &rendered, "2").is_ok()
 }
 
 async fn arcadia_debug_emit_route(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
@@ -222,19 +237,19 @@ async fn caduceus_health_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_identity_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/identity").await
+    caduceus_json_proxy("/api/v1/appliance/report").await
 }
 
 async fn caduceus_profile_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/profile").await
+    caduceus_json_proxy("/api/v1/appliance/report").await
 }
 
 async fn caduceus_health_api_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/health").await
+    caduceus_json_proxy("/health").await
 }
 
 async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/vault/status").await
+    caduceus_json_proxy("/api/v1/storage/vault/status").await
 }
 async fn caduceus_vault_unlock_proxy_route(
     headers: axum::http::HeaderMap,
@@ -264,13 +279,13 @@ async fn caduceus_update_status_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_cert_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/cert/status").await
+    caduceus_json_proxy("/api/v1/network/cert/status").await
 }
 
 async fn caduceus_cert_trust_fetch_proxy_route(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    caduceus_json_post_proxy("/api/v1/cert/trust-fetch", body)
+    caduceus_json_post_proxy("/api/v1/network/cert/trust", body)
 }
 
 async fn caduceus_cert_trust_install_proxy_route(
@@ -285,7 +300,7 @@ async fn caduceus_cert_trust_install_proxy_route(
             "{\"bundle\":\"/var/lib/caduceus/certs/bundles/homeserver-house-ca-linux.crt\"}"
                 .to_string()
         });
-    match caduceus_post_json("/api/v1/cert/trust-install", &rendered) {
+    match caduceus_post_json("/api/v1/network/cert/trust", &rendered) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -295,7 +310,7 @@ async fn caduceus_cert_trust_install_proxy_route(
             };
             (status, Json(value)).into_response()
         }
-        Err(signal) => caduceus_proxy_error("/api/v1/cert/trust-install", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/network/cert/trust", signal),
     }
 }
 
@@ -330,11 +345,11 @@ async fn caduceus_update_check_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_sync_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/sync/status").await
+    caduceus_json_proxy("/api/v1/update/status").await
 }
 
 async fn caduceus_sync_now_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/sync/now", "{}") {
+    match caduceus_post_json("/api/v1/update/now", "{}") {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -344,12 +359,12 @@ async fn caduceus_sync_now_proxy_route() -> impl IntoResponse {
             };
             (status, Json(value)).into_response()
         }
-        Err(signal) => caduceus_proxy_error("/api/v1/sync/now", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/update/now", signal),
     }
 }
 
 async fn caduceus_receipts_latest_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/receipts/latest").await
+    caduceus_json_proxy("/api/v1/log/receipts").await
 }
 
 async fn caduceus_receipts_ledger_proxy_route(
@@ -357,7 +372,7 @@ async fn caduceus_receipts_ledger_proxy_route(
 ) -> impl IntoResponse {
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 25);
-    let path = format!("/api/v1/receipts/ledger?page={page}&per_page={per_page}");
+    let path = format!("/api/v1/log/receipts?page={page}&per_page={per_page}");
     match caduceus_fetch_json(&path) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error(&path, signal),
@@ -365,7 +380,7 @@ async fn caduceus_receipts_ledger_proxy_route(
 }
 
 async fn caduceus_update_service_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/update/service/status").await
+    caduceus_json_proxy("/api/v1/update/status").await
 }
 
 async fn caduceus_update_service_toggle_proxy_route(
@@ -378,14 +393,14 @@ async fn caduceus_update_service_toggle_proxy_route(
     };
     let rendered =
         serde_json::to_string(&payload).unwrap_or_else(|_| "{\"state\":\"on\"}".to_string());
-    match caduceus_post_json("/api/v1/update/service/toggle", &rendered) {
+    match caduceus_post_json("/api/v1/update/now", &rendered) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
-        Err(signal) => caduceus_proxy_error("/api/v1/update/service/toggle", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/update/now", signal),
     }
 }
 
 async fn caduceus_gui_update_now_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/gui/update/now", "{}") {
+    match caduceus_post_json("/api/v1/update/now", "{}") {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -395,7 +410,7 @@ async fn caduceus_gui_update_now_proxy_route() -> impl IntoResponse {
             };
             (status, Json(value)).into_response()
         }
-        Err(signal) => caduceus_proxy_error("/api/v1/gui/update/now", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/update/now", signal),
     }
 }
 
@@ -404,14 +419,14 @@ async fn caduceus_local_ai_runtime_status_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_local_ai_runtime_check_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/local-ai/runtime/check", "{}") {
+    match caduceus_post_json("/api/v1/doors", "{}") {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
-        Err(signal) => caduceus_proxy_error("/api/v1/local-ai/runtime/check", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/doors", signal),
     }
 }
 
 async fn caduceus_local_ai_runtime_update_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/local-ai/runtime/update", "{}") {
+    match caduceus_post_json("/api/v1/doors", "{}") {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -421,7 +436,7 @@ async fn caduceus_local_ai_runtime_update_proxy_route() -> impl IntoResponse {
             };
             (status, Json(value)).into_response()
         }
-        Err(signal) => caduceus_proxy_error("/api/v1/local-ai/runtime/update", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/doors", signal),
     }
 }
 
@@ -430,7 +445,7 @@ async fn caduceus_profile_module_toggle_proxy_route(
 ) -> impl IntoResponse {
     let rendered = serde_json::to_string(&body)
         .unwrap_or_else(|_| "{\"module_id\":\"\",\"enabled\":false}".to_string());
-    match caduceus_post_json("/api/v1/profile/module/toggle", &rendered) {
+    match caduceus_post_json("/api/v1/doors", &rendered) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -440,7 +455,7 @@ async fn caduceus_profile_module_toggle_proxy_route(
             };
             (status, Json(value)).into_response()
         }
-        Err(signal) => caduceus_proxy_error("/api/v1/profile/module/toggle", signal),
+        Err(signal) => caduceus_proxy_error("/api/v1/doors", signal),
     }
 }
 
@@ -459,7 +474,8 @@ fn run_caduceus_http_mutation(
                 .unwrap_or("")
                 .to_string();
             let signal = value
-                .get("firstMissingSignal")
+                .get("first_missing_signal")
+                .or_else(|| value.get("firstMissingSignal"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -555,7 +571,7 @@ mod arcadia_debug_tests {
 
         let request = captured.lock().unwrap().clone();
         assert!(
-            request.starts_with("POST /api/v1/hyalos/reflect HTTP/1.1"),
+            request.starts_with("POST /api/v1/log/reflect HTTP/1.1"),
             "{request}"
         );
         let body: serde_json::Value =

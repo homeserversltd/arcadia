@@ -22,7 +22,7 @@ async fn gui_pin_status_route() -> Json<GuiPinStatus> {
 async fn ai_runtime_check_update(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    let Ok(value) = caduceus_post_json("/api/v1/local-ai/runtime/check", "{}") else {
+    let Ok(value) = caduceus_post_json("/api/v1/doors", "{}") else {
         return ai_action(
             StatusCode::BAD_GATEWAY,
             &state,
@@ -50,7 +50,7 @@ async fn ai_runtime_check_update(
 async fn ai_runtime_update(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    let Ok(value) = caduceus_post_json("/api/v1/local-ai/runtime/update", "{}") else {
+    let Ok(value) = caduceus_post_json("/api/v1/doors", "{}") else {
         return ai_action(
             StatusCode::BAD_GATEWAY,
             &state,

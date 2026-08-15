@@ -54,9 +54,9 @@ enum AttendanceOperation {
 impl AttendanceOperation {
     fn path(self) -> &'static str {
         match self {
-            Self::Open => "/api/v1/attendance/open",
-            Self::Validate => "/api/v1/attendance/validate",
-            Self::Invalidate => "/api/v1/attendance/invalidate",
+            Self::Open => "/api/v1/admin-admittance/open",
+            Self::Validate => "/api/v1/admin-admittance/validate",
+            Self::Invalidate => "/api/v1/admin-admittance/invalidate",
         }
     }
 
@@ -126,6 +126,7 @@ impl CaduceusAccessClient {
     }
 
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
+        let body = caduceus_staff_envelope(operation.path(), body);
         let Ok(encoded) = serde_json::to_vec(&body) else {
             return AttendanceCall::refused(0, "caduceus-attendance-request-invalid");
         };
@@ -258,8 +259,9 @@ fn parse_attendance_response(
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
     let code = object
-        .get("code")
+        .get("first_missing_signal")
         .or_else(|| object.get("firstMissingSignal"))
+        .or_else(|| object.get("code"))
         .and_then(serde_json::Value::as_str)
         .unwrap_or(if ok {
             "none"
@@ -402,6 +404,7 @@ fn attendance_projection(call: AttendanceCall) -> serde_json::Value {
         "ok": call.ok,
         "admin": call.ok,
         "attendance": call.proof.as_ref().map(AttendanceProof::expose),
+        "first_missing_signal": call.code.clone(),
         "firstMissingSignal": call.code,
     })
 }
@@ -414,6 +417,7 @@ fn attendance_refusal(status: StatusCode, code: &str) -> Response {
             "ok": false,
             "admin": false,
             "firstMissingSignal": safe_access_code(code),
+            "first_missing_signal": safe_access_code(code),
         })),
     )
         .into_response()
@@ -503,6 +507,7 @@ fn caduceus_attended_json_call(
     if !validation.ok {
         return Err(validation);
     }
+    let body = caduceus_staff_envelope(path, body);
     let encoded = serde_json::to_vec(&body)
         .map_err(|_| AttendanceCall::refused(400, "caduceus-action-request-invalid"))?;
     if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
@@ -584,8 +589,9 @@ fn caduceus_attended_json_call(
         .unwrap_or(false);
     if !(200..300).contains(&status) || !ok {
         let code = value
-            .get("code")
+            .get("first_missing_signal")
             .or_else(|| value.get("firstMissingSignal"))
+            .or_else(|| value.get("code"))
             .and_then(serde_json::Value::as_str)
             .unwrap_or("caduceus-action-refused");
         return Err(AttendanceCall::refused(status, code));
@@ -605,7 +611,7 @@ async fn caduceus_pin_access_route(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/access/pin/mode",
+        "/api/v1/admin-admittance/change-pin",
         &headers,
         body,
     ))
@@ -616,7 +622,7 @@ async fn caduceus_pin_change_route(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/access/pin/change",
+        "/api/v1/admin-admittance/change-pin",
         &headers,
         body,
     ))
@@ -627,7 +633,7 @@ async fn caduceus_pin_reset_route(
     Json(_body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/access/pin/reset-default",
+        "/api/v1/admin-admittance/change-pin",
         &headers,
         serde_json::json!({"action":"reset-default"}),
     ))
@@ -638,7 +644,7 @@ async fn caduceus_vault_unlock_route(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/vault/unlock",
+        "/api/v1/storage/vault/unlock",
         &headers,
         body,
     ))
@@ -649,7 +655,7 @@ async fn caduceus_vault_auto_decrypt_route(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/vault/auto-decrypt",
+        "/api/v1/storage/vault/auto-decrypt",
         &headers,
         body,
     ))

@@ -124,7 +124,7 @@ async fn action_set_trust_mode(
 async fn action_update_gui() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_caduceus_http_mutation(
         "update-gui",
-        "/api/v1/gui/update/now",
+        "/api/v1/update/now",
         "Update GUI started. Read /var/lib/harmonia/receipts/arcadia-gui-latest after Arcadia restarts.",
         "Update GUI could not start.",
     )
@@ -158,7 +158,7 @@ async fn action_harmonia_module_toggle(
         "enabled": body.enabled,
     });
     let rendered = serde_json::to_string(&payload).unwrap_or_default();
-    let Ok(value) = caduceus_post_json("/api/v1/profile/module/toggle", &rendered) else {
+    let Ok(value) = caduceus_post_json("/api/v1/doors", &rendered) else {
         return harmonia_module_toggle_response(
             StatusCode::BAD_GATEWAY,
             false,
@@ -228,7 +228,7 @@ async fn harmonia_ledger_route(
 ) -> (StatusCode, Json<HarmoniaLedgerResponse>) {
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 25);
-    let path = format!("/api/v1/receipts/ledger?page={page}&per_page={per_page}");
+    let path = format!("/api/v1/log/receipts?page={page}&per_page={per_page}");
     let Ok(value) = caduceus_fetch_json(&path) else {
         return (
             StatusCode::BAD_GATEWAY,
@@ -350,7 +350,7 @@ fn redact_json_value(value: &mut serde_json::Value) {
 async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_caduceus_http_mutation(
         "sync-games",
-        "/api/v1/sync/now",
+        "/api/v1/update/now",
         "Games synced. Receipt ready.",
         "Sync failed. Open the ledger for the reason and fix action.",
     )
@@ -381,7 +381,7 @@ struct SyncLedgerEntry {
 }
 
 async fn sync_ledger_route() -> (StatusCode, Json<SyncLedgerResponse>) {
-    const PATH: &str = "/api/v1/hyalos/tail?kind=sync-run&count=100";
+    const PATH: &str = "/api/v1/log/tail?kind=sync-run&count=100";
     let value = match caduceus_fetch_json(PATH) {
         Ok(value) => value,
         Err(signal) => return (StatusCode::SERVICE_UNAVAILABLE, Json(SyncLedgerResponse {

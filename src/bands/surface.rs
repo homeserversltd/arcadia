@@ -420,7 +420,7 @@ fn format_duration(total_seconds: u64) -> String {
 }
 
 fn vault_status() -> VaultStatus {
-    match caduceus_fetch_json("/api/v1/vault/status") {
+    match caduceus_fetch_json("/api/v1/storage/vault/status") {
         Ok(value) => VaultStatus {
             mounted: value
                 .get("mounted")
