@@ -191,7 +191,7 @@ impl ArcadiaHyalosLayer {
         let _ = std::thread::Builder::new()
             .name("arcadia-hyalos".to_string())
             .spawn(move || {
-                let _ = caduceus_post_json_with_timeout("/api/v1/hyalos/reflect", &body, "2");
+                let _ = caduceus_post_json_with_timeout("/api/v1/log/reflect", &body, "2");
             });
     }
 }
@@ -382,15 +382,15 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/system/trust/mode", post(action_set_trust_mode))
         .route("/api/actions/restart-arcadia", post(action_restart_arcadia))
         .route(
-            "/api/v1/attendance/open",
+            "/api/v1/admin-admittance/open",
             post(caduceus_attendance_open_route).layer(DefaultBodyLimit::max(4 * 1024)),
         )
         .route(
-            "/api/v1/attendance/validate",
+            "/api/v1/admin-admittance/validate",
             post(caduceus_attendance_validate_route),
         )
         .route(
-            "/api/v1/attendance/invalidate",
+            "/api/v1/admin-admittance/invalidate",
             post(caduceus_attendance_invalidate_route),
         )
         .route("/api/gui-pin/status", get(gui_pin_status_route))
