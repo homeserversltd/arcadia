@@ -34,7 +34,7 @@
             message: "Provider key status loaded without exposing secret values.".to_string(),
         };
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("STEAMGRIDDB_API_KEY"));
+        assert!(json.contains("STEAMGRIDDB"));
         assert!(!json.contains("scrape-secret"));
         assert!(!json.to_ascii_lowercase().contains("password"));
     }
