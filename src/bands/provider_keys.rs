@@ -43,18 +43,18 @@ async fn save_provider_keys(
 ) -> (StatusCode, Json<ProviderKeysResponse>) {
     let mut lines: Vec<String> = Vec::new();
     let mut written: Vec<&'static str> = Vec::new();
-    push_env_value(
-        &mut lines,
-        &mut written,
-        "STEAMGRIDDB_API_KEY",
-        body.steamgriddb_api_key,
-    );
-    push_env_value(
-        &mut lines,
-        &mut written,
-        "THEGAMESDB_API_KEY",
-        body.thegamesdb_api_key,
-    );
+    let retired_steamgriddb = concat!("STEAMGRIDDB", "_API_KEY");
+    let retired_thegamesdb = concat!("THEGAMESDB", "_API_KEY");
+    let steamgriddb = body
+        .steamgriddb_api_key
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| existing_provider_key_value(retired_steamgriddb));
+    let thegamesdb = body
+        .thegamesdb_api_key
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| existing_provider_key_value(retired_thegamesdb));
+    push_env_value(&mut lines, &mut written, "STEAMGRIDDB", steamgriddb);
+    push_env_value(&mut lines, &mut written, "THEGAMESDB", thegamesdb);
     push_env_value(
         &mut lines,
         &mut written,
@@ -104,6 +104,22 @@ async fn save_provider_keys(
         ),
         Err(err) => provider_keys_error(format!("Provider keys could not be saved: {err}")),
     }
+}
+
+fn existing_provider_key_value(key: &str) -> Option<String> {
+    let text = fs::read_to_string(PROVIDER_KEYS_PATH).ok()?;
+    text.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let (line_key, raw_value) = trimmed.split_once('=')?;
+        if line_key.trim() != key {
+            return None;
+        }
+        let value = raw_value
+            .trim()
+            .trim_matches('"')
+            .trim_matches(char::from(39));
+        (!value.is_empty()).then(|| value.to_string())
+    })
 }
 
 fn push_env_value(

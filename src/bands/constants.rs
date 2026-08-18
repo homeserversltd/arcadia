@@ -8,8 +8,8 @@ const THEME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.css"));
 const THEME_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.js"));
 const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
 const PROVIDER_KEY_NAMES: [(&str, &str); 3] = [
-    ("steamgriddb", "STEAMGRIDDB_API_KEY"),
-    ("thegamesdb", "THEGAMESDB_API_KEY"),
+    ("steamgriddb", "STEAMGRIDDB"),
+    ("thegamesdb", "THEGAMESDB"),
     ("screenscraper", "SCREENSCRAPER_API_KEY"),
 ];
 const CADUCEUS_BIN: &str = "/usr/local/bin/caduceus";
