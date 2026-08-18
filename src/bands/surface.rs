@@ -445,8 +445,12 @@ fn vault_status() -> VaultStatus {
 }
 
 fn gui_pin_status() -> GuiPinStatus {
+    let pin_required = caduceus_fetch_json("/api/v1/access/pin/mode")
+        .ok()
+        .and_then(|value| value.get("pin_required").and_then(|item| item.as_bool()))
+        .unwrap_or(false);
     GuiPinStatus {
-        pin_required: true,
+        pin_required,
         authority: "caduceus-attendance",
     }
 }
