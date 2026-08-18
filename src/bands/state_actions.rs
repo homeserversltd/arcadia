@@ -16,38 +16,6 @@ impl ButtonVariant {
 }
 
 #[derive(Deserialize)]
-struct ProviderKeysRequest {
-    steamgriddb_api_key: Option<String>,
-    thegamesdb_api_key: Option<String>,
-    screenscraper_api_key: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ProviderKeyStatus {
-    id: &'static str,
-    env_key: &'static str,
-    configured: bool,
-}
-
-#[derive(Serialize)]
-struct ProviderKeysStatusResponse {
-    ok: bool,
-    action: &'static str,
-    path: &'static str,
-    providers: Vec<ProviderKeyStatus>,
-    message: String,
-}
-
-#[derive(Serialize)]
-struct ProviderKeysResponse {
-    ok: bool,
-    action: &'static str,
-    path: &'static str,
-    written_keys: Vec<&'static str>,
-    message: String,
-}
-
-#[derive(Deserialize)]
 struct ConsoleActionRequest {
     confirm: Option<String>,
 }

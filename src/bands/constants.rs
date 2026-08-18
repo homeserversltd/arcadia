@@ -6,12 +6,6 @@ const INDRA_OBSERVATION_JS: &str = include_str!("../../static/indra-observation.
 const VENDOR_CHART_JS: &str = include_str!("../../static/vendor/chart.umd.min.js");
 const THEME_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.css"));
 const THEME_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/themes.js"));
-const PROVIDER_KEYS_PATH: &str = "/etc/arch-game-sync/providers.env";
-const PROVIDER_KEY_NAMES: [(&str, &str); 3] = [
-    ("steamgriddb", "STEAMGRIDDB"),
-    ("thegamesdb", "THEGAMESDB"),
-    ("screenscraper", "SCREENSCRAPER_API_KEY"),
-];
 const CADUCEUS_BIN: &str = "/usr/local/bin/caduceus";
 const CADUCEUS_HTTP_BASE: &str = "http://127.0.0.1:8787";
 const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
