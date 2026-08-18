@@ -350,7 +350,7 @@ fn redact_json_value(value: &mut serde_json::Value) {
 async fn action_sync_games() -> (StatusCode, Json<ConsoleActionResponse>) {
     run_caduceus_http_mutation(
         "sync-games",
-        "/api/v1/update/now",
+        "/api/v1/games/sync",
         "Games synced. Receipt ready.",
         "Sync failed. Open the ledger for the reason and fix action.",
     )
