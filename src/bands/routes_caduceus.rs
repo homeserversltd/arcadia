@@ -253,6 +253,7 @@ async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
         (
             StatusCode::OK,
             Json(serde_json::json!({
+                "present": false,
                 "mounted": false,
                 "auto_decrypt_enabled": false,
                 "unlock_required": false,
@@ -262,6 +263,7 @@ async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
     };
     match caduceus_fetch_json("/api/v1/storage/vault/status") {
         Ok(value) => {
+            let present = value.get("present").and_then(|item| item.as_bool()).unwrap_or(false);
             let Some(mounted) = value.get("mounted").and_then(|item| item.as_bool()) else {
                 return fallback();
             };
@@ -274,9 +276,10 @@ async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
+                    "present": present,
                     "mounted": mounted,
                     "auto_decrypt_enabled": auto_decrypt_enabled,
-                    "unlock_required": !mounted && !auto_decrypt_enabled,
+                    "unlock_required": present && !mounted && !auto_decrypt_enabled,
                 })),
             )
                 .into_response()
