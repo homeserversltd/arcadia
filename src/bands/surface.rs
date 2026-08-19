@@ -420,26 +420,36 @@ fn format_duration(total_seconds: u64) -> String {
 }
 
 fn vault_status() -> VaultStatus {
+    let fallback = || VaultStatus {
+        present: false,
+        mounted: false,
+        auto_decrypt_enabled: false,
+        unlock_required: false,
+    };
     match caduceus_fetch_json("/api/v1/storage/vault/status") {
-        Ok(value) => VaultStatus {
-            mounted: value
-                .get("mounted")
-                .and_then(|item| item.as_bool())
-                .unwrap_or(false),
-            auto_decrypt_enabled: value
+        Ok(value) => {
+            let present = value.get("present").and_then(|item| item.as_bool()).unwrap_or(false);
+            let Some(mounted) = value.get("mounted").and_then(|item| item.as_bool()) else {
+                tracing::warn!("Caduceus vault status malformed; opening Arcadia");
+                return fallback();
+            };
+            let Some(auto_decrypt_enabled) = value
                 .get("auto_decrypt_enabled")
                 .and_then(|item| item.as_bool())
-                .unwrap_or(false),
-        },
-        Err(signal) => {
-            tracing::warn!(
-                signal,
-                "Caduceus vault status unavailable; keeping Arcadia closed"
-            );
+            else {
+                tracing::warn!("Caduceus vault status malformed; opening Arcadia");
+                return fallback();
+            };
             VaultStatus {
-                mounted: false,
-                auto_decrypt_enabled: false,
+                present,
+                mounted,
+                auto_decrypt_enabled,
+                unlock_required: present && !mounted && !auto_decrypt_enabled,
             }
+        }
+        Err(signal) => {
+            tracing::warn!(signal, "Caduceus vault status unavailable; opening Arcadia");
+            fallback()
         }
     }
 }

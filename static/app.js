@@ -267,19 +267,30 @@ function setVaultIndicator(mounted) {
   });
 }
 
-function renderVaultMode({ mounted, auto_decrypt_enabled: autoDecrypt }) {
-  document.body.dataset.vaultMounted = String(Boolean(mounted));
-  document.body.classList.toggle('vault-open', Boolean(mounted));
+function validatedVaultStatus(value) {
+  const present = value?.present === true;
+  if (!value || typeof value.mounted !== 'boolean' || typeof value.auto_decrypt_enabled !== 'boolean' || typeof value.unlock_required !== 'boolean' || value.unlock_required !== (present && !value.mounted && !value.auto_decrypt_enabled)) return null;
+  return { ...value, present };
+}
+
+function renderVaultMode({ mounted, auto_decrypt_enabled: autoDecrypt, unlock_required: unlockRequired }) {
+  document.body.dataset.vaultMounted = String(mounted);
+  document.body.dataset.vaultUnlockRequired = String(unlockRequired);
+  document.body.classList.toggle('vault-open', mounted);
   updateArcadiaShellVisibility();
-  setVaultIndicator(Boolean(mounted));
-  document.querySelectorAll('[data-vault-auto-decrypt-toggle]').forEach((toggle) => { toggle.checked = Boolean(autoDecrypt); });
+  setVaultIndicator(mounted);
+  document.querySelectorAll('[data-vault-auto-decrypt-toggle]').forEach((toggle) => { toggle.checked = autoDecrypt; });
   document.querySelectorAll('[data-vault-mode-label]').forEach((node) => { node.textContent = mounted ? 'Unlocked' : 'Locked'; });
   document.querySelectorAll('[data-vault-mode-copy]').forEach((node) => { node.textContent = autoDecrypt ? 'Automatically decrypts when the console starts.' : 'Unlock required after the console starts.'; });
 }
 
 async function initializeVaultGate() {
-  try { renderVaultMode(await checkVaultStatus()); }
-  catch (_) { renderVaultMode({ mounted: false, auto_decrypt_enabled: false }); PopupManager.showToast('Vault custody is unavailable. HomeConsole remains closed.', 'error'); }
+  try {
+    const status = validatedVaultStatus(await checkVaultStatus());
+    renderVaultMode(status || { present: false, mounted: false, auto_decrypt_enabled: false, unlock_required: false });
+  } catch (_) {
+    renderVaultMode({ present: false, mounted: false, auto_decrypt_enabled: false, unlock_required: false });
+  }
 }
 
 function bindVaultUnlockForm(id, messageId) {
@@ -296,7 +307,7 @@ function bindVaultUnlockForm(id, messageId) {
     try {
       const data = await postJson('/api/vault/unlock', { password: input.value });
       input.value = '';
-      if (data.success) { renderVaultMode({ mounted: true, auto_decrypt_enabled: document.querySelector('[data-vault-auto-decrypt-toggle]')?.checked ?? true }); PopupManager.showToast(data.message || 'Vault unlocked', 'success'); }
+      if (data.success) { renderVaultMode({ present: true, mounted: true, auto_decrypt_enabled: document.querySelector('[data-vault-auto-decrypt-toggle]')?.checked ?? true, unlock_required: false }); PopupManager.showToast(data.message || 'Vault unlocked', 'success'); }
       else if (message) { message.textContent = data.message || 'Vault could not be unlocked.'; message.hidden = false; }
     } catch (_) { input.value = ''; if (message) { message.textContent = 'Vault unlock request failed.'; message.hidden = false; } }
     finally { button.disabled = false; button.textContent = 'Unlock Vault'; }
@@ -310,7 +321,7 @@ function bindVaultAccess() {
       toggle.disabled = true;
       try {
         const data = await postJson('/api/vault/auto-decrypt', { enabled });
-        if (data.success) { renderVaultMode({ mounted: document.body.dataset.vaultMounted !== 'false', auto_decrypt_enabled: Boolean(data.auto_decrypt_enabled) }); PopupManager.showToast(data.message || 'Vault startup setting saved', 'success'); }
+        if (data.success) { await initializeVaultGate(); PopupManager.showToast(data.message || 'Vault startup setting saved', 'success'); }
         else { toggle.checked = !enabled; PopupManager.showToast(data.message || 'Vault startup setting not saved', 'error'); }
       } catch (_) { toggle.checked = !enabled; PopupManager.showToast('Vault startup request failed.', 'error'); }
       finally { toggle.disabled = false; }
@@ -351,8 +362,8 @@ function invalidateCaduceusAttendance() {
 }
 
 function updateArcadiaShellVisibility() {
-  const vaultMounted = document.body.dataset.vaultMounted !== 'false';
-  document.getElementById('app')?.toggleAttribute('aria-hidden', !caduceusAttendance || !vaultMounted);
+  const vaultUnlockRequired = document.body.dataset.vaultUnlockRequired === 'true';
+  document.getElementById('app')?.toggleAttribute('aria-hidden', !caduceusAttendance || vaultUnlockRequired);
   document.querySelectorAll('[data-admin-projection]').forEach((node) => { node.textContent = caduceusAttendance ? 'Admin' : 'Guest'; });
 }
 

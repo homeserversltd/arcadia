@@ -249,7 +249,43 @@ async fn caduceus_health_api_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/storage/vault/status").await
+    let fallback = || {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "present": false,
+                "mounted": false,
+                "auto_decrypt_enabled": false,
+                "unlock_required": false,
+            })),
+        )
+            .into_response()
+    };
+    match caduceus_fetch_json("/api/v1/storage/vault/status") {
+        Ok(value) => {
+            let present = value.get("present").and_then(|item| item.as_bool()).unwrap_or(false);
+            let Some(mounted) = value.get("mounted").and_then(|item| item.as_bool()) else {
+                return fallback();
+            };
+            let Some(auto_decrypt_enabled) = value
+                .get("auto_decrypt_enabled")
+                .and_then(|item| item.as_bool())
+            else {
+                return fallback();
+            };
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "present": present,
+                    "mounted": mounted,
+                    "auto_decrypt_enabled": auto_decrypt_enabled,
+                    "unlock_required": present && !mounted && !auto_decrypt_enabled,
+                })),
+            )
+                .into_response()
+        }
+        Err(_) => fallback(),
+    }
 }
 async fn caduceus_vault_unlock_proxy_route(
     headers: axum::http::HeaderMap,
