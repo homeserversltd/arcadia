@@ -39,7 +39,7 @@ fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
 }
 
 fn vault_unlock_gate(status: &ConsoleStatus) -> Markup {
-    html! { section id="vault-unlock-gate" class="vault-auth-container" data-required=(!status.vault.mounted) { article class="vault-auth-card" { div class="product-mark" { "H" } h1 { "HomeConsole" } h2 { "Vault" } p { "Unlock the vault to continue to HomeConsole." } form id="vault-unlock-form" class="settings-form" autocomplete="off" { input class="field field--vault-password" type="password" name="password" placeholder="Vault password" autocomplete="current-password" autofocus; div id="vault-auth-error" class="message message--error" hidden {} button class="btn btn--primary" type="submit" { "Unlock Vault" } } } } }
+    html! { section id="vault-unlock-gate" class="vault-auth-container" data-required=(status.vault.unlock_required) { article class="vault-auth-card" { div class="product-mark" { "H" } h1 { "HomeConsole" } h2 { "Vault" } p { "Unlock the vault to continue to HomeConsole." } form id="vault-unlock-form" class="settings-form" autocomplete="off" { input class="field field--vault-password" type="password" name="password" placeholder="Vault password" autocomplete="current-password" autofocus; div id="vault-auth-error" class="message message--error" hidden {} button class="btn btn--primary" type="submit" { "Unlock Vault" } } } } }
 }
 
 fn theme_boot_script() -> PreEscaped<&'static str> {

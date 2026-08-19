@@ -246,6 +246,7 @@ pub struct UiContract {
 pub struct VaultStatus {
     pub mounted: bool,
     pub auto_decrypt_enabled: bool,
+    pub unlock_required: bool,
 }
 
 #[derive(Clone, Serialize)]

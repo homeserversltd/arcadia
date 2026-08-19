@@ -40,7 +40,7 @@ pub fn layout(status: &ConsoleStatus) -> Markup {
                 script { (theme_boot_script()) }
                 link rel="stylesheet" href="/static/app.css";
             }
-            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required="true" data-vault-mounted=(status.vault.mounted) {
+            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required="true" data-vault-unlock-required=(status.vault.unlock_required) {
                 (gui_pin_gate(status))
                 (vault_unlock_gate(status))
                 div id="app" class="app-shell" aria-hidden="true" {
