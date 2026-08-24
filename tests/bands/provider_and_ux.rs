@@ -55,6 +55,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -105,6 +106,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
 
@@ -134,6 +136,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
         let css_bundle = format!("{}\n{}\n{}\n{}", THEME_CSS, UX_CSS, APP_CSS, VIEWPORT_CSS);
@@ -178,6 +181,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
 
@@ -216,6 +220,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
         assert!(!rendered.contains("gui-pin-access-message"));
@@ -227,7 +232,7 @@
 
     #[test]
     fn system_view_contains_the_single_access_section() {
-        let state = AppState { started_unix: 0, canonical_url: "http://console.example.com/".to_string(), product: "HomeConsole".to_string() };
+        let state = AppState { started_unix: 0, canonical_url: "http://console.example.com/".to_string(), product: "HomeConsole".to_string(), living: Arc::new(ArcadiaLivingMachine::new()) };
         let rendered = ui::layout(&console_status(&state)).into_string();
         let system_start = rendered.find("<section id=\"view-system\"").expect("system view starts");
         let system_html = &rendered[system_start..];

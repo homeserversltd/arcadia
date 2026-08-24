@@ -139,13 +139,16 @@ fn ai_action(
     action: &'static str,
     message: &str,
 ) -> (StatusCode, Json<AIActionResponse>) {
+    if ok {
+        state.request_living_refresh();
+    }
     (
         status,
         Json(AIActionResponse {
             ok,
             action,
             message: message.to_string(),
-            state: local_ai_state(state),
+            state: state.living_snapshot().ai.clone(),
         }),
     )
 }

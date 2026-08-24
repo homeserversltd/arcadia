@@ -274,6 +274,35 @@ async fn main() -> anyhow_free::Result<()> {
             }
         }),
         product: "HomeConsole".to_string(),
+        living: Arc::new(ArcadiaLivingMachine::new()),
+    });
+    // One independent held-state machine owns all appliance reads. GET/SSE paths
+    // only clone this document; fast facts and expensive scans share one cadence
+    // contract here until their refresh work is split into separate workers.
+    refresh_living_state(&state);
+    let refresh_state = state.clone();
+    let input_state = state.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval_at(
+            tokio::time::Instant::now() + Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS),
+            Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS),
+        );
+        loop {
+            tick.tick().await;
+            let state = input_state.clone();
+            let _ = tokio::task::spawn_blocking(move || refresh_controller_input(&state)).await;
+        }
+    });
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval_at(
+            tokio::time::Instant::now() + Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
+            Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
+        );
+        loop {
+            tick.tick().await;
+            let state = refresh_state.clone();
+            let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state)).await;
+        }
     });
 
     let app = Router::new()
@@ -290,7 +319,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/benchmark/sample", post(benchmark_sample_route))
         .route("/api/storage/state", get(storage_state_route))
         .route("/api/storage/summary", get(storage_summary_route))
-        .route("/api/storage/rescan-summary", post(storage_summary_route))
+        .route(
+            "/api/storage/rescan-summary",
+            post(storage_summary_rescan_route),
+        )
         .route("/api/storage/registry", get(storage_registry_route))
         .route("/api/storage/rescan", post(storage_rescan_route))
         .route(
@@ -299,7 +331,7 @@ async fn main() -> anyhow_free::Result<()> {
         )
         .route(
             "/api/storage/category/:category/rescan",
-            post(storage_category_route),
+            post(storage_category_rescan_route),
         )
         .route(
             "/api/storage/rescan-folder",
@@ -338,7 +370,7 @@ async fn main() -> anyhow_free::Result<()> {
         )
         .route(
             "/api/storage/games/:platform/rescan",
-            post(storage_game_platform_route),
+            post(storage_game_platform_rescan_route),
         )
         .route("/api/storage/artwork", get(storage_artwork_route))
         .route("/api/storage/ai-models", get(storage_ai_models_route))

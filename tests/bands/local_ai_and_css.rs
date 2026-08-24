@@ -4,6 +4,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let payload = local_ai_state(&state);
         let json = serde_json::to_string(&payload).expect("local ai state serializes");
@@ -28,6 +29,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -187,6 +189,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -220,6 +223,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let idle = recovery_status_for_receiver_only_by_id(
             "usb-8BitDo_IDLE_2D377104CC-hidraw",
@@ -296,6 +300,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.controllers.recovery.state = "connected".to_string();
@@ -317,6 +322,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.controllers.live_input.pressed.push(ControllerBindingStatus {
@@ -640,6 +646,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
 
@@ -677,6 +684,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let rendered = ui::layout(&console_status(&state)).into_string();
         let panel_start = rendered.find("data-controller-mapping-major=\"control\"").expect("control-major mapping panel rendered");

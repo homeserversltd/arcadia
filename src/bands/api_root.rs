@@ -1,3 +1,153 @@
+#[derive(Clone)]
+struct ArcadiaLivingState {
+    generated_at_unix: u64,
+    status: ConsoleStatus,
+    network: NetworkState,
+    ai: LocalAIState,
+    controllers: ControllerStatus,
+    controller_input: ControllerInputStatus,
+    system: SystemAdminStatus,
+    storage: StorageStatus,
+    root: ApiRootObject,
+    telemetry_root: ApiRootObject,
+    document: ApiLivingStateDocument,
+}
+
+const FAST_FACTS_CADENCE_SECONDS: u64 = 5;
+const EXPENSIVE_STORAGE_SCAN_CADENCE_SECONDS: u64 = 30;
+
+struct ArcadiaLivingMachine {
+    snapshot: Mutex<Option<Arc<ArcadiaLivingState>>>,
+    last_expensive_scan_unix: AtomicU64,
+    refresh_requested: std::sync::atomic::AtomicBool,
+}
+
+impl ArcadiaLivingMachine {
+    fn new() -> Self {
+        Self {
+            snapshot: Mutex::new(None),
+            last_expensive_scan_unix: AtomicU64::new(0),
+            refresh_requested: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+    fn snapshot(&self) -> Arc<ArcadiaLivingState> {
+        self.snapshot
+            .lock()
+            .expect("Arcadia living state lock poisoned")
+            .clone()
+            .expect("Arcadia living state not initialized")
+    }
+    fn request_refresh(&self) {
+        self.refresh_requested.store(true, Ordering::Release);
+    }
+    fn expensive_scan_due(&self) -> bool {
+        if self.refresh_requested.swap(false, Ordering::AcqRel) {
+            return true;
+        }
+        now_unix_seconds().saturating_sub(self.last_expensive_scan_unix.load(Ordering::Acquire))
+            >= EXPENSIVE_STORAGE_SCAN_CADENCE_SECONDS
+    }
+    fn publish(&self, snapshot: Arc<ArcadiaLivingState>, expensive: bool) {
+        if expensive {
+            self.last_expensive_scan_unix.store(now_unix_seconds(), Ordering::Release);
+        }
+        let mut guard = self.snapshot.lock().expect("Arcadia living state lock poisoned");
+        let mut snapshot = (*snapshot).clone();
+        if let Some(current) = guard.as_ref() {
+            let input = current.controller_input.clone();
+            snapshot.controller_input = input.clone();
+            snapshot.controllers.live_input = input.clone();
+            snapshot.status.controllers.live_input = input.clone();
+            snapshot.document.controllers.live_input = input.clone();
+            snapshot.document.status.controllers.live_input = input;
+        }
+        *guard = Some(Arc::new(snapshot));
+    }
+    fn publish_controller_input(&self, input: ControllerInputStatus) {
+        let mut guard = self.snapshot.lock().expect("Arcadia living state lock poisoned");
+        let Some(current) = guard.as_ref() else { return; };
+        let mut next = (**current).clone();
+        next.controller_input = input.clone();
+        next.controllers.live_input = input.clone();
+        next.status.controllers.live_input = input.clone();
+        next.document.controllers.live_input = input.clone();
+        next.document.status.controllers.live_input = input;
+        *guard = Some(Arc::new(next));
+    }
+}
+
+fn refresh_controller_input(state: &AppState) {
+    let snapshot = state.living.snapshot();
+    let devices = &snapshot.controllers.devices;
+    let active_device = active_connected_device(devices, &snapshot.controllers.active_controller_id)
+        .or_else(|| devices.first().cloned());
+    state.living.publish_controller_input(
+        read_controller_input_fast(active_device.as_ref()),
+    );
+}
+
+fn refresh_living_state(state: &AppState) {
+    let expensive = state.living.expensive_scan_due();
+    let previous = state
+        .living
+        .snapshot
+        .lock()
+        .expect("Arcadia living state lock poisoned")
+        .clone();
+    let network = network_state(state);
+    let network_status = network_status_from_state(&network);
+    let storage = if expensive {
+        storage_status_with_network(&network_status)
+    } else {
+        previous
+            .as_ref()
+            .map(|snapshot| snapshot.storage.clone())
+            .unwrap_or_else(|| storage_status_with_network(&network_status))
+    };
+    let library = if expensive {
+        library_status(&storage)
+    } else {
+        previous.as_ref().map(|snapshot| snapshot.status.library.clone())
+            .unwrap_or_else(|| library_status(&storage))
+    };
+    let local_ai_status = local_ai_status();
+    let ai = local_ai_state_from_status(state, &storage, &local_ai_status);
+    let controllers = controller_status_machine();
+    let controller_input = controllers.live_input.clone();
+    let status = console_status_from_parts(
+        state, network_status.clone(), storage.clone(), library, local_ai_status, controllers.clone(),
+    );
+    let system = status.system.clone();
+    let generated_at_unix = now_unix_seconds();
+    let root = api_root_object_from_status(state, &status, generated_at_unix);
+    let telemetry_root = api_root_telemetry_tick_from_root(&root, generated_at_unix);
+    let document = api_living_state_document_from_parts(
+        status.clone(),
+        storage.clone(),
+        network.clone(),
+        ai.clone(),
+        controllers.clone(),
+        system.clone(),
+        generated_at_unix,
+    );
+    state.living.publish(
+        Arc::new(ArcadiaLivingState {
+            generated_at_unix,
+            status,
+            network,
+            ai,
+            controllers,
+            controller_input,
+            system,
+            storage,
+            root,
+            telemetry_root,
+            document,
+        }),
+        expensive,
+    );
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiRootObject {
@@ -565,7 +715,7 @@ fn home_telemetry_drop_lease(lease_id: &str) {
 }
 
 async fn api_root_route(State(state): State<Arc<AppState>>) -> Json<ApiRootObject> {
-    Json(api_root_object(&state))
+    Json(state.living_snapshot().root.clone())
 }
 
 async fn api_root_events_renew_route(
@@ -592,7 +742,8 @@ async fn api_root_events_route(
     let lease = home_telemetry_create_lease();
     let lease_id = lease.lease_id.clone();
     let stream = async_stream::stream! {
-        let snapshot = api_root_object(&state);
+        let snapshot = state.living_snapshot();
+        let snapshot = snapshot.root.clone();
         let snapshot_json = serde_json::to_string(&snapshot)
             .unwrap_or_else(|_| "{}".to_string());
         yield Ok(Event::default()
@@ -620,7 +771,8 @@ async fn api_root_events_route(
                 break;
             };
 
-            let root = api_root_telemetry_tick(&state);
+            let snapshot = state.living_snapshot();
+            let root = snapshot.telemetry_root.clone();
             let payload = serde_json::to_string(&root)
                 .unwrap_or_else(|_| "{}".to_string());
             yield Ok(Event::default()
@@ -628,7 +780,7 @@ async fn api_root_events_route(
                 .id(root.generated_at_unix.to_string())
                 .data(payload));
 
-            let living_state = api_living_state_document(&state);
+            let living_state = snapshot.document.clone();
             let living_state_json = serde_json::to_string(&living_state)
                 .unwrap_or_else(|_| "{}".to_string());
             yield Ok(Event::default()
@@ -650,17 +802,18 @@ async fn api_root_events_route(
     )
 }
 
+#[cfg(test)]
 fn api_root_object(state: &AppState) -> ApiRootObject {
     let status = console_status(state);
-    api_root_object_from_status(state, &status)
+    api_root_object_from_status(state, &status, now_unix_seconds())
 }
 
-fn api_root_object_from_status(_state: &AppState, status: &ConsoleStatus) -> ApiRootObject {
+fn api_root_object_from_status(_state: &AppState, status: &ConsoleStatus, generated_at_unix: u64) -> ApiRootObject {
     ApiRootObject {
         schema: "arcadia.api.root.v1",
         kind: "arcadia-root",
         id: "arcadia",
-        generated_at_unix: now_unix_seconds(),
+        generated_at_unix,
         product: status.product.clone(),
         canonical_url: status.canonical_url.clone(),
         children: vec![
@@ -673,6 +826,7 @@ fn api_root_object_from_status(_state: &AppState, status: &ConsoleStatus) -> Api
     }
 }
 
+#[cfg(test)]
 fn api_root_telemetry_tick(state: &AppState) -> ApiRootObject {
     ApiRootObject {
         schema: "arcadia.api.root.v1",
@@ -685,6 +839,7 @@ fn api_root_telemetry_tick(state: &AppState) -> ApiRootObject {
     }
 }
 
+#[cfg(test)]
 fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
     let status = console_status(state);
     let storage = storage_status();
@@ -1923,4 +2078,50 @@ fn memory_usage() -> serde_json::Value {
             .clamp(0.0, 100.0) as u8
     };
     serde_json::json!({"available": true, "totalBytes": total_bytes, "availableBytes": available_bytes, "usedBytes": used_bytes, "usedPercent": used_percent})
+}
+
+fn api_root_telemetry_tick_from_root(
+    root: &ApiRootObject,
+    generated_at_unix: u64,
+) -> ApiRootObject {
+    ApiRootObject {
+        schema: "arcadia.api.root.v1",
+        kind: "arcadia-root",
+        id: "arcadia",
+        generated_at_unix,
+        product: root.product.clone(),
+        canonical_url: root.canonical_url.clone(),
+        children: vec![api_telemetry_node()],
+    }
+}
+
+
+fn api_living_state_document_from_parts(
+    status: ConsoleStatus,
+    storage: StorageStatus,
+    network: NetworkState,
+    ai: LocalAIState,
+    controllers: ControllerStatus,
+    system: SystemAdminStatus,
+    generated_at_unix: u64,
+) -> ApiLivingStateDocument {
+    ApiLivingStateDocument {
+        schema: "arcadia.api.state.v1",
+        kind: "arcadiaLivingState",
+        id: "arcadia-state",
+        generated_at_unix,
+        home: api_home_state(&status),
+        sync: api_sync_state(&status),
+        storage_pane: api_storage_pane_state(&status),
+        local_ai_pane: api_local_ai_pane_state(&status),
+        network_pane: api_network_pane_state(&status),
+        updates_pane: api_updates_pane_state(&status),
+        status,
+        storage: storage.clone(),
+        storage_summary: storage,
+        network,
+        ai,
+        controllers,
+        system,
+    }
 }

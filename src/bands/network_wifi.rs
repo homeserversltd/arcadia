@@ -1,11 +1,18 @@
 async fn wifi_status(State(state): State<Arc<AppState>>) -> Json<NetworkState> {
-    Json(network_state(&state))
+    Json(state.living_snapshot().network.clone())
 }
 
 async fn wifi_scan(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<NetworkActionResponse>) {
-    if !network_state(&state).wifi.adapter_available || !helper_exists(NETWORK_MANAGER_BIN) {
+    if !state
+        .living_snapshot()
+        .network
+        .clone()
+        .wifi
+        .adapter_available
+        || !helper_exists(NETWORK_MANAGER_BIN)
+    {
         return network_action(
             StatusCode::NOT_IMPLEMENTED,
             &state,
@@ -60,7 +67,14 @@ async fn wifi_connect(
             Some("select-network"),
         );
     }
-    if !network_state(&state).wifi.adapter_available || !helper_exists(NETWORK_MANAGER_BIN) {
+    if !state
+        .living_snapshot()
+        .network
+        .clone()
+        .wifi
+        .adapter_available
+        || !helper_exists(NETWORK_MANAGER_BIN)
+    {
         return network_action(
             StatusCode::NOT_IMPLEMENTED,
             &state,
@@ -82,7 +96,8 @@ async fn wifi_connect(
         .output();
     match output {
         Ok(output) if output.status.success() => {
-            let after = network_state(&state);
+            state.request_living_refresh();
+            let after = state.living_snapshot().network.clone();
             let message = if after.active_connection.ip.is_none() {
                 "Connected to Wi-Fi, but no IP address was assigned."
             } else if after.active_connection.internet_reachable == Some(false) {
@@ -123,7 +138,13 @@ async fn wifi_connect(
 async fn wifi_disconnect(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<NetworkActionResponse>) {
-    let Some(dev) = network_state(&state).active_connection.interface_name else {
+    let Some(dev) = state
+        .living_snapshot()
+        .network
+        .clone()
+        .active_connection
+        .interface_name
+    else {
         return network_action(
             StatusCode::BAD_REQUEST,
             &state,
@@ -228,7 +249,7 @@ async fn wifi_set_enabled(
 async fn ethernet_renew_dhcp(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<NetworkActionResponse>) {
-    let ns = network_state(&state);
+    let ns = state.living_snapshot().network.clone();
     let Some(dev) = ns.ethernet.interface_name else {
         return network_action(
             StatusCode::NOT_IMPLEMENTED,
@@ -273,7 +294,14 @@ async fn ip_apply(
     let iface = body
         .interface_name
         .clone()
-        .or_else(|| network_state(&state).active_connection.interface_name)
+        .or_else(|| {
+            state
+                .living_snapshot()
+                .network
+                .clone()
+                .active_connection
+                .interface_name
+        })
         .unwrap_or_default();
     if iface.is_empty() {
         return network_action(

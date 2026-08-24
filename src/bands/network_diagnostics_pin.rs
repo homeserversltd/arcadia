@@ -21,7 +21,7 @@ async fn diagnostics_run(
             "lan-ai".into(),
         ]
     });
-    let ns = network_state(&state);
+    let ns = state.living_snapshot().network.clone();
     let mut results = Vec::new();
     for test in requested {
         match test.as_str() {
@@ -93,6 +93,7 @@ fn network_action(
     message: &str,
     stage: Option<&str>,
 ) -> (StatusCode, Json<NetworkActionResponse>) {
+    if ok { state.request_living_refresh(); }
     (
         status,
         Json(NetworkActionResponse {
@@ -100,7 +101,7 @@ fn network_action(
             action,
             message: message.to_string(),
             stage: stage.map(str::to_string),
-            state: network_state(state),
+            state: state.living_snapshot().network.clone(),
         }),
     )
 }

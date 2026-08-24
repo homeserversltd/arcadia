@@ -1,18 +1,18 @@
 async fn network_state_route(State(state): State<Arc<AppState>>) -> Json<NetworkState> {
-    Json(network_state(&state))
+    Json(state.living_snapshot().network.clone())
 }
 
 async fn ai_state_route(State(state): State<Arc<AppState>>) -> Json<LocalAIState> {
-    Json(local_ai_state(&state))
+    Json(state.living_snapshot().ai.clone())
 }
 
 async fn ai_models_installed(State(state): State<Arc<AppState>>) -> Json<Vec<LocalAiModelStatus>> {
-    Json(local_ai_state(&state).installed_models)
+    Json(state.living_snapshot().ai.installed_models.clone())
 }
 async fn ai_models_recommended(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<AIRecommendedModel>> {
-    Json(local_ai_state(&state).recommended_models)
+    Json(state.living_snapshot().ai.recommended_models.clone())
 }
 
 async fn gui_pin_status_route() -> Json<GuiPinStatus> {
@@ -60,7 +60,7 @@ async fn ai_runtime_update(
         );
     };
     let command_ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
-    let runtime_installed = local_ai_state(&state).runtime.installed;
+    let runtime_installed = state.living_snapshot().ai.clone().runtime.installed;
     let ok = command_ok && runtime_installed;
     ai_action(
         if ok {
@@ -83,7 +83,7 @@ async fn ai_runtime_update(
 async fn ai_runtime_restart(
     State(state): State<Arc<AppState>>,
 ) -> (StatusCode, Json<AIActionResponse>) {
-    if !local_ai_state(&state).runtime.installed {
+    if !state.living_snapshot().ai.clone().runtime.installed {
         return ai_action(
             StatusCode::FAILED_DEPENDENCY,
             &state,
@@ -142,7 +142,7 @@ async fn ai_hf_list_files(
                 ok: false,
                 message: "Enter a Hugging Face repository like owner/model.".into(),
                 files: Vec::new(),
-                state: local_ai_state(&state),
+                state: state.living_snapshot().ai.clone(),
             }),
         );
     }
@@ -184,7 +184,7 @@ async fn ai_hf_list_files(
             }
             .into(),
             files,
-            state: local_ai_state(&state),
+            state: state.living_snapshot().ai.clone(),
         }),
     )
 }

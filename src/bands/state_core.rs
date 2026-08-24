@@ -3,6 +3,12 @@ struct AppState {
     started_unix: u64,
     canonical_url: String,
     product: String,
+    living: Arc<ArcadiaLivingMachine>,
+}
+
+impl AppState {
+    fn living_snapshot(&self) -> Arc<ArcadiaLivingState> { self.living.snapshot() }
+    fn request_living_refresh(&self) { self.living.request_refresh(); }
 }
 
 #[derive(Clone, Serialize)]

@@ -4,6 +4,8 @@ fn controller_status() -> ControllerStatus {
     controller_status_options(true, true)
 }
 
+fn controller_status_machine() -> ControllerStatus { controller_status_options(false, true) }
+
 fn controller_status_api() -> ControllerStatus {
     controller_status_options(false, false)
 }
@@ -506,15 +508,8 @@ fn retroarch_autoconfig_exists() -> bool {
 }
 
 fn command_available(command: &str) -> bool {
-    Command::new("/usr/bin/env")
-        .args(["sh", "-lc", &format!("command -v {} >/dev/null 2>&1", shell_quote(command))])
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
-}
-
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
+    if command.contains('/') { return Path::new(command).is_file(); }
+    std::env::var_os("PATH").into_iter().flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()).any(|dir| dir.join(command).is_file())
 }
 
 fn home_path_exists(path: &str) -> bool {
@@ -534,15 +529,12 @@ fn human_now_label() -> String {
     format!("unix {}", secs)
 }
 
-async fn controllers_state_route() -> Json<ControllerStatus> {
-    Json(controller_status_api())
+async fn controllers_state_route(State(state): State<Arc<AppState>>) -> Json<ControllerStatus> {
+    Json(state.living_snapshot().controllers.clone())
 }
 
-async fn controllers_input_route() -> Json<ControllerInputStatus> {
-    let devices = controller_devices();
-    let active_controller_id = active_controller_id();
-    let active_device = active_connected_device(&devices, &active_controller_id);
-    Json(read_controller_input(active_device.as_ref().or(devices.first())))
+async fn controllers_input_route(State(state): State<Arc<AppState>>) -> Json<ControllerInputStatus> {
+    Json(state.living_snapshot().controller_input.clone())
 }
 
 
@@ -562,14 +554,7 @@ static CONTROLLER_TRAINER_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
 const CONTROLLER_TRAINER_STREAM_TOPIC: &str = "controllers.trainer";
 const CONTROLLER_TRAINER_STREAM_CADENCE_MS: u64 = 60;
 
-fn active_controller_input_snapshot_fast() -> ControllerInputStatus {
-    let devices = controller_devices();
-    let active_controller_id = active_controller_id();
-    let active_device = active_connected_device(&devices, &active_controller_id);
-    read_controller_input_fast(active_device.as_ref().or(devices.first()))
-}
-
-async fn controllers_trainer_events_route() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+async fn controllers_trainer_events_route(State(state): State<Arc<AppState>>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let lease_id = format!(
         "controllers-trainer-{}",
         CONTROLLER_TRAINER_LEASE_COUNTER.fetch_add(1, Ordering::Relaxed)
@@ -587,7 +572,7 @@ async fn controllers_trainer_events_route() -> Sse<impl Stream<Item = Result<Eve
         let lease_json = serde_json::to_string(&stream_lease).unwrap_or_else(|_| "{}".to_string());
         yield Ok(Event::default().event("lease").data(lease_json));
 
-        let snapshot = active_controller_input_snapshot_fast();
+        let snapshot = state.living_snapshot().controller_input.clone();
         let snapshot_json = serde_json::to_string(&snapshot).unwrap_or_else(|_| "{}".to_string());
         yield Ok(Event::default().event("snapshot").data(snapshot_json));
 
@@ -595,7 +580,7 @@ async fn controllers_trainer_events_route() -> Sse<impl Stream<Item = Result<Eve
         let mut heartbeat_tick: u64 = 0;
         loop {
             tick.tick().await;
-            let input = active_controller_input_snapshot_fast();
+            let input = state.living_snapshot().controller_input.clone();
             let input_json = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
             yield Ok(Event::default().event("input").data(input_json));
             heartbeat_tick = heartbeat_tick.saturating_add(1);
@@ -622,8 +607,8 @@ async fn controllers_trainer_events_route() -> Sse<impl Stream<Item = Result<Eve
     )
 }
 
-async fn action_controllers_rescan() -> (StatusCode, Json<ConsoleActionResponse>) {
-    let status = controller_status();
+async fn action_controllers_rescan(State(state): State<Arc<AppState>>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let status = state.living_snapshot().controllers.clone();
     let message = if status.detected_count > 0 {
         format!("Controller scan complete: {} gamepad(s) detected.", status.detected_count)
     } else {
@@ -643,8 +628,8 @@ async fn action_controllers_rescan() -> (StatusCode, Json<ConsoleActionResponse>
     )
 }
 
-async fn action_controllers_test() -> (StatusCode, Json<ConsoleActionResponse>) {
-    let status = controller_status();
+async fn action_controllers_test(State(state): State<Arc<AppState>>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let status = state.living_snapshot().controllers.clone();
     if status.detected_count == 0 {
         return console_action_error(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -679,9 +664,10 @@ async fn action_controllers_test() -> (StatusCode, Json<ConsoleActionResponse>) 
 }
 
 async fn action_controllers_save_profile(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    let status = controller_status();
+    let status = state.living_snapshot().controllers.clone();
     let controller_id = resolve_controller_id(payload.controller_id);
     if controller_id.is_empty() {
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-save-profile", "/api/actions/controllers-save-profile", "Choose a controller before saving.");
@@ -692,6 +678,7 @@ async fn action_controllers_save_profile(
     if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, None) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-save-profile", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not save controller profile: {}", error));
     }
+    state.request_living_refresh();
     let tuning = tuning_for_controller_id(&controller_id);
     let ramrod_detail = match ramrod_controller_profiles(
         &device_name,
@@ -706,12 +693,12 @@ async fn action_controllers_save_profile(
     (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-save-profile", command: "/var/lib/arcadia/controller-profiles/library.json", exit_code: Some(0), message: format!("{} layout saved and ramrodded.", device_name), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
 }
 
-async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileApplyRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+async fn action_controllers_apply_profile(State(state): State<Arc<AppState>>, Json(payload): Json<ControllerProfileApplyRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
     let profile = payload.profile.trim();
     if profile.is_empty() {
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-apply-profile", "/api/actions/controllers-apply-profile", "Choose a controller profile.");
     }
-    let status = controller_status();
+    let status = state.living_snapshot().controllers.clone();
     let controller_id = resolve_controller_id(payload.controller_id);
     if controller_id.is_empty() {
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-apply-profile", "/api/actions/controllers-apply-profile", "Choose a controller before applying a layout style.");
@@ -722,6 +709,7 @@ async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileA
     if let Err(error) = save_bindings_for_controller(&controller_id, &bindings, Some(profile)) {
         return console_action_error(StatusCode::INTERNAL_SERVER_ERROR, "controllers-apply-profile", "/var/lib/arcadia/controller-profiles/library.json", &format!("Could not apply controller profile: {}", error));
     }
+    state.request_living_refresh();
     let tuning = tuning_for_controller_id(&controller_id);
     let ramrod_detail = match ramrod_controller_profiles(
         &device_name,
@@ -736,12 +724,12 @@ async fn action_controllers_apply_profile(Json(payload): Json<ControllerProfileA
     (StatusCode::OK, Json(ConsoleActionResponse { ok: true, action: "controllers-apply-profile", command: "/var/lib/arcadia/controller-profiles/library.json", exit_code: Some(0), message: format!("{} layout applied to {}.", profile, device_name), stdout: format!("{}\n{}", path.display(), ramrod_detail), stderr: String::new() }))
 }
 
-async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+async fn action_controllers_bind(State(state): State<Arc<AppState>>, Json(payload): Json<ControllerBindRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
     let control = payload.control.trim();
     if control.is_empty() {
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-bind", "/api/actions/controllers-bind", "Choose a controller button before binding.");
     }
-    let status = controller_status();
+    let status = state.living_snapshot().controllers.clone();
     let controller_id = resolve_controller_id(payload.controller_id);
     if controller_id.is_empty() {
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-bind", "/api/actions/controllers-bind", "Choose a controller before binding.");
@@ -768,9 +756,10 @@ async fn action_controllers_bind(Json(payload): Json<ControllerBindRequest>) -> 
 }
 
 async fn action_controllers_save_tuning(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerTuningSaveRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    let status = controller_status();
+    let status = state.living_snapshot().controllers.clone();
     let controller_id = resolve_controller_id(payload.controller_id);
     if controller_id.is_empty() {
         return console_action_error(
@@ -795,6 +784,7 @@ async fn action_controllers_save_tuning(
     }
     match save_tuning_for_controller(&controller_id, tuning) {
         Ok((device_name, handler, bindings, saved_tuning)) => {
+            state.request_living_refresh();
             let ramrod_detail = match ramrod_controller_profiles(
                 &device_name,
                 &handler,
@@ -827,14 +817,15 @@ async fn action_controllers_save_tuning(
     }
 }
 
-async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+async fn action_controllers_select(State(state): State<Arc<AppState>>, Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
     let controller_id = payload.controller_id.trim();
     if controller_id.is_empty() {
         return console_action_error(StatusCode::BAD_REQUEST, "controllers-select", "/api/actions/controllers-select", "Choose a controller from your library.");
     }
     match set_active_controller_id(controller_id) {
         Ok(()) => {
-            let status = controller_status_api();
+            state.request_living_refresh();
+            let status = state.living_snapshot().controllers.clone();
             let entry = status
                 .controller_pool
                 .iter()
@@ -863,7 +854,7 @@ async fn action_controllers_select(Json(payload): Json<ControllerSelectRequest>)
     }
 }
 
-async fn action_controllers_forget(Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
+async fn action_controllers_forget(State(state): State<Arc<AppState>>, Json(payload): Json<ControllerSelectRequest>) -> (StatusCode, Json<ConsoleActionResponse>) {
     let controller_id = payload.controller_id.trim();
     if controller_id.is_empty() {
         return console_action_error(
@@ -874,8 +865,9 @@ async fn action_controllers_forget(Json(payload): Json<ControllerSelectRequest>)
         );
     }
     match forget_controller_from_library(controller_id) {
-        Ok((removed_name, next_active_id)) => (
-            StatusCode::OK,
+        Ok((removed_name, next_active_id)) => {
+            state.request_living_refresh();
+            (StatusCode::OK,
             Json(ConsoleActionResponse {
                 ok: true,
                 action: "controllers-forget",
@@ -885,7 +877,7 @@ async fn action_controllers_forget(Json(payload): Json<ControllerSelectRequest>)
                 stdout: next_active_id,
                 stderr: String::new(),
             }),
-        ),
+        )}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => console_action_error(
             StatusCode::NOT_FOUND,
             "controllers-forget",
@@ -902,37 +894,42 @@ async fn action_controllers_forget(Json(payload): Json<ControllerSelectRequest>)
 }
 
 async fn action_controllers_assign_retroarch(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("RetroArch", payload.controller_id)
+    action_controllers_assign_emulator(&state, "RetroArch", payload.controller_id)
 }
 
 async fn action_controllers_assign_dolphin(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("Dolphin", payload.controller_id)
+    action_controllers_assign_emulator(&state, "Dolphin", payload.controller_id)
 }
 
 async fn action_controllers_assign_duckstation(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("DuckStation", payload.controller_id)
+    action_controllers_assign_emulator(&state, "DuckStation", payload.controller_id)
 }
 
 async fn action_controllers_assign_pcsx2(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("PCSX2", payload.controller_id)
+    action_controllers_assign_emulator(&state, "PCSX2", payload.controller_id)
 }
 
 async fn action_controllers_assign_ppsspp(
+    State(state): State<Arc<AppState>>,
     Json(payload): Json<ControllerScopedRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    action_controllers_assign_emulator("PPSSPP", payload.controller_id)
+    action_controllers_assign_emulator(&state, "PPSSPP", payload.controller_id)
 }
 
-async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionResponse>) {
-    let status = controller_status();
+async fn action_controllers_ramrod_all(State(state): State<Arc<AppState>>) -> (StatusCode, Json<ConsoleActionResponse>) {
+    let status = state.living_snapshot().controllers.clone();
     let controller_id = active_controller_id();
     let (device_name, handler) = virtual_controller_device(&status, &controller_id);
     let bindings = bindings_for_controller_id(&controller_id);
@@ -944,8 +941,9 @@ async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionRespo
         &tuning,
         &status.emulators,
     ) {
-        Ok(receipt) => (
-            StatusCode::OK,
+        Ok(receipt) => {
+            state.request_living_refresh();
+            (StatusCode::OK,
             Json(ConsoleActionResponse {
                 ok: true,
                 action: "controllers-ramrod-all",
@@ -958,7 +956,7 @@ async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionRespo
                 stdout: ramrod_stdout(&receipt),
                 stderr: String::new(),
             }),
-        ),
+        )}
         Err(error) => console_action_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "controllers-ramrod-all",
@@ -969,10 +967,11 @@ async fn action_controllers_ramrod_all() -> (StatusCode, Json<ConsoleActionRespo
 }
 
 fn action_controllers_assign_emulator(
+    state: &AppState,
     emulator: &str,
     explicit_controller_id: Option<String>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    let status = controller_status();
+    let status = state.living_snapshot().controllers.clone();
     let controller_id = resolve_controller_id(explicit_controller_id);
     if controller_id.is_empty() {
         return console_action_error(
@@ -1001,6 +1000,7 @@ fn action_controllers_assign_emulator(
         &controller_profile_root(),
     ) {
         Ok(path) => {
+            state.request_living_refresh();
             let mode = if installed { "pushed" } else { "staged" };
             (
                 StatusCode::OK,

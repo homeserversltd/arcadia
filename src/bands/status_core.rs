@@ -1,8 +1,10 @@
 fn console_status(state: &AppState) -> ConsoleStatus {
     let storage = storage_status();
     let network = network_status();
-    let (surfaces, samba) = surface_and_samba_status(&state.canonical_url, &network);
     let library = library_status(&storage);
+    let local_ai = local_ai_status();
+    let controllers = controller_status();
+    let (surfaces, samba) = surface_and_samba_status(&state.canonical_url, &network);
     let hostname = hostname();
     ConsoleStatus {
         schema: "arcadia.home_state.v2",
@@ -28,8 +30,8 @@ fn console_status(state: &AppState) -> ConsoleStatus {
         surfaces,
         samba,
         network: network.clone(),
-        local_ai: local_ai_status(),
-        controllers: controller_status(),
+        local_ai,
+        controllers,
         updates: updates_status(),
         system: system_admin_status(&network, &hostname),
         benchmark: benchmark_status(),
@@ -42,6 +44,52 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers",
         },
     }
+}
+
+fn console_status_from_parts(state: &AppState, network: NetworkStatus, storage: StorageStatus, library: LibraryStatus, local_ai: LocalAiStatus, controllers: ControllerStatus) -> ConsoleStatus {
+    let (surfaces, samba) = surface_and_samba_status(&state.canonical_url, &network);
+    let hostname = hostname();
+    ConsoleStatus { schema: "arcadia.home_state.v2", product: state.product.clone(), canonical_url: state.canonical_url.clone(), identity: IdentityStatus { product_name: state.product.clone(), hostname: hostname.clone(), local_domain: Some("home.arpa".to_string()), netbios_name: Some("HOMECONSOLE".to_string()), web_origin: state.canonical_url.trim_end_matches('/').to_string(), version: env!("CARGO_PKG_VERSION").to_string() }, arcadia: ArcadiaStatus { service: service_state("arcadia.service"), version: env!("CARGO_PKG_VERSION"), mode: "unity-appliance-shell", ui: "top-header-left-launcher-focused-viewports" }, runtime: runtime_status(state.started_unix), gui_pin: gui_pin_status(), vault: vault_status(), surfaces, samba, network: network.clone(), local_ai, controllers, updates: updates_status(), system: system_admin_status(&network, &hostname), benchmark: benchmark_status(), library, storage, ui_contract: UiContract { schema: "arcadia.ui.contract.v6", button_variants: ["primary", "secondary", "danger"], composition: "top header, sidebar launcher, state-first operational viewport", modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers" } }
+}
+
+fn network_status_from_state(state: &NetworkState) -> NetworkStatus {
+    let resolv = read_resolv_conf();
+    let (timezone, ntp_synchronized) = clock_status();
+    let online = state.active_connection.connection_type != "offline";
+    let mut status = NetworkStatus {
+        online,
+        active_type: state.active_connection.connection_type.clone(),
+        connection_type: connection_label(&state.active_connection.connection_type).to_string(),
+        ssid: state.wifi.connected_ssid.clone(),
+        ip_address: state.active_connection.ip.clone().unwrap_or_else(|| "—".to_string()),
+        gateway: state.active_connection.gateway.clone(),
+        dns_status: if state.active_connection.dns_servers.is_empty() { "Unknown".to_string() } else { "DNS working".to_string() },
+        signal: state.wifi.signal_percent.map(|v| format!("{}%", v)), signal_percent: state.wifi.signal_percent,
+        ethernet_speed_mbps: state.ethernet.speed_mbps, ethernet_available: state.ethernet.available, ethernet_connected: state.ethernet.connected,
+        ethernet_mac_address: state.ethernet.mac_address.clone(), ethernet_dhcp: state.ethernet.dhcp, wifi_adapter_available: state.wifi.adapter_available,
+        console_reachable: state.active_connection.lan_reachable, game_folders_reachable: state.services.samba.state == "available", samba_reachable: state.services.samba.state == "available", lan_ai_reachable: state.services.lan_inference.state == "available", internet_reachable: state.active_connection.internet_reachable,
+        timezone, ntp_synchronized,
+        connection_session_detail: connection_session_detail(&state.active_connection.connection_type, state.wifi.connected_ssid.as_deref()),
+        resolv_nameservers: resolv_nameservers_label(&resolv), resolv_search: resolv_search_label(&resolv),
+    };
+    status.online = state.active_connection.connection_type != "offline";
+    status.active_type = state.active_connection.connection_type.clone();
+    status.connection_type = connection_label(&status.active_type).to_string();
+    status.ssid = state.wifi.connected_ssid.clone();
+    status.ip_address = state.active_connection.ip.clone().unwrap_or_else(|| "—".to_string());
+    status.gateway = state.active_connection.gateway.clone();
+    status.signal_percent = state.wifi.signal_percent;
+    status.signal = state.wifi.signal_percent.map(|v| format!("{}%", v));
+    status.ethernet_speed_mbps = state.ethernet.speed_mbps;
+    status.ethernet_available = state.ethernet.available;
+    status.ethernet_connected = state.ethernet.connected;
+    status.wifi_adapter_available = state.wifi.adapter_available;
+    status.console_reachable = state.active_connection.lan_reachable;
+    status.game_folders_reachable = state.services.samba.state == "available";
+    status.samba_reachable = status.game_folders_reachable;
+    status.lan_ai_reachable = state.services.lan_inference.state == "available";
+    status.internet_reachable = state.active_connection.internet_reachable;
+    status
 }
 
 fn service_state(unit: &'static str) -> &'static str {
@@ -91,47 +139,7 @@ fn parse_global_ipv4_address(text: &str) -> Option<String> {
 
 fn network_status() -> NetworkStatus {
     let state = network_state_from_parts("HomeConsole", None);
-    let resolv = read_resolv_conf();
-    let (timezone, ntp_synchronized) = clock_status();
-    let online = state.active_connection.connection_type != "offline";
-    NetworkStatus {
-        online,
-        active_type: state.active_connection.connection_type.clone(),
-        connection_type: connection_label(&state.active_connection.connection_type).to_string(),
-        ssid: state.wifi.connected_ssid.clone(),
-        ip_address: state
-            .active_connection
-            .ip
-            .clone()
-            .unwrap_or_else(|| "—".to_string()),
-        gateway: state.active_connection.gateway.clone(),
-        dns_status: if state.active_connection.dns_servers.is_empty() {
-            "Unknown".to_string()
-        } else {
-            "DNS working".to_string()
-        },
-        signal: state.wifi.signal_percent.map(|v| format!("{}%", v)),
-        signal_percent: state.wifi.signal_percent,
-        ethernet_speed_mbps: state.ethernet.speed_mbps,
-        ethernet_available: state.ethernet.available,
-        ethernet_connected: state.ethernet.connected,
-        ethernet_mac_address: state.ethernet.mac_address.clone(),
-        ethernet_dhcp: state.ethernet.dhcp,
-        wifi_adapter_available: state.wifi.adapter_available,
-        console_reachable: state.active_connection.lan_reachable,
-        game_folders_reachable: state.services.samba.state == "available",
-        samba_reachable: state.services.samba.state == "available",
-        lan_ai_reachable: state.services.lan_inference.state == "available",
-        internet_reachable: state.active_connection.internet_reachable,
-        timezone,
-        ntp_synchronized,
-        connection_session_detail: connection_session_detail(
-            &state.active_connection.connection_type,
-            state.wifi.connected_ssid.as_deref(),
-        ),
-        resolv_nameservers: resolv_nameservers_label(&resolv),
-        resolv_search: resolv_search_label(&resolv),
-    }
+    network_status_from_state(&state)
 }
 
 fn network_state(state: &AppState) -> NetworkState {

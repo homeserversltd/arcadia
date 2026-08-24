@@ -4,6 +4,7 @@
             started_unix: 0,
             canonical_url: "http://arcadia.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -124,6 +125,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let payload = network_state(&state);
         let json = serde_json::to_string(&payload).expect("network state serializes");
@@ -155,6 +157,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();

@@ -1,6 +1,5 @@
 async fn system_status_route(State(state): State<Arc<AppState>>) -> Json<SystemAdminStatus> {
-    let status = console_status(&state);
-    Json(status.system)
+    Json(state.living_snapshot().system.clone())
 }
 
 async fn action_restart_arcadia(
@@ -734,6 +733,7 @@ async fn action_clean_temporary_files(
 }
 
 async fn action_remove_ai_model(
+    State(state): State<Arc<AppState>>,
     Query(params): Query<HashMap<String, String>>,
     Json(body): Json<ConsoleActionRequest>,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
@@ -753,7 +753,7 @@ async fn action_remove_ai_model(
             "Missing model filename.",
         );
     };
-    let current = storage_status();
+    let current = state.living_snapshot().storage.clone();
     let Some(path) = find_model_path_by_filename(filename) else {
         return console_action_error(
             StatusCode::NOT_FOUND,

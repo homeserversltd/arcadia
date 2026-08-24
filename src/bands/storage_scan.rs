@@ -3,8 +3,25 @@ fn storage_status() -> StorageStatus {
 }
 
 fn storage_scan() -> StorageStatus {
-    let scan_started = SystemTime::now();
     let network = network_status();
+    storage_scan_with_network(&network)
+}
+
+impl GameFolderStorage {
+    fn path_missing(&self) -> bool {
+        !Path::new(&self.path).exists()
+    }
+}
+
+
+
+fn storage_status_with_network(network: &NetworkStatus) -> StorageStatus {
+    storage_scan_with_network(network)
+}
+
+
+fn storage_scan_with_network(network: &NetworkStatus) -> StorageStatus {
+    let scan_started = SystemTime::now();
     let registry = storage_registry(&network);
     let volume = root_volume();
     let total_bytes = volume.total_bytes;
@@ -269,10 +286,3 @@ fn storage_scan() -> StorageStatus {
         other,
     }
 }
-
-impl GameFolderStorage {
-    fn path_missing(&self) -> bool {
-        !Path::new(&self.path).exists()
-    }
-}
-

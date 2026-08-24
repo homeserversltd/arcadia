@@ -1,5 +1,10 @@
 fn local_ai_state(state: &AppState) -> LocalAIState {
+    let storage = storage_status();
     let status = local_ai_status();
+    local_ai_state_from_status(state, &storage, &status)
+}
+
+fn local_ai_state_from_status(state: &AppState, storage: &StorageStatus, status: &LocalAiStatus) -> LocalAIState {
     let installed = status.available_models.clone();
     let runtime_installed = helper_exists(LLAMA_SERVER_BIN)
         || helper_exists(LLAMA_CPP_BIN)
@@ -9,7 +14,6 @@ fn local_ai_state(state: &AppState) -> LocalAIState {
         tcp_port_listening(cfg.lan_port) || tcp_port_listening(DEFAULT_LAN_INFERENCE_PORT);
     let server_running =
         inference_listening || command_stdout("pgrep", &["-af", "llama-server"]).is_some();
-    let storage = storage_status();
     let free_storage = storage.free_bytes;
     let model_storage = storage.ai_models.bytes;
     let endpoint = format!(

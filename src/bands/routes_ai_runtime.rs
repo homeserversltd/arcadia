@@ -22,18 +22,20 @@ async fn ai_model_remove(
             "Remove this model from console storage? Games and artwork are not affected.",
         );
     }
+    let local_ai = state.living_snapshot().status.local_ai.clone();
     let filename = body
         .filename
         .or_else(|| {
             body.model_id.and_then(|id| {
-                local_ai_available_models()
-                    .into_iter()
+                local_ai
+                    .available_models
+                    .iter()
                     .find(|m| m.id == id)
-                    .map(|m| m.filename)
+                    .map(|m| m.filename.clone())
             })
         })
         .unwrap_or_default();
-    let loaded = local_ai_status().loaded_model.unwrap_or_default();
+    let loaded = local_ai.loaded_model.unwrap_or_default();
     if loaded == filename {
         return ai_action(
             StatusCode::BAD_REQUEST,
@@ -65,7 +67,13 @@ async fn ai_model_select(
     Json(body): Json<AIModelIdRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
     let id = body.model_id.unwrap_or_default();
-    if local_ai_available_models().iter().any(|m| m.id == id) {
+    let available_models = state
+        .living_snapshot()
+        .status
+        .local_ai
+        .available_models
+        .clone();
+    if available_models.iter().any(|m| m.id == id) {
         let _ = fs::create_dir_all(
             Path::new(LOCAL_AI_STATE_PATH)
                 .parent()
@@ -96,12 +104,21 @@ async fn ai_model_load(
     Json(body): Json<AIModelIdRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
     let id = body.model_id.unwrap_or_else(|| {
-        local_ai_state(&state)
+        state
+            .living_snapshot()
+            .ai
+            .clone()
             .loaded_model
             .selected_model_id
             .unwrap_or_default()
     });
-    let Some(model) = local_ai_available_models().into_iter().find(|m| m.id == id) else {
+    let available_models = state
+        .living_snapshot()
+        .status
+        .local_ai
+        .available_models
+        .clone();
+    let Some(model) = available_models.into_iter().find(|m| m.id == id) else {
         return ai_action(
             StatusCode::NOT_FOUND,
             &state,
@@ -120,7 +137,11 @@ async fn ai_model_load(
         );
     };
     let cfg = load_ai_config();
-    let bind_host = if cfg.lan_enabled { "0.0.0.0" } else { "127.0.0.1" };
+    let bind_host = if cfg.lan_enabled {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    };
     let ok = helper_exists(LLAMA_SERVER_BIN)
         && Command::new(SYSTEMD_RUN_BIN)
             .args([
@@ -180,7 +201,7 @@ async fn ai_inference_set_enabled(
     Json(body): Json<InferenceSetRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
     if body.enabled {
-        let ai = local_ai_state(&state);
+        let ai = state.living_snapshot().ai.clone();
         if !ai.runtime.installed {
             return ai_action(
                 StatusCode::FAILED_DEPENDENCY,
@@ -228,7 +249,7 @@ async fn ai_inference_set_lan_access(
     Json(body): Json<InferenceLanRequest>,
 ) -> (StatusCode, Json<AIActionResponse>) {
     if body.enabled {
-        let ai = local_ai_state(&state);
+        let ai = state.living_snapshot().ai.clone();
         if !ai.runtime.installed {
             return ai_action(
                 StatusCode::FAILED_DEPENDENCY,
@@ -239,7 +260,8 @@ async fn ai_inference_set_lan_access(
             );
         }
         let cfg_now = load_ai_config();
-        if !tcp_port_listening(cfg_now.lan_port) && !tcp_port_listening(DEFAULT_LAN_INFERENCE_PORT) {
+        if !tcp_port_listening(cfg_now.lan_port) && !tcp_port_listening(DEFAULT_LAN_INFERENCE_PORT)
+        {
             return ai_action(
                 StatusCode::FAILED_DEPENDENCY,
                 &state,

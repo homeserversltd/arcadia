@@ -55,6 +55,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -286,6 +287,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.updates.state = "available".to_string();
@@ -330,6 +332,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -399,6 +402,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.local_ai.load_state = "hot".to_string();
@@ -437,6 +441,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.gamescope_entries = 2;
@@ -480,6 +485,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.storage.games.size = "12 GB".to_string();
@@ -533,6 +539,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.network.online = true;
@@ -592,6 +599,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.network.online = true;
@@ -627,6 +635,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -699,6 +708,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -819,6 +829,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = false;
@@ -898,6 +909,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = true;
@@ -1008,6 +1020,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = true;
@@ -1043,6 +1056,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = true;
@@ -1071,6 +1085,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = true;
@@ -1105,6 +1120,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = true;
@@ -1176,6 +1192,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.library.first_sync_completed = true;
@@ -1293,6 +1310,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let root = api_root_object(&state);
         let encoded = serde_json::to_value(&root).expect("api root serializes");
@@ -1351,6 +1369,29 @@
         assert!(source.contains(".route(\"/api/root/events\", get(api_root_events_route))"));
         assert!(source.contains(".route(\"/api/root/events/renew\", post(api_root_events_renew_route))"));
         assert!(source.contains("include!(\"bands/api_root.rs\")"));
+    }
+
+    #[test]
+    fn held_device_and_cached_folder_routes_avoid_live_discovery() {
+        let api = include_str!("../../src/bands/api_root.rs");
+        let refresh_start = api.find("fn refresh_controller_input").expect("refresh function");
+        let refresh_end = api[refresh_start..]
+            .find("\nfn refresh_living_state")
+            .map(|offset| refresh_start + offset)
+            .expect("refresh function end");
+        let refresh = &api[refresh_start..refresh_end];
+        assert!(!refresh.contains("read_controller_input_fast(None)"));
+
+        let routes = include_str!("../../src/bands/routes_storage.rs");
+        let route_start = routes
+            .find("async fn storage_rescan_folder_route")
+            .expect("folder rescan route");
+        let route_end = routes[route_start..]
+            .find("\nasync fn storage_game_folders_route")
+            .map(|offset| route_start + offset)
+            .expect("folder rescan route end");
+        let route = &routes[route_start..route_end];
+        assert!(!route.contains("folder_storage("));
     }
 
     #[test]
@@ -1529,6 +1570,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -1609,6 +1651,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -1641,6 +1684,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -1713,6 +1757,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let living = api_living_state_document(&state);
         let encoded = serde_json::to_value(&living).expect("living state serializes");
@@ -1774,6 +1819,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let status = console_status(&state);
         let rendered = ui::layout(&status).into_string();
@@ -1811,6 +1857,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         for module in &mut status.updates.modules {
@@ -1847,6 +1894,7 @@
             started_unix: 0,
             canonical_url: "http://console.example.com/".to_string(),
             product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
         };
         let mut status = console_status(&state);
         status.updates.pending_updates = 3;
