@@ -3664,114 +3664,8 @@ function bindHarmoniaModules() {
 
 function bindSystemTrustAndAccessForms() {
   const trustPanel = document.querySelector('.system-ca-panel');
-  if (trustPanel && !trustPanel.querySelector('[data-household-trust]')) {
-    const card = document.createElement('section');
-    card.className = 'household-trust-card';
-    card.dataset.householdTrust = 'true';
-    card.setAttribute('aria-label', 'Household trust');
-    card.innerHTML = `
-      <div class="household-trust-card__head"><span>Household trust</span><b class="system-status system-status--unknown" data-household-trust-state>Checking</b></div>
-      <p class="household-trust-card__copy">Fetch the HomeServer certificate bundle and install it on this console.</p>
-      <div class="household-trust-card__action">
-        <label for="household-trust-server">HomeServer address</label>
-        <div class="household-trust-card__controls">
-          <input class="field" id="household-trust-server" data-household-trust-server inputmode="numeric" autocomplete="off" placeholder="HomeServer IP address">
-          <button class="btn btn--primary" type="button" data-household-trust-fetch>Fetch &amp; Install</button>
-        </div>
-      </div>
-      <div class="household-trust-card__fields">
-        <span class="system-field"><em>CA bundle</em><strong data-household-trust-installed>—</strong></span>
-        <span class="system-field system-field--anchor"><em>Fingerprint</em><strong data-household-trust-fingerprint>—</strong></span>
-        <span class="system-field"><em>Role</em><strong data-household-trust-role>—</strong></span>
-      </div>
-      <p class="household-trust-card__error" data-household-trust-error hidden></p>`;
-    const rootCaFallback = trustPanel.querySelector('.system-manual-install');
-    trustPanel.insertBefore(card, rootCaFallback || null);
-
-    const field = (name) => card.querySelector(`[data-household-trust-${name}]`);
-    const receipt = (data, fallback) => data.first_missing_signal || data.firstMissingSignal || data.refusal_reason || data.refusalReason || data.message || fallback;
-    const fingerprint = (data) => data.ca_fingerprint || data.fingerprint || data.bundle_fingerprint || '—';
-    const presentReceipt = (data) => {
-      const error = field('error');
-      if (data.ok === false) {
-        error.textContent = receipt(data, 'HomeServer request was refused');
-        error.hidden = false;
-        return;
-      }
-      const shownFingerprint = fingerprint(data);
-      field('installed').textContent = 'Installed';
-      field('state').textContent = 'Installed';
-      field('state').className = 'system-status system-status--available';
-      if (shownFingerprint !== '—') field('fingerprint').textContent = String(shownFingerprint).slice(0, 20);
-      error.hidden = true;
-    };
-    const refresh = async () => {
-      let data;
-      try {
-        data = await getJson('/api/caduceus/v1/cert/status');
-      } catch (_) {
-        data = { ok: false, first_missing_signal: 'caduceus-http-unreachable' };
-      }
-      const error = field('error');
-      const state = field('state');
-      if (data.ok === false) {
-        field('installed').textContent = 'Unavailable';
-        field('fingerprint').textContent = '—';
-        field('role').textContent = data.role || data.profile || '—';
-        state.textContent = 'Unavailable';
-        state.className = 'system-status system-status--error';
-        error.textContent = receipt(data, 'Caduceus is unavailable');
-        error.hidden = false;
-        return data;
-      }
-      const installed = data.bundle_installed === true;
-      field('installed').textContent = installed ? 'Installed' : 'Not installed';
-      field('fingerprint').textContent = String(fingerprint(data)).slice(0, 20);
-      field('role').textContent = data.role || data.profile || '—';
-      state.textContent = installed ? 'Installed' : 'Not installed';
-      state.className = `system-status system-status--${installed ? 'available' : 'unknown'}`;
-      error.hidden = true;
-      return data;
-    };
-    const prefillGateway = async () => {
-      try {
-        const network = await requestNetworkState();
-        const gateway = network.activeConnection?.gateway;
-        if (gateway) field('server').value = gateway;
-      } catch (_) {}
-    };
-
-    card.querySelector('[data-household-trust-fetch]').addEventListener('click', async (event) => {
-      const button = event.currentTarget;
-      const server = field('server').value.trim();
-      if (!server) {
-        field('error').textContent = 'Enter the HomeServer address.';
-        field('error').hidden = false;
-        field('server').focus();
-        return;
-      }
-      const label = button.textContent;
-      button.disabled = true;
-      button.textContent = 'Fetching…';
-      let response;
-      try {
-        response = await postJson('/api/caduceus/v1/cert/trust-fetch', { server });
-        presentReceipt(response);
-        PopupManager.showToast(response.ok ? `Installed${fingerprint(response) === '—' ? '' : ` · ${fingerprint(response)}`}` : receipt(response, 'HomeServer request was refused'), response.ok ? 'success' : 'error');
-      } catch (_) {
-        field('error').textContent = 'HomeServer request failed.';
-        field('error').hidden = false;
-        PopupManager.showToast('HomeServer request failed', 'error');
-      } finally {
-        button.disabled = false;
-        button.textContent = label;
-        await refresh();
-        if (response?.ok) presentReceipt(response);
-      }
-    });
-    prefillGateway();
-    refresh();
-  }
+  if (!trustPanel || !trustPanel.querySelector('[data-household-trust]')) return;
+  {
 
   const keyForm = document.getElementById('ssh-key-form');
   if (keyForm) {
@@ -3825,6 +3719,7 @@ function bindSystemTrustAndAccessForms() {
         PopupManager.showToast('Root CA request failed', 'error');
       } finally { button.disabled = false; button.textContent = old; }
     });
+  }
   }
 }
 

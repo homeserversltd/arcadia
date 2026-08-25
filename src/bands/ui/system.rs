@@ -27,10 +27,30 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                             p { "Fetch the HomeServer HTTPS bundle automatically, or upload a manual bundle when needed. Only one bundle is active at a time." }
                         }
                     }
+                    section class="household-trust-card" data-household-trust="true" aria-label="Household trust" {
+                        div class="household-trust-card__head" {
+                            span { "Household trust" }
+                            b class="system-status system-status--unknown" data-household-trust-state { "Checking" }
+                        }
+                        p class="household-trust-card__copy" { "Fetch the HomeServer certificate bundle and install it on this console." }
+                        div class="household-trust-card__action" {
+                            label for="household-trust-server" { "HomeServer address" }
+                            div class="household-trust-card__controls" {
+                                input class="field" id="household-trust-server" data-household-trust-server inputmode="numeric" autocomplete="off" placeholder="HomeServer IP address";
+                                button class="btn btn--primary" type="button" data-household-trust-fetch { "Fetch & Install" }
+                            }
+                        }
+                        div class="household-trust-card__fields" {
+                            span class="system-field" { em { "CA bundle" } strong data-household-trust-installed { (if trust.ca_installed { "Installed" } else { "Not installed" }) } }
+                            span class="system-field system-field--anchor" { em { "Fingerprint" } strong data-household-trust-fingerprint data-bind="system.trust.caSubject" { (trust.ca_subject.as_deref().unwrap_or("—")) } }
+                            span class="system-field" { em { "Role" } strong data-household-trust-role { "—" } }
+                        }
+                        p class="household-trust-card__error" data-household-trust-error hidden {}
+                    }
                     div class="system-ca-state" {
                         (system_field("Mode", if trust.mode == "https" { "HTTPS" } else { "HTTP" }))
                         (system_field("Active bundle", if trust.ca_installed { "Installed" } else { "Empty" }))
-                        span class="system-field system-field--anchor" { em { "Anchor" } strong { (trust.ca_path) } }
+                        span class="system-field system-field--anchor" { em { "Anchor" } strong data-bind="system.trust.caPath" { (trust.ca_path) } }
                         @if let Some(expiry) = trust.ca_not_after.as_deref() { (system_field("Expires", expiry)) }
                     }
                     details class="system-manual-install" {
