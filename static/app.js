@@ -444,7 +444,7 @@ const ArcadiaProjector = (() => {
   let lastDocument = null;
 
   function resolve(path, root) {
-    if (!path) return root;
+    if (!path || path === ".") return root;
     return String(path).split('.').reduce((value, key) => {
       if (value == null || key === '') return undefined;
       return value[key];
@@ -571,7 +571,7 @@ const ArcadiaProjector = (() => {
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
   // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
   // data-bind-copy-value and data-bind-enabled keep presenter-owned controls stable while values change.
-  return { apply, registerWidget, resolve };
+  return { apply, registerWidget, resolve, project, currentDocument: () => lastDocument };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
 
@@ -1201,117 +1201,73 @@ async function getJson(url) {
   return data;
 }
 
-function storageModalShell(title, crumbs = ['Storage']) {
-  const template = document.getElementById('storage-modal-template');
-  const body = template?.content.cloneNode(true);
-  const root = body?.firstElementChild;
-  if (!root) return null;
-  const bar = root.querySelector('[data-storage-crumbs]');
-  crumbs.forEach((crumb, index) => {
-    const item = document.getElementById('storage-crumb-template').content.cloneNode(true).firstElementChild;
-    item.textContent = crumb;
-    bar.appendChild(item);
-    if (index < crumbs.length - 1) bar.appendChild(document.getElementById('storage-crumb-template').content.cloneNode(true).firstElementChild).textContent = '/';
-  });
-  PopupManager.showModal({ title, body: root, hideDefaultAction: true, surfaceId: 'modal:storage' });
-  return root.querySelector('[data-storage-content]');
+const STORAGE_TEMPLATE_IDS = {
+  games: 'storage-games-modal-template',
+  'artwork-detail': 'storage-artwork-modal-template',
+  'updates-detail': 'storage-updates-modal-template',
+  'logs-detail': 'storage-logs-modal-template',
+  'temporary-detail': 'storage-temporary-modal-template',
+  'system-detail': 'storage-system-modal-template',
+  'category-other': 'storage-category-other-modal-template',
+  'category-free': 'storage-category-free-modal-template',
+  'ai-models-detail': 'storage-ai-models-modal-template',
+  'cleanup-review': 'storage-cleanup-modal-template',
+  locations: 'storage-locations-modal-template',
+  diagnostics: 'storage-diagnostics-modal-template',
+  'game-detail': 'storage-game-detail-modal-template',
+};
+
+async function livingStorageDocument() {
+  const current = ArcadiaProjector.currentDocument();
+  if (current?.storage) return current;
+  try { const storage = await getJson('/api/storage/state'); return { storage, storageSummary: storage }; }
+  catch (_) { return null; }
 }
 
-function storageLoading(content, label) {
-  if (!content) return;
-  content.replaceChildren();
-  const summary = document.getElementById('storage-summary-template')?.content.cloneNode(true);
-  const row = summary?.firstElementChild;
-  if (!row) return;
-  row.querySelector('[data-storage-summary-label]').textContent = 'Status';
-  row.querySelector('[data-storage-summary-value]').textContent = label;
-  content.appendChild(row);
+function bindStoragePresenter(root, document) {
+  root.querySelectorAll('[data-storage-copy-path]').forEach((button) => button.addEventListener('click', async () => {
+    const value = button.dataset.copyValue || '';
+    const ok = validCopyValue(value) && await copyToClipboard(value);
+    PopupManager.showToast(ok ? `Copied ${value}` : 'Address unavailable', ok ? 'success' : 'error');
+  }));
+  root.querySelectorAll('[data-storage-game-open]').forEach((button) => button.addEventListener('click', () => openStorageModal('game-detail', button.dataset.harmoniaModuleSwitch || button.dataset.bindValue)));
+  root.querySelectorAll('[data-storage-cleanup-action]').forEach((button) => button.addEventListener('click', () => runStorageCleanup(button.dataset.storageCleanupAction, button.dataset.storageCleanupEndpoint)));
 }
 
-function storageSummaryLine(label, value) {
-  const row = document.getElementById('storage-summary-template')?.content.cloneNode(true)?.firstElementChild;
-  if (!row) return null;
-  row.querySelector('[data-storage-summary-label]').textContent = label;
-  row.querySelector('[data-storage-summary-value]').textContent = value ?? '—';
-  return row;
+async function presentStorageTemplate(view, stateDocument, category) {
+  const id = STORAGE_TEMPLATE_IDS[view] || 'storage-category-modal-template';
+  const template = document.getElementById(id);
+  const fragment = template?.content.cloneNode(true);
+  const root = fragment?.firstElementChild;
+  if (!root || !stateDocument) return null;
+  ArcadiaProjector.project(root, stateDocument);
+  bindStoragePresenter(root, stateDocument);
+  PopupManager.showModal({ title: root.querySelector('nav')?.textContent?.trim() || 'Storage', body: root, hideDefaultAction: true, surfaceId: 'modal:storage' });
+  return root;
 }
 
-function storageTable(headers, rows) {
-  const table = document.getElementById('storage-table-template')?.content.cloneNode(true)?.firstElementChild;
-  if (!table) return null;
-  const head = table.querySelector('[data-storage-table-head]');
-  headers.forEach((header) => { const cell = document.getElementById('storage-head-cell-template').content.cloneNode(true).firstElementChild; cell.textContent = header; head.appendChild(cell); });
-  const rowTemplate = table.querySelector('[data-storage-table-row-template]');
-  rows.forEach((cells) => {
-    const row = rowTemplate.content.cloneNode(true).firstElementChild;
-    cells.forEach((cell) => {
-      const node = document.getElementById('storage-cell-template').content.cloneNode(true).firstElementChild;
-      if (Array.isArray(cell)) cell.forEach((child) => node.appendChild(child));
-      else if (cell instanceof Node) node.appendChild(cell);
-      else node.textContent = cell ?? '—';
-      row.appendChild(node);
-    });
-    table.appendChild(row);
-  });
-  rowTemplate.remove();
-  return table;
+async function openStorageModal(view, selected) {
+  const document = await livingStorageDocument();
+  if (!document) return PopupManager.showToast('Storage state unavailable', 'error');
+  if (view === 'game-detail') {
+    const folders = document.storage?.gameFolders || [];
+    const folder = folders.find((item) => String(item.platform || '').toLowerCase() === String(selected || '').toLowerCase());
+    if (!folder) return presentStorageTemplate('games', document);
+    try { const fresh = await getJson('/api/storage/games/' + encodeURIComponent(String(folder.platform || '').toLowerCase())); return presentStorageTemplate(view, fresh?.folder ? { ...document, storage: { ...document.storage, gameFolders: [fresh.folder] } } : document); }
+    catch (_) { return presentStorageTemplate(view, { ...document, storage: { ...document.storage, gameFolders: [folder] } }); }
+  }
+  const categories = ['updates-detail', 'logs-detail', 'temporary-detail', 'system-detail', 'category-other', 'category-free'];
+  if (categories.includes(view)) return presentStorageTemplate(view, document, view.replace('-detail', '').replace('category-', ''));
+  return presentStorageTemplate(view, document);
 }
 
-function buttonNode(label, className = 'btn btn--secondary') {
-  const b = document.getElementById('storage-button-template').content.cloneNode(true).firstElementChild;
-  b.className = className; b.textContent = label;
-  return b;
+async function runStorageCleanup(action, endpoint) {
+  const body = confirmationFor(action);
+  if (body === null) return;
+  const data = await postJson(endpoint, body);
+  PopupManager.showToast(data.message || (data.ok ? 'Cleanup complete' : 'Cleanup failed'), data.ok ? 'success' : 'error');
+  if (data.ok) openStorageModal('cleanup-review');
 }
-
-function copyButtonNode(label, value) {
-  const b = buttonNode(label);
-  b.addEventListener('click', async () => {
-    if (!validCopyValue(value)) return PopupManager.showToast('Address unavailable', 'error');
-    const ok = await copyToClipboard(value);
-    PopupManager.showToast(ok ? `Copied ${value}` : `Copy unavailable: ${value}`, ok ? 'success' : 'error');
-  });
-  return b;
-}
-
-async function openStorageModal(view) {
-  const titles = { games: 'Games', 'artwork-detail': 'Artwork', 'ai-models-detail': 'Local AI', 'updates-detail': 'Updates', 'logs-detail': 'Logs', 'temporary-detail': 'Temporary Files', 'system-detail': 'System', 'category-other': 'Other', 'category-free': 'Free', locations: 'Managed Locations', 'cleanup-review': 'Cleanup', diagnostics: 'Diagnostics' };
-  const title = titles[view] || 'Storage';
-  const content = storageModalShell(title, ['Storage', title]);
-  if (!content) return;
-  storageLoading(content, view === 'games' ? 'Scanning game folders…' : `Loading ${title}…`);
-  try {
-    if (view === 'games') return renderGamesModal(content, await getJson('/api/storage/games'));
-    if (view === 'locations') return renderLocationsModal(content, await getJson('/api/storage/locations'));
-    if (view === 'cleanup-review') return renderCleanupModal(content, await getJson('/api/storage/cleanup'));
-    if (view === 'diagnostics') return renderDiagnosticsModal(content, await getJson('/api/storage/diagnostics'));
-    if (view === 'artwork-detail') return renderFolderList(content, 'Artwork', await getJson('/api/storage/artwork'));
-    if (view === 'ai-models-detail') return renderAiModelsModal(content, await getJson('/api/storage/category/ai-models'));
-    const category = view.replace('-detail', '').replace('category-', '');
-    return renderCategoryModal(content, title, await getJson(`/api/storage/category/${category}`));
-  } catch (_) { storageLoading(content, 'Could not load storage details.'); }
-}
-
-function replaceStorageContent(content, nodes) { content.replaceChildren(...nodes.filter(Boolean)); }
-function renderGamesModal(content, data) {
-  const folders = data.folders || [];
-  const rows = folders.map((f) => [f.platform || f.displayName, f.size, String(f.fileCount ?? 0), data.syncStatusAvailable === false ? '—' : String(f.syncedEntries ?? 'Unknown'), [buttonNode('Open'), copyButtonNode('Copy path', f.path)]]);
-  replaceStorageContent(content, [storageSummaryLine('Summary', `${folders.length} managed folders · ${(data.summary && data.summary.size) || '0 B'} used`), storageTable(['Platform', 'Size', 'Files', 'Sync State', 'Actions'], rows)]);
-  content.querySelectorAll('button').forEach((button, index) => { const f = folders[index >> 1]; if (!f) return; if ((index & 1) === 0) button.addEventListener('click', () => openGameFolderDetail(f.platform || f.id)); });
-}
-async function openGameFolderDetail(platform) {
-  const content = storageModalShell(platform, ['Storage', 'Games', platform]); if (!content) return;
-  storageLoading(content, `Scanning ${platform} folder…`);
-  const data = await getJson(`/api/storage/games/${encodeURIComponent(String(platform || '').toLowerCase())}`); const f = data.folder || {};
-  const rows = [['Actual path', f.path], ['Samba share', f.sambaShareName], ['Files', String(f.fileCount ?? 0)], ['Total size', f.size], ['Last modified', 'Read from folder scan']].map(([k,v]) => storageSummaryLine(k,v));
-  replaceStorageContent(content, [buttonNode('Back'), ...rows]); content.querySelector('button')?.addEventListener('click', () => openStorageModal('games'));
-}
-function renderFolderList(content, label, rows) { replaceStorageContent(content, [storageSummaryLine('Summary', `${(rows || []).length} roots`), storageTable(['Name', 'Size', 'Files', 'State', 'Path'], (rows || []).map((r) => [r.displayName, r.size, String(r.fileCount ?? 0), r.state || '—', r.path]))]); }
-function renderAiModelsModal(content, data) { const models = data.items || []; replaceStorageContent(content, [storageTable(['Model', 'Size', 'State', 'Path'], models.map((m) => [m.name, m.size, m.loaded ? 'Hot-loaded' : (m.selected ? 'Selected' : 'Installed'), m.path]))]); }
-function renderCategoryModal(content, title, data) { const s = data.summary || {}; replaceStorageContent(content, [storageSummaryLine('Size', s.size || data.size || '—'), storageSummaryLine('Detail', s.detail || title)]); }
-function renderCleanupModal(content, cleanup) { const rows = [['Artwork cache', cleanup.artworkBytesClearable], ['Temporary files', cleanup.temporaryBytesClearable], ['Old updates', cleanup.oldUpdateBytesClearable], ['Logs', cleanup.logsBytesClearable], ['Partial downloads', cleanup.partialDownloadsBytesClearable]].map(([label, bytes]) => [label, formatBytes(Number(bytes || 0))]); replaceStorageContent(content, [storageTable(['Item', 'Clearable'], rows)]); }
-function renderLocationsModal(content, registry) { const rows = []; Object.entries(registry.categories || {}).forEach(([name, cat]) => (cat.roots || []).forEach((r) => rows.push([name, r.displayName || r.platform, r.path]))); replaceStorageContent(content, [storageTable(['Category', 'Name', 'Path'], rows)]); }
-function renderDiagnosticsModal(content, d) { const messages = [...(d.warnings || []), ...(d.overlapWarnings || []), ...(d.categoryScanErrors || []), ...(d.missingDirs || []).map((p) => `Missing folder: ${p}`), ...(d.permissionErrors || []).map((p) => `Permission denied: ${p}`)]; replaceStorageContent(content, [storageSummaryLine('Mount point', d.mountPoint), storageSummaryLine('Filesystem', d.filesystem || 'Unknown'), storageSummaryLine('Warnings', messages.length ? messages.join('; ') : 'None')]); }
-async function runStorageCleanup(action, endpoint) { const body = confirmationFor(action); if (body === null) return; const data = await postJson(endpoint, body); PopupManager.showToast(data.message || (data.ok ? 'Cleanup complete' : 'Cleanup failed'), data.ok ? 'success' : 'error'); if (data.ok) openStorageModal('cleanup-review'); }
 
 const CONTROLLER_BUTTON_INDEX_LABELS = [
   'A', 'B', 'X', 'Y', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'Select', 'Start',
