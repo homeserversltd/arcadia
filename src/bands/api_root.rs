@@ -198,12 +198,34 @@ pub struct ApiLivingStateDocument {
     pub local_ai_pane: ApiLocalAiPaneState,
     pub network_pane: ApiNetworkPaneState,
     pub updates_pane: ApiUpdatesPaneState,
+    pub system_pane: ApiSystemPaneState,
     pub storage: StorageStatus,
     pub storage_summary: StorageStatus,
     pub network: NetworkState,
     pub ai: LocalAIState,
     pub controllers: ControllerStatus,
     pub system: SystemAdminStatus,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiSystemPaneState {
+    pub vault_label: &'static str,
+    pub vault_copy: &'static str,
+    pub pin_label: &'static str,
+    pub pin_copy: &'static str,
+    pub admin_text: &'static str,
+}
+
+fn api_system_pane_state(status: &ConsoleStatus) -> ApiSystemPaneState {
+    ApiSystemPaneState {
+        vault_label: if status.vault.mounted { "Unlocked" } else { "Locked" },
+        vault_copy: if status.vault.auto_decrypt_enabled { "Automatically decrypts when the console starts." } else { "Unlock required after the console starts." },
+        pin_label: if status.gui_pin.pin_required { "PIN required" } else { "Open without PIN" },
+        pin_copy: if status.gui_pin.pin_required { "PIN required before accessing HomeConsole." } else { "HomeConsole opens without a PIN." },
+        // The living-state document has no browser lease; attendance is overlaid by the lease presenter.
+        admin_text: "Guest",
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -854,6 +876,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
         local_ai_pane: api_local_ai_pane_state(&status),
         network_pane: api_network_pane_state(&status),
         updates_pane: api_updates_pane_state(&status),
+        system_pane: api_system_pane_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,
@@ -2116,6 +2139,7 @@ fn api_living_state_document_from_parts(
         local_ai_pane: api_local_ai_pane_state(&status),
         network_pane: api_network_pane_state(&status),
         updates_pane: api_updates_pane_state(&status),
+        system_pane: api_system_pane_state(&status),
         status,
         storage: storage.clone(),
         storage_summary: storage,

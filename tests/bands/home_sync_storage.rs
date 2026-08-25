@@ -1667,6 +1667,13 @@
             ("network", r#"data-bind="networkPane.connection.detail""#),
             ("controllers", r#"data-controller-pool-count="true""#),
             ("controllers", r#"data-controller-primary-device="true""#),
+            ("system", r#"data-bind="systemPane.vaultLabel""#),
+            ("system", r#"data-bind="systemPane.vaultCopy""#),
+            ("system", r#"data-bind="systemPane.pinLabel""#),
+            ("system", r#"data-bind="systemPane.pinCopy""#),
+            ("system", r#"data-bind="systemPane.adminText""#),
+            ("system", r#"data-bind-checked="status.vault.auto_decrypt_enabled""#),
+            ("system", r#"data-bind-checked="status.gui_pin.pin_required""#),
         ];
         for (pane, hook) in required_hooks {
             assert!(rendered.contains(hook), "{pane} missing live projection hook {hook}");
@@ -1939,4 +1946,155 @@
         for forbidden in ["State check", "System suite", "Needs repair", "Repair pending", "Drift", "Suite stale", "No Harmonia receipt", "Missing"] {
             assert!(!updates_html.contains(forbidden), "updates view leaked customer-hostile text: {forbidden}");
         }
+    }
+
+
+
+    #[test]
+    fn storage_system_bindings_resolve_against_serialized_living_state() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.example.com/".to_string(),
+            product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+        let living = serde_json::to_value(api_living_state_document(&state)).expect("living state serializes");
+        let storage_start = rendered.find("<section id=\"view-storage\"").expect("storage view");
+        let storage_end = rendered[storage_start..]
+            .find("<section id=\"view-local-ai\"")
+            .map(|offset| storage_start + offset)
+            .expect("local ai view follows storage");
+        let system_start = rendered.find("<section id=\"view-system\"").expect("system view");
+        let system_end = rendered[system_start..]
+            .find("</main>")
+            .map(|offset| system_start + offset)
+            .expect("containing main closes after system view");
+        assert!(storage_start < storage_end && storage_end <= system_start);
+        assert!(system_start < system_end);
+        let scopes = [&rendered[storage_start..storage_end], &rendered[system_start..system_end]];
+        let binding_names = [
+            "data-bind", "data-bind-copy-value", "data-bind-checked", "data-bind-enabled",
+            "data-bind-value", "data-bind-attr-id", "data-bind-class", "data-bind-show",
+            "data-bind-aria-label",
+        ];
+        let mut absolute = 0usize;
+        let mut relative = 0usize;
+        let mut each_count = 0usize;
+        let mut style_count = 0usize;
+        for scope in scopes {
+            let mut rest = scope;
+            struct Frame {
+                name: String,
+                each_host: bool,
+                each_template: bool,
+            }
+            let mut frames: Vec<Frame> = Vec::new();
+            let void_tags = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
+            while let Some(start) = rest.find('<') {
+                let tag_end = rest[start..].find('>').expect("tag closes") + start;
+                let tag = &rest[start..=tag_end];
+                rest = &rest[tag_end + 1..];
+                if tag.starts_with("<!--") || tag.starts_with("<!") || tag.starts_with("<?") { continue; }
+                let closing = tag.starts_with("</");
+                let tag_name = tag.trim_start_matches(|character| character == '<' || character == '/').split_whitespace().next().unwrap_or_default().trim_end_matches('>').to_ascii_lowercase();
+                if closing {
+                    let frame = frames.pop().expect("closing tag has an open frame");
+                    assert_eq!(frame.name, tag_name, "closing tag must match its opening frame");
+                    continue;
+                }
+                let attr = |name: &str| -> Option<&str> {
+                    let needle = format!(" {}=\"", name);
+                    let begin = tag.find(&needle)? + needle.len();
+                    let end = tag[begin..].find('"')? + begin;
+                    Some(&tag[begin..end])
+                };
+                let each_template = tag_name == "template" && frames.iter().any(|frame| frame.each_host);
+                if let Some(path) = attr("data-bind-each") {
+                    each_count += 1;
+                    let mut value = &living;
+                    for key in path.split('.') {
+                        value = if let Ok(index) = key.parse::<usize>() { value.get(index) } else { value.get(key) }
+                            .unwrap_or_else(|| panic!("unresolved each binding {path} at {key}"));
+                    }
+                    assert!(value.is_array(), "each binding is not an array: {path}");
+                }
+                for name in binding_names {
+                    if name == "data-bind" && attr("data-bind-each").is_some() { continue; }
+                    if let Some(path) = attr(name) {
+                        let is_relative = path == "." || (!path.contains('.') && !path.contains('['));
+                        if is_relative {
+                            assert!(
+                                frames.iter().any(|frame| frame.each_template),
+                                "single-segment binding outside active each host template: {path}"
+                            );
+                            relative += 1;
+                        } else {
+                            let mut value = &living;
+                            for key in path.split('.') {
+                                value = if let Ok(index) = key.parse::<usize>() { value.get(index) } else { value.get(key) }
+                                    .unwrap_or_else(|| panic!("unresolved binding {path} at {key}"));
+                            }
+                            absolute += 1;
+                        }
+                    }
+                }
+                if let Some(bindings) = attr("data-bind-style-var") {
+                    for binding in bindings.split(',') {
+                        let path = binding.split_once(':').map(|(_, path)| path.trim()).unwrap_or_default();
+                        assert!(!path.is_empty(), "style-var binding path is empty");
+                        style_count += 1;
+                        let mut value = &living;
+                        for key in path.split('.') {
+                            value = if let Ok(index) = key.parse::<usize>() { value.get(index) } else { value.get(key) }
+                                .unwrap_or_else(|| panic!("unresolved style-var binding {path} at {key}"));
+                        }
+                    }
+                }
+                let self_closing = tag.ends_with("/>") || void_tags.contains(&tag_name.as_str());
+                if !self_closing {
+                    frames.push(Frame {
+                        name: tag_name,
+                        each_host: attr("data-bind-each").is_some(),
+                        each_template,
+                    });
+                }
+            }
+            assert!(frames.is_empty(), "binding census ended with unclosed HTML frames");
+        }
+        assert!(absolute > 0, "census did not exercise document paths");
+        assert!(relative > 0, "census did not exercise item-relative template paths");
+        assert!(each_count > 0, "census omitted data-bind-each");
+        assert!(style_count > 0, "census omitted data-bind-style-var");
+        assert!(!rendered.contains("data-bind=\"attendance."));
+        assert_eq!(living["systemPane"]["adminText"], "Guest");
+        assert!(rendered.contains("data-bind-each=\"storage.aiModelFiles\""));
+        assert!(rendered.contains("data-bind-zero-dash=\"true\""));
+        assert!(rendered.contains("data-bind-enabled=\"storage.cleanup.artworkBytesClearable\""));
+        assert!(rendered.contains("data-bind-each=\"storage.registry.categories.aiModels.roots\""));
+        assert!(rendered.contains("data-bind-each=\"storage.diagnostics.warnings\""));
+    }
+
+    #[test]
+    fn storage_and_system_presenters_retain_actions_without_building_html() {
+        let storage = include_str!("../../src/bands/ui/storage.rs");
+        let system = include_str!("../../src/bands/ui/system.rs");
+        for source in [storage, system] {
+            for forbidden in ["innerHTML", "createElement", "insertAdjacentHTML"] {
+                assert!(!source.contains(forbidden), "presenter retained forbidden HTML builder: {forbidden}");
+            }
+        }
+        for path in [
+            "/api/storage/rescan-summary", "/api/storage/cleanup/artwork", "/api/storage/cleanup/temporary",
+            "/api/storage/cleanup/old-updates", "/api/storage/cleanup/logs", "/api/storage/cleanup/partial-ai-downloads",
+        ] { assert!(storage.contains(path), "storage action path missing: {path}"); }
+        for path in ["/api/actions/reboot-console", "/api/actions/shutdown-console", "/api/system/ssh/service"] {
+            assert!(system.contains(path), "system action path missing: {path}");
+        }
+        assert!(APP_JS.contains("/api/v1/admin-admittance/invalidate"));
+        assert!(APP_JS.contains("x-caduceus-attendance"));
+        assert!(APP_JS.contains("applyOverlay"));
+        assert!(APP_JS.contains("value === 0 || value === '0' ? '—'"));
+        assert!(APP_JS.contains("node.setAttribute('aria-disabled', String(!enabled))"));
+        assert!(!APP_JS.contains("[data-admin-projection]').forEach((node) => { node.textContent"));
     }

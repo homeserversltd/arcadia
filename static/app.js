@@ -280,8 +280,6 @@ function renderVaultMode({ mounted, auto_decrypt_enabled: autoDecrypt, unlock_re
   updateArcadiaShellVisibility();
   setVaultIndicator(mounted);
   document.querySelectorAll('[data-vault-auto-decrypt-toggle]').forEach((toggle) => { toggle.checked = autoDecrypt; });
-  document.querySelectorAll('[data-vault-mode-label]').forEach((node) => { node.textContent = mounted ? 'Unlocked' : 'Locked'; });
-  document.querySelectorAll('[data-vault-mode-copy]').forEach((node) => { node.textContent = autoDecrypt ? 'Automatically decrypts when the console starts.' : 'Unlock required after the console starts.'; });
 }
 
 async function initializeVaultGate() {
@@ -364,7 +362,7 @@ function invalidateCaduceusAttendance() {
 function updateArcadiaShellVisibility() {
   const vaultUnlockRequired = document.body.dataset.vaultUnlockRequired === 'true';
   document.getElementById('app')?.toggleAttribute('aria-hidden', !caduceusAttendance || vaultUnlockRequired);
-  document.querySelectorAll('[data-admin-projection]').forEach((node) => { node.textContent = caduceusAttendance ? 'Admin' : 'Guest'; });
+  ArcadiaProjector.applyOverlay({ systemPane: { adminText: caduceusAttendance ? 'Admin' : 'Guest' } });
 }
 
 function openArcadia() {
@@ -442,6 +440,7 @@ function bindNavigation() {
 const ArcadiaProjector = (() => {
   const widgets = [];
   let lastDocument = null;
+  let overlay = {};
 
   function resolve(path, root) {
     if (!path || path === ".") return root;
@@ -483,11 +482,14 @@ const ArcadiaProjector = (() => {
       node.checked = Boolean(resolve(node.dataset.bindChecked, state));
     });
     boundNodes(root, '[data-bind-value]', includeGenerated).forEach((node) => {
-      const value = asText(resolve(node.dataset.bindValue, state));
+      const raw = resolve(node.dataset.bindValue, state);
+      const value = asText(raw);
       node.value = value;
-      node.dataset.harmoniaModuleSwitch = value;
-      node.setAttribute('data-harmonia-module-switch', value);
-      node.setAttribute('aria-label', `${value} module enabled`);
+      if (node.dataset.bindAriaLabel) node.setAttribute('aria-label', asText(resolve(node.dataset.bindAriaLabel, state)));
+    });
+    boundNodes(root, '[data-bind-zero-dash]', includeGenerated).forEach((node) => {
+      const value = resolve(node.dataset.bind, state);
+      node.textContent = value === 0 || value === '0' ? '—' : asText(value);
     });
     boundNodes(root, '[data-bind-attr-id]', includeGenerated).forEach((node) => {
       const value = asText(resolve(node.dataset.bindAttrId, state));
@@ -554,11 +556,35 @@ const ArcadiaProjector = (() => {
     projectScalarBindings(root, state, includeGenerated);
   }
 
+  function mergeOverlay(base, patch) {
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return patch;
+    const result = (base && typeof base === 'object' && !Array.isArray(base)) ? { ...base } : {};
+    Object.entries(patch).forEach(([key, value]) => {
+      result[key] = value && typeof value === 'object' && !Array.isArray(value)
+        ? mergeOverlay(result[key], value)
+        : value;
+    });
+    return result;
+  }
+
+  function projectedDocument() {
+    return mergeOverlay(lastDocument || {}, overlay);
+  }
+
   function apply(state) {
     lastDocument = state || {};
     if (window.arcadiaControllerTrainerStreamState) window.arcadiaControllerTrainerStreamState.lastLivingState = lastDocument;
-    project(document, lastDocument);
-    dispatchWidgets(lastDocument);
+    const documentState = projectedDocument();
+    project(document, documentState);
+    dispatchWidgets(documentState);
+  }
+
+  function applyOverlay(nextOverlay) {
+    overlay = mergeOverlay(overlay, nextOverlay || {});
+    if (!lastDocument) return;
+    const documentState = projectedDocument();
+    project(document, documentState);
+    dispatchWidgets(documentState);
   }
 
   function registerWidget(selectorOrName, fn) {
@@ -571,7 +597,7 @@ const ArcadiaProjector = (() => {
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
   // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
   // data-bind-copy-value and data-bind-enabled keep presenter-owned controls stable while values change.
-  return { apply, registerWidget, resolve, project, currentDocument: () => lastDocument };
+  return { apply, applyOverlay, registerWidget, resolve, project, currentDocument: () => projectedDocument() };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
 
@@ -1039,8 +1065,6 @@ function renderGuiPinMode(required) {
   document.body.dataset.guiPinRequired = String(required);
   setPinIndicator(Boolean(required));
   document.querySelectorAll('[data-pin-required-toggle]').forEach((toggle) => { toggle.checked = Boolean(required); });
-  document.querySelectorAll('[data-pin-mode-label]').forEach((node) => { node.textContent = required ? 'PIN required' : 'Open without PIN'; });
-  document.querySelectorAll('[data-pin-mode-copy]').forEach((node) => { node.textContent = required ? 'PIN required before accessing HomeConsole.' : 'HomeConsole opens without a PIN.'; });
 }
 
 function bindGuiPinAccess() {
@@ -1230,7 +1254,7 @@ function bindStoragePresenter(root, document) {
     const ok = validCopyValue(value) && await copyToClipboard(value);
     PopupManager.showToast(ok ? `Copied ${value}` : 'Address unavailable', ok ? 'success' : 'error');
   }));
-  root.querySelectorAll('[data-storage-game-open]').forEach((button) => button.addEventListener('click', () => openStorageModal('game-detail', button.dataset.harmoniaModuleSwitch || button.dataset.bindValue)));
+  root.querySelectorAll('[data-storage-game-open]').forEach((button) => button.addEventListener('click', () => openStorageModal('game-detail', button.value)));
   root.querySelectorAll('[data-storage-games-back]').forEach((button) => button.addEventListener('click', () => openStorageModal('games')));
   root.querySelectorAll('[data-storage-cleanup-action]').forEach((button) => button.addEventListener('click', () => runStorageCleanup(button.dataset.storageCleanupAction, button.dataset.storageCleanupEndpoint)));
 }
@@ -3634,7 +3658,7 @@ function bindHarmoniaModules() {
   document.addEventListener('change', (event) => {
     const input = event.target.closest?.('[data-harmonia-module-switch]');
     if (!input) return;
-    toggleHarmoniaModule(input.dataset.harmoniaModuleSwitch, input.checked, null);
+    toggleHarmoniaModule(input.value, input.checked, null);
   });
 }
 
