@@ -1231,6 +1231,7 @@ function bindStoragePresenter(root, document) {
     PopupManager.showToast(ok ? `Copied ${value}` : 'Address unavailable', ok ? 'success' : 'error');
   }));
   root.querySelectorAll('[data-storage-game-open]').forEach((button) => button.addEventListener('click', () => openStorageModal('game-detail', button.dataset.harmoniaModuleSwitch || button.dataset.bindValue)));
+  root.querySelectorAll('[data-storage-games-back]').forEach((button) => button.addEventListener('click', () => openStorageModal('games')));
   root.querySelectorAll('[data-storage-cleanup-action]').forEach((button) => button.addEventListener('click', () => runStorageCleanup(button.dataset.storageCleanupAction, button.dataset.storageCleanupEndpoint)));
 }
 
@@ -3593,18 +3594,37 @@ async function hydrateHarmoniaLedgerSummary() {
   } catch (_) {}
 }
 
+function harmoniaLedgerModalShell() {
+  const body = document.createElement('div');
+  body.className = 'storage-detail-modal';
+  const bar = document.createElement('div');
+  bar.className = 'storage-breadcrumb';
+  const crumb = document.createElement('span');
+  crumb.textContent = 'Updates / Ledger';
+  bar.appendChild(crumb);
+  const content = document.createElement('div');
+  content.className = 'storage-detail-content';
+  body.append(bar, content);
+  PopupManager.showModal({ title: 'Harmonia Ledger', body, hideDefaultAction: true, surfaceId: 'modal:harmonia-ledger' });
+  return content;
+}
+
+function harmoniaLedgerLoading(content, label) {
+  content.replaceChildren(ArcadiaLoading.spinner({ label }));
+}
+
 async function loadHarmoniaLedgerPage(page, content) {
-  storageLoading(content, 'Loading Harmonia ledger…');
+  harmoniaLedgerLoading(content, 'Loading Harmonia ledger…');
   try {
     const data = await getJson(`/api/harmonia/ledger?page=${encodeURIComponent(page)}&per_page=8`);
     renderHarmoniaLedgerPage(content, data);
   } catch (_) {
-    content.innerHTML = '<div class="empty-state"><strong>Could not load Harmonia ledger.</strong></div>';
+    const error = document.createElement('div'); error.className = 'empty-state'; const strong = document.createElement('strong'); strong.textContent = 'Could not load Harmonia ledger.'; error.appendChild(strong); content.replaceChildren(error);
   }
 }
 
 function openHarmoniaLedger() {
-  const content = storageModalShell('Harmonia Ledger', ['Updates', 'Ledger']);
+  const content = harmoniaLedgerModalShell();
   loadHarmoniaLedgerPage(1, content);
 }
 
@@ -3622,6 +3642,31 @@ function bindSystemTrustAndAccessForms() {
   const trustPanel = document.querySelector('.system-ca-panel');
   if (!trustPanel || !trustPanel.querySelector('[data-household-trust]')) return;
   {
+  const card = trustPanel.querySelector('[data-household-trust]');
+  const field = (name) => card.querySelector(`[data-household-trust-${name}]`);
+  const receipt = (data, fallback) => data.first_missing_signal || data.firstMissingSignal || data.refusal_reason || data.refusalReason || data.message || fallback;
+  const fingerprint = (data) => data.ca_fingerprint || data.fingerprint || data.bundle_fingerprint || '—';
+  const refresh = async () => {
+    let data;
+    try { data = await getJson('/api/caduceus/v1/cert/status'); } catch (_) { data = { ok: false, first_missing_signal: 'caduceus-http-unreachable' }; }
+    if (data.ok === false) {
+      field('installed').textContent = 'Unavailable'; field('fingerprint').textContent = '—'; field('role').textContent = data.role || data.profile || '—';
+      field('state').textContent = 'Unavailable'; field('state').className = 'system-status system-status--error'; field('error').textContent = receipt(data, 'Caduceus is unavailable'); field('error').hidden = false; return data;
+    }
+    const installed = data.bundle_installed === true;
+    field('installed').textContent = installed ? 'Installed' : 'Not installed'; field('fingerprint').textContent = String(fingerprint(data)).slice(0, 20); field('role').textContent = data.role || data.profile || '—';
+    field('state').textContent = installed ? 'Installed' : 'Not installed'; field('state').className = `system-status system-status--${installed ? 'available' : 'unknown'}`; field('error').hidden = true; return data;
+  };
+  const gateway = async () => { try { const network = await requestNetworkState(); const value = network.activeConnection?.gateway; if (value) field('server').value = value; } catch (_) {} };
+  card.querySelector('[data-household-trust-fetch]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; const server = field('server').value.trim();
+    if (!server) { field('error').textContent = 'Enter the HomeServer address.'; field('error').hidden = false; field('server').focus(); return; }
+    const label = button.textContent; button.disabled = true; button.textContent = 'Fetching…'; let response;
+    try { response = await postJson('/api/caduceus/v1/cert/trust-fetch', { server }); const shown = fingerprint(response); if (response.ok) { field('installed').textContent = 'Installed'; field('state').textContent = 'Installed'; field('state').className = 'system-status system-status--available'; if (shown !== '—') field('fingerprint').textContent = String(shown).slice(0, 20); field('error').hidden = true; } else { field('error').textContent = receipt(response, 'HomeServer request was refused'); field('error').hidden = false; } PopupManager.showToast(response.ok ? `Installed${shown === '—' ? '' : ` · ${shown}`}` : receipt(response, 'HomeServer request was refused'), response.ok ? 'success' : 'error'); }
+    catch (_) { field('error').textContent = 'HomeServer request failed.'; field('error').hidden = false; PopupManager.showToast('HomeServer request failed', 'error'); }
+    finally { button.disabled = false; button.textContent = label; await refresh(); }
+  });
+  gateway(); refresh();
 
   const keyForm = document.getElementById('ssh-key-form');
   if (keyForm) {
