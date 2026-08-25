@@ -14,9 +14,12 @@ fn wifi_caduceus_succeeded(result: &Result<serde_json::Value, AttendanceCall>) -
     matches!(result, Ok(value) if value.get("ok").and_then(serde_json::Value::as_bool) == Some(true))
 }
 
+fn wifi_caduceus_value_succeeded(value: &serde_json::Value) -> bool {
+    value.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+}
+
 async fn wifi_scan(
     State(state): State<Arc<AppState>>,
-    headers: axum::http::HeaderMap,
 ) -> (StatusCode, Json<NetworkActionResponse>) {
     if !state
         .living_snapshot()
@@ -34,12 +37,8 @@ async fn wifi_scan(
             Some("adapter-unavailable"),
         );
     }
-    let result = wifi_caduceus_call(
-        &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"wifi-scan"}),
-    );
-    if wifi_caduceus_succeeded(&result) {
+    let result = caduceus_fetch_json("/api/v1/network/device/wifi/scan");
+    if matches!(result, Ok(value) if wifi_caduceus_value_succeeded(&value)) {
         network_action(
             StatusCode::OK,
             &state,
@@ -93,11 +92,11 @@ async fn wifi_connect(
     }
     // The password is placed only in the Caduceus request payload; it is never
     // copied into Arcadia state, a response, diagnostics, logs, or receipts.
-    let result = wifi_caduceus_call(
-        &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"wifi-connect", "ssid":body.ssid, "password":body.password}),
-    );
+    let mut payload = serde_json::json!({"ssid": body.ssid});
+    if let Some(password) = body.password.filter(|password| !password.is_empty()) {
+        payload["password"] = serde_json::Value::String(password);
+    }
+    let result = wifi_caduceus_call(&headers, "/api/v1/network/device/wifi/connect", payload);
     if wifi_caduceus_succeeded(&result) {
         state.request_living_refresh();
         let after = state.living_snapshot().network.clone();
@@ -152,8 +151,8 @@ async fn wifi_disconnect(
     };
     let result = wifi_caduceus_call(
         &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"disconnect", "interface":dev}),
+        "/api/v1/network/device/wifi/disconnect",
+        serde_json::json!({"interface": dev}),
     );
     if wifi_caduceus_succeeded(&result) {
         network_action(
@@ -191,10 +190,34 @@ async fn wifi_forget(
             Some("saved-network"),
         );
     }
+    let Some(uuid) = caduceus_fetch_json("/api/v1/network/device/wifi/saved")
+        .ok()
+        .and_then(|saved| {
+            wifi_caduceus_value_succeeded(&saved)
+                .then(|| saved.get("entries").and_then(serde_json::Value::as_array))
+                .flatten()?
+                .iter()
+                .find_map(|entry| {
+                    let fields = entry.as_array()?;
+                    let name = fields.first()?.as_str()?;
+                    let uuid = fields.get(1)?.as_str()?;
+                    (name == body.ssid).then(|| uuid.to_string())
+                })
+        })
+    else {
+        return network_action(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &state,
+            false,
+            "wifi-forget",
+            "Saved Wi-Fi network could not be removed.",
+            Some("forget"),
+        );
+    };
     let result = wifi_caduceus_call(
         &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"wifi-forget", "ssid":body.ssid}),
+        "/api/v1/network/device/wifi/forget",
+        serde_json::json!({"uuid": uuid}),
     );
     if wifi_caduceus_succeeded(&result) {
         network_action(
@@ -224,8 +247,8 @@ async fn wifi_set_enabled(
 ) -> (StatusCode, Json<NetworkActionResponse>) {
     let result = wifi_caduceus_call(
         &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"wifi-set-enabled", "enabled":body.enabled}),
+        "/api/v1/network/device/wifi/radio",
+        serde_json::json!({"enabled": body.enabled}),
     );
     if wifi_caduceus_succeeded(&result) {
         network_action(
@@ -274,15 +297,20 @@ async fn ethernet_renew_dhcp(
     };
     let down = wifi_caduceus_call(
         &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"disconnect", "interface":dev}),
+        "/api/v1/network/device/disconnect",
+        serde_json::json!({"interface": dev}),
     );
-    let up = wifi_caduceus_call(
-        &headers,
-        "/api/v1/network/device",
-        serde_json::json!({"action":"connect", "interface":dev}),
-    );
-    if wifi_caduceus_succeeded(&down) && wifi_caduceus_succeeded(&up) {
+    let up_succeeded = if wifi_caduceus_succeeded(&down) {
+        let up = wifi_caduceus_call(
+            &headers,
+            "/api/v1/network/device/connect",
+            serde_json::json!({"interface": dev}),
+        );
+        wifi_caduceus_succeeded(&up)
+    } else {
+        false
+    };
+    if wifi_caduceus_succeeded(&down) && up_succeeded {
         network_action(
             StatusCode::OK,
             &state,
@@ -342,7 +370,7 @@ async fn ip_apply(
     }
     let manual_ip = body.ip.clone();
     let payload = if body.mode == "dhcp" {
-        serde_json::json!({"action":"dhcp", "interface":iface})
+        serde_json::json!({"interface": iface, "method": "auto"})
     } else {
         let Some(ip) = body.ip.as_deref() else {
             return network_action(
@@ -381,9 +409,15 @@ async fn ip_apply(
                 Some("validate"),
             );
         }
-        serde_json::json!({"action":"static", "interface":iface, "address":format!("{ip}/{prefix}"), "gateway":body.gateway.unwrap_or_default(), "dns":body.dns_servers.unwrap_or_default()})
+        serde_json::json!({
+            "interface": iface,
+            "method": "static",
+            "address": format!("{ip}/{prefix}"),
+            "gateway": body.gateway.unwrap_or_default(),
+            "dns": body.dns_servers.unwrap_or_default().join(","),
+        })
     };
-    let result = wifi_caduceus_call(&headers, "/api/v1/network/dhcp", payload);
+    let result = wifi_caduceus_call(&headers, "/api/v1/network/device/ipv4", payload);
     if wifi_caduceus_succeeded(&result) {
         let success_message = if body.mode == "dhcp" {
             "Network settings changed. Confirm this web GUI remains reachable within 90 seconds."
