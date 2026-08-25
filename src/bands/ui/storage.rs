@@ -99,6 +99,29 @@ fn storage_view(status: &ConsoleStatus) -> Markup {
                     }
                 }
 
+                template id="storage-modal-template" {
+                    div class="storage-detail-modal" data-storage-presenter="true" {
+                        nav class="storage-breadcrumb" aria-label="Storage location" data-storage-crumbs {}
+                        div class="storage-detail-content" data-storage-content {}
+                    }
+                }
+                template id="storage-crumb-template" { span {} }
+                template id="storage-cell-template" { span {} }
+                template id="storage-head-cell-template" { strong {} }
+                template id="storage-button-template" { button type="button" {} }
+                template id="storage-summary-template" {
+                    div class="network-detail-row" data-storage-summary-row {
+                        span { em data-storage-summary-label {} strong data-storage-summary-value {} }
+                    }
+                }
+                template id="storage-table-template" {
+                    div class="storage-detail-table" data-storage-table {
+                        div class="storage-detail-table-row storage-detail-table-head" data-storage-table-head {}
+                        template data-storage-table-row-template {
+                            div class="storage-detail-table-row" data-storage-table-row {}
+                        }
+                    }
+                }
                 div class="storage-category-list storage-category-list--dashboard" aria-label="Storage consumption breakdown" {
                     (storage_category_row("🎮", "Games", &status.storage.games, "games", "games"))
                     (storage_category_row("🖼", "Artwork", &status.storage.artwork, "artwork", "artwork-detail"))

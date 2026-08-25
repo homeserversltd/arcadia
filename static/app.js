@@ -1202,63 +1202,64 @@ async function getJson(url) {
 }
 
 function storageModalShell(title, crumbs = ['Storage']) {
-  const body = document.createElement('div');
-  body.className = 'storage-detail-modal';
-  const bar = document.createElement('div');
-  bar.className = 'storage-breadcrumb';
+  const template = document.getElementById('storage-modal-template');
+  const body = template?.content.cloneNode(true);
+  const root = body?.firstElementChild;
+  if (!root) return null;
+  const bar = root.querySelector('[data-storage-crumbs]');
   crumbs.forEach((crumb, index) => {
-    const item = document.createElement('span');
+    const item = document.getElementById('storage-crumb-template').content.cloneNode(true).firstElementChild;
     item.textContent = crumb;
     bar.appendChild(item);
-    if (index < crumbs.length - 1) {
-      const sep = document.createElement('em');
-      sep.textContent = '/';
-      bar.appendChild(sep);
-    }
+    if (index < crumbs.length - 1) bar.appendChild(document.getElementById('storage-crumb-template').content.cloneNode(true).firstElementChild).textContent = '/';
   });
-  const content = document.createElement('div');
-  content.className = 'storage-detail-content';
-  body.append(bar, content);
-  PopupManager.showModal({ title, body, hideDefaultAction: true, surfaceId: 'modal:storage' });
-  return content;
+  PopupManager.showModal({ title, body: root, hideDefaultAction: true, surfaceId: 'modal:storage' });
+  return root.querySelector('[data-storage-content]');
 }
 
 function storageLoading(content, label) {
-  content.innerHTML = `<div class="empty-state"><strong>${escapeHtml(label)}</strong></div>`;
+  if (!content) return;
+  content.replaceChildren();
+  const summary = document.getElementById('storage-summary-template')?.content.cloneNode(true);
+  const row = summary?.firstElementChild;
+  if (!row) return;
+  row.querySelector('[data-storage-summary-label]').textContent = 'Status';
+  row.querySelector('[data-storage-summary-value]').textContent = label;
+  content.appendChild(row);
 }
 
 function storageSummaryLine(label, value) {
-  const row = document.createElement('div');
-  row.className = 'network-detail-row';
-  row.innerHTML = `<span><em>${escapeHtml(label)}</em><strong>${escapeHtml(value ?? '—')}</strong></span>`;
+  const row = document.getElementById('storage-summary-template')?.content.cloneNode(true)?.firstElementChild;
+  if (!row) return null;
+  row.querySelector('[data-storage-summary-label]').textContent = label;
+  row.querySelector('[data-storage-summary-value]').textContent = value ?? '—';
   return row;
 }
 
 function storageTable(headers, rows) {
-  const table = document.createElement('div');
-  table.className = 'storage-detail-table';
-  const head = document.createElement('div');
-  head.className = 'storage-detail-table-row storage-detail-table-head';
-  headers.forEach((h) => { const c = document.createElement('strong'); c.textContent = h; head.appendChild(c); });
-  table.appendChild(head);
+  const table = document.getElementById('storage-table-template')?.content.cloneNode(true)?.firstElementChild;
+  if (!table) return null;
+  const head = table.querySelector('[data-storage-table-head]');
+  headers.forEach((header) => { const cell = document.getElementById('storage-head-cell-template').content.cloneNode(true).firstElementChild; cell.textContent = header; head.appendChild(cell); });
+  const rowTemplate = table.querySelector('[data-storage-table-row-template]');
   rows.forEach((cells) => {
-    const row = document.createElement('div');
-    row.className = 'storage-detail-table-row';
+    const row = rowTemplate.content.cloneNode(true).firstElementChild;
     cells.forEach((cell) => {
-      const c = document.createElement('span');
-      if (cell instanceof Node) c.appendChild(cell); else c.textContent = cell ?? '—';
-      row.appendChild(c);
+      const node = document.getElementById('storage-cell-template').content.cloneNode(true).firstElementChild;
+      if (Array.isArray(cell)) cell.forEach((child) => node.appendChild(child));
+      else if (cell instanceof Node) node.appendChild(cell);
+      else node.textContent = cell ?? '—';
+      row.appendChild(node);
     });
     table.appendChild(row);
   });
+  rowTemplate.remove();
   return table;
 }
 
 function buttonNode(label, className = 'btn btn--secondary') {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = className;
-  b.textContent = label;
+  const b = document.getElementById('storage-button-template').content.cloneNode(true).firstElementChild;
+  b.className = className; b.textContent = label;
   return b;
 }
 
@@ -1273,11 +1274,10 @@ function copyButtonNode(label, value) {
 }
 
 async function openStorageModal(view) {
-  const titles = {
-    games: 'Games', 'artwork-detail': 'Artwork', 'ai-models-detail': 'Local AI', 'updates-detail': 'Updates', 'logs-detail': 'Logs', 'temporary-detail': 'Temporary Files', 'system-detail': 'System', 'category-other': 'Other', 'category-free': 'Free', locations: 'Managed Locations', 'cleanup-review': 'Cleanup', diagnostics: 'Diagnostics'
-  };
+  const titles = { games: 'Games', 'artwork-detail': 'Artwork', 'ai-models-detail': 'Local AI', 'updates-detail': 'Updates', 'logs-detail': 'Logs', 'temporary-detail': 'Temporary Files', 'system-detail': 'System', 'category-other': 'Other', 'category-free': 'Free', locations: 'Managed Locations', 'cleanup-review': 'Cleanup', diagnostics: 'Diagnostics' };
   const title = titles[view] || 'Storage';
   const content = storageModalShell(title, ['Storage', title]);
+  if (!content) return;
   storageLoading(content, view === 'games' ? 'Scanning game folders…' : `Loading ${title}…`);
   try {
     if (view === 'games') return renderGamesModal(content, await getJson('/api/storage/games'));
@@ -1288,113 +1288,30 @@ async function openStorageModal(view) {
     if (view === 'ai-models-detail') return renderAiModelsModal(content, await getJson('/api/storage/category/ai-models'));
     const category = view.replace('-detail', '').replace('category-', '');
     return renderCategoryModal(content, title, await getJson(`/api/storage/category/${category}`));
-  } catch (_) {
-    content.innerHTML = '<div class="empty-state"><strong>Could not load storage details.</strong></div>';
-  }
+  } catch (_) { storageLoading(content, 'Could not load storage details.'); }
 }
 
+function replaceStorageContent(content, nodes) { content.replaceChildren(...nodes.filter(Boolean)); }
 function renderGamesModal(content, data) {
-  content.textContent = '';
   const folders = data.folders || [];
-  content.appendChild(storageSummaryLine('Summary', `${folders.length} managed folders · ${(data.summary && data.summary.size) || '0 B'} used`));
-  if (data.syncStatusAvailable === false) {
-    const note = document.createElement('div');
-    note.className = 'warning';
-    note.textContent = data.syncUnavailableMessage || 'Sync status unavailable for game folders.';
-    content.appendChild(note);
-  }
-  const rows = folders.map((f) => {
-    const actions = document.createElement('div');
-    actions.className = 'storage-row-actions';
-    const open = buttonNode('Open');
-    open.addEventListener('click', () => openGameFolderDetail(f.platform || f.id));
-    actions.append(open, copyButtonNode('Copy path', f.path));
-    return [f.platform || f.displayName, f.size, String(f.fileCount ?? 0), data.syncStatusAvailable === false ? '—' : String(f.syncedEntries ?? 'Unknown'), actions];
-  });
-  content.appendChild(storageTable(['Platform', 'Size', 'Files', 'Sync State', 'Actions'], rows));
+  const rows = folders.map((f) => [f.platform || f.displayName, f.size, String(f.fileCount ?? 0), data.syncStatusAvailable === false ? '—' : String(f.syncedEntries ?? 'Unknown'), [buttonNode('Open'), copyButtonNode('Copy path', f.path)]]);
+  replaceStorageContent(content, [storageSummaryLine('Summary', `${folders.length} managed folders · ${(data.summary && data.summary.size) || '0 B'} used`), storageTable(['Platform', 'Size', 'Files', 'Sync State', 'Actions'], rows)]);
+  content.querySelectorAll('button').forEach((button, index) => { const f = folders[index >> 1]; if (!f) return; if ((index & 1) === 0) button.addEventListener('click', () => openGameFolderDetail(f.platform || f.id)); });
 }
-
 async function openGameFolderDetail(platform) {
-  const key = String(platform || '').toLowerCase();
-  const content = storageModalShell(platform, ['Storage', 'Games', platform]);
+  const content = storageModalShell(platform, ['Storage', 'Games', platform]); if (!content) return;
   storageLoading(content, `Scanning ${platform} folder…`);
-  const data = await getJson(`/api/storage/games/${encodeURIComponent(key)}`);
-  const f = data.folder || {};
-  content.textContent = '';
-  const back = buttonNode('Back');
-  back.addEventListener('click', () => openStorageModal('games'));
-  content.appendChild(back);
-  [['Actual path', f.path], ['Samba share', f.sambaShareName], ['Files', String(f.fileCount ?? 0)], ['Total size', f.size], ['Last modified', 'Read from folder scan']].forEach(([k, v]) => content.appendChild(storageSummaryLine(k, v)));
-  const actions = document.createElement('div');
-  actions.className = 'inline-actions inline-actions--compact';
-  [['Copy Windows path', f.windowsUNC], ['Copy Windows IP fallback', f.windowsUNCByIp], ['Copy Linux/macOS path', f.smbUrl], ['Copy Linux/macOS IP fallback', f.smbUrlByIp], ['Copy local path', f.path]].filter(([,v]) => validCopyValue(v)).forEach(([label, value]) => actions.appendChild(copyButtonNode(label, value)));
-  content.appendChild(actions);
-  const largest = (f.largestFiles || []).map((x) => [x.name, x.size, x.path]);
-  if (largest.length) content.appendChild(storageTable(['Largest files', 'Size', 'Path'], largest));
+  const data = await getJson(`/api/storage/games/${encodeURIComponent(String(platform || '').toLowerCase())}`); const f = data.folder || {};
+  const rows = [['Actual path', f.path], ['Samba share', f.sambaShareName], ['Files', String(f.fileCount ?? 0)], ['Total size', f.size], ['Last modified', 'Read from folder scan']].map(([k,v]) => storageSummaryLine(k,v));
+  replaceStorageContent(content, [buttonNode('Back'), ...rows]); content.querySelector('button')?.addEventListener('click', () => openStorageModal('games'));
 }
-
-function renderFolderList(content, label, rows) {
-  content.textContent = '';
-  const list = Array.isArray(rows) ? rows : [];
-  content.appendChild(storageSummaryLine('Summary', `${list.length} roots`));
-  content.appendChild(storageTable(['Name', 'Size', 'Files', 'State', 'Path'], list.map((r) => [r.displayName, r.size, String(r.fileCount ?? 0), r.state || '—', r.path])));
-}
-
-function renderAiModelsModal(content, data) {
-  content.textContent = '';
-  const models = data.items || [];
-  if (!models.length) content.appendChild(storageSummaryLine('Installed models', 'No models installed.'));
-  else content.appendChild(storageTable(['Model', 'Size', 'State', 'Path'], models.map((m) => [m.name, m.size, m.loaded ? 'Hot-loaded' : (m.selected ? 'Selected' : 'Installed'), m.path])));
-  const roots = data.roots || [];
-  if (roots.length) content.appendChild(storageTable(['Search Roots', 'Purpose', 'Path'], roots.map((r) => [r.displayName, r.purpose || '—', r.path])));
-}
-
-function renderCategoryModal(content, title, data) {
-  content.textContent = '';
-  const s = data.summary || {};
-  content.append(storageSummaryLine('Size', s.size || data.size || '—'), storageSummaryLine('Detail', s.detail || title));
-  if (data.roots) content.appendChild(storageTable(['Location', 'Purpose', 'Path'], data.roots.map((r) => [r.displayName, r.purpose || '—', r.path])));
-}
-
-function renderCleanupModal(content, cleanup) {
-  content.textContent = '';
-  const rows = [
-    ['Artwork cache', cleanup.artworkBytesClearable, 'clear-artwork-cache', '/api/storage/cleanup/artwork', 'Clear'],
-    ['Temporary files', cleanup.temporaryBytesClearable, 'clean-temporary-files', '/api/storage/cleanup/temporary', 'Clear'],
-    ['Old updates', cleanup.oldUpdateBytesClearable, 'clear-old-updates', '/api/storage/cleanup/old-updates', 'Clear'],
-    ['Logs', cleanup.logsBytesClearable, 'prune-logs', '/api/storage/cleanup/logs', 'Prune'],
-    ['Partial downloads', cleanup.partialDownloadsBytesClearable, 'clear-partial-ai-downloads', '/api/storage/cleanup/partial-ai-downloads', 'Clear'],
-  ].map(([label, bytes, action, endpoint, text]) => {
-    const b = Number(bytes || 0) > 0 ? buttonNode(text) : document.createTextNode('—');
-    if (b instanceof HTMLButtonElement) b.addEventListener('click', () => runStorageCleanup(action, endpoint));
-    return [label, formatBytes(Number(bytes || 0)), b];
-  });
-  content.appendChild(storageTable(['Item', 'Clearable', 'Action'], rows));
-}
-
-function renderLocationsModal(content, registry) {
-  content.textContent = '';
-  const cats = registry.categories || {};
-  const rows = [];
-  Object.entries(cats).forEach(([name, cat]) => (cat.roots || []).forEach((r) => rows.push([name, r.displayName || r.platform, r.path, copyButtonNode('Copy', r.path)])));
-  content.appendChild(storageTable(['Category', 'Name', 'Path', 'Action'], rows));
-}
-
-function renderDiagnosticsModal(content, d) {
-  content.textContent = '';
-  [['Mount point', d.mountPoint], ['Filesystem', d.filesystem || 'Unknown'], ['Scan duration', `${d.scanDurationMs || 0} ms`], ['Scanner', d.scannerVersion], ['Last scan', d.lastScanTimestamp || 'Unknown']].forEach(([k, v]) => content.appendChild(storageSummaryLine(k, v)));
-  const messages = [...(d.warnings || []), ...(d.overlapWarnings || []), ...(d.categoryScanErrors || []), ...(d.missingDirs || []).map((p) => `Missing folder: ${p}`), ...(d.permissionErrors || []).map((p) => `Permission denied: ${p}`)];
-  if (!messages.length) content.appendChild(storageSummaryLine('Warnings', 'None'));
-  else content.appendChild(storageTable(['Diagnostics'], messages.map((m) => [m])));
-}
-
-async function runStorageCleanup(action, endpoint) {
-  const body = confirmationFor(action);
-  if (body === null) return;
-  const data = await postJson(endpoint, body);
-  PopupManager.showToast(data.message || (data.ok ? 'Cleanup complete' : 'Cleanup failed'), data.ok ? 'success' : 'error');
-  if (data.ok) openStorageModal('cleanup-review');
-}
+function renderFolderList(content, label, rows) { replaceStorageContent(content, [storageSummaryLine('Summary', `${(rows || []).length} roots`), storageTable(['Name', 'Size', 'Files', 'State', 'Path'], (rows || []).map((r) => [r.displayName, r.size, String(r.fileCount ?? 0), r.state || '—', r.path]))]); }
+function renderAiModelsModal(content, data) { const models = data.items || []; replaceStorageContent(content, [storageTable(['Model', 'Size', 'State', 'Path'], models.map((m) => [m.name, m.size, m.loaded ? 'Hot-loaded' : (m.selected ? 'Selected' : 'Installed'), m.path]))]); }
+function renderCategoryModal(content, title, data) { const s = data.summary || {}; replaceStorageContent(content, [storageSummaryLine('Size', s.size || data.size || '—'), storageSummaryLine('Detail', s.detail || title)]); }
+function renderCleanupModal(content, cleanup) { const rows = [['Artwork cache', cleanup.artworkBytesClearable], ['Temporary files', cleanup.temporaryBytesClearable], ['Old updates', cleanup.oldUpdateBytesClearable], ['Logs', cleanup.logsBytesClearable], ['Partial downloads', cleanup.partialDownloadsBytesClearable]].map(([label, bytes]) => [label, formatBytes(Number(bytes || 0))]); replaceStorageContent(content, [storageTable(['Item', 'Clearable'], rows)]); }
+function renderLocationsModal(content, registry) { const rows = []; Object.entries(registry.categories || {}).forEach(([name, cat]) => (cat.roots || []).forEach((r) => rows.push([name, r.displayName || r.platform, r.path]))); replaceStorageContent(content, [storageTable(['Category', 'Name', 'Path'], rows)]); }
+function renderDiagnosticsModal(content, d) { const messages = [...(d.warnings || []), ...(d.overlapWarnings || []), ...(d.categoryScanErrors || []), ...(d.missingDirs || []).map((p) => `Missing folder: ${p}`), ...(d.permissionErrors || []).map((p) => `Permission denied: ${p}`)]; replaceStorageContent(content, [storageSummaryLine('Mount point', d.mountPoint), storageSummaryLine('Filesystem', d.filesystem || 'Unknown'), storageSummaryLine('Warnings', messages.length ? messages.join('; ') : 'None')]); }
+async function runStorageCleanup(action, endpoint) { const body = confirmationFor(action); if (body === null) return; const data = await postJson(endpoint, body); PopupManager.showToast(data.message || (data.ok ? 'Cleanup complete' : 'Cleanup failed'), data.ok ? 'success' : 'error'); if (data.ok) openStorageModal('cleanup-review'); }
 
 const CONTROLLER_BUTTON_INDEX_LABELS = [
   'A', 'B', 'X', 'Y', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'Select', 'Start',
