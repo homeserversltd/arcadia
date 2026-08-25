@@ -20,7 +20,7 @@ use std::{
     io::Write,
     net::{Ipv4Addr, TcpStream},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Command,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex, OnceLock,
