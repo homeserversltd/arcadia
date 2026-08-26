@@ -26,6 +26,32 @@ fn caduceus_staff_envelope(path: &str, body: serde_json::Value) -> serde_json::V
     })
 }
 
+fn caduceus_post_flat_json(
+    path: &str,
+    body: &str,
+) -> Result<serde_json::Value, &'static str> {
+    let url = caduceus_proxy_url(path);
+    let output = Command::new("curl")
+        .args([
+            "-sS",
+            "--max-time",
+            "300",
+            "-X",
+            "POST",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            body,
+            &url,
+        ])
+        .output()
+        .map_err(|_| "caduceus-http-unreachable")?;
+    if output.stdout.is_empty() {
+        return Err("caduceus-http-empty-response");
+    }
+    serde_json::from_slice(&output.stdout).map_err(|_| "caduceus-http-invalid-json")
+}
+
 fn caduceus_post_json_with_timeout(
     path: &str,
     body: &str,
@@ -321,7 +347,15 @@ async fn caduceus_cert_status_proxy_route() -> impl IntoResponse {
 async fn caduceus_cert_trust_fetch_proxy_route(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    caduceus_json_post_proxy("/api/v1/cert/trust-fetch", body)
+    let body = serde_json::json!({
+        "server": body.get("server").and_then(|value| value.as_str()).unwrap_or(""),
+        "platform": body.get("platform").and_then(|value| value.as_str()).unwrap_or("linux"),
+    });
+    let rendered = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    match caduceus_post_flat_json("/api/v1/cert/trust-fetch", &rendered) {
+        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
+        Err(signal) => caduceus_proxy_error("/api/v1/cert/trust-fetch", signal),
+    }
 }
 
 
