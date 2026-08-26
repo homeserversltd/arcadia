@@ -1,42 +1,23 @@
     #[test]
-    fn provider_env_uses_screenscraper_api_key_only() {
-        let mut lines = Vec::new();
-        let mut written = Vec::new();
-
-        push_env_value(
-            &mut lines,
-            &mut written,
-            "SCREENSCRAPER_API_KEY",
-            Some("  scrape-secret  ".to_string()),
-        );
-
-        assert_eq!(written, vec!["SCREENSCRAPER_API_KEY"]);
-        assert_eq!(lines, vec!["SCREENSCRAPER_API_KEY=\"scrape-secret\""]);
-        let joined = lines.join("\n");
-        assert!(!joined.contains("SCREENSCRAPER_USER"));
-        assert!(!joined.contains("SCREENSCRAPER_PASSWORD"));
+    fn provider_keys_get_routes_through_caduceus_proxy() {
+        let source = include_str!("../../src/bands/provider_keys.rs");
+        assert!(source.contains("caduceus_json_proxy(\"/api/v1/games/provider-keys\")"));
+        assert!(!source.contains("SCREENSCRAPER_USER"));
+        assert!(!source.contains("SCREENSCRAPER_PASSWORD"));
+        assert!(!source.contains("std::env"));
+        assert!(!source.contains("set_var"));
     }
 
     #[test]
-    fn provider_status_response_is_redacted() {
-        let response = ProviderKeysStatusResponse {
-            ok: true,
-            action: "provider-keys-status",
-            path: PROVIDER_KEYS_PATH,
-            providers: PROVIDER_KEY_NAMES
-                .iter()
-                .map(|(id, key)| ProviderKeyStatus {
-                    id: *id,
-                    env_key: *key,
-                    configured: true,
-                })
-                .collect(),
-            message: "Provider key status loaded without exposing secret values.".to_string(),
-        };
-        let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("STEAMGRIDDB"));
-        assert!(!json.contains("scrape-secret"));
-        assert!(!json.to_ascii_lowercase().contains("password"));
+    fn provider_keys_post_routes_through_caduceus_proxy() {
+        let source = include_str!("../../src/bands/provider_keys.rs");
+        assert!(source.contains(
+            "caduceus_json_post_proxy(\"/api/v1/games/provider-keys\", body)"
+        ));
+        assert!(!source.contains("SCREENSCRAPER_USER"));
+        assert!(!source.contains("SCREENSCRAPER_PASSWORD"));
+        assert!(!source.contains("std::env"));
+        assert!(!source.contains("set_var"));
     }
 
     #[test]

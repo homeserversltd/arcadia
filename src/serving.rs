@@ -108,4 +108,20 @@ mod tests {
         assert_eq!(config.http_bind, None);
         assert_eq!(config.https_bind, Some("127.0.0.1:8443".parse().unwrap()));
     }
+
+    #[test]
+    fn startup_serves_before_refresh_and_has_no_idle_controller_trainer() {
+        let main = include_str!("main.rs");
+        let bind = main
+            .find("let http = match serve_config.http_bind")
+            .unwrap();
+        let serve = main.find("let server = tokio::spawn").unwrap();
+        let refresh = main
+            .find("spawn_blocking(move || refresh_living_state")
+            .unwrap();
+        assert!(bind < serve && serve < refresh);
+        assert!(!main.contains("let input_state = state.clone()"));
+        assert!(main.contains("if state.living.refresh_requested()"));
+        assert!(!main.contains("tick.tick().await;\n            let state = refresh_state.clone();\n            let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state))"));
+    }
 }

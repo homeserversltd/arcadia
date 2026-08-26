@@ -580,6 +580,8 @@ async fn controllers_trainer_events_route(State(state): State<Arc<AppState>>) ->
         let mut heartbeat_tick: u64 = 0;
         loop {
             tick.tick().await;
+            let refresh_state = state.clone();
+            let _ = tokio::task::spawn_blocking(move || refresh_controller_input(&refresh_state)).await;
             let input = state.living_snapshot().controller_input.clone();
             let input_json = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
             yield Ok(Event::default().event("input").data(input_json));
