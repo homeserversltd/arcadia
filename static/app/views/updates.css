@@ -153,7 +153,7 @@
 }
 .harmonia-zero-updates strong { color: var(--good); font-size: var(--ux-text-md); }
 .updates-update-heading { color: var(--cream); font-size: var(--ux-text-sm); font-weight: 900; }
-.harmonia-update-tiles { min-height: 0; display: grid; gap: 6px; overflow: hidden; }
+.harmonia-update-tiles { min-height: 0; display: grid; gap: 6px; overflow-x: hidden; overflow-y: auto; align-content: start; }
 .harmonia-update-tile {
   min-width: 0;
   display: grid;
@@ -182,3 +182,22 @@
 .updates-last-run b { color: var(--cream); font-size: var(--ux-text-xs); text-transform: uppercase; letter-spacing: .08em; }
 .updates-last-run span, .updates-last-run-failures { color: var(--muted); font-size: var(--ux-text-xs); }
 .updates-last-run-failures { display: grid; gap: 3px; margin: 0; padding-left: 16px; }
+
+/* Ledger rows are reused in the narrow Available column; keep long receipts inside its list. */
+.updates-available-pane .harmonia-update-tiles .harmonia-ledger-module-row,
+.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json,
+.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json pre {
+  min-width: 0;
+  max-width: 100%;
+}
+.updates-available-pane .harmonia-update-tiles .harmonia-ledger-module-row {
+  padding: 6px;
+}
+.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json {
+  overflow: hidden;
+}
+.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
