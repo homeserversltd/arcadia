@@ -361,13 +361,14 @@ function invalidateCaduceusAttendance() {
 
 function updateArcadiaShellVisibility() {
   const vaultUnlockRequired = document.body.dataset.vaultUnlockRequired === 'true';
-  document.getElementById('app')?.toggleAttribute('aria-hidden', !caduceusAttendance || vaultUnlockRequired);
+  const pinRequired = document.body.dataset.guiPinRequired === 'true';
+  document.getElementById('app')?.toggleAttribute('aria-hidden', pinRequired || vaultUnlockRequired);
   ArcadiaProjector.applyOverlay({ systemPane: { adminText: caduceusAttendance ? 'Admin' : 'Guest' } });
 }
 
 function openArcadia() {
   document.body.classList.add('pin-open');
-  document.body.dataset.guiPinRequired = 'true';
+  document.body.dataset.guiPinRequired = 'false';
   updateArcadiaShellVisibility();
 }
 
@@ -379,11 +380,13 @@ function keepGuiPinGate() {
 }
 
 async function initializeGuiPinGate() {
-  try { await checkGuiPinStatus(); } catch (_) {}
+  let pinRequired = false;
+  try { pinRequired = (await checkGuiPinStatus()).pin_required === true; } catch (_) {}
   // A loaded document never inherits a prior attendance or local access decision.
   clearCaduceusAttendance();
-  keepGuiPinGate();
-  setPinIndicator(true);
+  if (pinRequired) keepGuiPinGate();
+  else openArcadia();
+  setPinIndicator(pinRequired);
 }
 
 function setPinIndicator(required) {
