@@ -503,10 +503,6 @@ async fn main() -> anyhow_free::Result<()> {
             post(caduceus_cert_trust_fetch_proxy_route),
         )
         .route(
-            "/api/caduceus/v1/cert/trust-install",
-            post(caduceus_cert_trust_install_proxy_route),
-        )
-        .route(
             "/api/caduceus/v1/update/now",
             post(caduceus_update_now_proxy_route),
         )
@@ -553,6 +549,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route(
             "/api/caduceus/v1/local-ai/runtime/update",
             post(caduceus_local_ai_runtime_update_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/model-lanes/pulse",
+            post(caduceus_model_lanes_pulse_proxy_route),
         )
         .route(
             "/api/caduceus/v1/profile/module/toggle",

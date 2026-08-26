@@ -98,6 +98,23 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                 }
             }
 
+            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--lanes" aria-label="Model serving lanes" {
+                div class="local-ai-card-head" {
+                    strong { "Model serving lanes" }
+                    (action_button(ButtonVariant::Primary, "Refresh", "model-lanes-pulse", "/api/caduceus/v1/model-lanes/pulse"))
+                }
+                div class="storage-detail-table" data-bind-each="modelLanes" {
+                    template {
+                        div class="storage-detail-table-row" {
+                            span data-bind="alias" {}
+                            span { "Slots " strong data-bind="total_slots" {} }
+                            span { "Context " strong data-bind="n_ctx_per_slot" {} }
+                            span { "Busy " strong data-bind="busy_slots" {} }
+                        }
+                    }
+                }
+            }
+
             section id="local-ai-inference" class="local-ai-section ai-manager-section local-ai-card local-ai-card--access" aria-label="API access" tabindex="-1" {
                 div class="local-ai-card-head" {
                     strong { "API access" }
