@@ -706,7 +706,10 @@ async fn main() -> anyhow_free::Result<()> {
         loop {
             tick.tick().await;
             let state = refresh_state.clone();
-            if state.living.refresh_requested() {
+            if state
+                .living
+                .fast_facts_refresh_due(home_telemetry_has_active_lease())
+            {
                 let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state)).await;
             }
         }
