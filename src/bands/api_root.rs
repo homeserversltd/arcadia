@@ -1,6 +1,7 @@
 #[derive(Clone)]
 struct ArcadiaLivingState {
     generated_at_unix: u64,
+    model_lanes: Vec<ModelLane>,
     status: ConsoleStatus,
     network: NetworkState,
     ai: LocalAIState,
@@ -111,6 +112,13 @@ fn refresh_living_state(state: &AppState) {
             .unwrap_or_else(|| library_status(&storage))
     };
     let local_ai_status = local_ai_status();
+    let model_lanes = match CaduceusAccessClient::default().model_lanes() {
+        Ok(model_lanes) => model_lanes,
+        Err(_) => previous
+            .as_ref()
+            .map(|snapshot| snapshot.model_lanes.clone())
+            .unwrap_or_default(),
+    };
     let ai = local_ai_state_from_status(state, &storage, &local_ai_status);
     let controllers = controller_status_machine();
     let controller_input = controllers.live_input.clone();
@@ -128,11 +136,13 @@ fn refresh_living_state(state: &AppState) {
         ai.clone(),
         controllers.clone(),
         system.clone(),
+        model_lanes.clone(),
         generated_at_unix,
     );
     state.living.publish(
         Arc::new(ArcadiaLivingState {
             generated_at_unix,
+            model_lanes,
             status,
             network,
             ai,
@@ -188,6 +198,7 @@ pub struct ApiMetric {
 #[serde(rename_all = "camelCase")]
 pub struct ApiLivingStateDocument {
     pub schema: &'static str,
+    pub model_lanes: Vec<ModelLane>,
     pub kind: &'static str,
     pub id: &'static str,
     pub generated_at_unix: u64,
@@ -867,6 +878,7 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
     let storage = storage_status();
     ApiLivingStateDocument {
         schema: "arcadia.api.state.v1",
+        model_lanes: Vec::new(),
         kind: "arcadiaLivingState",
         id: "arcadia-state",
         generated_at_unix: now_unix_seconds(),
@@ -2126,6 +2138,7 @@ fn api_living_state_document_from_parts(
     ai: LocalAIState,
     controllers: ControllerStatus,
     system: SystemAdminStatus,
+    model_lanes: Vec<ModelLane>,
     generated_at_unix: u64,
 ) -> ApiLivingStateDocument {
     ApiLivingStateDocument {
@@ -2141,6 +2154,7 @@ fn api_living_state_document_from_parts(
         updates_pane: api_updates_pane_state(&status),
         system_pane: api_system_pane_state(&status),
         status,
+        model_lanes,
         storage: storage.clone(),
         storage_summary: storage,
         network,

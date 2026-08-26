@@ -83,6 +83,14 @@ impl AttendanceCall {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ModelLane {
+    pub alias: String,
+    pub total_slots: Option<i64>,
+    pub n_ctx_per_slot: Option<i64>,
+    pub busy_slots: Option<i64>,
+}
+
 struct CaduceusAccessClient {
     base: String,
 }
@@ -100,6 +108,17 @@ impl Default for CaduceusAccessClient {
 }
 
 impl CaduceusAccessClient {
+    fn model_lanes(&self) -> Result<Vec<ModelLane>, &'static str> {
+        let authority = caduceus_loopback_authority(&self.base).ok_or("caduceus-model-lanes-base-invalid")?;
+        let mut stream = TcpStream::connect_timeout(&authority, CADUCEUS_ACCESS_TIMEOUT).map_err(|e| attendance_io_code("connect", &e))?;
+        stream.set_read_timeout(Some(CADUCEUS_ACCESS_TIMEOUT)).and_then(|_| stream.set_write_timeout(Some(CADUCEUS_ACCESS_TIMEOUT))).map_err(|_| "caduceus-model-lanes-socket-config-failed")?;
+        let request = format!("GET /api/v1/appliance/stats HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n\r\n", caduceus_host_header(&self.base));
+        stream.write_all(request.as_bytes()).map_err(|_| "caduceus-model-lanes-write-failed")?;
+        let value = parse_caduceus_json_response(&mut stream)?;
+        let lanes = value.get("model_lanes").cloned().ok_or("caduceus-model-lanes-missing")?;
+        serde_json::from_value(lanes).map_err(|_| "caduceus-model-lanes-invalid")
+    }
+
     fn attendance_open(&self, pin: &str, document: &str) -> AttendanceCall {
         self.call(
             AttendanceOperation::Open,
@@ -164,6 +183,32 @@ impl CaduceusAccessClient {
         }
         parse_attendance_response(operation, &mut stream)
     }
+}
+
+fn parse_caduceus_json_response(stream: &mut TcpStream) -> Result<serde_json::Value, &'static str> {
+    use std::io::{BufRead, BufReader, Read};
+    let mut reader = BufReader::new(stream);
+    let mut status_line = String::new();
+    reader.read_line(&mut status_line).ok().filter(|n| *n > 0).ok_or("caduceus-model-lanes-bad-receipt")?;
+    let status = status_line.split_whitespace().nth(1).and_then(|v| v.parse::<u16>().ok()).unwrap_or(0);
+    let mut content_length = None;
+    let mut header_bytes = 0usize;
+    loop {
+        let mut line = String::new();
+        reader.read_line(&mut line).map_err(|_| "caduceus-model-lanes-bad-receipt")?;
+        if line.is_empty() { return Err("caduceus-model-lanes-bad-receipt"); }
+        header_bytes += line.len();
+        if header_bytes > 4096 { return Err("caduceus-model-lanes-bad-receipt"); }
+        if line == "\r\n" { break; }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") { content_length = value.trim().parse::<usize>().ok(); }
+        }
+    }
+    let length = content_length.filter(|n| *n <= CADUCEUS_ACCESS_MAX_RESPONSE).ok_or("caduceus-model-lanes-bad-receipt")?;
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body).map_err(|_| "caduceus-model-lanes-bad-receipt")?;
+    if !(200..300).contains(&status) { return Err("caduceus-model-lanes-upstream-refused"); }
+    serde_json::from_slice(&body).map_err(|_| "caduceus-model-lanes-invalid-json")
 }
 
 fn caduceus_loopback_authority(base: &str) -> Option<std::net::SocketAddr> {

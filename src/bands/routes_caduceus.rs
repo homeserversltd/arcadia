@@ -258,6 +258,21 @@ async fn caduceus_json_proxy(path: &'static str) -> impl IntoResponse {
     }
 }
 
+async fn caduceus_model_lanes_pulse_proxy_route() -> impl IntoResponse {
+    match caduceus_post_json("/api/v1/appliance/model-lanes/pulse", "{}") {
+        Ok(value) => {
+            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+            let status = if ok {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/appliance/model-lanes/pulse", signal),
+    }
+}
+
 async fn caduceus_health_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/health").await
 }
