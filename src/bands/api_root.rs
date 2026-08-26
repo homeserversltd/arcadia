@@ -13,6 +13,14 @@ struct ArcadiaLivingState {
     document: ApiLivingStateDocument,
 }
 
+#[derive(Clone, Default)]
+struct ApiTelemetryCache {
+    current: serde_json::Value,
+    history: serde_json::Value,
+    history_fetched_at_unix: u64,
+    models: Vec<LocalAiModelStatus>,
+}
+
 const FAST_FACTS_CADENCE_SECONDS: u64 = 5;
 const EXPENSIVE_STORAGE_SCAN_CADENCE_SECONDS: u64 = 30;
 
@@ -110,7 +118,9 @@ fn refresh_living_state(state: &AppState) {
         previous.as_ref().map(|snapshot| snapshot.status.library.clone())
             .unwrap_or_else(|| library_status(&storage))
     };
+    refresh_api_telemetry_cache();
     let local_ai_status = local_ai_status();
+    api_telemetry_cache_set_models(&local_ai_status.available_models);
     let ai = local_ai_state_from_status(state, &storage, &local_ai_status);
     let controllers = controller_status_machine();
     let controller_input = controllers.live_input.clone();
@@ -541,12 +551,11 @@ pub struct ApiUpdatesReceiptsState {
 pub struct ApiHomeState {
     pub priority: ApiHomePriorityState,
     pub storage: ApiHomeStorageState,
-    pub games: ApiHomeGamesState,
     pub network: ApiHomeNetworkState,
     pub updates: ApiHomeUpdatesState,
     pub ai: ApiHomeAiState,
+    pub telemetry: serde_json::Value,
     pub warning: ApiHomeWarningState,
-    pub session: ApiHomeSessionState,
 }
 
 #[derive(Clone, Serialize)]
@@ -568,15 +577,6 @@ pub struct ApiHomeStorageState {
     pub ai_size: String,
     pub everything_else_size: String,
     pub free_size: String,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiHomeGamesState {
-    pub state: String,
-    pub attention: bool,
-    pub total: String,
-    pub artwork: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -605,9 +605,16 @@ pub struct ApiHomeUpdatesState {
 pub struct ApiHomeAiState {
     pub state: String,
     pub attention: bool,
-    pub model: String,
     pub load: &'static str,
     pub activity: &'static str,
+    pub models: Vec<ApiHomeAiModelState>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeAiModelState {
+    pub name: String,
+    pub state: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -617,13 +624,6 @@ pub struct ApiHomeWarningState {
     pub title: &'static str,
 }
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiHomeSessionState {
-    pub visible: bool,
-    pub state: &'static str,
-}
-
 const HOME_TELEMETRY_TOPIC: &str = "home.load";
 const HOME_TELEMETRY_CADENCE_SECONDS: u64 = 1;
 const HOME_TELEMETRY_RENEW_SECONDS: u64 = 10;
@@ -631,21 +631,7 @@ const HOME_TELEMETRY_IDLE_TIMEOUT_SECONDS: u64 = 30;
 
 static HOME_TELEMETRY_LEASE_COUNTER: AtomicU64 = AtomicU64::new(1);
 static HOME_TELEMETRY_LEASES: OnceLock<Mutex<HashMap<String, HomeTelemetryLease>>> = OnceLock::new();
-static LAST_DISK_IO_SAMPLE: OnceLock<Mutex<Option<DiskIoSample>>> = OnceLock::new();
-static LAST_CPU_USAGE_SAMPLE: OnceLock<Mutex<Option<CpuUsageSample>>> = OnceLock::new();
-
-#[derive(Clone, Copy)]
-struct DiskIoSample {
-    sectors_read: u64,
-    sectors_written: u64,
-    sampled_at_millis: u128,
-}
-
-#[derive(Clone, Copy)]
-struct CpuUsageSample {
-    busy_jiffies: u64,
-    total_jiffies: u64,
-}
+static API_TELEMETRY_CACHE: OnceLock<Mutex<ApiTelemetryCache>> = OnceLock::new();
 
 #[derive(Clone)]
 struct HomeTelemetryLease {
@@ -679,6 +665,151 @@ struct HomeTelemetryLeaseResponse {
 fn home_telemetry_leases() -> &'static Mutex<HashMap<String, HomeTelemetryLease>> {
     HOME_TELEMETRY_LEASES.get_or_init(|| Mutex::new(HashMap::new()))
 }
+
+fn api_telemetry_cache() -> &'static Mutex<ApiTelemetryCache> {
+    API_TELEMETRY_CACHE.get_or_init(|| Mutex::new(ApiTelemetryCache::default()))
+}
+
+fn api_telemetry_cache_set_models(models: &[LocalAiModelStatus]) {
+    if let Ok(mut cache) = api_telemetry_cache().lock() {
+        cache.models = models.to_vec();
+    }
+}
+
+fn refresh_api_telemetry_cache() {
+    let now = now_unix_seconds();
+    let history_due = api_telemetry_cache().lock().ok().map(|cache| {
+        cache.history_fetched_at_unix == 0
+            || now.saturating_sub(cache.history_fetched_at_unix) >= 60
+    }).unwrap_or(false);
+    let current = caduceus_fetch_json("/api/v1/appliance/stats").ok();
+    let history = if history_due {
+        caduceus_fetch_json("/api/v1/appliance/stats/history").ok()
+    } else {
+        None
+    };
+    if let Ok(mut cache) = api_telemetry_cache().lock() {
+        if let Some(current) = current { cache.current = current; }
+        if let Some(history) = history { cache.history = history; }
+        if history_due { cache.history_fetched_at_unix = now; }
+    }
+}
+
+fn telemetry_source_value(temperature: &serde_json::Value, label: &str, key: &str) -> serde_json::Value {
+    temperature.get("bySource").and_then(serde_json::Value::as_array)
+        .and_then(|sources| sources.iter().find(|source| source.get("label").and_then(serde_json::Value::as_str) == Some(label)))
+        .and_then(|source| source.get(key)).cloned().unwrap_or(serde_json::Value::Null)
+}
+
+pub(crate) fn api_telemetry_data() -> serde_json::Value {
+    let cache = api_telemetry_cache().lock().ok().map(|cache| cache.clone()).unwrap_or_default();
+    let current = &cache.current;
+    let load = current.get("load").cloned().unwrap_or(serde_json::Value::Null);
+    let one = load.get("one").and_then(serde_json::Value::as_f64);
+    let cores = std::thread::available_parallelism().map(|count| count.get() as f64).unwrap_or(1.0).max(1.0);
+    let cpu_usage = current.get("cpu").and_then(|cpu| cpu.get("usagePercent")).and_then(serde_json::Value::as_f64)
+        .or_else(|| one.map(|value| (value / cores * 100.0).min(100.0)));
+    let memory = current.get("memory").cloned().unwrap_or(serde_json::Value::Null);
+    let total = memory.get("MemTotal").or_else(|| memory.get("totalBytes")).and_then(serde_json::Value::as_u64);
+    let used = memory.get("usedBytes").and_then(serde_json::Value::as_u64);
+    let used_percent = total.zip(used).map(|(total, used)| (used as f64 / total.max(1) as f64 * 100.0).round());
+    let temperature = current.get("temperature").cloned().unwrap_or(serde_json::Value::Null);
+    let cpu_temperature = telemetry_source_value(&temperature, "cpu", "celsius");
+    let storage_temperature = telemetry_source_value(&temperature, "storage", "celsius");
+    let throughput = current.get("disk").and_then(|disk| disk.get("throughput")).cloned().unwrap_or(serde_json::Value::Null);
+    serde_json::json!({
+        "load": { "oneMinute": one, "fiveMinute": load.get("five").and_then(serde_json::Value::as_f64), "fifteenMinute": load.get("fifteen").and_then(serde_json::Value::as_f64) },
+        "cpu": { "usagePercent": cpu_usage, "temperatureCelsius": cpu_temperature },
+        "memory": { "usedBytes": used, "totalBytes": total, "usedPercent": used_percent },
+        "io": { "disk": { "readBytesPerSec": throughput.get("readBytesPerSecond"), "writeBytesPerSec": throughput.get("writeBytesPerSecond") }, "pressureAvg10": null },
+        "temperature": temperature, "storageTemperatureCelsius": storage_temperature, "fans": current.get("fans"),
+        "gpu": current.get("gpu"),
+        "history": cache.history, "localAi": { "models": cache.models },
+    })
+}
+
+fn home_telemetry_format(value: serde_json::Value, suffix: &str) -> String {
+    value.as_f64().map(|n| format!("{n:.1}{suffix}")).unwrap_or_else(|| "—".to_string())
+}
+
+pub(crate) fn api_home_telemetry_data() -> serde_json::Value {
+    let data = api_telemetry_data();
+    let text = |path: &[&str], suffix: &str| {
+        let value = path.iter().fold(data.clone(), |value, key| {
+            value.get(*key).cloned().unwrap_or(serde_json::Value::Null)
+        });
+        serde_json::Value::String(home_telemetry_format(value, suffix))
+    };
+    let rate = |key: &str| {
+        data.get("io")
+            .and_then(|value| value.get("disk"))
+            .and_then(|value| value.get(key))
+            .and_then(serde_json::Value::as_f64)
+            .map(telemetry_human_rate)
+            .map(serde_json::Value::String)
+            .unwrap_or_else(|| serde_json::Value::String("—".to_string()))
+    };
+    let memory = data.get("memory").cloned().unwrap_or_default();
+    let gpu = data.get("gpu").cloned().unwrap_or_default();
+    let models = data
+        .get("localAi")
+        .and_then(|value| value.get("models"))
+        .cloned()
+        .unwrap_or_default();
+    let fans = data
+        .get("fans")
+        .and_then(serde_json::Value::as_array)
+        .map(|fans| {
+            fans.iter()
+                .map(|fan| {
+                    let rpm = fan
+                        .get("rpm")
+                        .and_then(serde_json::Value::as_f64)
+                        .map(|rpm| format!("{rpm:.0} RPM"))
+                        .unwrap_or_else(|| "—".to_string());
+                    serde_json::json!({ "label": fan.get("label"), "rpm": rpm })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    serde_json::json!({
+        "load": data.get("load"),
+        "cpu": {
+            "temperatureCelsius": text(&["cpu", "temperatureCelsius"], "°C"),
+            "usagePercent": text(&["cpu", "usagePercent"], "%")
+        },
+        "memory": {
+            "usedBytes": memory.get("usedBytes").and_then(serde_json::Value::as_u64).map(human_size).unwrap_or_else(|| "—".to_string()),
+            "totalBytes": memory.get("totalBytes").and_then(serde_json::Value::as_u64).map(human_size).unwrap_or_else(|| "—".to_string()),
+            "usedPercent": text(&["memory", "usedPercent"], "%")
+        },
+        "io": {
+            "disk": { "readBytesPerSec": rate("readBytesPerSec"), "writeBytesPerSec": rate("writeBytesPerSec") },
+            "pressureAvg10": "—"
+        },
+        "temperature": { "storage": text(&["storageTemperatureCelsius"], "°C") },
+        "gpu": {
+            "utilizationPercent": gpu.get("utilizationPercent").cloned().map(|value| home_telemetry_format(value, "%")).map(serde_json::Value::String).unwrap_or_else(|| serde_json::Value::String("—".to_string())),
+            "temperatureCelsius": gpu.get("temperatureCelsius").cloned().map(|value| home_telemetry_format(value, "°C")).map(serde_json::Value::String).unwrap_or_else(|| serde_json::Value::String("—".to_string()))
+        },
+        "fans": fans,
+        "history": data.get("history"),
+        "localAi": { "models": models },
+    })
+}
+
+pub(crate) fn telemetry_human_rate(bytes_per_sec: f64) -> String {
+    if bytes_per_sec <= 0.0 { return "0 B/s".to_string(); }
+    if bytes_per_sec < 1024.0 { return format!("{bytes_per_sec:.0} B/s"); }
+    if bytes_per_sec < 1024.0 * 1024.0 { return format!("{} KB/s", (bytes_per_sec / 1024.0).round()); }
+    let mb = bytes_per_sec / 1024.0 / 1024.0;
+    if mb >= 10.0 { format!("{mb:.0} MB/s") } else { format!("{mb:.1} MB/s") }
+}
+pub(crate) fn cpu_temperature_celsius() -> Option<f64> { api_telemetry_data()["cpu"]["temperatureCelsius"].as_f64() }
+pub(crate) fn load_average() -> serde_json::Value { api_telemetry_data()["load"].clone() }
+pub(crate) fn pressure_avg10_percent(_path: &str) -> Option<f64> { None }
+pub(crate) fn disk_io_counters() -> serde_json::Value { api_telemetry_data()["io"]["disk"].clone() }
+pub(crate) fn memory_usage() -> serde_json::Value { api_telemetry_data()["memory"].clone() }
 
 fn home_telemetry_response(lease: &HomeTelemetryLease, active: bool) -> HomeTelemetryLeaseResponse {
     HomeTelemetryLeaseResponse {
@@ -1430,15 +1561,16 @@ fn api_sync_system_monogram(system: &str) -> String {
         .to_uppercase()
 }
 
+pub(crate) fn api_home_ai_models(status: &ConsoleStatus) -> Vec<ApiHomeAiModelState> {
+    let loaded_id = status.local_ai.loaded_model_id.as_deref();
+    let mut models = status.local_ai.available_models.iter().map(|model| ApiHomeAiModelState { name: model.name.clone(), state: if loaded_id == Some(model.id.as_str()) { "Loaded".to_string() } else { "Available".to_string() } }).collect::<Vec<_>>();
+    models.sort_by(|a, b| b.state.cmp(&a.state).then_with(|| a.name.cmp(&b.name)));
+    models
+}
+
 fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
     let priority = api_home_priority_state(status);
     let storage_attention = status.storage.percent_used >= 90;
-    let pending_changes = status.library.unsynced_added
-        + status.library.unsynced_changed
-        + status.library.unsynced_removed;
-    let games_attention = status.library.last_sync_state == "error"
-        || pending_changes > 0
-        || status.library.sync_needed;
     let updates_ready = status.updates.modules.iter().filter(|module| module.enabled && module.present).count();
     let updates_enabled = status.updates.modules.iter().filter(|module| module.enabled).count();
     let updates_attention = status.updates.pending_updates > 0
@@ -1456,12 +1588,6 @@ fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
             ai_size: status.storage.ai_models.size.clone(),
             everything_else_size: human_size(status.storage.artwork.bytes.saturating_add(status.storage.other.bytes)),
             free_size: status.storage.free.clone(),
-        },
-        games: ApiHomeGamesState {
-            state: if games_attention { "attention".to_string() } else { status.library.last_sync_state.clone() },
-            attention: games_attention,
-            total: status.library.total_detected_games.to_string(),
-            artwork: format!("{} / {}", status.library.artwork_paired_total, status.library.total_detected_games),
         },
         network: ApiHomeNetworkState {
             state: if status.network.online { "online" } else { "offline" },
@@ -1481,17 +1607,14 @@ fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
         ai: ApiHomeAiState {
             state: status.local_ai.load_state.clone(),
             attention: ai_attention,
-            model: api_home_local_ai_model_name(status),
             load: api_home_local_ai_load_label(&status.local_ai.load_state),
             activity: api_home_local_ai_activity_label(status),
+            models: api_home_ai_models(status),
         },
+        telemetry: api_home_telemetry_data(),
         warning: ApiHomeWarningState {
             visible: status.library.last_sync_state == "error" || status.local_ai.load_state == "error",
             title: if status.library.last_sync_state == "error" { "Sync failed" } else { "Local AI error" },
-        },
-        session: ApiHomeSessionState {
-            visible: status.arcadia.service != "running",
-            state: status.arcadia.service,
         },
     }
 }
@@ -1527,21 +1650,6 @@ fn api_home_priority_state(status: &ConsoleStatus) -> ApiHomePriorityState {
     } else {
         ApiHomePriorityState { visible: false, state: String::new(), badge: "", tone: "idle" }
     }
-}
-
-fn api_home_local_ai_model_name(status: &ConsoleStatus) -> String {
-    status
-        .local_ai
-        .loaded_model_name
-        .clone()
-        .or_else(|| status.local_ai.selected_model_name.clone())
-        .unwrap_or_else(|| {
-            if status.local_ai.available_models.is_empty() {
-                "No models installed".to_string()
-            } else {
-                "No model selected".to_string()
-            }
-        })
 }
 
 fn api_home_local_ai_load_label(load_state: &str) -> &'static str {
@@ -1738,46 +1846,26 @@ fn api_updates_node(status: &ConsoleStatus) -> ApiObjectNode {
 }
 
 fn api_telemetry_node() -> ApiObjectNode {
-    let cpu_temp = cpu_temperature_celsius();
-    let cpu_usage = cpu_usage_percent();
-    let memory = memory_usage();
-    let load = load_average();
-    let disk_io = disk_io_counters();
-    let io_pressure = pressure_avg10_percent("/proc/pressure/io");
+    let data = api_telemetry_data();
     ApiObjectNode {
-        id: "telemetry".to_string(),
-        kind: "object".to_string(),
-        title: "Telemetry".to_string(),
-        state: "observed".to_string(),
-        route: Some("/api/root".to_string()),
-        summary: serde_json::json!({
-            "cpuTemperatureCelsius": cpu_temp,
-            "cpuUsagePercent": cpu_usage,
-            "memory": memory,
-            "loadAverage": load,
-            "diskIo": disk_io,
-            "ioPressureAvg10": io_pressure,
-        }),
-        metrics: vec![
-            api_metric_value("cpuTemperatureCelsius", "CPU temperature", serde_json::json!(cpu_temp), Some("celsius"), None),
-            api_metric_value("cpuUsagePercent", "CPU usage", serde_json::json!(cpu_usage), Some("percent"), None),
-            api_metric_value("memoryUsedBytes", "Memory used", memory.get("usedBytes").cloned().unwrap_or(serde_json::Value::Null), Some("bytes"), None),
-            api_metric_value("load1", "Load average 1m", load.get("oneMinute").cloned().unwrap_or(serde_json::Value::Null), None, None),
-            api_metric_value("diskReadRate", "Disk read rate", disk_io.get("readBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
-            api_metric_value("diskWriteRate", "Disk write rate", disk_io.get("writeBytesPerSec").cloned().unwrap_or(serde_json::Value::Null), Some("bytes_per_second"), None),
-            api_metric_value("ioPressureAvg10", "I/O pressure", serde_json::json!(io_pressure), Some("percent"), None),
-        ],
-        data: serde_json::json!({
-            "cpu": { "temperatureCelsius": cpu_temp, "usagePercent": cpu_usage },
-            "memory": memory,
-            "load": load,
-            "io": { "disk": disk_io, "pressureAvg10": io_pressure },
-        }),
+        id: "telemetry".to_string(), kind: "object".to_string(), title: "Telemetry".to_string(),
+        state: "observed".to_string(), route: Some("/api/root".to_string()),
+        summary: data.clone(), metrics: vec![
+            api_metric_value("cpuTemperatureCelsius", "CPU temperature", data["cpu"]["temperatureCelsius"].clone(), Some("celsius"), None),
+            api_metric_value("cpuUsagePercent", "CPU usage", data["cpu"]["usagePercent"].clone(), Some("percent"), None),
+            api_metric_value("memoryUsedBytes", "Memory used", data["memory"]["usedBytes"].clone(), Some("bytes"), None),
+            api_metric_value("load1", "Load average 1m", data["load"]["oneMinute"].clone(), None, None),
+            api_metric_value("diskReadRate", "Disk read rate", data["io"]["disk"]["readBytesPerSec"].clone(), Some("bytes_per_second"), None),
+            api_metric_value("diskWriteRate", "Disk write rate", data["io"]["disk"]["writeBytesPerSec"].clone(), Some("bytes_per_second"), None),
+            api_metric_value("gpuUtilizationPercent", "GPU utilization", data["gpu"]["utilizationPercent"].clone(), Some("percent"), None),
+            api_metric_value("gpuTemperatureCelsius", "GPU temperature", data["gpu"]["temperatureCelsius"].clone(), Some("celsius"), None),
+            api_metric_value("fanRpm", "Fan speed", data["fans"].as_array().and_then(|fans| fans.first()).and_then(|fan| fan.get("rpm")).cloned().unwrap_or(serde_json::Value::Null), Some("rpm"), None),
+        ], data: data.clone(),
         children: vec![
-            api_leaf("cpu", "CPU", "telemetry", "observed", "/api/root", serde_json::json!({"temperatureCelsius": cpu_temp, "usagePercent": cpu_usage})),
-            api_leaf("memory", "Memory", "telemetry", "observed", "/api/root", memory),
-            api_leaf("load", "Load", "telemetry", "observed", "/api/root", load),
-            api_leaf("io", "I/O", "telemetry", "observed", "/api/root", disk_io),
+            api_leaf("cpu", "CPU", "telemetry", "observed", "/api/root", data.get("cpu").cloned().unwrap_or_default()),
+            api_leaf("memory", "Memory", "telemetry", "observed", "/api/root", data.get("memory").cloned().unwrap_or_default()),
+            api_leaf("load", "Load", "telemetry", "observed", "/api/root", data.get("load").cloned().unwrap_or_default()),
+            api_leaf("io", "I/O", "telemetry", "observed", "/api/root", data.get("io").cloned().unwrap_or_default()),
         ],
     }
 }
@@ -1859,248 +1947,6 @@ fn now_unix_seconds() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0)
-}
-
-fn now_unix_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0)
-}
-
-fn thermal_zone_priority(zone_type: &str) -> i32 {
-    match zone_type {
-        "x86_pkg_temp" => 100,
-        "tctl" => 95,
-        "k10temp" => 90,
-        "cpu-thermal" => 85,
-        "cpu" => 80,
-        "acpitz" => 10,
-        other if other.contains("pkg") => 70,
-        other if other.contains("cpu") => 60,
-        _ => -1,
-    }
-}
-
-fn cpu_temperature_celsius() -> Option<f64> {
-    let thermal_root = Path::new("/sys/class/thermal");
-    let entries = fs::read_dir(thermal_root).ok()?;
-    let mut best: Option<(i32, f64)> = None;
-    for entry in entries.flatten() {
-        let zone_path = entry.path();
-        let zone_type = fs::read_to_string(zone_path.join("type"))
-            .ok()
-            .map(|value| value.trim().to_string())
-            .unwrap_or_default();
-        let priority = thermal_zone_priority(&zone_type);
-        if priority < 0 {
-            continue;
-        }
-        let Ok(raw) = fs::read_to_string(zone_path.join("temp")) else {
-            continue;
-        };
-        let Ok(milli_celsius) = raw.trim().parse::<f64>() else {
-            continue;
-        };
-        if milli_celsius <= 0.0 {
-            continue;
-        }
-        let celsius = (milli_celsius / 1000.0 * 10.0).round() / 10.0;
-        match best {
-            Some((best_priority, _)) if priority < best_priority => continue,
-            Some((best_priority, best_temp)) if priority == best_priority && celsius <= best_temp => {
-                continue
-            }
-            _ => best = Some((priority, celsius)),
-        }
-    }
-    best.map(|(_, celsius)| celsius)
-}
-
-fn proc_cpu_jiffies() -> Option<(u64, u64)> {
-    let raw = fs::read_to_string("/proc/stat").ok()?;
-    let line = raw.lines().next()?;
-    if !line.starts_with("cpu ") {
-        return None;
-    }
-    let parts = line.split_whitespace().collect::<Vec<_>>();
-    if parts.len() < 5 {
-        return None;
-    }
-    let parse = |index: usize| parts.get(index).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-    let user = parse(1);
-    let nice = parse(2);
-    let system = parse(3);
-    let idle = parse(4);
-    let iowait = parse(5);
-    let irq = parse(6);
-    let softirq = parse(7);
-    let steal = parse(8);
-    let busy = user + nice + system + irq + softirq + steal;
-    let total = busy + idle + iowait;
-    Some((busy, total))
-}
-
-fn cpu_usage_percent() -> Option<f64> {
-    let (busy, total) = proc_cpu_jiffies()?;
-    let store = LAST_CPU_USAGE_SAMPLE.get_or_init(|| Mutex::new(None));
-    let Ok(mut slot) = store.lock() else {
-        return None;
-    };
-    let usage = slot.as_ref().and_then(|previous| {
-        let busy_delta = busy.saturating_sub(previous.busy_jiffies);
-        let total_delta = total.saturating_sub(previous.total_jiffies);
-        if total_delta == 0 {
-            return None;
-        }
-        let percent = (busy_delta as f64 / total_delta as f64) * 100.0;
-        Some((percent * 10.0).round() / 10.0)
-    });
-    *slot = Some(CpuUsageSample {
-        busy_jiffies: busy,
-        total_jiffies: total,
-    });
-    usage
-}
-
-fn load_average() -> serde_json::Value {
-    let Some(raw) = fs::read_to_string("/proc/loadavg").ok() else {
-        return serde_json::json!({"available": false});
-    };
-    let parts = raw.split_whitespace().collect::<Vec<_>>();
-    serde_json::json!({
-        "available": true,
-        "oneMinute": parts.get(0).and_then(|v| v.parse::<f64>().ok()),
-        "fiveMinute": parts.get(1).and_then(|v| v.parse::<f64>().ok()),
-        "fifteenMinute": parts.get(2).and_then(|v| v.parse::<f64>().ok()),
-        "runningProcesses": parts.get(3).copied(),
-        "lastPid": parts.get(4).and_then(|v| v.parse::<u64>().ok()),
-    })
-}
-
-fn pressure_avg10_percent(path: &str) -> Option<f64> {
-    let raw = fs::read_to_string(path).ok()?;
-    raw.lines().find_map(|line| {
-        if !line.starts_with("some ") {
-            return None;
-        }
-        line.split_whitespace().find_map(|part| {
-            part.strip_prefix("avg10=")
-                .and_then(|value| value.parse::<f64>().ok())
-        })
-    })
-}
-
-fn disk_device_counts_io(name: &str) -> bool {
-    if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("dm-") {
-        return false;
-    }
-    if name.starts_with("nvme") {
-        return !name.contains('p');
-    }
-    if name.starts_with("mmcblk") {
-        return !name.contains('p');
-    }
-    if name.starts_with("sd") || name.starts_with("vd") {
-        return name.len() == 3;
-    }
-    false
-}
-
-fn disk_io_counters() -> serde_json::Value {
-    let Some(raw) = fs::read_to_string("/proc/diskstats").ok() else {
-        return serde_json::json!({"available": false});
-    };
-    let mut reads_completed = 0u64;
-    let mut sectors_read = 0u64;
-    let mut writes_completed = 0u64;
-    let mut sectors_written = 0u64;
-    let mut devices = 0u64;
-    for line in raw.lines() {
-        let parts = line.split_whitespace().collect::<Vec<_>>();
-        if parts.len() < 14 {
-            continue;
-        }
-        let name = parts[2];
-        if !disk_device_counts_io(name) {
-            continue;
-        }
-        devices += 1;
-        reads_completed += parts[3].parse::<u64>().unwrap_or(0);
-        sectors_read += parts[5].parse::<u64>().unwrap_or(0);
-        writes_completed += parts[7].parse::<u64>().unwrap_or(0);
-        sectors_written += parts[9].parse::<u64>().unwrap_or(0);
-    }
-    let sampled_at_millis = now_unix_millis();
-    let (read_bytes_per_sec, write_bytes_per_sec) = {
-        let store = LAST_DISK_IO_SAMPLE.get_or_init(|| Mutex::new(None));
-        let Ok(mut slot) = store.lock() else {
-            return serde_json::json!({
-                "available": true,
-                "devices": devices,
-                "readsCompleted": reads_completed,
-                "writesCompleted": writes_completed,
-                "sectorsRead": sectors_read,
-                "sectorsWritten": sectors_written,
-                "readBytesPerSec": 0,
-                "writeBytesPerSec": 0,
-            });
-        };
-        let rates = slot.as_ref().map(|previous| {
-            let elapsed_ms = sampled_at_millis
-                .saturating_sub(previous.sampled_at_millis)
-                .max(1);
-            let read_delta = sectors_read.saturating_sub(previous.sectors_read);
-            let write_delta = sectors_written.saturating_sub(previous.sectors_written);
-            (
-                read_delta.saturating_mul(512).saturating_mul(1000) / elapsed_ms as u64,
-                write_delta
-                    .saturating_mul(512)
-                    .saturating_mul(1000)
-                    / elapsed_ms as u64,
-            )
-        }).unwrap_or((0, 0));
-        *slot = Some(DiskIoSample {
-            sectors_read,
-            sectors_written,
-            sampled_at_millis,
-        });
-        rates
-    };
-    serde_json::Value::from(serde_json::json!({
-        "available": true,
-        "devices": devices,
-        "readsCompleted": reads_completed,
-        "writesCompleted": writes_completed,
-        "sectorsRead": sectors_read,
-        "sectorsWritten": sectors_written,
-        "readBytesPerSec": read_bytes_per_sec,
-        "writeBytesPerSec": write_bytes_per_sec,
-    }))
-}
-
-fn memory_usage() -> serde_json::Value {
-    let Some(raw) = fs::read_to_string("/proc/meminfo").ok() else {
-        return serde_json::json!({"available": false});
-    };
-    let fields = raw.lines().filter_map(|line| {
-        let (key, value) = line.split_once(":")?;
-        let kib = value.split_whitespace().next()?.parse::<u64>().ok()?;
-        Some((key, kib.saturating_mul(1024)))
-    }).collect::<HashMap<&str, u64>>();
-    let Some(total_bytes) = fields.get("MemTotal").copied() else {
-        return serde_json::json!({"available": false});
-    };
-    let available_bytes = fields.get("MemAvailable").copied().or_else(|| fields.get("MemFree").copied()).unwrap_or(0).min(total_bytes);
-    let used_bytes = total_bytes.saturating_sub(available_bytes);
-    let used_percent = if total_bytes == 0 {
-        0
-    } else {
-        ((used_bytes as f64 / total_bytes as f64) * 100.0)
-            .round()
-            .clamp(0.0, 100.0) as u8
-    };
-    serde_json::json!({"available": true, "totalBytes": total_bytes, "availableBytes": available_bytes, "usedBytes": used_bytes, "usedPercent": used_percent})
 }
 
 fn api_root_telemetry_tick_from_root(

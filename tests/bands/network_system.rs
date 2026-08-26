@@ -21,13 +21,15 @@
             "priority-strip",
             r#"aria-label="Storage""#,
             r#"aria-label="Network""#,
-            r#"aria-label="AI Model""#,
-            r#"aria-label="Games""#,
+            r#"aria-label="AI Models""#,
+            r#"aria-label="Updates""#,
+            "data-load-card",
+            "AI Models",
             "storage-bar",
         ] {
             assert!(home_html.contains(required), "missing home {required}");
         }
-        for label in [">Storage</h3>", ">Games</h3>", ">Network</h3>", ">AI Model</h3>"] {
+        for label in [">Storage</h3>", ">Load</h3>", ">Network</h3>", ">Updates</h3>", ">AI Models</h3>"] {
             assert!(home_html.contains(label), "missing home panel chrome {label}");
         }
         assert!(!home_html.contains("<p"));

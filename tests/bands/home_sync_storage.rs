@@ -72,17 +72,26 @@
             "priority-strip",
             "home-operational-grid",
             "home-operational-grid--dashboard",
-            "loadChart",
             "load-chart-wrap",
+            "load-sparkline",
             "load-average-readouts",
             "memory-usage",
             "data-load-card",
             r#"data-load-retry-ms="5000""#,
             "data-load-readout-value",
             "data-memory-bar",
+            "data-memory-used-segment",
+            "data-memory-free-segment",
+            "data-memory-used",
+            "data-memory-total",
             "data-load-chip-value",
-            "Temp",
-            "I/O",
+            "CPU temp",
+            "GPU",
+            "GPU temp",
+            "Fan RPM",
+            "Storage temp",
+            "Read/s",
+            "Write/s",
             "storage-home-card",
             "storage-bar--home",
             "storage-segment--games",
@@ -107,24 +116,20 @@
             "Copy URL",
             "Copy IP",
             "Copy AI",
-            r#"aria-label="AI Model""#,
+            r#"aria-label="AI Models""#,
             "local-ai-home-card",
             "local-ai-home-details",
-            ">Model:</span>",
+            "local-ai-home-models",
+            "data-bind-each=\"home.ai.models\"",
+            "data-bind-replace=\"true\"",
             ">Load:</span>",
             ">State:</span>",
-            "sync-home-card",
-            "sync-home-details",
-            ">Games:</span>",
-            ">Artwork:</span>",
-            r#"aria-label="Games""#,
             r#"aria-label="Updates""#,
             ">Storage</h3>",
             ">Load</h3>",
-            ">Games</h3>",
             ">Network</h3>",
             ">Updates</h3>",
-            ">AI Model</h3>",
+            ">AI Models</h3>",
         ] {
             assert!(home_html.contains(required), "missing {required}");
         }
@@ -318,9 +323,8 @@
         assert!(home_html.contains("data-bind=\"home.updates.pendingUpdates\""));
         assert!(!home_html.contains("homeconsole-update-latest/run.json"));
         assert!(!home_html.contains(">Receipt<"));
-        assert!(home_html.contains("data-bind-class=\"home.session.state\""));
-        assert!(home_html.contains("aria-label=\"Game Session\""));
-        assert!(home_html.contains(">!<"));
+        assert!(!home_html.contains("home.session"));
+        assert!(!home_html.contains("Game Session"));
         assert!(!home_html.contains(">Unknown<"));
         assert!(!home_html.contains("GameScope"));
         assert!(!home_html.contains(">Arcadia<"));
@@ -419,8 +423,11 @@
         let card_html = &rendered[card_start..card_start + card_end];
 
         for required in [
-            ">AI Model</h3>",
-            "data-bind=\"home.ai.model\">Hermes 8B</strong>",
+            ">AI Models</h3>",
+            "local-ai-home-models",
+            "data-bind-each=\"home.ai.models\"",
+            "Loaded:",
+            "Hermes 8B",
             "data-bind=\"home.ai.load\">Hot</strong>",
             "data-bind=\"home.ai.activity\">Actively working</strong>",
             "data-home-ai-load-state=\"hot\"",
@@ -431,50 +438,6 @@
             assert!(
                 !card_html.contains(forbidden),
                 "home ai model card leaked legacy surface: {forbidden}"
-            );
-        }
-    }
-
-    #[test]
-    fn home_games_card_surfaces_games_and_artwork_counts() {
-        let state = AppState {
-            started_unix: 0,
-            canonical_url: "http://console.example.com/".to_string(),
-            product: "HomeConsole".to_string(),
-            living: Arc::new(ArcadiaLivingMachine::new()),
-        };
-        let mut status = console_status(&state);
-        status.library.gamescope_entries = 2;
-        status.library.total_detected_games = 5;
-        status.library.artwork_paired_total = 3;
-        let rendered = ui::layout(&status).into_string();
-        let card_start = rendered
-            .find("sync-home-card")
-            .expect("games home card");
-        let card_end = card_start
-            + rendered[card_start..]
-                .find("</article>")
-                .expect("games home card closes");
-        let card_html = &rendered[card_start..card_end];
-
-        for required in [
-            "data-bind=\"home.games.total\">5</strong>",
-            "data-bind=\"home.games.total\">5</strong>",
-            "data-bind=\"home.games.artwork\">3 / 5</strong>",
-            "data-home-games-total=\"5\"",
-        ] {
-            assert!(card_html.contains(required), "home games card missing {required}");
-        }
-        for forbidden in [
-            "ROM",
-            "Available ROMs",
-            "data-label=\"Last scan\"",
-            ">GameScope:</span>",
-            ">Added:</span>",
-        ] {
-            assert!(
-                !card_html.contains(forbidden),
-                "home games card leaked legacy surface: {forbidden}"
             );
         }
     }
@@ -1347,18 +1310,12 @@
         assert!(telemetry["data"].get("load").is_some());
         assert!(telemetry["data"].get("io").is_some());
         assert!(telemetry["data"]["io"].get("pressureAvg10").is_some());
+        assert!(telemetry["data"].get("temperature").is_some());
+        assert!(telemetry["data"].get("fans").is_some());
+        assert!(telemetry["data"].get("gpu").is_some());
+        assert!(telemetry["data"].get("history").is_some());
         assert!(telemetry["data"]["io"]["disk"].get("readBytesPerSec").is_some());
         assert!(telemetry["data"]["io"]["disk"].get("writeBytesPerSec").is_some());
-        let telemetry_metrics = telemetry["metrics"].as_array().expect("metrics");
-        assert!(telemetry_metrics
-            .iter()
-            .any(|metric| metric["id"] == "cpuTemperatureCelsius"));
-        assert!(telemetry_metrics
-            .iter()
-            .any(|metric| metric["id"] == "cpuUsagePercent"));
-        assert!(telemetry_metrics
-            .iter()
-            .any(|metric| metric["id"] == "ioPressureAvg10"));
     }
 
     #[test]
@@ -1424,8 +1381,24 @@
         assert!(source.contains("pub ai: LocalAIState"));
         assert!(source.contains("pub controllers: ControllerStatus"));
         assert!(source.contains("pub system: SystemAdminStatus"));
-        assert!(source.contains("fn thermal_zone_priority"));
-        assert!(source.contains("fn cpu_usage_percent"));
+        assert!(source.contains("fn api_telemetry_data"));
+        assert!(source.contains("fn api_home_telemetry_data"));
+        assert!(source.contains("caduceus_fetch_json(\"/api/v1/appliance/stats\")"));
+        assert!(source.contains("caduceus_fetch_json(\"/api/v1/appliance/stats/history\")"));
+        for forbidden in [
+            "/proc/loadavg", "/proc/stat", "/proc/pressure/io", "/proc/diskstats", "/proc/meminfo",
+            "/sys/class/thermal",
+        ] {
+            assert!(!source.contains(forbidden), "telemetry sampler leaked forbidden path: {forbidden}");
+        }
+        assert!(source.contains("fn cpu_temperature_celsius"));
+        assert!(source.contains("fn load_average"));
+        assert!(source.contains("fn pressure_avg10_percent"));
+        assert!(source.contains("fn disk_io_counters"));
+        assert!(source.contains("fn memory_usage"));
+        assert!(!source.contains("fn cpu_usage_percent"));
+        assert!(source.contains("storageTemperatureCelsius"));
+        assert!(source.contains("\"pressureAvg10\": null"));
         assert!(source.contains("usagePercent"));
         assert!(source.contains("readBytesPerSec"));
         assert!(source.contains("writeBytesPerSec"));

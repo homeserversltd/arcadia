@@ -5,13 +5,9 @@ fn home_view(status: &ConsoleStatus) -> Markup {
             div class="home-operational-grid home-operational-grid--dashboard" {
                 (home_storage_card(status))
                 (home_load_card())
-                (home_sync_card(status))
                 (home_network_card(status))
                 (home_updates_card(status))
                 (home_local_ai_card(status))
-                @if status.arcadia.service != "running" {
-                    (home_gamescope_card(status))
-                }
             }
             div class="active-warning-strip home-warning-strip" data-bind-show="home.warning.visible" hidden[!(status.library.last_sync_state == "error" || status.local_ai.load_state == "error")] {
                 strong data-bind="home.warning.title" {
@@ -147,28 +143,36 @@ fn home_storage_everything_else_size(status: &ConsoleStatus) -> String {
 }
 
 fn home_load_card() -> Markup {
-    let load = load_average();
-    let one = json_number(&load, "oneMinute");
-    let five = json_number(&load, "fiveMinute");
-    let fifteen = json_number(&load, "fifteenMinute");
+    let telemetry = crate::api_telemetry_data();
+    let formatted = crate::api_home_telemetry_data();
+    let load = telemetry.get("load").cloned().unwrap_or_default();
+    let memory = telemetry.get("memory").cloned().unwrap_or_default();
+    let io = telemetry.get("io").and_then(|value| value.get("disk")).cloned().unwrap_or_default();
+    let one = load.get("oneMinute").and_then(serde_json::Value::as_f64);
     let cores = std::thread::available_parallelism().map(|count| count.get() as f64).unwrap_or(1.0).max(1.0);
-    let temp = cpu_temperature_celsius();
-    let temp_label = temp.map(|value| format!("{value:.1}°C")).unwrap_or_else(|| "—".to_string());
-    let temp_state = match temp { Some(value) if value >= 82.0 => "warn", Some(_) => "ok", None => "idle" };
-    let io_pressure = pressure_avg10_percent("/proc/pressure/io");
-    let io_label = io_pressure.map(|value| format!("{value:.1}%")).unwrap_or_else(|| "—".to_string());
-    let io_state = match io_pressure { Some(value) if value >= 10.0 => "warn", Some(_) => "ok", None => "idle" };
-    let disk = disk_io_counters();
-    let read_rate = json_u64(&disk, "readBytesPerSec");
-    let write_rate = json_u64(&disk, "writeBytesPerSec");
-    let memory = memory_usage();
-    let memory_total = json_u64(&memory, "totalBytes").unwrap_or(0);
-    let memory_used = json_u64(&memory, "usedBytes").unwrap_or(0);
-    let memory_percent = json_number(&memory, "usedPercent").unwrap_or(0.0).clamp(0.0, 100.0);
+    let five = load.get("fiveMinute").and_then(serde_json::Value::as_f64);
+    let fifteen = load.get("fifteenMinute").and_then(serde_json::Value::as_f64);
+    let memory_used = memory.get("usedBytes").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let memory_total = memory.get("totalBytes").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let memory_percent = memory.get("usedPercent").and_then(serde_json::Value::as_f64).unwrap_or(0.0).clamp(0.0, 100.0);
+    let rate = |key: &str| io.get(key).and_then(serde_json::Value::as_f64).map(crate::telemetry_human_rate).unwrap_or_else(|| "—".to_string());
+    let display = |path: &[&str]| -> String {
+        path.iter()
+            .fold(&formatted, |value, key| value.get(*key).unwrap_or(&serde_json::Value::Null))
+            .as_str()
+            .unwrap_or("—")
+            .to_string()
+    };
+    let first_fan = formatted
+        .get("fans")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|fans| fans.first())
+        .cloned()
+        .unwrap_or_default();
     html! {
         article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" {
             div class="card-head" aria-label="Load" { h3 { "Load" } }
-            div class="load-chart-wrap" { canvas id="loadChart" aria-label="CPU usage and temperature chart" role="img" {} }
+            div class="load-chart-wrap" aria-label="Load history" role="img" { (home_load_sparkline(&telemetry)) }
             div class="load-average-readouts" aria-label="Load average" {
                 (load_readout("1m", "oneMinute", one, cores))
                 (load_readout("5m", "fiveMinute", five, cores))
@@ -179,56 +183,46 @@ fn home_load_card() -> Markup {
                     span class="storage-segment storage-segment--other" style=(format!("width: {memory_percent:.0}%")) data-memory-used-segment {}
                     span class="storage-segment storage-segment--free" style=(format!("width: {:.0}%", 100.0 - memory_percent)) data-memory-free-segment {}
                 }
-                div class="state-rows state-rows--compact" { div class="home-detail-row" { span { "RAM used:" } strong data-memory-used { (human_size(memory_used)) } span data-memory-total { " / " (human_size(memory_total)) } } }
+                div class="state-rows state-rows--compact" { div class="home-detail-row" { span { "RAM used:" } strong data-memory-used data-bind="home.telemetry.memory.usedBytes" { (human_size(memory_used)) } span data-memory-total { " / " (human_size(memory_total)) } } }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
-                (load_chip("Temp", "cpu", &temp_label, temp_state))
-                (load_chip("I/O", "io", &io_label, io_state))
-                (load_chip("Read/s", "read", &read_rate.map(human_rate).unwrap_or_else(|| "—".to_string()), if read_rate.unwrap_or(0) > 0 { "ok" } else { "idle" }))
-                (load_chip("Write/s", "write", &write_rate.map(human_rate).unwrap_or_else(|| "—".to_string()), if write_rate.unwrap_or(0) > 0 { "ok" } else { "idle" }))
+                (load_chip_bound("CPU temp", "cpu", &display(&["cpu", "temperatureCelsius"]), "home.telemetry.cpu.temperatureCelsius"))
+                (load_chip_bound("CPU usage", "cpu-usage", &display(&["cpu", "usagePercent"]), "home.telemetry.cpu.usagePercent"))
+                (load_chip_bound("I/O", "io", &display(&["io", "pressureAvg10"]), "home.telemetry.io.pressureAvg10"))
+                (load_chip_bound("GPU", "gpu", &display(&["gpu", "utilizationPercent"]), "home.telemetry.gpu.utilizationPercent"))
+                (load_chip_bound("GPU temp", "gpu-temperature", &display(&["gpu", "temperatureCelsius"]), "home.telemetry.gpu.temperatureCelsius"))
+                (load_chip_bound("Storage temp", "storage-temperature", &display(&["temperature", "storage"]), "home.telemetry.temperature.storage"))
+                (load_chip_bound("Fan RPM", "fan", first_fan.get("rpm").and_then(serde_json::Value::as_str).unwrap_or("—"), "home.telemetry.fans.0.rpm"))
+                (load_chip_bound("Read/s", "read", &rate("readBytesPerSec"), "home.telemetry.io.disk.readBytesPerSec"))
+                (load_chip_bound("Write/s", "write", &rate("writeBytesPerSec"), "home.telemetry.io.disk.writeBytesPerSec"))
             }
         }
     }
+}
+
+fn home_load_sparkline(telemetry: &serde_json::Value) -> Markup {
+    let values: Vec<f64> = telemetry.get("history").and_then(|h| h.get("tiers")).and_then(|t| t.get("minute")).and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|entry| entry.get("aggregation").and_then(|a| a.get("loadOne")).and_then(serde_json::Value::as_f64)).collect();
+    let max = values.iter().copied().fold(1.0, f64::max);
+    let denominator = values.len().saturating_sub(1).max(1) as f64;
+    let points = values.iter().enumerate().map(|(i, value)| format!("{:.1},{:.1}", if values.len() == 1 { 50.0 } else { i as f64 * 100.0 / denominator }, 38.0 - value / max * 34.0)).collect::<Vec<_>>().join(" ");
+    html! { svg class="load-sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" { title { "Minute load history" } desc { "Load average over the most recent minute buckets." } polyline points=(points) fill="none" stroke="currentColor" stroke-width="1.5" {} } }
 }
 
 fn load_readout(label: &str, key: &str, value: Option<f64>, cores: f64) -> Markup {
-    let display = value.map(|number| format!("{:.1}%", (number / cores) * 100.0)).unwrap_or_else(|| "—".to_string());
-    html! { div class="load-average-readout" data-load-readout=(key) { span { (label) } strong data-load-readout-value=(key) { (display) } } }
-}
-
-fn load_chip(label: &str, key: &str, value: &str, state: &str) -> Markup {
+    let display = value
+        .map(|number| ((number / cores) * 100.0).clamp(0.0, 100.0))
+        .map(|percent| format!("{percent:.1}%"))
+        .unwrap_or_else(|| "—".to_string());
     html! {
-        div class=(format!("load-chip load-chip--{}", state)) data-load-chip=(key) {
-            em { (label) }
-            strong data-load-chip-value=(key) { (value) }
+        div class="load-average-readout" data-load-readout=(key) {
+            span { (label) }
+            strong data-load-readout-value=(key) { (display) }
         }
     }
 }
 
-fn json_number(value: &serde_json::Value, key: &str) -> Option<f64> {
-    value.get(key).and_then(serde_json::Value::as_f64)
-}
-
-fn json_u64(value: &serde_json::Value, key: &str) -> Option<u64> {
-    value.get(key).and_then(serde_json::Value::as_u64)
-}
-
-fn human_rate(bytes_per_sec: u64) -> String {
-    if bytes_per_sec == 0 {
-        return "0 B/s".to_string();
-    }
-    if bytes_per_sec < 1024 {
-        return format!("{bytes_per_sec} B/s");
-    }
-    if bytes_per_sec < 1024 * 1024 {
-        return format!("{} KB/s", bytes_per_sec / 1024);
-    }
-    let mb = bytes_per_sec as f64 / 1024.0 / 1024.0;
-    if mb >= 10.0 {
-        format!("{mb:.0} MB/s")
-    } else {
-        format!("{mb:.1} MB/s")
-    }
+fn load_chip_bound(label: &str, key: &str, value: &str, bind: &str) -> Markup {
+    html! { div class="load-chip load-chip--idle" data-load-chip=(key) { em { (label) } strong data-load-chip-value=(key) data-bind=(bind) { (value) } } }
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {
@@ -299,62 +293,36 @@ fn home_network_chip(label: &str, online: bool) -> Markup {
     }
 }
 
-fn home_sync_card(status: &ConsoleStatus) -> Markup {
-    let pending_changes = status.library.unsynced_added
-        + status.library.unsynced_changed
-        + status.library.unsynced_removed;
-    let games = library_games_total(status);
-    let games_line = games.to_string();
-    let artwork_line = library_artwork_lane_label(status);
-    let total_line = games_line.clone();
-    let needs_attention = status.library.last_sync_state == "error"
-        || pending_changes > 0
-        || status.library.sync_needed;
-    html! {
-        article class=(if needs_attention { "operational-card sync-home-card attention" } else { "operational-card sync-home-card" }) data-home-games-total=(total_line) data-bind-class="home.games.state" {
-            div class="card-head" aria-label="Games" {
-                h3 { "Games" }
-                strong data-bind="home.games.total" { (total_line) }
-            }
-            div class="state-rows state-rows--compact sync-home-details" {
-                (home_bound_detail_row("Games:", &games_line, true, "home.games.total"))
-                (home_bound_detail_row("Artwork:", &artwork_line, true, "home.games.artwork"))
-            }
-        }
-    }
-}
-
 fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
-    let model_name = home_local_ai_model_name(status);
     let load_label = home_local_ai_load_label(&status.local_ai.load_state);
     let activity_label = home_local_ai_activity_label(status);
+    let models = crate::api_home_ai_models(status);
     html! {
         article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) data-home-ai-load-state=(&status.local_ai.load_state) data-bind-class="home.ai.state" {
-            div class="card-head" aria-label="AI Model" {
-                h3 { "AI Model" }
+            div class="card-head" aria-label="AI Models" {
+                h3 { "AI Models" }
             }
             div class="state-rows state-rows--compact local-ai-home-details" {
-                (home_bound_detail_row("Model:", &model_name, false, "home.ai.model"))
                 (home_bound_detail_row("Load:", load_label, true, "home.ai.load"))
                 (home_bound_detail_row("State:", activity_label, true, "home.ai.activity"))
             }
+            div class="state-rows state-rows--compact local-ai-home-models" data-bind-each="home.ai.models" data-bind-replace="true" {
+                template {
+                    div class="home-detail-row" {
+                        span data-bind="state" {}
+                        strong data-bind="name" {}
+                    }
+                }
+                @if models.is_empty() {
+                    div class="home-detail-row" { span { "Models:" } strong { "No models installed" } }
+                } @else {
+                    @for model in &models {
+                        div class="home-detail-row" { span { (&model.state) } strong { (&model.name) } }
+                    }
+                }
+            }
         }
     }
-}
-
-fn home_local_ai_model_name(status: &ConsoleStatus) -> String {
-    status
-        .local_ai
-        .loaded_model_name
-        .clone()
-        .or_else(|| status.local_ai.selected_model_name.clone())
-        .unwrap_or_else(|| {
-            if status.local_ai.available_models.is_empty() {
-                "No models installed".to_string()
-            } else {
-                "No model selected".to_string()
-            }
-        })
 }
 
 fn home_local_ai_load_label(load_state: &str) -> &'static str {
@@ -435,19 +403,6 @@ fn home_bound_detail_row_with_class(
             strong data-bind=(bind_path) { (value) }
         }
     }
-}
-
-fn home_gamescope_card(status: &ConsoleStatus) -> Markup {
-    html! {
-        article class="operational-card gamescope-home-card attention" data-bind-show="home.session.visible" {
-            div class="card-head" aria-label="Game Session" { h3 { "Session" } strong data-state=(status.arcadia.service) data-bind-class="home.session.state" { "!" } }
-            div class="home-signal-strip" { (home_signal("Interface", status.arcadia.service, if status.arcadia.service == "running" { "ok" } else { "warn" })) }
-        }
-    }
-}
-
-fn home_signal(label: &str, value: &str, tone: &str) -> Markup {
-    html! { span class=(format!("home-signal home-signal--{}", tone)) data-label=(label) aria-label=(format!("{} {}", label, value)) { strong data-bind="home.session.state" { (value) } } }
 }
 
 fn title_case_state_like(state: &str) -> &'static str {
