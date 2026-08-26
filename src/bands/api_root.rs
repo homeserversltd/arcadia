@@ -14,7 +14,6 @@ struct ArcadiaLivingState {
 }
 
 const FAST_FACTS_CADENCE_SECONDS: u64 = 5;
-const EXPENSIVE_STORAGE_SCAN_CADENCE_SECONDS: u64 = 30;
 
 struct ArcadiaLivingMachine {
     snapshot: Mutex<Option<Arc<ArcadiaLivingState>>>,
@@ -30,28 +29,33 @@ impl ArcadiaLivingMachine {
             refresh_requested: std::sync::atomic::AtomicBool::new(false),
         }
     }
-    fn snapshot(&self) -> Arc<ArcadiaLivingState> {
+    fn try_snapshot(&self) -> Option<Arc<ArcadiaLivingState>> {
         self.snapshot
             .lock()
-            .expect("Arcadia living state lock poisoned")
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
+    }
+    fn is_initialized(&self) -> bool {
+        self.try_snapshot().is_some()
+    }
+    fn snapshot(&self) -> Arc<ArcadiaLivingState> {
+        self.try_snapshot()
             .expect("Arcadia living state not initialized")
     }
     fn request_refresh(&self) {
         self.refresh_requested.store(true, Ordering::Release);
     }
+    fn refresh_requested(&self) -> bool {
+        self.refresh_requested.load(Ordering::Acquire)
+    }
     fn expensive_scan_due(&self) -> bool {
-        if self.refresh_requested.swap(false, Ordering::AcqRel) {
-            return true;
-        }
-        now_unix_seconds().saturating_sub(self.last_expensive_scan_unix.load(Ordering::Acquire))
-            >= EXPENSIVE_STORAGE_SCAN_CADENCE_SECONDS
+        self.refresh_requested.swap(false, Ordering::AcqRel)
     }
     fn publish(&self, snapshot: Arc<ArcadiaLivingState>, expensive: bool) {
         if expensive {
             self.last_expensive_scan_unix.store(now_unix_seconds(), Ordering::Release);
         }
-        let mut guard = self.snapshot.lock().expect("Arcadia living state lock poisoned");
+        let mut guard = self.snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut snapshot = (*snapshot).clone();
         if let Some(current) = guard.as_ref() {
             let input = current.controller_input.clone();
@@ -64,7 +68,7 @@ impl ArcadiaLivingMachine {
         *guard = Some(Arc::new(snapshot));
     }
     fn publish_controller_input(&self, input: ControllerInputStatus) {
-        let mut guard = self.snapshot.lock().expect("Arcadia living state lock poisoned");
+        let mut guard = self.snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(current) = guard.as_ref() else { return; };
         let mut next = (**current).clone();
         next.controller_input = input.clone();
@@ -92,7 +96,7 @@ fn refresh_living_state(state: &AppState) {
         .living
         .snapshot
         .lock()
-        .expect("Arcadia living state lock poisoned")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone();
     let network = network_state(state);
     let network_status = network_status_from_state(&network);
@@ -2147,5 +2151,21 @@ fn api_living_state_document_from_parts(
         ai,
         controllers,
         system,
+    }
+}
+
+
+#[cfg(test)]
+mod deferred_warmup_tests {
+    use super::*;
+
+    #[test]
+    fn uninitialized_snapshot_is_observable_without_poisoning_lock() {
+        let machine = ArcadiaLivingMachine::new();
+        assert!(!machine.is_initialized());
+        assert!(machine.try_snapshot().is_none());
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| machine.snapshot()));
+        assert!(panic.is_err());
+        assert!(machine.snapshot.lock().is_ok());
     }
 }

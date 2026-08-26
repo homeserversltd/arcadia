@@ -1,6 +1,7 @@
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, Request, State},
     http::{header, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
@@ -253,6 +254,29 @@ where
     }
 }
 
+async fn living_readiness(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    // Liveness is deliberately available before the first deferred refresh; every
+    // other route is state-backed and must wait for a coherent living snapshot.
+    if request.uri().path() == "/health" || state.living.is_initialized() {
+        return next.run(request).await;
+    }
+
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        [(header::RETRY_AFTER, HeaderValue::from_static("1"))],
+        Json(serde_json::json!({
+            "ok": false,
+            "error": "living state is initializing",
+            "retryable": true,
+        })),
+    )
+        .into_response()
+}
+
 #[tokio::main]
 async fn main() -> anyhow_free::Result<()> {
     tracing_subscriber::fmt()
@@ -276,35 +300,6 @@ async fn main() -> anyhow_free::Result<()> {
         product: "HomeConsole".to_string(),
         living: Arc::new(ArcadiaLivingMachine::new()),
     });
-    // One independent held-state machine owns all appliance reads. GET/SSE paths
-    // only clone this document; fast facts and expensive scans share one cadence
-    // contract here until their refresh work is split into separate workers.
-    refresh_living_state(&state);
-    let refresh_state = state.clone();
-    let input_state = state.clone();
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval_at(
-            tokio::time::Instant::now() + Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS),
-            Duration::from_millis(CONTROLLER_TRAINER_STREAM_CADENCE_MS),
-        );
-        loop {
-            tick.tick().await;
-            let state = input_state.clone();
-            let _ = tokio::task::spawn_blocking(move || refresh_controller_input(&state)).await;
-        }
-    });
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval_at(
-            tokio::time::Instant::now() + Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
-            Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
-        );
-        loop {
-            tick.tick().await;
-            let state = refresh_state.clone();
-            let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state)).await;
-        }
-    });
-
     let app = Router::new()
         .route("/", get(index))
         .route("/health", get(health))
@@ -646,7 +641,11 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/static/app.js", get(js))
         .fallback(not_found)
         .layer(TraceLayer::new_for_http())
-        .with_state(state);
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            living_readiness,
+        ))
+        .with_state(state.clone());
 
     let http = match serve_config.http_bind {
         Some(addr) => {
@@ -670,20 +669,52 @@ async fn main() -> anyhow_free::Result<()> {
         _ => unreachable!("ServeConfig validates HTTPS certificate and key together"),
     };
 
-    match (http, https) {
-        (Some(listener), Some((addr, tls))) => {
-            let http_server = axum::serve(listener, app.clone());
-            let https_server = axum_server::bind_rustls(addr, tls).serve(app.into_make_service());
-            tokio::try_join!(http_server, https_server)?;
+    // Start serving before the first appliance scan so liveness probes do not
+    // wait behind storage, network, or device discovery.
+    let server = tokio::spawn(async move {
+        match (http, https) {
+            (Some(listener), Some((addr, tls))) => {
+                let http_server = axum::serve(listener, app.clone());
+                let https_server =
+                    axum_server::bind_rustls(addr, tls).serve(app.into_make_service());
+                tokio::try_join!(http_server, https_server)?;
+            }
+            (Some(listener), None) => axum::serve(listener, app).await?,
+            (None, Some((addr, tls))) => {
+                axum_server::bind_rustls(addr, tls)
+                    .serve(app.into_make_service())
+                    .await?;
+            }
+            (None, None) => return Err("no HTTP or HTTPS listener configured".into()),
         }
-        (Some(listener), None) => axum::serve(listener, app).await?,
-        (None, Some((addr, tls))) => {
-            axum_server::bind_rustls(addr, tls)
-                .serve(app.into_make_service())
-                .await?;
+        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+    });
+
+    let initial_state = state.clone();
+    tokio::task::spawn_blocking(move || refresh_living_state(&initial_state))
+        .await
+        .map_err(|error| {
+            std::io::Error::other(format!("initial Arcadia refresh failed: {error}"))
+        })?;
+
+    let refresh_state = state.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval_at(
+            tokio::time::Instant::now() + Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
+            Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
+        );
+        loop {
+            tick.tick().await;
+            let state = refresh_state.clone();
+            if state.living.refresh_requested() {
+                let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state)).await;
+            }
         }
-        (None, None) => return Err("no HTTP or HTTPS listener configured".into()),
-    }
+    });
+
+    server
+        .await
+        .map_err(|error| std::io::Error::other(format!("Arcadia server task failed: {error}")))??;
     Ok(())
 }
 
