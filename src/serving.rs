@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn startup_serves_before_refresh_and_has_no_idle_controller_trainer() {
+    fn startup_serves_before_refresh_and_requires_active_viewer_for_fast_facts() {
         let main = include_str!("main.rs");
         let bind = main
             .find("let http = match serve_config.http_bind")
@@ -121,7 +121,7 @@ mod tests {
             .unwrap();
         assert!(bind < serve && serve < refresh);
         assert!(!main.contains("let input_state = state.clone()"));
-        assert!(main.contains("if state.living.refresh_requested()"));
+        assert!(main.contains(".fast_facts_refresh_due(home_telemetry_has_active_lease())"));
         assert!(!main.contains("tick.tick().await;\n            let state = refresh_state.clone();\n            let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state))"));
     }
 }

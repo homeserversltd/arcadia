@@ -48,6 +48,9 @@ impl ArcadiaLivingMachine {
     fn refresh_requested(&self) -> bool {
         self.refresh_requested.load(Ordering::Acquire)
     }
+    fn fast_facts_refresh_due(&self, has_active_home_viewer: bool) -> bool {
+        has_active_home_viewer || self.refresh_requested()
+    }
     fn expensive_scan_due(&self) -> bool {
         self.refresh_requested.swap(false, Ordering::AcqRel)
     }
@@ -682,6 +685,15 @@ struct HomeTelemetryLeaseResponse {
 
 fn home_telemetry_leases() -> &'static Mutex<HashMap<String, HomeTelemetryLease>> {
     HOME_TELEMETRY_LEASES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn home_telemetry_has_active_lease() -> bool {
+    let now = now_unix_seconds();
+    let Ok(mut leases) = home_telemetry_leases().lock() else {
+        return false;
+    };
+    leases.retain(|_, lease| lease.expires_at_unix >= now);
+    !leases.is_empty()
 }
 
 fn home_telemetry_response(lease: &HomeTelemetryLease, active: bool) -> HomeTelemetryLeaseResponse {
@@ -2167,5 +2179,17 @@ mod deferred_warmup_tests {
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| machine.snapshot()));
         assert!(panic.is_err());
         assert!(machine.snapshot.lock().is_ok());
+    }
+
+    #[test]
+    fn fast_facts_refresh_is_gated_by_viewer_or_explicit_request() {
+        let machine = ArcadiaLivingMachine::new();
+        assert!(!machine.fast_facts_refresh_due(false));
+        assert!(machine.fast_facts_refresh_due(true));
+
+        machine.request_refresh();
+        assert!(machine.fast_facts_refresh_due(false));
+        assert!(machine.expensive_scan_due());
+        assert!(!machine.fast_facts_refresh_due(false));
     }
 }
