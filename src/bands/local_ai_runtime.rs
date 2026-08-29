@@ -293,24 +293,17 @@ fn repo_id_from_path(path: &Path) -> Option<String> {
 
 fn local_ai_status() -> LocalAiStatus {
     let mut available_models = local_ai_available_models();
-    let loaded_model = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
-        .and_then(|text| text.lines().next().map(str::to_string))
-        .map(|line| {
-            line.split_whitespace()
-                .find(|part| {
-                    part.ends_with(".gguf")
-                        || part.ends_with(".safetensors")
-                        || part.ends_with(".onnx")
-                })
-                .map(|part| {
-                    Path::new(part)
-                        .file_name()
-                        .and_then(|v| v.to_str())
-                        .unwrap_or(part)
-                        .to_string()
-                })
-                .unwrap_or_else(|| "Local AI runtime".to_string())
-        });
+    let resident_engines = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
+        .unwrap_or_default()
+        .lines()
+        .map(parse_resident_ai_engine)
+        .collect::<Vec<_>>();
+    let loaded_model = resident_engines.first().map(|engine| {
+        engine
+            .model_filename
+            .clone()
+            .unwrap_or_else(|| "Local AI runtime".to_string())
+    });
     if let Some(loaded) = &loaded_model {
         if !available_models
             .iter()
@@ -362,6 +355,7 @@ fn local_ai_status() -> LocalAiStatus {
         loaded_model_id: loaded_model.as_ref().map(|name| model_id(name)),
         loaded_model_name: loaded_model.as_ref().map(|name| friendly_model_name(name)),
         loaded_model,
+        resident_engines,
         available_models,
         library_models,
         gpu_memory: match (gpu_used, gpu_total) {
@@ -375,6 +369,16 @@ fn local_ai_status() -> LocalAiStatus {
         lan_inference_enabled,
         lan_inference_port: lan_inference_enabled.then_some(cfg.lan_port),
     }
+}
+
+fn parse_resident_ai_engine(line: &str) -> ResidentAiEngineStatus {
+    let function_label = if line.contains("--reranking") { "Search ranking" } else if line.contains("--embedding") { "Text understanding" } else { "AI model" };
+    let model_filename = line.split_whitespace().find_map(|part| {
+        let candidate = part.trim_matches(|ch| ch == '"' || ch == '\'').split_once('=').map(|(_, value)| value).unwrap_or(part).trim_matches(|ch| ch == '"' || ch == '\'');
+        let lower = candidate.to_ascii_lowercase();
+        if lower.ends_with(".gguf") || lower.ends_with(".safetensors") || lower.ends_with(".onnx") { Path::new(candidate).file_name().and_then(|name| name.to_str()).map(str::to_string) } else { None }
+    });
+    ResidentAiEngineStatus { function_label: function_label.to_string(), model_filename }
 }
 
 fn local_ai_available_models() -> Vec<LocalAiModelStatus> {

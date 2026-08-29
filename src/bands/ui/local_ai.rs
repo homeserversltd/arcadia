@@ -86,6 +86,11 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     (ai_state_tile("Model library", &format!("{} library", library_model_count), if library_model_count == 0 { "Empty" } else { "Plain list ready" }, "library"))
                     @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
                 }
+                div class="local-ai-resident-engines" aria-label="Resident AI engines" {
+                    strong { "Resident engines" }
+                    @if status.local_ai.resident_engines.is_empty() { p { "None detected" } }
+                    @else { @for engine in &status.local_ai.resident_engines { div class="local-ai-resident-engine" { span { (&engine.function_label) } strong { (engine.model_filename.as_deref().unwrap_or("Model details unavailable")) } } } }
+                }
                 div class="inline-actions inline-actions--compact local-ai-actions" {
                     @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
                     @else if !selected_present { (nav_focus_button("Choose model", "local-ai", "installed-models")) }

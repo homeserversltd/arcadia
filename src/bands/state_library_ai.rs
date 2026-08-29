@@ -129,6 +129,7 @@ pub struct LocalAiStatus {
     pub loaded_model_id: Option<String>,
     pub loaded_model_name: Option<String>,
     pub loaded_model: Option<String>,
+    pub resident_engines: Vec<ResidentAiEngineStatus>,
     pub available_models: Vec<LocalAiModelStatus>,
     pub library_models: Vec<LocalAiLibraryModelStatus>,
     pub gpu_memory: Option<String>,
@@ -136,6 +137,13 @@ pub struct LocalAiStatus {
     pub gpu_memory_total_bytes: Option<u64>,
     pub lan_inference_enabled: bool,
     pub lan_inference_port: Option<u16>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResidentAiEngineStatus {
+    pub function_label: String,
+    pub model_filename: Option<String>,
 }
 
 #[derive(Clone, Serialize)]

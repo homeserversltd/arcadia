@@ -297,6 +297,7 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
     let load_label = home_local_ai_load_label(&status.local_ai.load_state);
     let activity_label = home_local_ai_activity_label(status);
     let models = crate::api_home_ai_models(status);
+    let resident_engines = &status.local_ai.resident_engines;
     html! {
         article class=(if status.local_ai.load_state == "error" { "operational-card local-ai-home-card attention" } else { "operational-card local-ai-home-card" }) data-home-ai-load-state=(&status.local_ai.load_state) data-bind-class="home.ai.state" {
             div class="card-head" aria-label="AI Models" {
@@ -319,6 +320,13 @@ fn home_local_ai_card(status: &ConsoleStatus) -> Markup {
                     @for model in &models {
                         div class="home-detail-row" { span { (&model.state) } strong { (&model.name) } }
                     }
+                }
+            }
+            div class="state-rows state-rows--compact local-ai-home-resident-engines" {
+                @if resident_engines.is_empty() { div class="home-detail-row" { span { "Resident engines:" } strong { "None detected" } } }
+                @else {
+                    div class="home-detail-row" { span { "Resident engines:" } strong { (resident_engines.len()) } }
+                    @for engine in resident_engines { div class="home-detail-row" { span { (&engine.function_label) } strong { (engine.model_filename.as_deref().unwrap_or("Model details unavailable")) } } }
                 }
             }
         }
