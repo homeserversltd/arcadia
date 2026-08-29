@@ -351,7 +351,7 @@ function clearCaduceusAttendance() {
 
 function invalidateCaduceusAttendance() {
   if (!caduceusAttendance) return;
-  fetch('/api/v1/admin-admittance/invalidate', {
+  fetch('/api/v1/exousia/invalidate', {
     method: 'POST',
     headers: { accept: 'application/json', ...caduceusAttendanceHeaders() },
     keepalive: true,
@@ -1041,7 +1041,7 @@ function bindGuiPinUnlock() {
     button.disabled = true;
     button.textContent = 'Opening...';
     try {
-      const data = await postJson('/api/v1/admin-admittance/open', { pin: input.value }, { attendance: false });
+      const data = await postJson('/api/v1/exousia/open', { pin: input.value }, { attendance: false });
       input.value = '';
       if (data.ok && typeof data.attendance === 'string') {
         caduceusAttendance = data.attendance;

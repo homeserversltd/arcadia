@@ -409,15 +409,15 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/api/system/trust/mode", post(action_set_trust_mode))
         .route("/api/actions/restart-arcadia", post(action_restart_arcadia))
         .route(
-            "/api/v1/admin-admittance/open",
+            "/api/v1/exousia/open",
             post(caduceus_attendance_open_route).layer(DefaultBodyLimit::max(4 * 1024)),
         )
         .route(
-            "/api/v1/admin-admittance/validate",
+            "/api/v1/exousia/validate",
             post(caduceus_attendance_validate_route),
         )
         .route(
-            "/api/v1/admin-admittance/invalidate",
+            "/api/v1/exousia/invalidate",
             post(caduceus_attendance_invalidate_route),
         )
         .route("/api/gui-pin/status", get(gui_pin_status_route))

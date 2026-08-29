@@ -54,9 +54,9 @@ enum AttendanceOperation {
 impl AttendanceOperation {
     fn path(self) -> &'static str {
         match self {
-            Self::Open => "/api/v1/admin-admittance/open",
-            Self::Validate => "/api/v1/admin-admittance/validate",
-            Self::Invalidate => "/api/v1/admin-admittance/invalidate",
+            Self::Open => "/api/v1/exousia/open",
+            Self::Validate => "/api/v1/exousia/validate",
+            Self::Invalidate => "/api/v1/exousia/invalidate",
         }
     }
 
@@ -656,7 +656,7 @@ async fn caduceus_pin_access_route(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/admin-admittance/change-pin",
+        "/api/v1/exousia/change-pin",
         &headers,
         body,
     ))
@@ -667,7 +667,7 @@ async fn caduceus_pin_change_route(
     Json(body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/admin-admittance/change-pin",
+        "/api/v1/exousia/change-pin",
         &headers,
         body,
     ))
@@ -678,7 +678,7 @@ async fn caduceus_pin_reset_route(
     Json(_body): Json<serde_json::Value>,
 ) -> Response {
     caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/admin-admittance/change-pin",
+        "/api/v1/exousia/change-pin",
         &headers,
         serde_json::json!({"action":"reset-default"}),
     ))

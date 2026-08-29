@@ -2064,7 +2064,7 @@
         for path in ["/api/actions/reboot-console", "/api/actions/shutdown-console", "/api/system/ssh/service"] {
             assert!(system.contains(path), "system action path missing: {path}");
         }
-        assert!(APP_JS.contains("/api/v1/admin-admittance/invalidate"));
+        assert!(APP_JS.contains("/api/v1/exousia/invalidate"));
         assert!(APP_JS.contains("x-caduceus-attendance"));
         assert!(APP_JS.contains("applyOverlay"));
         assert!(APP_JS.contains("value === 0 || value === '0' ? '—'"));
