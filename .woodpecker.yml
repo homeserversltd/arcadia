@@ -2,8 +2,6 @@ when:
   event:
     - push
 
-skip_clone: true
-
 steps:
   - name: registry-pen-arcadia
     image: python:3.12-alpine
@@ -93,3 +91,116 @@ steps:
             raise SystemExit(f"{child_repo} registry-pen: Kether stamp failed with HTTP {status}")
         print(f"{child_repo} registry-pen: stamped by Kether/Azoth blood lane")
         PY
+
+  - name: build-publish-arcadia-package
+    image: rust:1-bookworm
+    when:
+      - event: push
+        branch: main
+    environment:
+      FORGEJO_TOKEN:
+        from_secret: FORGEJO_TOKEN
+    commands:
+      - |
+        set -eu
+        command -v curl >/dev/null || { echo "build-publish-arcadia-package: curl is required in rust:1-bookworm" >&2; exit 1; }
+
+        FORGEJO_TOKEN="$(printf '%s' "$${FORGEJO_TOKEN:-}" | tr -d '[:space:]')"
+        if [ -z "$FORGEJO_TOKEN" ] && [ -r /mnt/keyexchange/FORGEJO_TOKEN ] && [ -s /mnt/keyexchange/FORGEJO_TOKEN ]; then
+          FORGEJO_TOKEN="$(tr -d '[:space:]' < /mnt/keyexchange/FORGEJO_TOKEN)"
+        fi
+        if [ -z "$FORGEJO_TOKEN" ]; then
+          printf '%s\n' "build-publish-arcadia-package: org secret injected empty and /mnt/keyexchange/FORGEJO_TOKEN absent — run keyman transmit forgejo-token --to homeserver-ci-agent" >&2
+          exit 1
+        fi
+        if ! printf "%s" "$${CI_COMMIT_SHA:-}" | grep -Eq "^[0-9a-f]{40}$"; then
+          echo "build-publish-arcadia-package: CI_COMMIT_SHA must be a full 40-hex commit SHA" >&2
+          exit 1
+        fi
+        if [ -z "$${CI_PIPELINE_URL:-}" ]; then
+          echo "build-publish-arcadia-package: CI_PIPELINE_URL is required" >&2
+          exit 1
+        fi
+
+        metadata="$(cargo metadata --no-deps --format-version 1)"
+        package_name="$(printf '%s' "$metadata" | sed -n 's/.*"packages":\[{"name":"\([^"]*\)".*/\1/p')"
+        if [ "$package_name" != "arcadia" ]; then
+          echo "build-publish-arcadia-package: cargo package_name must be arcadia" >&2
+          exit 1
+        fi
+        binary_name="$(printf '%s' "$metadata" | grep -Eo '"kind":\["bin"\][^}]*"name":"[^"]+"' | sed -n 's/.*"name":"\([^"]*\)".*/\1/p' | head -n 1)"
+        target_directory="$(printf '%s' "$metadata" | grep -Eo '"target_directory":"[^"]+"' | sed -n 's/.*"target_directory":"\([^"]*\)"/\1/p')"
+        if [ -z "$binary_name" ] || [ -z "$target_directory" ]; then
+          echo "build-publish-arcadia-package: cargo metadata returned empty binary_name or target_directory" >&2
+          exit 1
+        fi
+
+        ARCADIA_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release
+        binary="$target_directory/release/$binary_name"
+        test -f "$binary"
+        binary_sha256="$(sha256sum "$binary" | cut -d " " -f 1)"
+        built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        printf '{\n  "schema": "estate.artifact.manifest.v1",\n  "component": "arcadia",\n  "source_sha": "%s",\n  "target": "x86_64-unknown-linux-gnu",\n  "sha256": "%s",\n  "built_at": "%s",\n  "pipeline_url": "%s"\n}\n' \
+          "$CI_COMMIT_SHA" "$binary_sha256" "$built_at" "$CI_PIPELINE_URL" \
+          > manifest.json
+
+        package_base="https://git.home.arpa/api/packages/HOMESERVERSLTD/generic/arcadia/$CI_COMMIT_SHA"
+        auth_header="Authorization: token $FORGEJO_TOKEN"
+
+        verify_existing_manifest() {
+          existing_status="$(curl --silent --show-error \
+            --output existing-manifest.json \
+            --write-out "%{http_code}" \
+            --header "$auth_header" \
+            "$package_base/manifest.json")"
+          if [ "$existing_status" != "200" ]; then
+            echo "build-publish-arcadia-package: collision but existing manifest returned HTTP $existing_status" >&2
+            exit 1
+          fi
+          existing_sha256="$(grep -Eo '"sha256"[[:space:]]*:[[:space:]]*"[0-9a-f]{64}"' existing-manifest.json | grep -Eo '[0-9a-f]{64}' || true)"
+          if ! printf "%s" "$existing_sha256" | grep -Eq "^[0-9a-f]{64}$"; then
+            echo "build-publish-arcadia-package: existing manifest has no unique 64-hex sha256" >&2
+            exit 1
+          fi
+          if [ "$existing_sha256" != "$binary_sha256" ]; then
+            echo "build-publish-arcadia-package: immutable version collision: existing sha256 does not match fresh build" >&2
+            exit 1
+          fi
+          echo "build-publish-arcadia-package: immutable version already exists with matching sha256"
+        }
+
+        upload_file() {
+          local_path="$1"
+          remote_name="$2"
+          content_type="$3"
+          response_file="upload-$remote_name.response"
+          upload_status="$(curl --silent --show-error \
+            --output "$response_file" \
+            --write-out "%{http_code}" \
+            --request PUT \
+            --header "$auth_header" \
+            --header "Content-Type: $content_type" \
+            --upload-file "$local_path" \
+            "$package_base/$remote_name")"
+          case "$upload_status" in
+            200|201|204)
+              echo "build-publish-arcadia-package: uploaded $remote_name (HTTP $upload_status)"
+              ;;
+            409)
+              echo "build-publish-arcadia-package: $remote_name already exists; verifying immutable manifest"
+              verify_existing_manifest
+              ;;
+            *)
+              echo "build-publish-arcadia-package: upload of $remote_name failed with HTTP $upload_status" >&2
+              if [ -s "$response_file" ]; then
+                head -c 4096 "$response_file" >&2
+                printf "\\n" >&2
+              fi
+              exit 1
+              ;;
+          esac
+        }
+
+        upload_file "$binary" arcadia application/octet-stream
+        upload_file manifest.json manifest.json application/json
