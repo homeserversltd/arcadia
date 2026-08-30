@@ -5,8 +5,8 @@
 .view[data-view-panel="home"] .home-operational-grid { grid-row: 2; min-height: 0; }
 .view[data-view-panel="home"] .home-warning-strip { grid-row: 3; }
 .home-operational-grid--dashboard { min-height: 0; grid-auto-rows: minmax(0, 1fr); align-items: stretch; }
-.home-operational-grid--dashboard .operational-card { overflow: hidden; justify-content: space-between; }
-.home-operational-grid--dashboard .state-rows { flex: 1 1 auto; align-content: center; gap: var(--ux-grid-gap); }
+.home-operational-grid--dashboard .operational-card { overflow: hidden; justify-content: flex-start; gap: var(--ux-control-gap); }
+.home-operational-grid--dashboard .state-rows { flex: 0 1 auto; align-content: start; gap: var(--ux-grid-gap); }
 .priority-strip b { justify-self: end; }
 .home-signal-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; padding-top: 8px; border-top: var(--ux-card-divider); }
 .home-signal { min-width: 0; display: inline-grid; grid-template-columns: auto; gap: 1px; padding: 5px 7px; border-radius: 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--theme-field-surface) 72%, transparent); }
@@ -25,8 +25,8 @@
 .home-network-copy-row .btn { flex: 1 1 0; min-width: 0; }
 .updates-home-card, .local-ai-home-card, .sync-home-card, .storage-home-card { min-width: 0; overflow: hidden; }
 .updates-home-details, .local-ai-home-details, .sync-home-details, .storage-home-details { margin-bottom: 4px; min-width: 0; }
-.storage-home-card .storage-bar--home { margin-top: auto; }
-.storage-home-card .storage-home-details { flex: 0 0 auto; margin-bottom: auto; }
+.storage-home-card .storage-bar--home { margin-top: 0; }
+.storage-home-card .storage-home-details { flex: 0 0 auto; margin-bottom: 0; }
 .storage-bar--home .storage-segment:not(.storage-segment--free) { min-width: 6px; }
 .updates-home-card .home-detail-row, .local-ai-home-card .home-detail-row, .sync-home-card .home-detail-row, .storage-home-card .home-detail-row { grid-template-columns: minmax(0, 1fr); gap: 1px; align-items: start; padding: 4px 0; }
 .updates-home-card .home-detail-row span, .local-ai-home-card .home-detail-row span, .sync-home-card .home-detail-row span, .storage-home-card .home-detail-row span { color: var(--muted); font-size: 11px; line-height: 1.2; white-space: nowrap; }

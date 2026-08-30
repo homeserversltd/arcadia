@@ -202,6 +202,9 @@ fn home_load_card() -> Markup {
 
 fn home_load_sparkline(telemetry: &serde_json::Value) -> Markup {
     let values: Vec<f64> = telemetry.get("history").and_then(|h| h.get("tiers")).and_then(|t| t.get("minute")).and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|entry| entry.get("aggregation").and_then(|a| a.get("loadOne")).and_then(serde_json::Value::as_f64)).collect();
+    if values.is_empty() {
+        return html! { span class="load-sparkline-placeholder" { "Gathering history…" } };
+    }
     let max = values.iter().copied().fold(1.0, f64::max);
     let denominator = values.len().saturating_sub(1).max(1) as f64;
     let points = values.iter().enumerate().map(|(i, value)| format!("{:.1},{:.1}", if values.len() == 1 { 50.0 } else { i as f64 * 100.0 / denominator }, 38.0 - value / max * 34.0)).collect::<Vec<_>>().join(" ");
