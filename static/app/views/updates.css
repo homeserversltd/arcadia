@@ -82,6 +82,8 @@
   gap: var(--ux-updates-gap);
   overflow: hidden;
 }
+.updates-board > .updates-available-pane { order: 1; }
+.updates-board > .updates-module-pane { order: 2; }
 .updates-module-pane,
 .updates-available-pane,
 .updates-receipts {
@@ -183,21 +185,18 @@
 .updates-last-run span, .updates-last-run-failures { color: var(--muted); font-size: var(--ux-text-xs); }
 .updates-last-run-failures { display: grid; gap: 3px; margin: 0; padding-left: 16px; }
 
-/* Ledger rows are reused in the narrow Available column; keep long receipts inside its list. */
-.updates-available-pane .harmonia-update-tiles .harmonia-ledger-module-row,
-.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json,
-.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json pre {
+.harmonia-update-row {
   min-width: 0;
   max-width: 100%;
-}
-.updates-available-pane .harmonia-update-tiles .harmonia-ledger-module-row {
-  padding: 6px;
-}
-.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-warn) 38%, var(--line));
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--theme-warning-surface) 72%, transparent);
   overflow: hidden;
 }
-.updates-available-pane .harmonia-update-tiles .harmonia-ledger-json pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
+.harmonia-update-row strong { min-width: 0; color: var(--cream); font-size: var(--ux-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.harmonia-update-row b { flex: 0 0 auto; color: var(--warn); font-size: var(--ux-text-sm); white-space: nowrap; }

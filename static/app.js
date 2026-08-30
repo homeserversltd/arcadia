@@ -3580,9 +3580,8 @@ function renderHarmoniaLastRun(entries) {
     failures.className = 'updates-last-run-failures';
     failed.forEach((entry) => {
       const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId || 'suite');
-      const signal = harmoniaLedgerValue(entry, ['first_missing_signal', 'firstMissingSignal'], entry.firstMissingSignal || 'none');
       const item = document.createElement('li');
-      item.textContent = `${harmoniaModuleLabel(moduleId)} · ${signal}`;
+      item.textContent = harmoniaModuleLabel(moduleId);
       failures.appendChild(item);
     });
     detail.appendChild(failures);
@@ -3593,32 +3592,11 @@ function renderHarmoniaLedgerAvailability(entries) {
   const pane = document.querySelector('[data-harmonia-update-pane]');
   if (!pane) return;
 
-  const moduleIds = [];
-  const seenIds = new Set();
-  const addModuleId = (value) => {
-    const moduleId = String(value || '').trim();
-    if (moduleId && !seenIds.has(moduleId)) {
-      seenIds.add(moduleId);
-      moduleIds.push(moduleId);
-    }
-  };
-  const modulePane = document.querySelector('[data-harmonia-module-pane]');
-  modulePane?.querySelectorAll('[data-harmonia-module]').forEach((module) => {
-    const input = module.querySelector('input[data-harmonia-module-switch], input');
-    addModuleId(module.dataset.harmoniaModule || input?.getAttribute('data-harmonia-module-switch') || input?.value || input?.id || module.id);
-  });
-  modulePane?.querySelectorAll('[data-harmonia-module-switch]').forEach((input) => {
-    addModuleId(input.getAttribute('data-harmonia-module-switch') || input.value || input.id);
-  });
-
-  const latestEntries = new Map();
-  (entries || []).forEach((entry) => {
-    const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId);
-    const key = String(moduleId || '').trim();
-    if (!key) return;
-    addModuleId(key);
-    if (!latestEntries.has(key)) latestEntries.set(key, entry);
-  });
+  const latestRun = harmoniaLedgerRuns(entries)[0];
+  const updateEntries = (latestRun?.entries || []).filter((entry) => (
+    harmoniaLedgerValue(entry, ['ok'], entry.ok) === false
+    || harmoniaLedgerValue(entry, ['changed'], entry.changed) === true
+  ));
 
   const existingHeading = pane.querySelector('.updates-update-heading');
   const tiles = pane.querySelector('[data-harmonia-update-tiles]');
@@ -3626,7 +3604,7 @@ function renderHarmoniaLedgerAvailability(entries) {
   existingHeading?.remove();
   tiles?.remove();
 
-  if (!moduleIds.length) {
+  if (!updateEntries.length) {
     pane.dataset.updateCount = '0';
     pane.classList.remove('harmonia-update-pane--available');
     pane.classList.add('harmonia-update-pane--zero');
@@ -3647,11 +3625,7 @@ function renderHarmoniaLedgerAvailability(entries) {
   zero?.remove();
   pane.classList.remove('harmonia-update-pane--zero');
   pane.classList.add('harmonia-update-pane--available');
-  const updateCount = moduleIds.filter((moduleId) => {
-    const entry = latestEntries.get(moduleId);
-    return entry && (harmoniaLedgerValue(entry, ['ok'], entry.ok) === false
-      || harmoniaLedgerValue(entry, ['changed'], entry.changed) === true);
-  }).length;
+  const updateCount = updateEntries.length;
   pane.dataset.updateCount = String(updateCount);
   const heading = document.createElement('div');
   heading.className = 'updates-update-heading';
@@ -3659,9 +3633,15 @@ function renderHarmoniaLedgerAvailability(entries) {
   const nextTiles = document.createElement('div');
   nextTiles.className = 'harmonia-update-tiles';
   nextTiles.dataset.harmoniaUpdateTiles = 'true';
-  moduleIds.forEach((moduleId) => {
-    const row = harmoniaLedgerModuleRow(latestEntries.get(moduleId) || null, moduleId);
-    row.dataset.updateKind = moduleId;
+  updateEntries.forEach((entry) => {
+    const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId || 'suite');
+    const row = document.createElement('div');
+    row.className = 'harmonia-update-row';
+    const label = document.createElement('strong');
+    label.textContent = harmoniaModuleLabel(moduleId);
+    const status = document.createElement('b');
+    status.textContent = harmoniaLedgerValue(entry, ['ok'], entry.ok) === false ? 'Needs attention' : 'Updated';
+    row.append(label, status);
     nextTiles.appendChild(row);
   });
   pane.append(heading, nextTiles);
