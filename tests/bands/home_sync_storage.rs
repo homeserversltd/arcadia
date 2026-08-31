@@ -1236,7 +1236,7 @@
     fn sync_action_routes_through_caduceus_membrane() {
         let routes = include_str!("../../src/bands/routes_caduceus.rs");
         let source = include_str!("../../src/bands/console_system_actions.rs");
-        assert!(routes.contains("caduceus_post_json"));
+        assert!(routes.contains("CaduceusAccessClient::default().post_json"));
         assert!(routes.contains("/api/v1/sync/now"));
         assert!(source.contains("run_caduceus_http_mutation"));
         assert!(source.contains("/api/v1/sync/now"));
@@ -1383,8 +1383,8 @@
         assert!(source.contains("pub system: SystemAdminStatus"));
         assert!(source.contains("fn api_telemetry_data"));
         assert!(source.contains("fn api_home_telemetry_data"));
-        assert!(source.contains("caduceus_fetch_json(\"/api/v1/appliance/stats\")"));
-        assert!(source.contains("caduceus_fetch_json(\"/api/v1/appliance/stats/history\")"));
+        assert!(source.contains("CaduceusAccessClient::default().get_json(\"/api/v1/appliance/stats\")"));
+        assert!(source.contains("CaduceusAccessClient::default().get_json(\"/api/v1/appliance/stats/history\")"));
         for forbidden in [
             "/proc/loadavg", "/proc/stat", "/proc/pressure/io", "/proc/diskstats", "/proc/meminfo",
             "/sys/class/thermal",

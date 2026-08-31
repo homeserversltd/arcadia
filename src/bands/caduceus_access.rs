@@ -90,6 +90,131 @@ pub struct ModelLane {
     pub busy_slots: Option<i64>,
 }
 
+fn caduceus_staff_socket() -> String {
+    env::var("CADUCEUS_STAFF_SOCKET").unwrap_or_else(|_| CADUCEUS_STAFF_SOCKET.to_string())
+}
+
+const CADUCEUS_MAX_RESPONSE_HEADERS: usize = 4096;
+const CADUCEUS_MAX_RESPONSE_BODY: usize = 16 * 1024;
+
+#[derive(Debug)]
+enum CaduceusTransportError {
+    Connect(std::io::Error),
+    Io(std::io::Error),
+    Framing,
+}
+
+fn caduceus_raw_request(
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+    timeout: Duration,
+) -> Result<(u16, Vec<u8>), CaduceusTransportError> {
+    use std::{io::Read, io::Write, os::unix::net::UnixStream};
+
+    if path.bytes().any(|byte| matches!(byte, b'\r' | b'\n')) {
+        return Err(CaduceusTransportError::Framing);
+    }
+
+    let mut stream = UnixStream::connect(caduceus_staff_socket())
+        .map_err(CaduceusTransportError::Connect)?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(CaduceusTransportError::Io)?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(CaduceusTransportError::Io)?;
+
+    let body = body.unwrap_or_default();
+    if body.len() > CADUCEUS_ACCESS_MAX_REQUEST { return Err(CaduceusTransportError::Framing); }
+    let request = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", body.len());
+    stream
+        .write_all(request.as_bytes())
+        .and_then(|_| stream.write_all(body))
+        .map_err(CaduceusTransportError::Io)?;
+
+    let mut headers = Vec::new();
+    loop {
+        let mut byte = [0_u8; 1];
+        stream
+            .read_exact(&mut byte)
+            .map_err(CaduceusTransportError::Io)?;
+        headers.push(byte[0]);
+        if headers.ends_with(b"\r\n\r\n") {
+            break;
+        }
+        if headers.len() >= CADUCEUS_MAX_RESPONSE_HEADERS {
+            return Err(CaduceusTransportError::Framing);
+        }
+    }
+
+    let header_text = std::str::from_utf8(&headers).map_err(|_| CaduceusTransportError::Framing)?;
+    let mut lines = header_text.split("\r\n");
+    let status_line = lines.next().ok_or(CaduceusTransportError::Framing)?;
+    let mut status_parts = status_line.split_whitespace();
+    if status_parts.next() != Some("HTTP/1.1") {
+        return Err(CaduceusTransportError::Framing);
+    }
+    let status = status_parts
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or(CaduceusTransportError::Framing)?;
+    let mut content_length = None;
+    for line in lines {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = Some(
+                    value
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|_| CaduceusTransportError::Framing)?,
+                );
+            }
+        }
+    }
+
+    let length = content_length.ok_or(CaduceusTransportError::Framing)?;
+    if length > CADUCEUS_MAX_RESPONSE_BODY {
+        return Err(CaduceusTransportError::Framing);
+    }
+    let mut response = vec![0_u8; length];
+    stream
+        .read_exact(&mut response)
+        .map_err(CaduceusTransportError::Io)?;
+
+    Ok((status, response))
+}
+
+fn caduceus_http_error(error: CaduceusTransportError) -> &'static str {
+    match error {
+        CaduceusTransportError::Connect(_) | CaduceusTransportError::Io(_) => {
+            "caduceus-http-unreachable"
+        }
+        CaduceusTransportError::Framing => "caduceus-http-empty-response",
+    }
+}
+
+const CADUCEUS_STAFF_SCHEMA: &str = "caduceus.staff.v1";
+
+fn caduceus_transition(path: &str) -> String {
+    let path = path.split('?').next().unwrap_or(path).trim_matches('/');
+    path.strip_prefix("api/v1/").unwrap_or(path).replace('/', ".")
+}
+
+fn caduceus_staff_envelope(path: &str, payload: serde_json::Value, flags: serde_json::Value) -> serde_json::Value {
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0);
+    serde_json::json!({"schema": CADUCEUS_STAFF_SCHEMA, "intent_id": format!("arcadia.staff.{}-{}", caduceus_transition(path), uuid::Uuid::new_v4()), "transition": caduceus_transition(path), "version": 1, "timestamp": timestamp, "target": null, "flags": flags, "payload": payload})
+}
+
+fn caduceus_json_response(status: u16, response: Vec<u8>) -> Result<serde_json::Value, &'static str> {
+    if !(200..300).contains(&status) { return Err("caduceus-http-unreachable"); }
+    if response.is_empty() { return Err("caduceus-http-empty-response"); }
+    serde_json::from_slice(&response).map_err(|_| "caduceus-http-invalid-json")
+}
+
 struct CaduceusAccessClient;
 
 impl Default for CaduceusAccessClient {
@@ -97,18 +222,28 @@ impl Default for CaduceusAccessClient {
 }
 
 impl CaduceusAccessClient {
+    fn get_json(&self, path: &str) -> Result<serde_json::Value, &'static str> {
+        let (status, response) = caduceus_raw_request("GET", path, None, CADUCEUS_ACCESS_TIMEOUT).map_err(caduceus_http_error)?;
+        caduceus_json_response(status, response)
+    }
+
+    fn post_json(&self, path: &str, payload: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+        self.post_json_with_timeout_and_flags(path, payload, CADUCEUS_ACCESS_TIMEOUT, serde_json::Value::Null)
+    }
+
+    fn post_json_with_timeout(&self, path: &str, payload: serde_json::Value, timeout: Duration) -> Result<serde_json::Value, &'static str> {
+        self.post_json_with_timeout_and_flags(path, payload, timeout, serde_json::Value::Null)
+    }
+
+    fn post_json_with_timeout_and_flags(&self, path: &str, payload: serde_json::Value, timeout: Duration, flags: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+        let encoded = serde_json::to_vec(&caduceus_staff_envelope(path, payload, flags)).map_err(|_| "caduceus-http-invalid-json")?;
+        if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST { return Err("caduceus-http-request-too-large"); }
+        let (status, response) = caduceus_raw_request("POST", path, Some(&encoded), timeout).map_err(caduceus_http_error)?;
+        caduceus_json_response(status, response)
+    }
+
     fn model_lanes(&self) -> Result<Vec<ModelLane>, &'static str> {
-        let (status, response) = caduceus_raw_request("GET", "/api/v1/appliance/stats", None, "", CADUCEUS_ACCESS_TIMEOUT)
-            .map_err(|error| match error {
-                CaduceusTransportError::Connect(error) => attendance_io_code("connect", &error),
-                CaduceusTransportError::Io(error) => attendance_io_code("io", &error),
-                CaduceusTransportError::Framing => "caduceus-model-lanes-bad-receipt",
-            })?;
-        if !(200..300).contains(&status) {
-            return Err("caduceus-model-lanes-upstream-refused");
-        }
-        let value: serde_json::Value = serde_json::from_slice(&response)
-            .map_err(|_| "caduceus-model-lanes-invalid-json")?;
+        let value = self.get_json("/api/v1/appliance/stats").map_err(|_| "caduceus-model-lanes-upstream-refused")?;
         let lanes = value.get("model_lanes").cloned().ok_or("caduceus-model-lanes-missing")?;
         serde_json::from_value(lanes).map_err(|_| "caduceus-model-lanes-invalid")
     }
@@ -139,14 +274,15 @@ impl CaduceusAccessClient {
     }
 
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
-        let body = caduceus_staff_envelope(operation.path(), body);
+        let flags = match operation { AttendanceOperation::Open => serde_json::json!({"exousia": {"pin": body.get("pin")}}), _ => serde_json::json!({"exousia": {"attendance": body.get("attendance"), "documentId": body.get("documentId"), "documentIncarnation": body.get("documentIncarnation")}}) };
+        let body = caduceus_staff_envelope(operation.path(), body, flags);
         let Ok(encoded) = serde_json::to_vec(&body) else {
             return AttendanceCall::refused(0, "caduceus-attendance-request-invalid");
         };
         if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
             return AttendanceCall::refused(0, "caduceus-attendance-request-invalid");
         }
-        let (status, response) = match caduceus_raw_request("POST", operation.path(), Some(&encoded), "", CADUCEUS_ACCESS_TIMEOUT) {
+        let (status, response) = match caduceus_raw_request("POST", operation.path(), Some(&encoded), CADUCEUS_ACCESS_TIMEOUT) {
             Ok(result) => result,
             Err(CaduceusTransportError::Connect(error)) => return AttendanceCall::refused(0, attendance_io_code("connect", &error)),
             Err(CaduceusTransportError::Io(error)) => {
@@ -403,29 +539,11 @@ fn caduceus_attended_json_call(
     if !validation.ok {
         return Err(validation);
     }
-    let body = caduceus_staff_envelope(path, body);
-    let encoded = serde_json::to_vec(&body)
-        .map_err(|_| AttendanceCall::refused(400, "caduceus-action-request-invalid"))?;
-    if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
-        return Err(AttendanceCall::refused(
-            400,
-            "caduceus-action-request-invalid",
-        ));
-    }
-    let extra_headers = format!("X-Caduceus-Document: {document}\r\nX-Caduceus-Attendance: {}\r\n", attendance.expose());
-    let (status, response) = caduceus_raw_request(
-        "POST", path, Some(&encoded), &extra_headers, CADUCEUS_ACCESS_TIMEOUT,
-    ).map_err(|error| match error {
-        CaduceusTransportError::Connect(error) => {
-            AttendanceCall::refused(503, attendance_io_code("connect", &error))
-        }
-        CaduceusTransportError::Io(error) => {
-            AttendanceCall::refused(503, attendance_io_code("io", &error))
-        }
-        CaduceusTransportError::Framing => AttendanceCall::refused(503, "caduceus-action-bad-receipt"),
-            })?;
-    let value = serde_json::from_slice::<serde_json::Value>(&response)
-        .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
+    let flags = serde_json::json!({"exousia": {"attendance": attendance.expose(), "documentId": document, "documentIncarnation": document}});
+    let value = client
+        .post_json_with_timeout_and_flags(path, body, CADUCEUS_ACCESS_TIMEOUT, flags)
+        .map_err(|error| AttendanceCall::refused(503, error))?;
+    let status = 200;
     let ok = value
         .get("ok")
         .and_then(serde_json::Value::as_bool)

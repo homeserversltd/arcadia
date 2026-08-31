@@ -192,7 +192,11 @@ impl ArcadiaHyalosLayer {
         let _ = std::thread::Builder::new()
             .name("arcadia-hyalos".to_string())
             .spawn(move || {
-                let _ = caduceus_post_json_with_timeout("/api/v1/log/reflect", &body, "2");
+                let _ = CaduceusAccessClient::default().post_json_with_timeout(
+                    "/api/v1/log/reflect",
+                    serde_json::from_str(&body).unwrap_or_default(),
+                    Duration::from_secs(2),
+                );
             });
     }
 }

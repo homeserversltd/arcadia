@@ -426,7 +426,7 @@ fn vault_status() -> VaultStatus {
         auto_decrypt_enabled: false,
         unlock_required: false,
     };
-    match caduceus_fetch_json("/api/v1/storage/vault/status") {
+    match CaduceusAccessClient::default().get_json("/api/v1/storage/vault/status") {
         Ok(value) => {
             let present = value.get("present").and_then(|item| item.as_bool()).unwrap_or(false);
             let Some(mounted) = value.get("mounted").and_then(|item| item.as_bool()) else {
@@ -455,7 +455,7 @@ fn vault_status() -> VaultStatus {
 }
 
 fn gui_pin_status() -> GuiPinStatus {
-    let pin_required = caduceus_fetch_json("/api/v1/access/pin/mode")
+    let pin_required = CaduceusAccessClient::default().get_json("/api/v1/access/pin/mode")
         .ok()
         .and_then(|value| value.get("pin_required").and_then(|item| item.as_bool()))
         .unwrap_or(false);

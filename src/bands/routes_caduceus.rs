@@ -1,197 +1,3 @@
-fn caduceus_staff_socket() -> String {
-    env::var("CADUCEUS_STAFF_SOCKET").unwrap_or_else(|_| CADUCEUS_STAFF_SOCKET.to_string())
-}
-
-const CADUCEUS_MAX_RESPONSE_HEADERS: usize = 4096;
-const CADUCEUS_MAX_RESPONSE_BODY: usize = 16 * 1024;
-
-#[derive(Debug)]
-enum CaduceusTransportError {
-    Connect(std::io::Error),
-    Io(std::io::Error),
-    Framing,
-}
-
-fn caduceus_timeout(seconds: &str) -> Duration {
-    seconds
-        .parse::<u64>()
-        .ok()
-        .filter(|value| *value > 0)
-        .map(Duration::from_secs)
-        .unwrap_or_else(|| Duration::from_secs(1))
-}
-
-fn caduceus_raw_request(
-    method: &str,
-    path: &str,
-    body: Option<&[u8]>,
-    extra_headers: &str,
-    timeout: Duration,
-) -> Result<(u16, Vec<u8>), CaduceusTransportError> {
-    use std::{io::Read, io::Write, os::unix::net::UnixStream};
-
-    if path.bytes().any(|byte| matches!(byte, b'\r' | b'\n')) {
-        return Err(CaduceusTransportError::Framing);
-    }
-
-    let mut stream = UnixStream::connect(caduceus_staff_socket())
-        .map_err(CaduceusTransportError::Connect)?;
-    stream
-        .set_read_timeout(Some(timeout))
-        .map_err(CaduceusTransportError::Io)?;
-    stream
-        .set_write_timeout(Some(timeout))
-        .map_err(CaduceusTransportError::Io)?;
-
-    let body = body.unwrap_or_default();
-    let request = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\n{extra_headers}Connection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", body.len());
-    stream
-        .write_all(request.as_bytes())
-        .and_then(|_| stream.write_all(body))
-        .map_err(CaduceusTransportError::Io)?;
-
-    let mut headers = Vec::new();
-    loop {
-        let mut byte = [0_u8; 1];
-        stream
-            .read_exact(&mut byte)
-            .map_err(CaduceusTransportError::Io)?;
-        headers.push(byte[0]);
-        if headers.ends_with(b"\r\n\r\n") {
-            break;
-        }
-        if headers.len() >= CADUCEUS_MAX_RESPONSE_HEADERS {
-            return Err(CaduceusTransportError::Framing);
-        }
-    }
-
-    let header_text = std::str::from_utf8(&headers).map_err(|_| CaduceusTransportError::Framing)?;
-    let mut lines = header_text.split("\r\n");
-    let status_line = lines.next().ok_or(CaduceusTransportError::Framing)?;
-    let mut status_parts = status_line.split_whitespace();
-    if status_parts.next() != Some("HTTP/1.1") {
-        return Err(CaduceusTransportError::Framing);
-    }
-    let status = status_parts
-        .next()
-        .and_then(|value| value.parse::<u16>().ok())
-        .ok_or(CaduceusTransportError::Framing)?;
-    let mut content_length = None;
-    for line in lines {
-        if line.is_empty() {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                content_length = Some(
-                    value
-                        .trim()
-                        .parse::<usize>()
-                        .map_err(|_| CaduceusTransportError::Framing)?,
-                );
-            }
-        }
-    }
-
-    let length = content_length.ok_or(CaduceusTransportError::Framing)?;
-    if length > CADUCEUS_MAX_RESPONSE_BODY {
-        return Err(CaduceusTransportError::Framing);
-    }
-    let mut response = vec![0_u8; length];
-    stream
-        .read_exact(&mut response)
-        .map_err(CaduceusTransportError::Io)?;
-
-    Ok((status, response))
-}
-
-fn caduceus_response_json(
-    response: Vec<u8>,
-    error: &'static str,
-) -> Result<serde_json::Value, &'static str> {
-    if response.is_empty() {
-        return Err("caduceus-http-empty-response");
-    }
-    serde_json::from_slice(&response).map_err(|_| error)
-}
-
-fn caduceus_http_error(error: CaduceusTransportError) -> &'static str {
-    match error {
-        CaduceusTransportError::Connect(_) | CaduceusTransportError::Io(_) => {
-            "caduceus-http-unreachable"
-        }
-        CaduceusTransportError::Framing => "caduceus-http-empty-response",
-    }
-}
-
-fn caduceus_fetch_json(path: &str) -> Result<serde_json::Value, &'static str> {
-    let (status, response) = caduceus_raw_request(
-        "GET",
-        path,
-        None,
-        "",
-        Duration::from_secs(5),
-    )
-    .map_err(caduceus_http_error)?;
-    if !(200..300).contains(&status) {
-        return Err("caduceus-http-unreachable");
-    }
-    caduceus_response_json(response, "caduceus-http-invalid-json")
-}
-
-const CADUCEUS_STAFF_SCHEMA: &str = "caduceus.staff.v1";
-
-fn caduceus_staff_envelope(path: &str, body: serde_json::Value) -> serde_json::Value {
-    let intent_path = path.trim_matches('/').replace('/', ".");
-    let intent_id = format!("arcadia.staff.{intent_path}-{}", uuid::Uuid::new_v4());
-    serde_json::json!({
-        "schema": CADUCEUS_STAFF_SCHEMA,
-        "intent_id": intent_id,
-        "transition": path,
-        "payload": body,
-    })
-}
-
-fn caduceus_post_flat_json(
-    path: &str,
-    body: &str,
-) -> Result<serde_json::Value, &'static str> {
-    let (_, response) = caduceus_raw_request(
-        "POST",
-        path,
-        Some(body.as_bytes()),
-        "",
-        Duration::from_secs(300),
-    )
-    .map_err(caduceus_http_error)?;
-    caduceus_response_json(response, "caduceus-http-invalid-json")
-}
-
-fn caduceus_post_json_with_timeout(
-    path: &str,
-    body: &str,
-    timeout_seconds: &str,
-) -> Result<serde_json::Value, &'static str> {
-    let body = caduceus_staff_envelope(
-        path,
-        serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({})),
-    );
-    let body = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    let (_, response) = caduceus_raw_request(
-        "POST",
-        path,
-        Some(body.as_bytes()),
-        "",
-        caduceus_timeout(timeout_seconds),
-    )
-    .map_err(caduceus_http_error)?;
-    caduceus_response_json(response, "caduceus-http-invalid-json")
-}
-
-fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'static str> {
-    caduceus_post_json_with_timeout(path, body, "300")
-}
-
 const ARCADIA_DEBUG_MAX_DEPTH: usize = 4;
 const ARCADIA_DEBUG_MAX_ITEMS: usize = 32;
 const ARCADIA_DEBUG_MAX_ARRAY_ITEMS: usize = 16;
@@ -331,7 +137,11 @@ fn forward_arcadia_debug_reflection(reflection: &serde_json::Value) -> bool {
     let Ok(rendered) = serde_json::to_string(reflection) else {
         return false;
     };
-    caduceus_post_json_with_timeout("/api/v1/log/reflect", &rendered, "2").is_ok()
+    CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/log/reflect",
+        serde_json::from_str(&rendered).unwrap_or_default(),
+        Duration::from_secs(2)
+    ).is_ok()
 }
 
 async fn arcadia_debug_emit_route(Json(body): Json<serde_json::Value>) -> impl IntoResponse {
@@ -359,14 +169,18 @@ fn caduceus_proxy_error(path: &str, signal: &'static str) -> axum::response::Res
 }
 
 async fn caduceus_json_proxy(path: &'static str) -> impl IntoResponse {
-    match caduceus_fetch_json(path) {
+    match CaduceusAccessClient::default().get_json(path) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error(path, signal),
     }
 }
 
 async fn caduceus_model_lanes_pulse_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/appliance/model-lanes/pulse", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/appliance/model-lanes/pulse",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -409,7 +223,7 @@ async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
         )
             .into_response()
     };
-    match caduceus_fetch_json("/api/v1/storage/vault/status") {
+    match CaduceusAccessClient::default().get_json("/api/v1/storage/vault/status") {
         Ok(value) => {
             let present = value.get("present").and_then(|item| item.as_bool()).unwrap_or(false);
             let Some(mounted) = value.get("mounted").and_then(|item| item.as_bool()) else {
@@ -452,7 +266,11 @@ fn caduceus_json_post_proxy(
     body: serde_json::Value,
 ) -> axum::response::Response {
     let rendered = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    match caduceus_post_json(path, &rendered) {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        path,
+        serde_json::from_str(&rendered).unwrap_or_default(),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error(path, signal),
     }
@@ -474,7 +292,11 @@ async fn caduceus_cert_trust_fetch_proxy_route(
         "platform": body.get("platform").and_then(|value| value.as_str()).unwrap_or("linux"),
     });
     let rendered = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    match caduceus_post_flat_json("/api/v1/cert/trust-fetch", &rendered) {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/cert/trust-fetch",
+        serde_json::from_str(&rendered).unwrap_or_default(),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error("/api/v1/cert/trust-fetch", signal),
     }
@@ -482,7 +304,11 @@ async fn caduceus_cert_trust_fetch_proxy_route(
 
 
 async fn caduceus_update_now_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/update/now", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/update/now",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -497,7 +323,11 @@ async fn caduceus_update_now_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_update_check_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/update/check", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/update/check",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -516,7 +346,11 @@ async fn caduceus_sync_status_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_sync_now_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/update/now", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/update/now",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -540,7 +374,7 @@ async fn caduceus_receipts_ledger_proxy_route(
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 25);
     let path = format!("/api/v1/log/receipts?page={page}&per_page={per_page}");
-    match caduceus_fetch_json(&path) {
+    match CaduceusAccessClient::default().get_json(&path) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error(&path, signal),
     }
@@ -560,14 +394,22 @@ async fn caduceus_update_service_toggle_proxy_route(
     };
     let rendered =
         serde_json::to_string(&payload).unwrap_or_else(|_| "{\"state\":\"on\"}".to_string());
-    match caduceus_post_json("/api/v1/update/now", &rendered) {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/update/now",
+        serde_json::from_str(&rendered).unwrap_or_default(),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error("/api/v1/update/now", signal),
     }
 }
 
 async fn caduceus_gui_update_now_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/update/now", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/update/now",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -586,14 +428,22 @@ async fn caduceus_local_ai_runtime_status_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_local_ai_runtime_check_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/doors", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/doors",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => (StatusCode::OK, Json(value)).into_response(),
         Err(signal) => caduceus_proxy_error("/api/v1/doors", signal),
     }
 }
 
 async fn caduceus_local_ai_runtime_update_proxy_route() -> impl IntoResponse {
-    match caduceus_post_json("/api/v1/doors", "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/doors",
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -612,7 +462,11 @@ async fn caduceus_profile_module_toggle_proxy_route(
 ) -> impl IntoResponse {
     let rendered = serde_json::to_string(&body)
         .unwrap_or_else(|_| "{\"module_id\":\"\",\"enabled\":false}".to_string());
-    match caduceus_post_json("/api/v1/doors", &rendered) {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        "/api/v1/doors",
+        serde_json::from_str(&rendered).unwrap_or_default(),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let status = if ok {
@@ -632,7 +486,11 @@ fn run_caduceus_http_mutation(
     success_message: &str,
     failure_message: &str,
 ) -> (StatusCode, Json<ConsoleActionResponse>) {
-    match caduceus_post_json(path, "{}") {
+    match CaduceusAccessClient::default().post_json_with_timeout(
+        path,
+        serde_json::json!({}),
+        Duration::from_secs(300)
+    ) {
         Ok(value) => {
             let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
             let stdout = value
@@ -778,7 +636,11 @@ mod arcadia_debug_tests {
             serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap_or("{}"))
                 .expect("reflection JSON");
         assert_eq!(body["schema"], "caduceus.staff.v1");
-        assert_eq!(body["transition"], "/api/v1/log/reflect");
+        assert_eq!(body["transition"], "log.reflect");
+        assert_eq!(body["version"], 1);
+        assert!(body["timestamp"].as_u64().is_some());
+        assert!(body["target"].is_null());
+        assert!(body["flags"]["exousia"].is_null());
         let body = &body["payload"];
         assert_eq!(body["organ"], "arcadia");
         assert_eq!(body["kind"], "runtime");
@@ -825,11 +687,16 @@ mod arcadia_debug_tests {
             let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
             let value: serde_json::Value = serde_json::from_str(body).expect("request JSON");
             assert_eq!(value["payload"]["answer"], 42);
+            assert_eq!(value["schema"], "caduceus.staff.v1");
+            assert_eq!(value["transition"], "test");
+            assert_eq!(value["version"], 1);
+            assert!(value["target"].is_null());
+            assert!(value["flags"]["exousia"].is_null());
             let response = r#"{"ok":true}"#;
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
         });
         std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
-        let value = caduceus_post_json("/api/v1/test", r#"{"answer":42}"#).expect("staff response");
+        let value = CaduceusAccessClient::default().post_json("/api/v1/test", serde_json::json!({"answer": 42})).expect("staff response");
         handle.join().unwrap();
         std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         let _ = std::fs::remove_file(&socket);
@@ -852,11 +719,58 @@ mod arcadia_debug_tests {
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
         });
         std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
-        let value = caduceus_fetch_json("/api/v1/health").expect("staff GET response");
+        let value = CaduceusAccessClient::default().get_json("/api/v1/health").expect("staff GET response");
         handle.join().unwrap();
         std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         let _ = std::fs::remove_file(&socket);
         assert_eq!(value["healthy"], true);
+    }
+
+    #[test]
+    fn explicit_short_timeout_is_honored_by_staff_client() {
+        let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("arcadia-caduceus-timeout-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let (_stream, _) = listener.accept().expect("staff request");
+            thread::sleep(Duration::from_millis(150));
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let started = std::time::Instant::now();
+        let result = CaduceusAccessClient::default().post_json_with_timeout(
+            "/api/v1/test",
+            serde_json::json!({}),
+            Duration::from_millis(20)
+        );
+        let elapsed = started.elapsed();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        handle.join().unwrap();
+        let _ = std::fs::remove_file(&socket);
+        assert!(result.is_err());
+        assert!(elapsed < Duration::from_millis(120));
+    }
+
+    #[test]
+    fn retired_caduceus_transport_names_are_absent_from_production() {
+        let retired = [
+            concat!("caduceus_", "fetch_json"),
+            concat!("caduceus_", "post_flat_json"),
+            concat!("caduceus_", "post_json_with_timeout"),
+        ];
+        let production_sources = [
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bands/caduceus_access.rs")),
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bands/routes_caduceus.rs")),
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bands/console_system_actions.rs")),
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bands/routes_ai_models.rs")),
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs")),
+        ];
+        for source in production_sources {
+            for name in retired {
+                assert!(!source.contains(name), "retired helper remains: {name}");
+            }
+        }
+        let curl_constructor = concat!("Command::new(", "\"curl\"", ")");
+        assert!(!production_sources[0].contains(curl_constructor));
     }
 
     #[test]
@@ -867,7 +781,7 @@ mod arcadia_debug_tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let socket = std::env::temp_dir().join(format!("arcadia-caduceus-missing-{}.sock", uuid::Uuid::new_v4()));
         std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
-        let result = caduceus_fetch_json("/api/v1/health");
+        let result = CaduceusAccessClient::default().get_json("/api/v1/health");
         std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         assert_eq!(result, Err("caduceus-http-unreachable"));
     }
@@ -888,6 +802,118 @@ mod arcadia_debug_tests {
         assert!(!source.contains(&channel_path));
     }
 
+
+    #[test]
+    fn attendance_open_sends_pin_exousia_envelope_and_accepts_opaque_proof() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("aca-open-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("attendance open request");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /api/v1/exousia/open HTTP/1.1"));
+            let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+            let value: serde_json::Value = serde_json::from_str(body).expect("attendance open JSON");
+            assert_eq!(value["schema"], "caduceus.staff.v1");
+            assert_eq!(value["transition"], "exousia.open");
+            assert_eq!(value["version"], 1);
+            assert!(value["timestamp"].as_u64().is_some());
+            assert!(value["target"].is_null());
+            assert_eq!(value["flags"]["exousia"]["pin"], "2468");
+            assert_eq!(value["payload"]["pin"], "2468");
+            assert_eq!(value["payload"]["documentId"], "doc-open");
+            assert_eq!(value["payload"]["documentIncarnation"], "doc-open");
+            let response = r#"{"ok":true,"attendance":"attendance-proof"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let call = CaduceusAccessClient::default().attendance_open("2468", "doc-open");
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
+        assert!(call.ok);
+        assert_eq!(call.status, 200);
+        assert_eq!(call.code, "none");
+        assert_eq!(call.proof.as_ref().map(AttendanceProof::expose), Some("attendance-proof"));
+    }
+
+    #[test]
+    fn attendance_validate_sends_attendance_exousia_envelope_and_accepts_success() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("aca-valid-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("attendance validate request");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /api/v1/exousia/validate HTTP/1.1"));
+            let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+            let value: serde_json::Value = serde_json::from_str(body).expect("attendance validate JSON");
+            assert_eq!(value["schema"], "caduceus.staff.v1");
+            assert_eq!(value["transition"], "exousia.validate");
+            assert_eq!(value["version"], 1);
+            assert!(value["timestamp"].as_u64().is_some());
+            assert!(value["target"].is_null());
+            let expected = serde_json::json!({
+                "attendance": "attendance-proof",
+                "documentId": "doc-current",
+                "documentIncarnation": "doc-current",
+            });
+            assert_eq!(value["flags"]["exousia"], expected);
+            assert_eq!(value["payload"], expected);
+            let response = r#"{"ok":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let attendance = AttendanceProof::parse("attendance-proof").unwrap();
+        let call = CaduceusAccessClient::default().attendance_validate(&attendance, "doc-current");
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
+        assert!(call.ok);
+        assert_eq!(call.status, 200);
+        assert_eq!(call.code, "none");
+        assert!(call.proof.is_none());
+    }
+
+    #[test]
+    fn stats_and_history_are_plain_bodyless_gets() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("aca-stats-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let (mut stats_stream, _) = listener.accept().expect("stats GET");
+            let stats_request = read_http_request(&mut stats_stream);
+            assert!(stats_request.starts_with("GET /api/v1/appliance/stats HTTP/1.1"));
+            assert_eq!(stats_request.split("\r\n\r\n").nth(1).unwrap_or(""), "");
+            let stats_response = r#"{"model_lanes":[]}"#;
+            write!(stats_stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{stats_response}", stats_response.len()).unwrap();
+
+            let (mut history_stream, _) = listener.accept().expect("history GET");
+            let history_request = read_http_request(&mut history_stream);
+            assert!(history_request.starts_with("GET /api/v1/appliance/stats/history HTTP/1.1"));
+            assert_eq!(history_request.split("\r\n\r\n").nth(1).unwrap_or(""), "");
+            let history_response = r#"{"history":[]}"#;
+            write!(history_stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{history_response}", history_response.len()).unwrap();
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let client = CaduceusAccessClient::default();
+        let stats = client.get_json("/api/v1/appliance/stats").expect("stats response");
+        let history = client.get_json("/api/v1/appliance/stats/history").expect("history response");
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
+        assert_eq!(stats["model_lanes"], serde_json::json!([]));
+        assert_eq!(history["history"], serde_json::json!([]));
+    }
 
     #[test]
     fn missing_staff_socket_maps_attendance_not_found_to_connect_refused() {

@@ -37,7 +37,7 @@ async fn wifi_scan(
             Some("adapter-unavailable"),
         );
     }
-    let result = caduceus_fetch_json("/api/v1/network/device/wifi/scan");
+    let result = CaduceusAccessClient::default().get_json("/api/v1/network/device/wifi/scan");
     if matches!(result, Ok(value) if wifi_caduceus_value_succeeded(&value)) {
         network_action(
             StatusCode::OK,
@@ -190,7 +190,7 @@ async fn wifi_forget(
             Some("saved-network"),
         );
     }
-    let Some(uuid) = caduceus_fetch_json("/api/v1/network/device/wifi/saved")
+    let Some(uuid) = CaduceusAccessClient::default().get_json("/api/v1/network/device/wifi/saved")
         .ok()
         .and_then(|saved| {
             wifi_caduceus_value_succeeded(&saved)

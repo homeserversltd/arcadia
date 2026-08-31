@@ -700,9 +700,9 @@ fn refresh_api_telemetry_cache() {
         cache.history_fetched_at_unix == 0
             || now.saturating_sub(cache.history_fetched_at_unix) >= 60
     }).unwrap_or(false);
-    let current = caduceus_fetch_json("/api/v1/appliance/stats").ok();
+    let current = CaduceusAccessClient::default().get_json("/api/v1/appliance/stats").ok();
     let history = if history_due {
-        caduceus_fetch_json("/api/v1/appliance/stats/history").ok()
+        CaduceusAccessClient::default().get_json("/api/v1/appliance/stats/history").ok()
     } else {
         None
     };
