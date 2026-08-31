@@ -2,7 +2,6 @@
 // verifies a PIN or treats an attendance proof as authority without Caduceus.
 const CADUCEUS_ACCESS_TIMEOUT: Duration = Duration::from_secs(3);
 const CADUCEUS_ACCESS_MAX_REQUEST: usize = 4 * 1024;
-const CADUCEUS_ACCESS_MAX_RESPONSE: usize = 16 * 1024;
 
 #[derive(Clone, PartialEq, Eq)]
 struct AttendanceProof(String);
@@ -91,30 +90,25 @@ pub struct ModelLane {
     pub busy_slots: Option<i64>,
 }
 
-struct CaduceusAccessClient {
-    base: String,
-}
+struct CaduceusAccessClient;
 
 impl Default for CaduceusAccessClient {
-    fn default() -> Self {
-        Self {
-            base: env::var("CADUCEUS_HTTP_BASE")
-                .unwrap_or_else(|_| CADUCEUS_HTTP_BASE.to_string())
-                .trim()
-                .trim_end_matches('/')
-                .to_string(),
-        }
-    }
+    fn default() -> Self { Self }
 }
 
 impl CaduceusAccessClient {
     fn model_lanes(&self) -> Result<Vec<ModelLane>, &'static str> {
-        let authority = caduceus_loopback_authority(&self.base).ok_or("caduceus-model-lanes-base-invalid")?;
-        let mut stream = TcpStream::connect_timeout(&authority, CADUCEUS_ACCESS_TIMEOUT).map_err(|e| attendance_io_code("connect", &e))?;
-        stream.set_read_timeout(Some(CADUCEUS_ACCESS_TIMEOUT)).and_then(|_| stream.set_write_timeout(Some(CADUCEUS_ACCESS_TIMEOUT))).map_err(|_| "caduceus-model-lanes-socket-config-failed")?;
-        let request = format!("GET /api/v1/appliance/stats HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n\r\n", caduceus_host_header(&self.base));
-        stream.write_all(request.as_bytes()).map_err(|_| "caduceus-model-lanes-write-failed")?;
-        let value = parse_caduceus_json_response(&mut stream)?;
+        let (status, response) = caduceus_raw_request("GET", "/api/v1/appliance/stats", None, "", CADUCEUS_ACCESS_TIMEOUT)
+            .map_err(|error| match error {
+                CaduceusTransportError::Connect(error) => attendance_io_code("connect", &error),
+                CaduceusTransportError::Io(error) => attendance_io_code("io", &error),
+                CaduceusTransportError::Framing => "caduceus-model-lanes-bad-receipt",
+            })?;
+        if !(200..300).contains(&status) {
+            return Err("caduceus-model-lanes-upstream-refused");
+        }
+        let value: serde_json::Value = serde_json::from_slice(&response)
+            .map_err(|_| "caduceus-model-lanes-invalid-json")?;
         let lanes = value.get("model_lanes").cloned().ok_or("caduceus-model-lanes-missing")?;
         serde_json::from_value(lanes).map_err(|_| "caduceus-model-lanes-invalid")
     }
@@ -152,81 +146,22 @@ impl CaduceusAccessClient {
         if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
             return AttendanceCall::refused(0, "caduceus-attendance-request-invalid");
         }
-        let Some(authority) = caduceus_loopback_authority(&self.base) else {
-            return AttendanceCall::refused(0, "caduceus-attendance-base-invalid");
+        let (status, response) = match caduceus_raw_request("POST", operation.path(), Some(&encoded), "", CADUCEUS_ACCESS_TIMEOUT) {
+            Ok(result) => result,
+            Err(CaduceusTransportError::Connect(error)) => return AttendanceCall::refused(0, attendance_io_code("connect", &error)),
+            Err(CaduceusTransportError::Io(error)) => {
+                return AttendanceCall::refused(0, attendance_io_code("io", &error));
+            }
+            Err(CaduceusTransportError::Framing) => return AttendanceCall::refused(0, "caduceus-attendance-bad-receipt"),
         };
-        let mut stream = match TcpStream::connect_timeout(&authority, CADUCEUS_ACCESS_TIMEOUT) {
-            Ok(stream) => stream,
-            Err(error) => return AttendanceCall::refused(0, attendance_io_code("connect", &error)),
-        };
-        if stream
-            .set_read_timeout(Some(CADUCEUS_ACCESS_TIMEOUT))
-            .is_err()
-            || stream
-                .set_write_timeout(Some(CADUCEUS_ACCESS_TIMEOUT))
-                .is_err()
-        {
-            return AttendanceCall::refused(0, "caduceus-attendance-socket-config-failed");
-        }
-        let request = format!(
-            "POST {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n",
-            operation.path(),
-            caduceus_host_header(&self.base),
-            encoded.len(),
-        );
-        if stream
-            .write_all(request.as_bytes())
-            .and_then(|_| stream.write_all(&encoded))
-            .is_err()
-        {
-            return AttendanceCall::refused(0, "caduceus-attendance-write-failed");
-        }
-        parse_attendance_response(operation, &mut stream)
+        parse_attendance_response(operation, status, &response)
     }
-}
 
-fn parse_caduceus_json_response(stream: &mut TcpStream) -> Result<serde_json::Value, &'static str> {
-    use std::io::{BufRead, BufReader, Read};
-    let mut reader = BufReader::new(stream);
-    let mut status_line = String::new();
-    reader.read_line(&mut status_line).ok().filter(|n| *n > 0).ok_or("caduceus-model-lanes-bad-receipt")?;
-    let status = status_line.split_whitespace().nth(1).and_then(|v| v.parse::<u16>().ok()).unwrap_or(0);
-    let mut content_length = None;
-    let mut header_bytes = 0usize;
-    loop {
-        let mut line = String::new();
-        reader.read_line(&mut line).map_err(|_| "caduceus-model-lanes-bad-receipt")?;
-        if line.is_empty() { return Err("caduceus-model-lanes-bad-receipt"); }
-        header_bytes += line.len();
-        if header_bytes > 4096 { return Err("caduceus-model-lanes-bad-receipt"); }
-        if line == "\r\n" { break; }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") { content_length = value.trim().parse::<usize>().ok(); }
-        }
-    }
-    let length = content_length.filter(|n| *n <= CADUCEUS_ACCESS_MAX_RESPONSE).ok_or("caduceus-model-lanes-bad-receipt")?;
-    let mut body = vec![0; length];
-    reader.read_exact(&mut body).map_err(|_| "caduceus-model-lanes-bad-receipt")?;
-    if !(200..300).contains(&status) { return Err("caduceus-model-lanes-upstream-refused"); }
-    serde_json::from_slice(&body).map_err(|_| "caduceus-model-lanes-invalid-json")
-}
-
-fn caduceus_loopback_authority(base: &str) -> Option<std::net::SocketAddr> {
-    let raw = base.strip_prefix("http://")?;
-    if raw.contains('/') {
-        return None;
-    }
-    let address = raw.parse::<std::net::SocketAddr>().ok()?;
-    address.ip().is_loopback().then_some(address)
-}
-
-fn caduceus_host_header(base: &str) -> &str {
-    base.strip_prefix("http://").unwrap_or("127.0.0.1:8787")
 }
 
 fn attendance_io_code(stage: &str, error: &std::io::Error) -> &'static str {
     match error.kind() {
-        std::io::ErrorKind::ConnectionRefused if stage == "connect" => {
+        std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound if stage == "connect" => {
             "caduceus-attendance-connect-refused"
         }
         std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => {
@@ -237,101 +172,17 @@ fn attendance_io_code(stage: &str, error: &std::io::Error) -> &'static str {
     }
 }
 
-fn parse_attendance_response(
-    operation: AttendanceOperation,
-    stream: &mut TcpStream,
-) -> AttendanceCall {
-    use std::io::{BufRead, BufReader, Read};
-
-    let mut reader = BufReader::new(stream);
-    let mut status_line = String::new();
-    if reader
-        .read_line(&mut status_line)
-        .ok()
-        .filter(|bytes| *bytes > 0)
-        .is_none()
-    {
-        return AttendanceCall::refused(0, "caduceus-attendance-bad-receipt");
-    }
-    let status = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(0);
-    if status == 0 {
-        return AttendanceCall::refused(0, "caduceus-attendance-bad-receipt");
-    }
-    let mut content_length = None;
-    let mut header_bytes = 0usize;
-    loop {
-        let mut line = String::new();
-        if reader.read_line(&mut line).is_err() {
-            return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-        }
-        if line.is_empty() {
-            return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-        }
-        header_bytes += line.len();
-        if header_bytes > 4096 {
-            return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-        }
-        if line == "\r\n" {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                content_length = value.trim().parse::<usize>().ok();
-            }
-        }
-    }
-    let Some(content_length) =
-        content_length.filter(|length| *length <= CADUCEUS_ACCESS_MAX_RESPONSE)
-    else {
+fn parse_attendance_response(operation: AttendanceOperation, status: u16, body: &[u8]) -> AttendanceCall {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(body) else {
         return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
     };
-    let mut body = vec![0; content_length];
-    if reader.read_exact(&mut body).is_err() {
-        return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-    }
-    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-    };
-    let Some(object) = value.as_object() else {
-        return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-    };
-    let ok = object
-        .get("ok")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    let code = object
-        .get("first_missing_signal")
-        .or_else(|| object.get("firstMissingSignal"))
-        .or_else(|| object.get("code"))
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or(if ok {
-            "none"
-        } else {
-            "caduceus-attendance-refused"
-        });
-    if !(200..300).contains(&status) || !ok {
-        return AttendanceCall::refused(status, code);
-    }
-    let proof = operation.returns_proof().then(|| {
-        object
-            .get("attendance")
-            .or_else(|| object.get("proof"))
-            .and_then(serde_json::Value::as_str)
-            .and_then(AttendanceProof::parse)
-    });
-    if matches!(proof, Some(None)) {
-        return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt");
-    }
-    AttendanceCall {
-        ok: true,
-        status,
-        code: "none".to_string(),
-        proof: proof.flatten(),
-    }
+    let Some(object) = value.as_object() else { return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt"); };
+    let ok = object.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let code = object.get("first_missing_signal").or_else(|| object.get("firstMissingSignal")).or_else(|| object.get("code")).and_then(serde_json::Value::as_str).unwrap_or(if ok { "none" } else { "caduceus-attendance-refused" });
+    if !(200..300).contains(&status) || !ok { return AttendanceCall::refused(status, code); }
+    let proof = operation.returns_proof().then(|| object.get("attendance").or_else(|| object.get("proof")).and_then(serde_json::Value::as_str).and_then(AttendanceProof::parse));
+    if matches!(proof, Some(None)) { return AttendanceCall::refused(status, "caduceus-attendance-bad-receipt"); }
+    AttendanceCall { ok: true, status, code: "none".to_string(), proof: proof.flatten() }
 }
 
 fn document_incarnation_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
@@ -561,71 +412,18 @@ fn caduceus_attended_json_call(
             "caduceus-action-request-invalid",
         ));
     }
-    let authority = caduceus_loopback_authority(&client.base)
-        .ok_or_else(|| AttendanceCall::refused(503, "caduceus-attendance-base-invalid"))?;
-    let mut stream = TcpStream::connect_timeout(&authority, CADUCEUS_ACCESS_TIMEOUT)
-        .map_err(|error| AttendanceCall::refused(503, attendance_io_code("connect", &error)))?;
-    stream
-        .set_read_timeout(Some(CADUCEUS_ACCESS_TIMEOUT))
-        .and_then(|_| stream.set_write_timeout(Some(CADUCEUS_ACCESS_TIMEOUT)))
-        .map_err(|_| AttendanceCall::refused(503, "caduceus-attendance-socket-config-failed"))?;
-    let request = format!(
-        "POST {path} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nX-Caduceus-Document: {document}\r\nX-Caduceus-Attendance: {}\r\nContent-Length: {}\r\n\r\n",
-        caduceus_host_header(&client.base), attendance.expose(), encoded.len()
-    );
-    stream
-        .write_all(request.as_bytes())
-        .and_then(|_| stream.write_all(&encoded))
-        .map_err(|_| AttendanceCall::refused(503, "caduceus-attendance-write-failed"))?;
-    use std::io::{BufRead, BufReader, Read};
-    let mut reader = BufReader::new(stream);
-    let mut status_line = String::new();
-    reader
-        .read_line(&mut status_line)
-        .ok()
-        .filter(|count| *count > 0)
-        .ok_or_else(|| AttendanceCall::refused(503, "caduceus-action-bad-receipt"))?;
-    let status = status_line
-        .split_whitespace()
-        .nth(1)
-        .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(0);
-    let mut content_length = None;
-    let mut header_bytes = 0usize;
-    loop {
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
-        if line.is_empty() {
-            return Err(AttendanceCall::refused(
-                status,
-                "caduceus-action-bad-receipt",
-            ));
+    let extra_headers = format!("X-Caduceus-Document: {document}\r\nX-Caduceus-Attendance: {}\r\n", attendance.expose());
+    let (status, response) = caduceus_raw_request(
+        "POST", path, Some(&encoded), &extra_headers, CADUCEUS_ACCESS_TIMEOUT,
+    ).map_err(|error| match error {
+        CaduceusTransportError::Connect(error) => {
+            AttendanceCall::refused(503, attendance_io_code("connect", &error))
         }
-        header_bytes += line.len();
-        if header_bytes > 4096 {
-            return Err(AttendanceCall::refused(
-                status,
-                "caduceus-action-bad-receipt",
-            ));
+        CaduceusTransportError::Io(error) => {
+            AttendanceCall::refused(503, attendance_io_code("io", &error))
         }
-        if line == "\r\n" {
-            break;
-        }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("content-length") {
-                content_length = value.trim().parse::<usize>().ok();
-            }
-        }
-    }
-    let length = content_length
-        .filter(|value| *value <= CADUCEUS_ACCESS_MAX_RESPONSE)
-        .ok_or_else(|| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
-    let mut response = vec![0; length];
-    reader
-        .read_exact(&mut response)
-        .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
+        CaduceusTransportError::Framing => AttendanceCall::refused(503, "caduceus-action-bad-receipt"),
+            })?;
     let value = serde_json::from_slice::<serde_json::Value>(&response)
         .map_err(|_| AttendanceCall::refused(status, "caduceus-action-bad-receipt"))?;
     let ok = value

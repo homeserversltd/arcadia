@@ -1,16 +1,142 @@
-fn caduceus_http_base() -> String {
-    env::var("CADUCEUS_HTTP_BASE").unwrap_or_else(|_| CADUCEUS_HTTP_BASE.to_string())
+fn caduceus_staff_socket() -> String {
+    env::var("CADUCEUS_STAFF_SOCKET").unwrap_or_else(|_| CADUCEUS_STAFF_SOCKET.to_string())
 }
 
-fn caduceus_proxy_url(path: &str) -> String {
-    format!("{}{}", caduceus_http_base().trim_end_matches('/'), path)
+const CADUCEUS_MAX_RESPONSE_HEADERS: usize = 4096;
+const CADUCEUS_MAX_RESPONSE_BODY: usize = 16 * 1024;
+
+#[derive(Debug)]
+enum CaduceusTransportError {
+    Connect(std::io::Error),
+    Io(std::io::Error),
+    Framing,
+}
+
+fn caduceus_timeout(seconds: &str) -> Duration {
+    seconds
+        .parse::<u64>()
+        .ok()
+        .filter(|value| *value > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(1))
+}
+
+fn caduceus_raw_request(
+    method: &str,
+    path: &str,
+    body: Option<&[u8]>,
+    extra_headers: &str,
+    timeout: Duration,
+) -> Result<(u16, Vec<u8>), CaduceusTransportError> {
+    use std::{io::Read, io::Write, os::unix::net::UnixStream};
+
+    if path.bytes().any(|byte| matches!(byte, b'\r' | b'\n')) {
+        return Err(CaduceusTransportError::Framing);
+    }
+
+    let mut stream = UnixStream::connect(caduceus_staff_socket())
+        .map_err(CaduceusTransportError::Connect)?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(CaduceusTransportError::Io)?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .map_err(CaduceusTransportError::Io)?;
+
+    let body = body.unwrap_or_default();
+    let request = format!("{method} {path} HTTP/1.1\r\nHost: localhost\r\n{extra_headers}Connection: close\r\nContent-Type: application/json\r\nAccept: application/json\r\nContent-Length: {}\r\n\r\n", body.len());
+    stream
+        .write_all(request.as_bytes())
+        .and_then(|_| stream.write_all(body))
+        .map_err(CaduceusTransportError::Io)?;
+
+    let mut headers = Vec::new();
+    loop {
+        let mut byte = [0_u8; 1];
+        stream
+            .read_exact(&mut byte)
+            .map_err(CaduceusTransportError::Io)?;
+        headers.push(byte[0]);
+        if headers.ends_with(b"\r\n\r\n") {
+            break;
+        }
+        if headers.len() >= CADUCEUS_MAX_RESPONSE_HEADERS {
+            return Err(CaduceusTransportError::Framing);
+        }
+    }
+
+    let header_text = std::str::from_utf8(&headers).map_err(|_| CaduceusTransportError::Framing)?;
+    let mut lines = header_text.split("\r\n");
+    let status_line = lines.next().ok_or(CaduceusTransportError::Framing)?;
+    let mut status_parts = status_line.split_whitespace();
+    if status_parts.next() != Some("HTTP/1.1") {
+        return Err(CaduceusTransportError::Framing);
+    }
+    let status = status_parts
+        .next()
+        .and_then(|value| value.parse::<u16>().ok())
+        .ok_or(CaduceusTransportError::Framing)?;
+    let mut content_length = None;
+    for line in lines {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = Some(
+                    value
+                        .trim()
+                        .parse::<usize>()
+                        .map_err(|_| CaduceusTransportError::Framing)?,
+                );
+            }
+        }
+    }
+
+    let length = content_length.ok_or(CaduceusTransportError::Framing)?;
+    if length > CADUCEUS_MAX_RESPONSE_BODY {
+        return Err(CaduceusTransportError::Framing);
+    }
+    let mut response = vec![0_u8; length];
+    stream
+        .read_exact(&mut response)
+        .map_err(CaduceusTransportError::Io)?;
+
+    Ok((status, response))
+}
+
+fn caduceus_response_json(
+    response: Vec<u8>,
+    error: &'static str,
+) -> Result<serde_json::Value, &'static str> {
+    if response.is_empty() {
+        return Err("caduceus-http-empty-response");
+    }
+    serde_json::from_slice(&response).map_err(|_| error)
+}
+
+fn caduceus_http_error(error: CaduceusTransportError) -> &'static str {
+    match error {
+        CaduceusTransportError::Connect(_) | CaduceusTransportError::Io(_) => {
+            "caduceus-http-unreachable"
+        }
+        CaduceusTransportError::Framing => "caduceus-http-empty-response",
+    }
 }
 
 fn caduceus_fetch_json(path: &str) -> Result<serde_json::Value, &'static str> {
-    let url = caduceus_proxy_url(path);
-    let text = command_stdout("curl", &["-fsS", "--max-time", "5", &url])
-        .ok_or("caduceus-http-unreachable")?;
-    serde_json::from_str(&text).map_err(|_| "caduceus-http-invalid-json")
+    let (status, response) = caduceus_raw_request(
+        "GET",
+        path,
+        None,
+        "",
+        Duration::from_secs(5),
+    )
+    .map_err(caduceus_http_error)?;
+    if !(200..300).contains(&status) {
+        return Err("caduceus-http-unreachable");
+    }
+    caduceus_response_json(response, "caduceus-http-invalid-json")
 }
 
 const CADUCEUS_STAFF_SCHEMA: &str = "caduceus.staff.v1";
@@ -30,26 +156,15 @@ fn caduceus_post_flat_json(
     path: &str,
     body: &str,
 ) -> Result<serde_json::Value, &'static str> {
-    let url = caduceus_proxy_url(path);
-    let output = Command::new("curl")
-        .args([
-            "-sS",
-            "--max-time",
-            "300",
-            "-X",
-            "POST",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            body,
-            &url,
-        ])
-        .output()
-        .map_err(|_| "caduceus-http-unreachable")?;
-    if output.stdout.is_empty() {
-        return Err("caduceus-http-empty-response");
-    }
-    serde_json::from_slice(&output.stdout).map_err(|_| "caduceus-http-invalid-json")
+    let (_, response) = caduceus_raw_request(
+        "POST",
+        path,
+        Some(body.as_bytes()),
+        "",
+        Duration::from_secs(300),
+    )
+    .map_err(caduceus_http_error)?;
+    caduceus_response_json(response, "caduceus-http-invalid-json")
 }
 
 fn caduceus_post_json_with_timeout(
@@ -57,28 +172,20 @@ fn caduceus_post_json_with_timeout(
     body: &str,
     timeout_seconds: &str,
 ) -> Result<serde_json::Value, &'static str> {
-    let url = caduceus_proxy_url(path);
-    let body = caduceus_staff_envelope(path, serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({})));
+    let body = caduceus_staff_envelope(
+        path,
+        serde_json::from_str(body).unwrap_or_else(|_| serde_json::json!({})),
+    );
     let body = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    let output = Command::new("curl")
-        .args([
-            "-sS",
-            "--max-time",
-            timeout_seconds,
-            "-X",
-            "POST",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            &body,
-            &url,
-        ])
-        .output()
-        .map_err(|_| "caduceus-http-unreachable")?;
-    if output.stdout.is_empty() {
-        return Err("caduceus-http-empty-response");
-    }
-    serde_json::from_slice(&output.stdout).map_err(|_| "caduceus-http-invalid-json")
+    let (_, response) = caduceus_raw_request(
+        "POST",
+        path,
+        Some(body.as_bytes()),
+        "",
+        caduceus_timeout(timeout_seconds),
+    )
+    .map_err(caduceus_http_error)?;
+    caduceus_response_json(response, "caduceus-http-invalid-json")
 }
 
 fn caduceus_post_json(path: &str, body: &str) -> Result<serde_json::Value, &'static str> {
@@ -590,31 +697,63 @@ mod arcadia_debug_tests {
     use super::*;
     use std::{
         io::{Read, Write},
-        net::{Shutdown, TcpListener},
+        os::unix::net::{UnixListener, UnixStream},
         sync::{Arc, Mutex, OnceLock},
         thread,
     };
 
     static CADUCEUS_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
+    fn read_http_request(stream: &mut UnixStream) -> String {
+        const MAX_REQUEST_BYTES: usize = 16 * 1024;
+        let mut request = Vec::new();
+        loop {
+            let mut byte = [0_u8; 1];
+            stream.read_exact(&mut byte).expect("HTTP request header bytes");
+            request.push(byte[0]);
+            if request.ends_with(b"\r\n\r\n") {
+                break;
+            }
+            assert!(request.len() < MAX_REQUEST_BYTES, "HTTP request headers exceed bound");
+        }
+
+        let header_text = String::from_utf8_lossy(&request);
+        let content_length = header_text
+            .split("\r\n")
+            .filter_map(|line| line.split_once(':'))
+            .find_map(|(name, value)| {
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().expect("valid Content-Length"))
+            })
+            .unwrap_or(0);
+        assert!(
+            request.len().checked_add(content_length).is_some_and(|length| length <= MAX_REQUEST_BYTES),
+            "HTTP request exceeds bound"
+        );
+        let body_start = request.len();
+        request.resize(body_start + content_length, 0);
+        stream
+            .read_exact(&mut request[body_start..])
+            .expect("HTTP request body bytes");
+        String::from_utf8_lossy(&request).into_owned()
+    }
+
     #[test]
     fn debug_route_forwards_only_bounded_redacted_reflections() {
         let _guard = CADUCEUS_ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .unwrap();
-        let listener = TcpListener::bind("127.0.0.1:0").expect("mock caduceus bind");
-        let port = listener.local_addr().expect("mock caduceus address").port();
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("arcadia-caduceus-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
         let captured = Arc::new(Mutex::new(String::new()));
         let captured_thread = captured.clone();
         let handle = thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("Arcadia debug request");
-            let mut buf = [0u8; 8192];
-            let read = stream.read(&mut buf).expect("debug request bytes");
-            *captured_thread.lock().unwrap() = String::from_utf8_lossy(&buf[..read]).to_string();
+            *captured_thread.lock().unwrap() = read_http_request(&mut stream);
             let response = r#"{"ok":true}"#;
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
-            let _ = stream.shutdown(Shutdown::Write);
+            let _ = stream.shutdown(std::net::Shutdown::Write);
         });
         let reflection = arcadia_debug_reflection(&serde_json::json!({
             "kind": "runtime",
@@ -624,10 +763,11 @@ mod arcadia_debug_tests {
             "message": "x".repeat(600),
             "payload": {"token": "secret", "pin": "1234", "ok": true, "items": (0..40).collect::<Vec<_>>()}
         })).expect("safe debug reflection");
-        std::env::set_var("CADUCEUS_HTTP_BASE", format!("http://127.0.0.1:{port}"));
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
         assert!(forward_arcadia_debug_reflection(&reflection));
         handle.join().unwrap();
-        std::env::remove_var("CADUCEUS_HTTP_BASE");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
 
         let request = captured.lock().unwrap().clone();
         assert!(
@@ -637,6 +777,9 @@ mod arcadia_debug_tests {
         let body: serde_json::Value =
             serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap_or("{}"))
                 .expect("reflection JSON");
+        assert_eq!(body["schema"], "caduceus.staff.v1");
+        assert_eq!(body["transition"], "/api/v1/log/reflect");
+        let body = &body["payload"];
         assert_eq!(body["organ"], "arcadia");
         assert_eq!(body["kind"], "runtime");
         assert_eq!(body["event"], "ready");
@@ -667,6 +810,69 @@ mod arcadia_debug_tests {
     }
 
     #[test]
+    fn staff_socket_reads_and_writes_without_tcp_fallback() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("arcadia-caduceus-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("staff request");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /api/v1/test HTTP/1.1"));
+            assert!(request.contains("Host: localhost\r\n"));
+            let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+            let value: serde_json::Value = serde_json::from_str(body).expect("request JSON");
+            assert_eq!(value["payload"]["answer"], 42);
+            let response = r#"{"ok":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let value = caduceus_post_json("/api/v1/test", r#"{"answer":42}"#).expect("staff response");
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
+        assert_eq!(value["ok"], true);
+    }
+
+    #[test]
+    fn staff_socket_get_reads_json_over_unix_listener() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("arcadia-caduceus-read-{}.sock", uuid::Uuid::new_v4()));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("staff GET");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("GET /api/v1/health HTTP/1.1"));
+            let response = r#"{"healthy":true}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let value = caduceus_fetch_json("/api/v1/health").expect("staff GET response");
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
+        assert_eq!(value["healthy"], true);
+    }
+
+    #[test]
+    fn missing_staff_socket_fails_without_fallback() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!("arcadia-caduceus-missing-{}.sock", uuid::Uuid::new_v4()));
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let result = caduceus_fetch_json("/api/v1/health");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        assert_eq!(result, Err("caduceus-http-unreachable"));
+    }
+
+    #[test]
     fn debug_route_rejects_unsafe_kind_and_removes_unconditional_control_emission() {
         assert!(arcadia_debug_reflection(&serde_json::json!({"kind": "Control Action"})).is_err());
         let source = include_str!("routes_caduceus.rs");
@@ -680,5 +886,29 @@ mod arcadia_debug_tests {
         assert!(!source.contains(&legacy_emitter));
         let channel_path = ["channel", ".jsonl"].concat();
         assert!(!source.contains(&channel_path));
+    }
+
+
+    #[test]
+    fn missing_staff_socket_maps_attendance_not_found_to_connect_refused() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!(
+            "hermes-caduceus-missing-staff-{}-{}.sock",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock before UNIX_EPOCH")
+                .as_nanos(),
+        ));
+        let socket = socket.to_string_lossy().into_owned();
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let call = CaduceusAccessClient::default().attendance_open("1234", "fixture-document");
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+
+        assert!(!call.ok);
+        assert_eq!(call.code, "caduceus-attendance-connect-refused");
     }
 }
