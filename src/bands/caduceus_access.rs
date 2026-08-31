@@ -95,7 +95,8 @@ fn caduceus_staff_socket() -> String {
 }
 
 const CADUCEUS_MAX_RESPONSE_HEADERS: usize = 4096;
-const CADUCEUS_MAX_RESPONSE_BODY: usize = 16 * 1024;
+const CADUCEUS_MAX_COMMAND_RESPONSE_BODY: usize = 16 * 1024;
+const CADUCEUS_MAX_OBSERVATION_RESPONSE_BODY: usize = 32 * 1024 * 1024;
 
 #[derive(Debug)]
 enum CaduceusTransportError {
@@ -109,6 +110,7 @@ fn caduceus_raw_request(
     path: &str,
     body: Option<&[u8]>,
     timeout: Duration,
+    max_response_body: usize,
 ) -> Result<(u16, Vec<u8>), CaduceusTransportError> {
     use std::{io::Read, io::Write, os::unix::net::UnixStream};
 
@@ -177,13 +179,21 @@ fn caduceus_raw_request(
     }
 
     let length = content_length.ok_or(CaduceusTransportError::Framing)?;
-    if length > CADUCEUS_MAX_RESPONSE_BODY {
+    if length > max_response_body {
         return Err(CaduceusTransportError::Framing);
     }
-    let mut response = vec![0_u8; length];
-    stream
-        .read_exact(&mut response)
-        .map_err(CaduceusTransportError::Io)?;
+    const RESPONSE_CHUNK_SIZE: usize = 8 * 1024;
+    let mut response = Vec::new();
+    let mut remaining = length;
+    while remaining > 0 {
+        let chunk_size = remaining.min(RESPONSE_CHUNK_SIZE);
+        let mut chunk = [0_u8; RESPONSE_CHUNK_SIZE];
+        stream
+            .read_exact(&mut chunk[..chunk_size])
+            .map_err(CaduceusTransportError::Io)?;
+        response.extend_from_slice(&chunk[..chunk_size]);
+        remaining -= chunk_size;
+    }
 
     Ok((status, response))
 }
@@ -223,7 +233,13 @@ impl Default for CaduceusAccessClient {
 
 impl CaduceusAccessClient {
     fn get_json(&self, path: &str) -> Result<serde_json::Value, &'static str> {
-        let (status, response) = caduceus_raw_request("GET", path, None, CADUCEUS_ACCESS_TIMEOUT).map_err(caduceus_http_error)?;
+        let (status, response) = caduceus_raw_request(
+            "GET",
+            path,
+            None,
+            CADUCEUS_ACCESS_TIMEOUT,
+            CADUCEUS_MAX_OBSERVATION_RESPONSE_BODY,
+        ).map_err(caduceus_http_error)?;
         caduceus_json_response(status, response)
     }
 
@@ -238,7 +254,13 @@ impl CaduceusAccessClient {
     fn post_json_with_timeout_and_flags(&self, path: &str, payload: serde_json::Value, timeout: Duration, flags: serde_json::Value) -> Result<serde_json::Value, &'static str> {
         let encoded = serde_json::to_vec(&caduceus_staff_envelope(path, payload, flags)).map_err(|_| "caduceus-http-invalid-json")?;
         if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST { return Err("caduceus-http-request-too-large"); }
-        let (status, response) = caduceus_raw_request("POST", path, Some(&encoded), timeout).map_err(caduceus_http_error)?;
+        let (status, response) = caduceus_raw_request(
+            "POST",
+            path,
+            Some(&encoded),
+            timeout,
+            CADUCEUS_MAX_COMMAND_RESPONSE_BODY,
+        ).map_err(caduceus_http_error)?;
         caduceus_json_response(status, response)
     }
 
@@ -282,7 +304,13 @@ impl CaduceusAccessClient {
         if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
             return AttendanceCall::refused(0, "caduceus-attendance-request-invalid");
         }
-        let (status, response) = match caduceus_raw_request("POST", operation.path(), Some(&encoded), CADUCEUS_ACCESS_TIMEOUT) {
+        let (status, response) = match caduceus_raw_request(
+            "POST",
+            operation.path(),
+            Some(&encoded),
+            CADUCEUS_ACCESS_TIMEOUT,
+            CADUCEUS_MAX_COMMAND_RESPONSE_BODY,
+        ) {
             Ok(result) => result,
             Err(CaduceusTransportError::Connect(error)) => return AttendanceCall::refused(0, attendance_io_code("connect", &error)),
             Err(CaduceusTransportError::Io(error)) => {

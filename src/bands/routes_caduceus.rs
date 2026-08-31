@@ -727,6 +727,52 @@ mod arcadia_debug_tests {
     }
 
     #[test]
+    fn observation_response_body_cap_is_larger_than_command_receipts() {
+        let _guard = CADUCEUS_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let socket = std::env::temp_dir().join(format!(
+            "arcadia-caduceus-observation-cap-{}.sock",
+            uuid::Uuid::new_v4()
+        ));
+        let listener = UnixListener::bind(&socket).expect("mock caduceus bind");
+        let handle = thread::spawn(move || {
+            let observation = serde_json::json!({"body": "x".repeat(17 * 1024)});
+            let observation = serde_json::to_vec(&observation).unwrap();
+            let oversized_length = CADUCEUS_MAX_OBSERVATION_RESPONSE_BODY + 1;
+            for (body, content_length) in [
+                (Some(observation), None),
+                (None, Some(oversized_length)),
+            ] {
+                let (mut stream, _) = listener.accept().expect("observation GET");
+                let request = read_http_request(&mut stream);
+                assert!(request.starts_with("GET /api/v1/appliance/stats/history HTTP/1.1"));
+                let length = content_length.unwrap_or_else(|| body.as_ref().unwrap().len());
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
+                )
+                .unwrap();
+                if let Some(body) = body {
+                    stream.write_all(&body).unwrap();
+                }
+            }
+        });
+        std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
+        let client = CaduceusAccessClient::default();
+        let observation = client
+            .get_json("/api/v1/appliance/stats/history")
+            .expect("large observation response");
+        assert_eq!(observation["body"].as_str().unwrap().len(), 17 * 1024);
+        let oversized = client.get_json("/api/v1/appliance/stats/history");
+        handle.join().unwrap();
+        std::env::remove_var("CADUCEUS_STAFF_SOCKET");
+        let _ = std::fs::remove_file(&socket);
+        assert_eq!(oversized, Err("caduceus-http-empty-response"));
+    }
+
+    #[test]
     fn explicit_short_timeout_is_honored_by_staff_client() {
         let _guard = CADUCEUS_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let socket = std::env::temp_dir().join(format!("arcadia-caduceus-timeout-{}.sock", uuid::Uuid::new_v4()));
