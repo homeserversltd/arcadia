@@ -703,18 +703,20 @@ async fn main() -> anyhow_free::Result<()> {
 
     let refresh_state = state.clone();
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval_at(
-            tokio::time::Instant::now() + Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
-            Duration::from_secs(FAST_FACTS_CADENCE_SECONDS),
-        );
+        let mut tick = tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS));
+        let mut last_full_refresh = tokio::time::Instant::now();
         loop {
             tick.tick().await;
             let state = refresh_state.clone();
-            if state
-                .living
-                .fast_facts_refresh_due(home_telemetry_has_active_lease())
-            {
+            let has_active_lease = home_telemetry_has_active_lease();
+            let refresh_requested = state.living.refresh_requested();
+            let full_refresh_due = refresh_requested
+                || last_full_refresh.elapsed() >= Duration::from_secs(FAST_FACTS_CADENCE_SECONDS);
+            if state.living.fast_facts_refresh_due(has_active_lease) && full_refresh_due {
                 let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state)).await;
+                last_full_refresh = tokio::time::Instant::now();
+            } else if has_active_lease {
+                let _ = tokio::task::spawn_blocking(move || refresh_living_telemetry(&state)).await;
             }
         }
     });

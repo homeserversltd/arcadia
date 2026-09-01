@@ -121,7 +121,13 @@ mod tests {
             .unwrap();
         assert!(bind < serve && serve < refresh);
         assert!(!main.contains("let input_state = state.clone()"));
-        assert!(main.contains(".fast_facts_refresh_due(home_telemetry_has_active_lease())"));
-        assert!(!main.contains("tick.tick().await;\n            let state = refresh_state.clone();\n            let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state))"));
+        assert!(main.contains("HOME_TELEMETRY_CADENCE_SECONDS"));
+        assert!(main.contains("Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS)"));
+        assert!(main.contains("FAST_FACTS_CADENCE_SECONDS"));
+        assert!(main.contains("refresh_living_telemetry"));
+        assert!(main.contains("let has_active_lease = home_telemetry_has_active_lease();"));
+        assert!(main.contains("state.living.fast_facts_refresh_due(has_active_lease)"));
+        assert!(main.contains("} else if has_active_lease {"));
+        assert!(main.contains("let refresh_requested = state.living.refresh_requested();"));
     }
 }

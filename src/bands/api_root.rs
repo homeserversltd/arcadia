@@ -175,6 +175,30 @@ fn refresh_living_state(state: &AppState) {
     );
 }
 
+fn refresh_living_telemetry(state: &AppState) {
+    refresh_api_telemetry_cache();
+    let snapshot = state.living.snapshot();
+    let generated_at_unix = now_unix_seconds();
+    let root = api_root_object_from_status(state, &snapshot.status, generated_at_unix);
+    let telemetry_root = api_root_telemetry_tick_from_root(&root, generated_at_unix);
+    let document = api_living_state_document_from_parts(
+        snapshot.status.clone(),
+        snapshot.storage.clone(),
+        snapshot.network.clone(),
+        snapshot.ai.clone(),
+        snapshot.controllers.clone(),
+        snapshot.system.clone(),
+        snapshot.model_lanes.clone(),
+        generated_at_unix,
+    );
+    let mut next = (*snapshot).clone();
+    next.generated_at_unix = generated_at_unix;
+    next.root = root;
+    next.telemetry_root = telemetry_root;
+    next.document = document;
+    state.living.publish(Arc::new(next), false);
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiRootObject {

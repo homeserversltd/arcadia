@@ -1403,12 +1403,14 @@
         assert!(source.contains("readBytesPerSec"));
         assert!(source.contains("writeBytesPerSec"));
         assert!(source.contains("fn api_root_telemetry_tick"));
-        assert!(source.contains("let root = api_root_telemetry_tick(&state);"));
         assert!(
             !source.contains("let root = api_root_object(&state);"),
             "sse root ticks must not rebuild full console_status each second"
         );
-        assert!(source.contains("let snapshot = api_root_object(&state);"));
+        assert!(source.contains("let snapshot = state.living_snapshot();"));
+        assert!(source.contains("let snapshot = snapshot.root.clone();"));
+        assert!(source.contains("let root = snapshot.telemetry_root.clone();"));
+        assert!(source.contains("fn refresh_living_telemetry"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
     }
