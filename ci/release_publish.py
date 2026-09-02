@@ -30,9 +30,8 @@ def assets_of(release):
         result[name] = asset
     return result
 def download(asset, token, name):
-    asset_id = asset.get("id")
-    if not isinstance(asset_id, int): fail(f"asset {name} has no numeric id")
-    url = f"{API_ROOT}/repos/{OWNER}/{REPO}/releases/assets/{asset_id}"
+    url = asset.get("browser_download_url") if isinstance(asset, dict) else None
+    if not isinstance(url, str) or not url: fail(f"asset {name} has no browser download URL")
     status, raw = request("GET", url, token, accept="application/octet-stream")
     if status != 200: fail(f"download of {name} returned HTTP {status}")
     return raw
@@ -42,15 +41,11 @@ def expected_assets(release, binary_name, sidecar_name):
         if name not in assets: fail(f"release is missing expected asset {name}")
     return assets
 
-def verify_existing(release, token, binary_name, sidecar_name):
+def verify_existing(release, token, binary_name, sidecar_name, digest, sidecar):
     assets = expected_assets(release, binary_name, sidecar_name)
     binary = download(assets[binary_name], token, binary_name)
-    sidecar = download(assets[sidecar_name], token, sidecar_name)
-    pattern = rb"([0-9a-f]{64})  " + re.escape(binary_name.encode("ascii")) + rb"\n"
-    match = re.fullmatch(pattern, sidecar)
-    if match is None: fail(f"downloaded {sidecar_name} has invalid contents")
-    if hashlib.sha256(binary).hexdigest().encode("ascii") != match.group(1): fail(f"downloaded {binary_name} conflicts with its sidecar")
-    return match.group(1).decode("ascii")
+    if hashlib.sha256(binary).hexdigest() != digest: fail(f"downloaded {binary_name} has a conflicting digest")
+    if download(assets[sidecar_name], token, sidecar_name) != sidecar: fail(f"downloaded {sidecar_name} has conflicting contents")
 
 def verify_fresh(release, token, binary_name, sidecar_name, digest, sidecar):
     assets = expected_assets(release, binary_name, sidecar_name)
@@ -75,32 +70,33 @@ def main():
         binary_decl = package.get("name")
     if not isinstance(version, str) or not version or not isinstance(binary_decl, str) or not binary_decl: fail("Cargo package version or binary declaration is missing")
     target_directory = os.environ.get("CARGO_TARGET_DIR", "target")
-    binary_name = f"{binary_decl}-{version}-x86_64"; sidecar_name = f"{binary_name}.sha256"
+    binary_name = "arcadia-x86_64"; sidecar_name = "arcadia-x86_64.sha256"
     binary_path = os.path.join(target_directory, "release", binary_decl)
     if not os.path.isfile(binary_path): fail(f"release binary does not exist: {binary_path}")
     with open(binary_path, "rb") as binary_file: binary = binary_file.read()
-    digest = hashlib.sha256(binary).hexdigest(); sidecar = f"{digest}  {binary_name}\n".encode("ascii")
-    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(version, safe='')}"; status, raw = request("GET", tag_url, token)
+    digest = hashlib.sha256(binary).hexdigest(); sidecar = f"{digest}  arcadia-x86_64\n".encode("ascii")
+    name = f"arcadia {sha[:8]}"
+    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(sha, safe='')}"; status, raw = request("GET", tag_url, token)
     if status == 200:
-        existing_digest = verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name)
-        print(json.dumps({"schema":"arcadia.release_publish.v1", "ok":True, "status":"no-op", "changed":False, "project":PROJECT, "tag":version, "commit":sha, "assets":[binary_name, sidecar_name], "sha256":existing_digest, "release_url":tag_url}, separators=(",", ":"))); return
+        verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name, digest, sidecar)
+        print(json.dumps({"status":"noop-identical", "tag":sha, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":"))); return
     if status != 404: fail(f"GET release tag returned HTTP {status}")
-    payload = {"tag_name":version, "name":version, "target_commitish":sha, "draft":False, "prerelease":False}; status, raw = request("POST", RELEASES, token, payload)
+    payload = {"tag_name":sha, "name":name, "target_commitish":sha, "draft":False, "prerelease":False}; status, raw = request("POST", RELEASES, token, payload)
     if status == 409:
         status, raw = request("GET", tag_url, token)
         if status != 200: fail(f"release collision reread returned HTTP {status}")
-        existing_digest = verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name)
-        print(json.dumps({"schema":"arcadia.release_publish.v1", "ok":True, "status":"no-op", "changed":False, "project":PROJECT, "tag":version, "commit":sha, "assets":[binary_name, sidecar_name], "sha256":existing_digest, "release_url":tag_url}, separators=(",", ":"))); return
+        verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name, digest, sidecar)
+        print(json.dumps({"status":"noop-identical", "tag":sha, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":"))); return
     if status not in (200, 201): fail(f"release creation returned HTTP {status}")
     release = decode(raw, "release creation"); release_id = release.get("id")
     if not isinstance(release_id, int): fail("created release has no numeric id")
     if assets_of(release): fail("new release unexpectedly contains assets")
     upload_url = f"{RELEASES}/{release_id}/assets"
-    for name, content, content_type in ((binary_name, binary, "application/octet-stream"), (sidecar_name, sidecar, "text/plain; charset=utf-8")):
-        url = f"{upload_url}?{urllib.parse.urlencode({'name':name})}"; status, _ = request("POST", url, token, content, content_type=content_type)
-        if status not in (200, 201): fail(f"upload of {name} returned HTTP {status}")
+    for asset_name, content, content_type in ((binary_name, binary, "application/octet-stream"), (sidecar_name, sidecar, "text/plain; charset=utf-8")):
+        url = f"{upload_url}?{urllib.parse.urlencode({'name':asset_name})}"; status, _ = request("POST", url, token, content, content_type=content_type)
+        if status not in (200, 201): fail(f"upload of {asset_name} returned HTTP {status}")
     status, raw = request("GET", tag_url, token)
     if status != 200: fail(f"reread of release returned HTTP {status}")
     verify_fresh(decode(raw, "release reread"), token, binary_name, sidecar_name, digest, sidecar)
-    print(json.dumps({"schema":"arcadia.release_publish.v1", "ok":True, "status":"published", "changed":True, "project":PROJECT, "tag":version, "commit":sha, "assets":[binary_name, sidecar_name], "sha256":digest, "release_url":tag_url}, separators=(",", ":")))
+    print(json.dumps({"status":"published", "tag":sha, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":")))
 if __name__ == "__main__": main()
