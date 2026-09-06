@@ -260,6 +260,31 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                     button class="btn btn--secondary" type="button" disabled title="LAN AI is not reachable on the saved port." { "Copy AI" }
                 }
             }
+            (home_network_topology(
+                status.network.online,
+                status.network.lan_ai_reachable,
+                matches!(status.network.internet_reachable, Some(true)),
+            ))
+        }
+    }
+}
+
+fn home_network_topology(console_online: bool, ai_online: bool, internet_online: bool) -> Markup {
+    let console_tone = if console_online { "ok" } else { "warn" };
+    let ai_tone = if ai_online { "ok" } else { "warn" };
+    let internet_tone = if internet_online { "ok" } else { "warn" };
+    html! {
+        svg class="home-network-topology" viewBox="0 0 220 120" role="img" aria-labelledby="home-network-topology-title home-network-topology-desc" {
+            title id="home-network-topology-title" { "Home network topology" }
+            desc id="home-network-topology-desc" { "Console connections to local AI and the Internet." }
+            line class=(format!("home-network-topology-edge home-network-topology-edge--{ai_tone}")) data-bind-class="home.network.aiReachability" x1="58" y1="60" x2="129" y2="34" {}
+            line class=(format!("home-network-topology-edge home-network-topology-edge--{internet_tone}")) data-bind-class="home.network.internetReachability" x1="58" y1="60" x2="129" y2="86" {}
+            circle class=(format!("home-network-topology-node home-network-topology-node--{console_tone}")) data-bind-class="home.network.consoleReachability" cx="42" cy="60" r="16" {}
+            circle class=(format!("home-network-topology-node home-network-topology-node--{ai_tone}")) data-bind-class="home.network.aiReachability" cx="145" cy="30" r="16" {}
+            circle class=(format!("home-network-topology-node home-network-topology-node--{internet_tone}")) data-bind-class="home.network.internetReachability" cx="145" cy="90" r="16" {}
+            text class="home-network-topology-label" x="42" y="90" text-anchor="middle" { "Console" }
+            text class="home-network-topology-label" x="145" y="54" text-anchor="middle" { "AI" }
+            text class="home-network-topology-label" x="145" y="114" text-anchor="middle" { "Internet" }
         }
     }
 }

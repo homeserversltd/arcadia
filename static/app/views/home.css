@@ -23,6 +23,18 @@
 .home-network-chip--warn { color: var(--warn); border-color: color-mix(in srgb, var(--theme-warn) 44%, var(--line)); }
 .home-network-copy-row { margin-top: 8px; }
 .home-network-copy-row .btn { flex: 1 1 0; min-width: 0; }
+.home-network-topology { display: block; flex: 0 1 auto; min-height: 0; width: 100%; max-width: 220px; height: auto; margin: var(--ux-control-gap) auto 0; overflow: visible; }
+.home-network-topology-edge { fill: none; stroke-width: 2; stroke-linecap: round; opacity: .85; }
+.home-network-topology-edge--ok { stroke: var(--good); }
+.home-network-topology-edge--warn { stroke: var(--warn); }
+.home-network-topology-node { stroke-width: 2; }
+.home-network-topology-node--ok { fill: var(--good); stroke: var(--good); }
+.home-network-topology-node--warn { fill: var(--warn); stroke: var(--warn); }
+.home-network-topology-label { fill: var(--muted); font-family: inherit; font-size: 12px; font-weight: 800; letter-spacing: .03em; dominant-baseline: middle; }
+.home-network-topology [data-state="online"].home-network-topology-edge--warn { stroke: var(--good); }
+.home-network-topology [data-state="offline"].home-network-topology-edge--ok { stroke: var(--warn); }
+.home-network-topology [data-state="online"].home-network-topology-node--warn { fill: var(--good); stroke: var(--good); }
+.home-network-topology [data-state="offline"].home-network-topology-node--ok { fill: var(--warn); stroke: var(--warn); }
 .updates-home-card, .local-ai-home-card, .sync-home-card, .storage-home-card { min-width: 0; overflow: hidden; }
 .updates-home-details, .local-ai-home-details, .sync-home-details, .storage-home-details { margin-bottom: 4px; min-width: 0; }
 .storage-home-card .storage-bar--home { margin-top: 0; }
