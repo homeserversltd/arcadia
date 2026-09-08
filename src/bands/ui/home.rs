@@ -264,26 +264,67 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
                 status.network.online,
                 status.network.lan_ai_reachable,
                 matches!(status.network.internet_reachable, Some(true)),
+                status.local_ai.parallel_slots,
+                status.local_ai.loaded_model_name.as_deref(),
             ))
         }
     }
 }
 
-fn home_network_topology(console_online: bool, ai_online: bool, internet_online: bool) -> Markup {
+fn home_network_topology(
+    console_online: bool,
+    ai_online: bool,
+    internet_online: bool,
+    parallel_slots: u32,
+    loaded_model_name: Option<&str>,
+) -> Markup {
     let console_tone = if console_online { "ok" } else { "warn" };
     let ai_tone = if ai_online { "ok" } else { "warn" };
     let internet_tone = if internet_online { "ok" } else { "warn" };
+    // A single slot keeps the original geometry; multiple slots fan above the label.
+    let ai_nodes = (0..parallel_slots)
+        .map(|slot| {
+            if parallel_slots == 1 {
+                (145.0, 30.0, 16.0, 129.0, 34.0)
+            } else {
+                let angle =
+                    std::f64::consts::PI * (1.0 - f64::from(slot) / f64::from(parallel_slots - 1));
+                let x = 145.0 + 52.0 * angle.cos();
+                let y = 40.0 - 30.0 * angle.sin();
+                let distance = (x - 58.0).hypot(y - 60.0);
+                (
+                    x,
+                    y,
+                    5.0,
+                    x - 5.0 * (x - 58.0) / distance,
+                    y - 5.0 * (y - 60.0) / distance,
+                )
+            }
+        })
+        .collect::<Vec<_>>();
     html! {
         svg class="home-network-topology" viewBox="0 0 220 120" role="img" aria-labelledby="home-network-topology-title home-network-topology-desc" {
             title id="home-network-topology-title" { "Home network topology" }
             desc id="home-network-topology-desc" { "Console connections to local AI and the Internet." }
-            line class=(format!("home-network-topology-edge home-network-topology-edge--{ai_tone}")) data-bind-class="home.network.aiReachability" x1="58" y1="60" x2="129" y2="34" {}
+            @for &(_, _, _, edge_x, edge_y) in &ai_nodes {
+                line class=(format!("home-network-topology-edge home-network-topology-edge--{ai_tone}")) data-bind-class="home.network.aiReachability" x1="58" y1="60" x2=(edge_x) y2=(edge_y) {}
+            }
             line class=(format!("home-network-topology-edge home-network-topology-edge--{internet_tone}")) data-bind-class="home.network.internetReachability" x1="58" y1="60" x2="129" y2="86" {}
             circle class=(format!("home-network-topology-node home-network-topology-node--{console_tone}")) data-bind-class="home.network.consoleReachability" cx="42" cy="60" r="16" {}
-            circle class=(format!("home-network-topology-node home-network-topology-node--{ai_tone}")) data-bind-class="home.network.aiReachability" cx="145" cy="30" r="16" {}
+            @for &(x, y, radius, _, _) in &ai_nodes {
+                circle class=(format!("home-network-topology-node home-network-topology-node--{ai_tone}")) data-bind-class="home.network.aiReachability" cx=(x) cy=(y) r=(radius) {}
+            }
             circle class=(format!("home-network-topology-node home-network-topology-node--{internet_tone}")) data-bind-class="home.network.internetReachability" cx="145" cy="90" r="16" {}
             text class="home-network-topology-label" x="42" y="90" text-anchor="middle" { "Console" }
-            text class="home-network-topology-label" x="145" y="54" text-anchor="middle" { "AI" }
+            defs {
+                clipPath id="home-network-ai-label-clip" {
+                    rect x="78" y="46" width="138" height="16" {}
+                }
+            }
+            text class="home-network-topology-label" x="145" y="54" text-anchor="middle" clip-path="url(#home-network-ai-label-clip)" {
+                title { (loaded_model_name.unwrap_or("AI")) }
+                (loaded_model_name.unwrap_or("AI"))
+            }
             text class="home-network-topology-label" x="145" y="114" text-anchor="middle" { "Internet" }
         }
     }

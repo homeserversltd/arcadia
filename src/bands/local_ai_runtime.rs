@@ -350,6 +350,7 @@ fn local_ai_status() -> LocalAiStatus {
     let lan_inference_enabled = cfg.lan_enabled && tcp_port_listening(cfg.lan_port);
     LocalAiStatus {
         load_state,
+        parallel_slots: cfg.concurrency,
         selected_model_id: selected.map(|model| model.id.clone()),
         selected_model_name: selected.map(|model| model.name.clone()),
         loaded_model_id: loaded_model.as_ref().map(|name| model_id(name)),

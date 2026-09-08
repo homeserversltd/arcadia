@@ -124,6 +124,7 @@ struct SyncManifestEntry {
 #[derive(Clone, Serialize)]
 pub struct LocalAiStatus {
     pub load_state: String,
+    pub parallel_slots: u32,
     pub selected_model_id: Option<String>,
     pub selected_model_name: Option<String>,
     pub loaded_model_id: Option<String>,
