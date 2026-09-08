@@ -125,8 +125,6 @@ steps:
 
   - name: flag-arcadia-release
     image: python:3.12-alpine
-    depends_on:
-      - publish-arcadia-release
     when:
       - event: push
         branch: main
