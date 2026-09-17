@@ -3588,71 +3588,11 @@ function renderHarmoniaLastRun(entries) {
   }
 }
 
-function renderHarmoniaLedgerAvailability(entries) {
-  const pane = document.querySelector('[data-harmonia-update-pane]');
-  if (!pane) return;
-
-  const latestRun = harmoniaLedgerRuns(entries)[0];
-  const updateEntries = (latestRun?.entries || []).filter((entry) => (
-    harmoniaLedgerValue(entry, ['ok'], entry.ok) === false
-    || harmoniaLedgerValue(entry, ['changed'], entry.changed) === true
-  ));
-
-  const existingHeading = pane.querySelector('.updates-update-heading');
-  const tiles = pane.querySelector('[data-harmonia-update-tiles]');
-  const zero = pane.querySelector('[data-zero-updates]');
-  existingHeading?.remove();
-  tiles?.remove();
-
-  if (!updateEntries.length) {
-    pane.dataset.updateCount = '0';
-    pane.classList.remove('harmonia-update-pane--available');
-    pane.classList.add('harmonia-update-pane--zero');
-    if (zero) {
-      pane.appendChild(zero);
-      return;
-    }
-    const hero = document.createElement('div');
-    hero.className = 'harmonia-zero-updates';
-    hero.dataset.zeroUpdates = 'true';
-    hero.dataset.harmoniaLastRun = 'true';
-    hero.innerHTML = '<strong>Zero updates available</strong><span>Current</span><div class="updates-last-run"><b>Last run</b><span>Loading the latest module results…</span></div>';
-    pane.appendChild(hero);
-    renderHarmoniaLastRun(entries || []);
-    return;
-  }
-
-  zero?.remove();
-  pane.classList.remove('harmonia-update-pane--zero');
-  pane.classList.add('harmonia-update-pane--available');
-  const updateCount = updateEntries.length;
-  pane.dataset.updateCount = String(updateCount);
-  const heading = document.createElement('div');
-  heading.className = 'updates-update-heading';
-  heading.textContent = updateCount === 1 ? '1 module needs update' : `${updateCount} modules need update`;
-  const nextTiles = document.createElement('div');
-  nextTiles.className = 'harmonia-update-tiles';
-  nextTiles.dataset.harmoniaUpdateTiles = 'true';
-  updateEntries.forEach((entry) => {
-    const moduleId = harmoniaLedgerValue(entry, ['module_id', 'moduleId'], entry.moduleId || 'suite');
-    const row = document.createElement('div');
-    row.className = 'harmonia-update-row';
-    const label = document.createElement('strong');
-    label.textContent = harmoniaModuleLabel(moduleId);
-    const status = document.createElement('b');
-    status.textContent = harmoniaLedgerValue(entry, ['ok'], entry.ok) === false ? 'Needs attention' : 'Updated';
-    row.append(label, status);
-    nextTiles.appendChild(row);
-  });
-  pane.append(heading, nextTiles);
-}
-
 async function hydrateHarmoniaLedgerSummary() {
   if (!document.querySelector('[data-harmonia-update-pane], [data-harmonia-last-run]')) return;
   try {
     const data = await getJson('/api/harmonia/ledger?page=1&per_page=25');
     renderHarmoniaLastRun(data.entries || []);
-    renderHarmoniaLedgerAvailability(data.entries || []);
   } catch (_) {}
 }
 

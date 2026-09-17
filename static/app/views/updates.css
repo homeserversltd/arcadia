@@ -184,19 +184,3 @@
 .updates-last-run b { color: var(--cream); font-size: var(--ux-text-xs); text-transform: uppercase; letter-spacing: .08em; }
 .updates-last-run span, .updates-last-run-failures { color: var(--muted); font-size: var(--ux-text-xs); }
 .updates-last-run-failures { display: grid; gap: 3px; margin: 0; padding-left: 16px; }
-
-.harmonia-update-row {
-  min-width: 0;
-  max-width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid color-mix(in srgb, var(--theme-warn) 38%, var(--line));
-  border-radius: 15px;
-  background: color-mix(in srgb, var(--theme-warning-surface) 72%, transparent);
-  overflow: hidden;
-}
-.harmonia-update-row strong { min-width: 0; color: var(--cream); font-size: var(--ux-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.harmonia-update-row b { flex: 0 0 auto; color: var(--warn); font-size: var(--ux-text-sm); white-space: nowrap; }
