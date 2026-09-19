@@ -31,11 +31,11 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                         }
                         div class="harmonia-module-grid updates-module-grid" data-harmonia-module-grid="true" data-bind-each="updatesPane.modules" data-bind-replace="true" {
                             template {
-                                article class="harmonia-module updates-module" data-harmonia-module="" data-bind-class="stateClass" data-bind-attr-id="id" data-module-enabled="" {
-                                    label class="harmonia-module-switch updates-module-switch" data-harmonia-module-switch-row="" {
+                                article class="updates-module" data-harmonia-module="" data-bind-class="stateClass" data-bind-attr-id="id" data-module-enabled="" {
+                                    label class="updates-module-switch" data-harmonia-module-switch-row="" {
                                         input type="checkbox" data-harmonia-module-switch="" data-bind-checked="enabled" data-bind-value="id" aria-label="Harmonia module enabled";
                                         span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
-                                        span class="harmonia-module-copy updates-module-copy" {
+                                        span class="updates-module-copy" {
                                             strong data-bind="label" {}
                                             span data-bind="description" {}
                                             span data-bind="id" {}
@@ -207,11 +207,11 @@ fn harmonia_module_row(module: &crate::HarmoniaModuleStatus, current_version: &s
         "Pending"
     };
     html! {
-        article class=(format!("harmonia-module updates-module harmonia-module--{}", module.state)) data-harmonia-module=(module.id) data-module-enabled=(module.enabled) data-bind-class="updatesPane.modules.stateClass" {
-            label class="harmonia-module-switch updates-module-switch" data-harmonia-module-switch-row=(module.id) {
+        article class="updates-module" data-state=(status_tone) data-harmonia-module=(module.id) data-module-enabled=(module.enabled) data-bind-class="updatesPane.modules.stateClass" {
+            label class="updates-module-switch" data-harmonia-module-switch-row=(module.id) {
                 input type="checkbox" checked[module.enabled] data-harmonia-module-switch=(module.id) data-enabled=(module.enabled) aria-label=(format!("{} module enabled", module.label));
                 span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
-                span class="harmonia-module-copy updates-module-copy" {
+                span class="updates-module-copy" {
                     strong { (module.label) }
                     @if !module.description.is_empty() {
                         span class="updates-module-description" { (&module.description) }

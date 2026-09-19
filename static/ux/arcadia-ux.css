@@ -105,6 +105,19 @@
   --ux-updates-card-padding: 10px;
   --ux-updates-command-min-height: 34px;
   --ux-updates-module-min-height: 48px;
+  --ux-updates-module-column-gap: 4px;
+  --ux-updates-module-gap: 2px;
+  --ux-updates-module-padding: 2px 4px;
+  --ux-updates-module-radius: 15px;
+  --ux-updates-module-switch-gap: 4px;
+  --ux-updates-module-toggle-width: 36px;
+  --ux-updates-module-toggle-height: 20px;
+  --ux-updates-module-toggle-thumb-size: 14px;
+  --ux-updates-module-toggle-thumb-shift: 16px;
+  --ux-updates-module-version-min-inline: 0px;
+  --ux-updates-module-status-min-inline: 66px;
+  --ux-updates-module-status-max-inline: 72px;
+  --ux-updates-module-status-padding: 2px 4px;
 }
 
 .ux-appliance-command-rail {

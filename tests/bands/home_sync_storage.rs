@@ -1774,6 +1774,101 @@
     }
 
     #[test]
+    fn updates_module_tiles_use_updates_classes_and_two_row_token_budget() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.example.com/".to_string(),
+            product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
+        };
+        let mut status = console_status(&state);
+        status.updates.modules[0].enabled = false;
+        status.updates.modules[0].present = true;
+        status.updates.modules[0].state = "disabled".to_string();
+        status.updates.modules[1].enabled = true;
+        status.updates.modules[1].present = false;
+        status.updates.modules[1].state = "missing".to_string();
+
+        let rendered = ui::layout(&status).into_string();
+        let updates_start = rendered
+            .find("<section id=\"view-updates\"")
+            .expect("updates view starts");
+        let updates_end = updates_start
+            + rendered[updates_start..]
+                .find("<section id=\"view-system\"")
+                .expect("system follows updates");
+        let updates_html = &rendered[updates_start..updates_end];
+        let updates_source = include_str!("../../src/bands/ui/updates.rs");
+
+        for required in [
+            r#"class="updates-module""#,
+            r#"class="updates-module-switch""#,
+            r#"class="updates-module-copy""#,
+            "Update needed",
+        ] {
+            assert!(updates_html.contains(required), "rendered updates tile missing {required}");
+            assert!(updates_source.contains(required), "updates source missing {required}");
+        }
+        for required in [
+            "data-harmonia-module=\"identity\"",
+            "data-harmonia-module-switch=\"identity\"",
+        ] {
+            assert!(updates_html.contains(required), "rendered updates hook missing {required}");
+        }
+        for legacy in [
+            r#"class="harmonia-module""#,
+            r#"class="harmonia-module-switch""#,
+            r#"class="harmonia-module-copy""#,
+            "harmonia-module--",
+        ] {
+            assert!(!updates_html.contains(legacy), "rendered updates tile retained {legacy}");
+            assert!(!updates_source.contains(legacy), "updates source retained {legacy}");
+        }
+        for legacy_selector in [
+            ".harmonia-module {",
+            ".harmonia-module-switch",
+            ".harmonia-module-copy",
+            ".harmonia-module--",
+        ] {
+            assert!(!APP_CSS.contains(legacy_selector), "composed CSS retained {legacy_selector}");
+        }
+        for required_css in [
+            "grid-template-columns: minmax(var(--ux-updates-module-version-min-inline), 1fr) minmax(var(--ux-updates-module-status-min-inline), var(--ux-updates-module-status-max-inline));",
+            "grid-template-areas: \"switch switch\" \"version status\";",
+            "grid-area: switch;",
+            "grid-area: version;",
+            "grid-area: status;",
+            ".updates-module-copy > span { display: none; }",
+            ".updates-module-version em { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }",
+            ".updates-module-version strong { min-width: 0; color: var(--cream); font-size: var(--ux-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+            "padding: var(--ux-updates-module-status-padding);",
+            "white-space: normal;",
+            "overflow-wrap: anywhere;",
+            ".updates-module-switch input:checked + .pin-toggle-track",
+            ".updates-module-switch:focus-within",
+        ] {
+            assert!(APP_CSS.contains(required_css), "updates tile CSS missing {required_css}");
+        }
+        for required_token in [
+            "--ux-updates-module-column-gap: 4px;",
+            "--ux-updates-module-gap: 2px;",
+            "--ux-updates-module-padding: 2px 4px;",
+            "--ux-updates-module-radius: 15px;",
+            "--ux-updates-module-switch-gap: 4px;",
+            "--ux-updates-module-toggle-width: 36px;",
+            "--ux-updates-module-toggle-height: 20px;",
+            "--ux-updates-module-toggle-thumb-size: 14px;",
+            "--ux-updates-module-toggle-thumb-shift: 16px;",
+            "--ux-updates-module-version-min-inline: 0px;",
+            "--ux-updates-module-status-min-inline: 66px;",
+            "--ux-updates-module-status-max-inline: 72px;",
+            "--ux-updates-module-status-padding: 2px 4px;",
+        ] {
+            assert!(UX_CSS.contains(required_token), "updates tile token missing {required_token}");
+        }
+    }
+
+    #[test]
     fn updates_readbacks_ride_living_state_not_obsolete_dom_menu() {
         for required in [
             "data-bind-checked",
