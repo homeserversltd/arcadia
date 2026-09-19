@@ -480,6 +480,56 @@ async fn caduceus_profile_module_toggle_proxy_route(
     }
 }
 
+async fn caduceus_profile_module_update_proxy_route(
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let module_id = body
+        .get("module_id")
+        .or_else(|| body.get("moduleId"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if !valid_harmonia_module_id(module_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "action": "update-module",
+                "module_id": module_id,
+                "first_missing_signal": "module-id-invalid",
+                "message": "Module id must be lowercase letters, numbers, and hyphens only.",
+            })),
+        )
+            .into_response();
+    }
+    if !harmonia_independent_update_allowed(module_id) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "ok": false,
+                "action": "update-module",
+                "module_id": module_id,
+                "first_missing_signal": "module-independent-update-unavailable",
+                "message": "Harmonia membership does not permit an independent module update.",
+            })),
+        )
+            .into_response();
+    }
+    match CaduceusAccessClient::default().post_json_with_target(
+        "/api/v1/update/module",
+        serde_json::json!({ "module_id": module_id }),
+        Duration::from_secs(300),
+        serde_json::json!({ "apply": true }),
+        serde_json::json!({ "module": module_id }),
+    ) {
+        Ok((status, value)) => {
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/update/module", signal),
+    }
+}
+
 fn run_caduceus_http_mutation(
     action: &'static str,
     path: &'static str,

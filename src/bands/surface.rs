@@ -273,6 +273,74 @@ fn receipt_usize(value: &serde_json::Value, key: &str) -> Option<usize> {
     value.get(key).and_then(|v| v.as_u64()).map(|v| v as usize)
 }
 
+#[derive(Clone, Default)]
+struct HarmoniaPinnedMembership {
+    classifications: BTreeMap<String, String>,
+}
+
+static HARMONIA_PINNED_MEMBERSHIP: OnceLock<HarmoniaPinnedMembership> = OnceLock::new();
+
+fn parse_harmonia_pinned_membership(stdout: &str) -> HarmoniaPinnedMembership {
+    let mut classifications = BTreeMap::new();
+    for line in stdout.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else {
+            continue;
+        };
+        if key != "pinned_module_membership" {
+            continue;
+        }
+        let mut parsed = BTreeMap::new();
+        if value.trim().is_empty() {
+            return HarmoniaPinnedMembership::default();
+        }
+        for raw_pair in value.split(',') {
+            let Some((module_id, classification)) = raw_pair.trim().split_once(':') else {
+                return HarmoniaPinnedMembership::default();
+            };
+            let module_id = module_id.trim();
+            let classification = classification.trim();
+            if !valid_harmonia_module_id(module_id)
+                || classification.is_empty()
+                || !classification.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || matches!(character, '-' | '_')
+                })
+                || parsed
+                    .insert(module_id.to_string(), classification.to_string())
+                    .is_some()
+            {
+                return HarmoniaPinnedMembership::default();
+            }
+        }
+        for (module_id, classification) in parsed {
+            if classifications.insert(module_id, classification).is_some() {
+                return HarmoniaPinnedMembership::default();
+            }
+        }
+    }
+    HarmoniaPinnedMembership { classifications }
+}
+
+fn initialize_harmonia_pinned_membership() {
+    HARMONIA_PINNED_MEMBERSHIP.get_or_init(|| {
+        command_stdout(HARMONIA_BIN, &["inspect-profile", HOMECONSOLE_PROFILE])
+            .map(|stdout| parse_harmonia_pinned_membership(&stdout))
+            .unwrap_or_default()
+    });
+}
+
+fn harmonia_module_membership(module_id: &str) -> Option<&'static str> {
+    HARMONIA_PINNED_MEMBERSHIP
+        .get()
+        .and_then(|membership| membership.classifications.get(module_id))
+        .map(String::as_str)
+}
+
+fn harmonia_independent_update_allowed(module_id: &str) -> bool {
+    harmonia_module_membership(module_id) == Some("unpinned")
+}
+
 fn harmonia_profile_modules() -> Vec<String> {
     read_json_value(HOMECONSOLE_PROFILE)
         .and_then(|json| {
@@ -363,12 +431,13 @@ fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
                 .unwrap_or_default();
             HarmoniaModuleStatus {
                 label,
-                id,
+                id: id.clone(),
                 description,
                 enabled: enabled_flag,
                 present,
                 state: state.to_string(),
                 receipt_path,
+                pinned_module_membership: harmonia_module_membership(&id).map(str::to_string),
             }
         })
         .collect()

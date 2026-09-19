@@ -215,12 +215,26 @@ fn caduceus_transition(path: &str) -> String {
 }
 
 fn caduceus_staff_envelope(path: &str, payload: serde_json::Value, flags: serde_json::Value) -> serde_json::Value {
+    caduceus_staff_envelope_with_target(path, payload, flags, serde_json::Value::Null)
+}
+
+fn caduceus_staff_envelope_with_target(
+    path: &str,
+    payload: serde_json::Value,
+    flags: serde_json::Value,
+    target: serde_json::Value,
+) -> serde_json::Value {
     let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or(0);
-    serde_json::json!({"schema": CADUCEUS_STAFF_SCHEMA, "intent_id": format!("arcadia.staff.{}-{}", caduceus_transition(path), uuid::Uuid::new_v4()), "transition": caduceus_transition(path), "version": 1, "timestamp": timestamp, "target": null, "flags": flags, "payload": payload})
+    serde_json::json!({"schema": CADUCEUS_STAFF_SCHEMA, "intent_id": format!("arcadia.staff.{}-{}", caduceus_transition(path), uuid::Uuid::new_v4()), "transition": caduceus_transition(path), "version": 1, "timestamp": timestamp, "target": target, "flags": flags, "payload": payload})
 }
 
 fn caduceus_json_response(status: u16, response: Vec<u8>) -> Result<serde_json::Value, &'static str> {
     if !(200..300).contains(&status) { return Err("caduceus-http-unreachable"); }
+    if response.is_empty() { return Err("caduceus-http-empty-response"); }
+    serde_json::from_slice(&response).map_err(|_| "caduceus-http-invalid-json")
+}
+
+fn caduceus_receipt_response(_status: u16, response: Vec<u8>) -> Result<serde_json::Value, &'static str> {
     if response.is_empty() { return Err("caduceus-http-empty-response"); }
     serde_json::from_slice(&response).map_err(|_| "caduceus-http-invalid-json")
 }
@@ -262,6 +276,31 @@ impl CaduceusAccessClient {
             CADUCEUS_MAX_COMMAND_RESPONSE_BODY,
         ).map_err(caduceus_http_error)?;
         caduceus_json_response(status, response)
+    }
+
+    fn post_json_with_target(
+        &self,
+        path: &str,
+        payload: serde_json::Value,
+        timeout: Duration,
+        flags: serde_json::Value,
+        target: serde_json::Value,
+    ) -> Result<(u16, serde_json::Value), &'static str> {
+        let encoded = serde_json::to_vec(&caduceus_staff_envelope_with_target(path, payload, flags, target))
+            .map_err(|_| "caduceus-http-invalid-json")?;
+        if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
+            return Err("caduceus-http-request-too-large");
+        }
+        let (status, response) = caduceus_raw_request(
+            "POST",
+            path,
+            Some(&encoded),
+            timeout,
+            CADUCEUS_MAX_COMMAND_RESPONSE_BODY,
+        )
+        .map_err(caduceus_http_error)?;
+        let value = caduceus_receipt_response(status, response)?;
+        Ok((status, value))
     }
 
     fn model_lanes(&self) -> Result<Vec<ModelLane>, &'static str> {

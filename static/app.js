@@ -3630,6 +3630,61 @@ function openHarmoniaLedger() {
   loadHarmoniaLedgerPage(1, content);
 }
 
+async function updateHarmoniaModuleCard(button) {
+  const card = button.closest('[data-harmonia-module]');
+  const moduleId = card?.dataset.harmoniaModule || button.dataset.harmoniaModuleUpdate || '';
+  const message = card?.querySelector('[data-harmonia-module-update-message]');
+  if (!moduleId || button.disabled) return;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Updating…';
+  if (message) message.textContent = 'Independent update in progress…';
+  try {
+    const data = await postJson(button.dataset.updateEndpoint || '/api/actions/update-module', { module_id: moduleId });
+    const text = data.ok
+      ? (data.message || 'Module update accepted.')
+      : (data.first_missing_signal || data.firstMissingSignal || data.message || 'Module update refused.');
+    if (message) message.textContent = text;
+    button.textContent = data.ok ? 'Update accepted' : 'Update refused';
+    button.dataset.updateState = data.ok ? 'success' : 'refused';
+    PopupManager.showToast(text, data.ok ? 'success' : 'error');
+  } catch (_) {
+    if (message) message.textContent = 'Module update request failed.';
+    button.textContent = 'Update failed';
+    button.dataset.updateState = 'error';
+    PopupManager.showToast('Module update request failed', 'error');
+  } finally {
+    button.disabled = false;
+    if (button.textContent === 'Updating…') button.textContent = original;
+  }
+}
+
+async function updateHarmoniaPinnedGroup(button) {
+  const card = button.closest('[data-harmonia-pinned-update]');
+  const message = card?.querySelector('[data-harmonia-suite-update-message]');
+  if (button.disabled) return;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Updating pinned modules…';
+  if (message) message.textContent = 'Whole-suite update in progress…';
+  try {
+    const data = await postJson(button.dataset.endpoint || '/api/actions/update-gui', {});
+    const text = data.message || data.stderr || (data.ok ? 'Pinned module update accepted.' : 'Pinned module update refused.');
+    if (message) message.textContent = text;
+    button.textContent = data.ok ? 'Update accepted' : 'Update refused';
+    button.dataset.updateState = data.ok ? 'success' : 'refused';
+    PopupManager.showToast(text, data.ok ? 'success' : 'error');
+  } catch (_) {
+    if (message) message.textContent = 'Pinned module update request failed.';
+    button.textContent = 'Update failed';
+    button.dataset.updateState = 'error';
+    PopupManager.showToast('Pinned module update request failed', 'error');
+  } finally {
+    button.disabled = false;
+    if (button.textContent === 'Updating pinned modules…') button.textContent = original;
+  }
+}
+
 function bindHarmoniaModules() {
   hydrateHarmoniaLedgerSummary();
   document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
@@ -3637,6 +3692,21 @@ function bindHarmoniaModules() {
     const input = event.target.closest?.('[data-harmonia-module-switch]');
     if (!input) return;
     toggleHarmoniaModule(input.value, input.checked, null);
+  });
+  document.addEventListener('click', (event) => {
+    const moduleButton = event.target.closest?.('[data-harmonia-module-update]');
+    if (moduleButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      updateHarmoniaModuleCard(moduleButton);
+      return;
+    }
+    const pinnedButton = event.target.closest?.('[data-harmonia-suite-update]');
+    if (pinnedButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      updateHarmoniaPinnedGroup(pinnedButton);
+    }
   });
 }
 

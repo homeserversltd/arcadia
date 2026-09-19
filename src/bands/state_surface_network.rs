@@ -74,6 +74,7 @@ pub struct HarmoniaModuleStatus {
     pub present: bool,
     pub state: String,
     pub receipt_path: String,
+    pub pinned_module_membership: Option<String>,
 }
 
 #[derive(Serialize)]

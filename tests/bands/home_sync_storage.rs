@@ -1661,6 +1661,46 @@
 
 
     #[test]
+    fn inspect_profile_membership_and_module_update_envelope_are_contract_bound() {
+        let membership = parse_harmonia_pinned_membership(
+            "pinned_module_membership=module-a:unpinned,module-b:unpinned,module-c:unpinned,module-d:unpinned,module-e:unpinned,module-f:unpinned,module-g:unpinned,module-h:unpinned,module-i:unpinned,module-j:unpinned,module-k:unpinned,module-l:gui-face,module-m:runtime-face,module-n:whole-suite",
+        );
+        assert_eq!(membership.classifications.len(), 14);
+        assert_eq!(
+            membership
+                .classifications
+                .values()
+                .filter(|classification| classification.as_str() == "unpinned")
+                .count(),
+            11
+        );
+        assert_eq!(
+            membership
+                .classifications
+                .values()
+                .filter(|classification| classification.as_str() != "unpinned")
+                .count(),
+            3
+        );
+        assert!(
+            parse_harmonia_pinned_membership(
+                "pinned_module_membership=module-a:unpinned,partial-entry"
+            )
+            .classifications
+            .is_empty()
+        );
+        let envelope = caduceus_staff_envelope_with_target(
+            "/api/v1/update/module",
+            serde_json::json!({ "module_id": "alpha-runtime" }),
+            serde_json::json!({ "apply": true }),
+            serde_json::json!({ "module": "alpha-runtime" }),
+        );
+        assert_eq!(envelope["transition"], "update.module");
+        assert_eq!(envelope["target"]["module"], "alpha-runtime");
+        assert_eq!(envelope["flags"]["apply"], true);
+    }
+
+    #[test]
     fn updates_view_is_harmonia_integration_with_module_controls() {
         let state = AppState {
             started_unix: 0,
@@ -1713,12 +1753,14 @@
             "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json",
             "/api/actions/check-updates",
             "/api/actions/update-gui",
+            "data-harmonia-module-update",
+            "data-harmonia-suite-update",
         ] {
             assert!(updates_html.contains(required), "updates view missing {required}");
         }
         assert_eq!(updates_html.matches("data-harmonia-ledger-open=\"true\"").count(), 1);
         assert_eq!(updates_html.matches("/api/actions/check-updates").count(), 1);
-        assert_eq!(updates_html.matches("/api/actions/update-gui").count(), 1);
+        assert_eq!(updates_html.matches("/api/actions/update-gui").count(), 2);
         assert!(updates_html.matches("data-harmonia-module=\"").count() >= 8);
         assert!(updates_html.matches("data-harmonia-module-switch=\"").count() >= 8);
         assert!(updates_html.matches("type=\"checkbox\"").count() >= 8);
@@ -1730,6 +1772,115 @@
         assert!(!updates_html.contains("Latest available</span><strong>Not checked"));
         assert!(!updates_html.contains("Make harmonious"));
         assert!(!updates_html.contains("data-harmonia-module-menu=\"true\""));
+        let updates_source = include_str!("../../src/bands/ui/updates.rs");
+        assert!(updates_source.contains("data-update-endpoint=\"/api/actions/update-module\""));
+        assert!(updates_source.contains("data-endpoint=\"/api/actions/update-gui\""));
+        assert!(APP_JS.contains("updateHarmoniaModuleCard"));
+        assert!(APP_JS.contains("updateHarmoniaPinnedGroup"));
+    }
+
+    #[test]
+    fn updates_view_renders_independent_controls_and_one_pinned_group() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.example.com/".to_string(),
+            product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
+        };
+        let mut status = console_status(&state);
+        status.updates.modules = (0..14)
+            .map(|index| {
+                let (id, label, membership) = match index {
+                    0..=10 => (
+                        format!("synthetic-unpinned-{index}"),
+                        format!("Synthetic unpinned {index}"),
+                        "unpinned",
+                    ),
+                    11 => (
+                        "synthetic-gui-face".to_string(),
+                        "Synthetic GUI face".to_string(),
+                        "gui-face",
+                    ),
+                    12 => (
+                        "synthetic-runtime-face".to_string(),
+                        "Synthetic runtime face".to_string(),
+                        "runtime-face",
+                    ),
+                    _ => (
+                        "synthetic-whole-suite".to_string(),
+                        "Synthetic whole suite".to_string(),
+                        "whole-suite",
+                    ),
+                };
+                HarmoniaModuleStatus {
+                    id,
+                    label,
+                    description: String::new(),
+                    enabled: true,
+                    present: true,
+                    state: "enabled".to_string(),
+                    receipt_path: "/synthetic/receipt.json".to_string(),
+                    pinned_module_membership: Some(membership.to_string()),
+                }
+            })
+            .collect();
+        assert_eq!(status.updates.modules.len(), 14);
+
+        let rendered = ui::layout(&status).into_string();
+        let updates_start = rendered
+            .find("<section id=\"view-updates\"")
+            .expect("updates view starts");
+        let updates_end = updates_start
+            + rendered[updates_start..]
+                .find("<section id=\"view-system\"")
+                .expect("system follows updates");
+        let updates_html = &rendered[updates_start..updates_end];
+
+        let module_control_attribute = "data-harmonia-module-update=\"";
+        let inert_module_control_attribute = "data-harmonia-module-update=\"\"";
+        let inert_module_controls = updates_html
+            .matches(inert_module_control_attribute)
+            .count();
+        assert_eq!(inert_module_controls, 1, "the module template is inert");
+        let module_controls = updates_html
+            .matches(module_control_attribute)
+            .count()
+            - inert_module_controls;
+        assert_eq!(module_controls, 11);
+
+        let pinned_card_marker =
+            r#"<article class="updates-pinned-module" data-harmonia-pinned-update="true">"#;
+        assert_eq!(updates_html.matches(pinned_card_marker).count(), 2);
+        let pinned_card_start = updates_html
+            .rfind(pinned_card_marker)
+            .expect("server-rendered pinned card");
+        let pinned_card_end = pinned_card_start
+            + updates_html[pinned_card_start..]
+                .find("</article>")
+                .expect("pinned card closes")
+            + "</article>".len();
+        let pinned_card = &updates_html[pinned_card_start..pinned_card_end];
+        for member in [
+            "Synthetic GUI face",
+            "Synthetic runtime face",
+            "Synthetic whole suite",
+        ] {
+            assert_eq!(pinned_card.matches(member).count(), 1, "pinned member label {member}");
+        }
+        assert_eq!(
+            pinned_card
+                .matches("data-endpoint=\"/api/actions/update-gui\"")
+                .count(),
+            1
+        );
+        for grouped_module in [
+            "synthetic-gui-face",
+            "synthetic-runtime-face",
+            "synthetic-whole-suite",
+        ] {
+            let grouped_control = format!("data-harmonia-module-update=\"{grouped_module}\"");
+            assert!(!updates_html.contains(grouped_control.as_str()));
+        }
     }
 
 
@@ -1834,7 +1985,7 @@
         }
         for required_css in [
             "grid-template-columns: minmax(var(--ux-updates-module-version-min-inline), 1fr) minmax(var(--ux-updates-module-status-min-inline), var(--ux-updates-module-status-max-inline));",
-            "grid-template-areas: \"switch switch\" \"version status\";",
+            "grid-template-areas: \"switch switch\" \"version action\" \"status status\";",
             "grid-area: switch;",
             "grid-area: version;",
             "grid-area: status;",

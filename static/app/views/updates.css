@@ -96,7 +96,7 @@
 }
 .updates-module-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: var(--ux-updates-gap);
   padding: var(--ux-updates-card-padding);
   overflow: hidden;
@@ -118,8 +118,8 @@
   min-height: var(--ux-updates-module-min-height);
   display: grid;
   grid-template-columns: minmax(var(--ux-updates-module-version-min-inline), 1fr) minmax(var(--ux-updates-module-status-min-inline), var(--ux-updates-module-status-max-inline));
-  grid-template-rows: minmax(0, 1fr) auto;
-  grid-template-areas: "switch switch" "version status";
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-areas: "switch switch" "version action" "status status";
   column-gap: var(--ux-updates-module-column-gap);
   row-gap: var(--ux-updates-module-gap);
   align-items: center;
@@ -142,6 +142,18 @@
 .updates-module .pin-toggle-track { width: var(--ux-updates-module-toggle-width); height: var(--ux-updates-module-toggle-height); }
 .updates-module .pin-toggle-thumb { width: var(--ux-updates-module-toggle-thumb-size); height: var(--ux-updates-module-toggle-thumb-size); }
 .updates-module-version { grid-area: version; min-width: 0; display: grid; gap: 1px; align-self: start; color: var(--muted); font-size: var(--ux-text-xs); }
+.updates-module-action { grid-area: action; min-width: 0; display: grid; gap: var(--ux-control-gap); align-self: start; justify-items: stretch; }
+.updates-module-action .btn { min-height: var(--ux-updates-command-min-height); padding: var(--ux-button-padding-block) var(--ux-button-padding-inline); font-size: var(--ux-text-xs); }
+.updates-module-update-message { color: var(--muted); font-size: var(--ux-text-xs); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.updates-pinned-grid { min-width: 0; display: grid; gap: var(--ux-updates-module-gap); }
+.updates-pinned-grid template { display: none; }
+.updates-pinned-module { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ux-updates-module-column-gap); align-items: center; padding: var(--ux-updates-module-padding); border: 1px solid color-mix(in srgb, var(--theme-accent) 46%, var(--line)); border-radius: var(--ux-updates-module-radius); background: color-mix(in srgb, var(--theme-field-surface) 78%, transparent); }
+.updates-pinned-copy { min-width: 0; display: grid; gap: var(--ux-control-gap); }
+.updates-pinned-copy strong { color: var(--cream); font-size: var(--ux-text-sm); }
+.updates-pinned-members { display: flex; flex-wrap: wrap; gap: var(--ux-control-gap); }
+.updates-pinned-members span { padding: var(--ux-button-padding-block) var(--ux-button-padding-inline); border: 1px solid var(--line); border-radius: var(--ux-button-radius); color: var(--muted); font-size: var(--ux-text-xs); }
+.updates-pinned-message { color: var(--muted); font-size: var(--ux-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.updates-pinned-update { min-height: var(--ux-updates-command-min-height); padding: var(--ux-button-padding-block) var(--ux-button-padding-inline); border-radius: var(--ux-button-radius); }
 .updates-module-version em { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .updates-module-version strong { min-width: 0; color: var(--cream); font-size: var(--ux-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .updates-module .system-status { grid-area: status; min-width: 0; width: 100%; justify-self: stretch; align-self: start; font-size: 10px; line-height: 1.15; padding: var(--ux-updates-module-status-padding); white-space: normal; overflow-wrap: anywhere; }

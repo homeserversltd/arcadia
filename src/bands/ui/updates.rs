@@ -42,12 +42,33 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                                         }
                                     }
                                     span class="updates-module-version" { em { "Version" } strong data-bind="version" {} }
+                                    div class="updates-module-action" data-bind-show="updateAllowed" {
+                                        button class="btn btn--secondary updates-module-update" type="button" data-harmonia-module-update="" data-bind="updateLabel" aria-label="Update Harmonia module" {}
+                                        span class="updates-module-update-message" data-bind="updateMessage" {}
+                                    }
                                     b class="system-status" data-bind-class="stateClass" data-bind="stateLabel" {}
                                 }
                             }
                             @for module in &status.updates.modules {
-                                (harmonia_module_row(module, &status.updates.current_version))
+                                @if module.pinned_module_membership.is_none() || module.pinned_module_membership.as_deref() == Some("unpinned") {
+                                    (harmonia_module_row(module, &status.updates.current_version))
+                                }
                             }
+                        }
+                        div class="updates-pinned-grid" data-bind-each="updatesPane.pinned" data-bind-replace="true" {
+                            template {
+                                article class="updates-pinned-module" data-harmonia-pinned-update="true" {
+                                    div class="updates-pinned-copy" {
+                                        strong data-bind="label" {}
+                                        div class="updates-pinned-members" data-bind-each="members" {
+                                            template { span data-bind="." {} }
+                                        }
+                                        span class="updates-pinned-message" data-harmonia-suite-update-message="true" data-bind="message" {}
+                                    }
+                                    button class="btn btn--primary updates-pinned-update" type="button" data-harmonia-suite-update="true" data-endpoint="/api/actions/update-gui" data-bind="buttonLabel" {}
+                                }
+                            }
+                            (harmonia_pinned_group(status))
                         }
                     }
                     (harmonia_update_availability_pane(&status.updates))
@@ -184,6 +205,36 @@ fn harmonia_update_tiles(status: &crate::UpdatesStatus) -> Vec<(&str, &str, Stri
     tiles
 }
 
+fn harmonia_pinned_group(status: &ConsoleStatus) -> Markup {
+    let members = status
+        .updates
+        .modules
+        .iter()
+        .filter(|module| {
+            module
+                .pinned_module_membership
+                .as_deref()
+                .is_some_and(|membership| membership != "unpinned")
+        })
+        .map(|module| module.label.clone())
+        .collect::<Vec<_>>();
+    if members.is_empty() {
+        return html! {};
+    }
+    html! {
+        article class="updates-pinned-module" data-harmonia-pinned-update="true" {
+            div class="updates-pinned-copy" {
+                strong { "Pinned modules" }
+                div class="updates-pinned-members" {
+                    @for member in members { span { (member) } }
+                }
+                span class="updates-pinned-message" data-harmonia-suite-update-message="true" { "Updates this group with the whole-suite Sync action." }
+            }
+            button class="btn btn--primary updates-pinned-update" type="button" data-harmonia-suite-update="true" data-endpoint="/api/actions/update-gui" { "Update pinned modules" }
+        }
+    }
+}
+
 fn harmonia_module_row(module: &crate::HarmoniaModuleStatus, current_version: &str) -> Markup {
     let status_tone = if module.enabled && module.present {
         "available"
@@ -220,6 +271,12 @@ fn harmonia_module_row(module: &crate::HarmoniaModuleStatus, current_version: &s
                 }
             }
             span class="updates-module-version" { em { "Version" } strong { (version) } }
+            @if module.pinned_module_membership.as_deref() == Some("unpinned") {
+                div class="updates-module-action" {
+                    button class="btn btn--secondary updates-module-update" type="button" data-harmonia-module-update=(module.id) data-update-endpoint="/api/actions/update-module" aria-label=(format!("Update {} module", module.label)) { "Update module" }
+                    span class="updates-module-update-message" data-harmonia-module-update-message=(module.id) { "Ready for an independent update." }
+                }
+            }
             b class=(format!("system-status system-status--{}", status_tone)) { (status_label) }
         }
     }

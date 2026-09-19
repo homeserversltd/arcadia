@@ -291,6 +291,7 @@ async fn main() -> anyhow_free::Result<()> {
 
     let args = env::args().skip(1).collect::<Vec<_>>();
     let serve_config = serving::ServeConfig::from_env_and_args(&args)?;
+    initialize_harmonia_pinned_membership();
     let started_unix = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let state = Arc::new(AppState {
         started_unix,
@@ -556,6 +557,10 @@ async fn main() -> anyhow_free::Result<()> {
         .route(
             "/api/caduceus/v1/profile/module/toggle",
             post(caduceus_profile_module_toggle_proxy_route),
+        )
+        .route(
+            "/api/actions/update-module",
+            post(caduceus_profile_module_update_proxy_route),
         )
         .route("/api/harmonia/module", post(action_harmonia_module_toggle))
         .route("/api/actions/sync-games", post(action_sync_games))

@@ -564,6 +564,7 @@ pub struct ApiUpdatesPaneState {
     pub suite: &'static str,
     pub check: &'static str,
     pub modules: Vec<ApiUpdatesModuleState>,
+    pub pinned: Vec<ApiUpdatesPinnedGroupState>,
     pub receipts: ApiUpdatesReceiptsState,
 }
 
@@ -578,6 +579,18 @@ pub struct ApiUpdatesModuleState {
     pub state_class: &'static str,
     pub version: String,
     pub receipt: String,
+    pub update_allowed: bool,
+    pub update_label: &'static str,
+    pub update_message: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiUpdatesPinnedGroupState {
+    pub label: &'static str,
+    pub members: Vec<String>,
+    pub button_label: &'static str,
+    pub message: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -1119,8 +1132,11 @@ fn api_updates_pane_state(status: &ConsoleStatus) -> ApiUpdatesPaneState {
         module_line: format!("{} ready · {} need update", ready, enabled.saturating_sub(ready)),
         suite: if status.updates.suite_ok { "Current" } else { "Needs update" },
         check: if status.updates.check_ok { "Current" } else { "Check needed" },
-        modules: status.updates.modules.iter().map(|module| {
+        modules: status.updates.modules.iter()
+            .filter(|module| module.pinned_module_membership.is_none() || module.pinned_module_membership.as_deref() == Some("unpinned"))
+            .map(|module| {
             let (state_label, state_class) = api_updates_module_state(module);
+            let update_allowed = module.pinned_module_membership.as_deref() == Some("unpinned");
             ApiUpdatesModuleState {
                 id: module.id.clone(),
                 label: module.label.clone(),
@@ -1130,8 +1146,30 @@ fn api_updates_pane_state(status: &ConsoleStatus) -> ApiUpdatesPaneState {
                 state_class,
                 version: if module.present { status.updates.current_version.clone() } else { "Pending".to_string() },
                 receipt: module.receipt_path.clone(),
+                update_allowed,
+                update_label: if update_allowed { "Update module" } else { "Independent update unavailable" },
+                update_message: if update_allowed { "Ready for an independent update." } else { "Harmonia membership does not permit an independent update." },
             }
         }).collect(),
+        pinned: {
+            let members = status.updates.modules.iter()
+                .filter(|module| module
+                    .pinned_module_membership
+                    .as_deref()
+                    .is_some_and(|membership| membership != "unpinned"))
+                .map(|module| module.label.clone())
+                .collect::<Vec<_>>();
+            if members.is_empty() {
+                Vec::new()
+            } else {
+                vec![ApiUpdatesPinnedGroupState {
+                    label: "Pinned modules",
+                    members,
+                    button_label: "Update pinned modules",
+                    message: "Updates the pinned module group with the whole-suite Sync action.",
+                }]
+            }
+        },
         receipts: ApiUpdatesReceiptsState {
             suite: status.updates.latest_receipt.clone(),
             check: status.updates.latest_check_receipt.clone(),
