@@ -80,7 +80,8 @@ fn surface_and_samba_status(
 
 fn updates_status() -> UpdatesStatus {
     let current = env!("CARGO_PKG_VERSION").to_string();
-    let suite_receipt = "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json";
+    let suite_receipt_path = format!("{}/run.json", newest_suite_receipt_root());
+    let suite_receipt = suite_receipt_path.as_str();
     let check_receipt = "/var/lib/harmonia/receipts/homeconsole-check-latest/run.json";
     let arcadia_receipt = "/var/lib/harmonia/receipts/arcadia-gui-latest/run.json";
     let profile = harmonia_profile_modules();
@@ -197,6 +198,29 @@ fn file_mtime_unix(path: &str) -> Option<u64> {
         .duration_since(UNIX_EPOCH)
         .ok()
         .map(|duration| duration.as_secs())
+}
+
+// Harmonia writes its suite receipt under a profile-scoped root when the engine is
+// run by hand, and under the generic root when harmonia.service drives it -- the unit
+// passes `--receipt-dir /var/lib/harmonia/receipts/update-latest`. Both lanes are
+// lawful, so the pane reports whichever one ran most recently rather than pinning to
+// the profile-scoped root and calling a stale run current.
+const SUITE_RECEIPT_ROOTS: [&str; 2] = [
+    "/var/lib/harmonia/receipts/homeconsole-update-latest",
+    "/var/lib/harmonia/receipts/update-latest",
+];
+
+fn newest_suite_receipt_root() -> &'static str {
+    let mut best = SUITE_RECEIPT_ROOTS[0];
+    let mut best_mtime = file_mtime_unix(&format!("{best}/run.json"));
+    for root in SUITE_RECEIPT_ROOTS.into_iter().skip(1) {
+        let mtime = file_mtime_unix(&format!("{root}/run.json"));
+        if mtime > best_mtime {
+            best = root;
+            best_mtime = mtime;
+        }
+    }
+    best
 }
 
 fn harmonia_last_run_label(suite_path: &str, check_path: &str) -> String {
@@ -394,6 +418,7 @@ fn harmonia_all_known_modules(enabled: &[String]) -> Vec<String> {
 
 fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
     let all = harmonia_all_known_modules(enabled);
+    let suite_root = newest_suite_receipt_root();
     let module_root = Path::new(HOMECONSOLE_PROFILE)
         .parent()
         .unwrap_or_else(|| Path::new("/etc/harmonia/profiles/homeconsole"))
@@ -402,10 +427,7 @@ fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
         .map(|id| {
             let enabled_flag = enabled.iter().any(|module| module == &id);
             let present = module_root.join(&id).exists();
-            let receipt_path = format!(
-                "/var/lib/harmonia/receipts/homeconsole-update-latest/modules/{}/run.json",
-                id
-            );
+            let receipt_path = format!("{}/modules/{}/run.json", suite_root, id);
             let state = if !enabled_flag {
                 "disabled"
             } else if present {

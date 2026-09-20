@@ -321,7 +321,7 @@
         assert!(home_html.contains("data-bind-show=\"home.priority.visible\""));
         assert!(home_html.contains("data-bind=\"home.updates.readinessRatio\""));
         assert!(home_html.contains("data-bind=\"home.updates.pendingUpdates\""));
-        assert!(!home_html.contains("homeconsole-update-latest/run.json"));
+        assert!(!home_html.contains("update-latest/run.json"));
         assert!(!home_html.contains(">Receipt<"));
         assert!(!home_html.contains("home.session"));
         assert!(!home_html.contains("Game Session"));
@@ -363,7 +363,7 @@
             assert!(home_html.contains(required), "home updates card missing {required}");
         }
         for forbidden in [
-            "homeconsole-update-latest/run.json",
+            "update-latest/run.json",
             "data-label=\"Receipt\"",
             "data-label=\"Pressure\"",
             "data-label=\"Ready\"",
@@ -1750,7 +1750,8 @@
             "updatesPane.receipts.suite",
             "updatesPane.receipts.check",
             "updatesPane.receipts.moduleRoot",
-            "/var/lib/harmonia/receipts/homeconsole-update-latest/run.json",
+            "/var/lib/harmonia/receipts/",
+            "update-latest/run.json",
             "/api/actions/check-updates",
             "/api/actions/update-gui",
             "data-harmonia-module-update",
@@ -1898,7 +1899,7 @@
         assert!(encoded["updatesPane"]["lastRan"].as_str().unwrap_or("").len() > 0);
         assert!(encoded["updatesPane"]["pendingUpdates"].as_str().is_some());
         assert!(encoded["updatesPane"]["modules"].as_array().map(|m| !m.is_empty()).unwrap_or(false));
-        assert!(encoded["updatesPane"]["receipts"]["suite"].as_str().unwrap_or("").contains("homeconsole-update-latest"));
+        assert!(encoded["updatesPane"]["receipts"]["suite"].as_str().unwrap_or("").contains("update-latest"));
 
         let root = api_root_object(&state);
         let root_json = serde_json::to_value(&root).expect("root serializes");
