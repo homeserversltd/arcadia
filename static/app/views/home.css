@@ -23,14 +23,19 @@
 .home-network-chip--warn { color: var(--warn); border-color: color-mix(in srgb, var(--theme-warn) 44%, var(--line)); }
 .home-network-copy-row { margin-top: 8px; }
 .home-network-copy-row .btn { flex: 1 1 0; min-width: 0; }
-.home-network-topology { display: block; flex: 0 1 auto; min-height: 0; width: 100%; max-width: 220px; height: auto; margin: var(--ux-control-gap) auto 0; overflow: visible; }
+.home-network-topology-scroll { flex: 0 1 auto; min-height: 0; max-height: 190px; width: 100%; max-width: 420px; margin: var(--ux-control-gap) auto 0; overflow-x: hidden; overflow-y: auto; }
+.home-network-topology { display: block; width: 100%; max-width: 420px; height: auto; overflow: visible; }
 .home-network-topology-edge { fill: none; stroke-width: 2; stroke-linecap: round; opacity: .85; }
 .home-network-topology-edge--ok { stroke: var(--good); }
 .home-network-topology-edge--warn { stroke: var(--warn); }
 .home-network-topology-node { stroke-width: 2; }
 .home-network-topology-node--ok { fill: var(--good); stroke: var(--good); }
 .home-network-topology-node--warn { fill: var(--warn); stroke: var(--warn); }
+.home-network-topology-node--idle { fill: var(--muted); stroke: var(--muted); opacity: .42; }
 .home-network-topology-label { fill: var(--muted); font-family: inherit; font-size: 12px; font-weight: 800; letter-spacing: .03em; dominant-baseline: middle; }
+.home-network-topology-label--ai { font-size: 11px; }
+.home-network-topology-detail { fill: var(--muted); font-family: inherit; font-size: 9px; dominant-baseline: middle; opacity: .8; }
+.home-network-topology-placeholder { fill: var(--muted); font-family: inherit; font-size: 12px; font-weight: 800; dominant-baseline: middle; opacity: .55; }
 .home-network-topology [data-state="online"].home-network-topology-edge--warn { stroke: var(--good); }
 .home-network-topology [data-state="offline"].home-network-topology-edge--ok { stroke: var(--warn); }
 .home-network-topology [data-state="online"].home-network-topology-node--warn { fill: var(--good); stroke: var(--good); }

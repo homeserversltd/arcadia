@@ -262,10 +262,8 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
             }
             (home_network_topology(
                 status.network.online,
-                status.network.lan_ai_reachable,
                 matches!(status.network.internet_reachable, Some(true)),
-                status.local_ai.parallel_slots,
-                status.local_ai.loaded_model_name.as_deref(),
+                &status.local_ai.detected_ai,
             ))
         }
     }
@@ -273,59 +271,51 @@ fn home_network_card(status: &ConsoleStatus) -> Markup {
 
 fn home_network_topology(
     console_online: bool,
-    ai_online: bool,
     internet_online: bool,
-    parallel_slots: u32,
-    loaded_model_name: Option<&str>,
+    detected_ai: &[crate::DetectedAi],
 ) -> Markup {
     let console_tone = if console_online { "ok" } else { "warn" };
-    let ai_tone = if ai_online { "ok" } else { "warn" };
     let internet_tone = if internet_online { "ok" } else { "warn" };
-    // A single slot keeps the original geometry; multiple slots fan above the label.
-    let ai_nodes = (0..parallel_slots)
-        .map(|slot| {
-            if parallel_slots == 1 {
-                (145.0, 30.0, 16.0, 129.0, 34.0)
-            } else {
-                let angle =
-                    std::f64::consts::PI * (1.0 - f64::from(slot) / f64::from(parallel_slots - 1));
-                let x = 145.0 + 52.0 * angle.cos();
-                let y = 40.0 - 30.0 * angle.sin();
-                let distance = (x - 58.0).hypot(y - 60.0);
-                (
-                    x,
-                    y,
-                    5.0,
-                    x - 5.0 * (x - 58.0) / distance,
-                    y - 5.0 * (y - 60.0) / distance,
-                )
-            }
-        })
-        .collect::<Vec<_>>();
+    let svg_height = (detected_ai.len() as u32 * 36 + 64).max(96);
+    let ai_nodes = detected_ai.iter().enumerate().map(|(index, ai)| {
+        let label = if ai.label.trim().is_empty() { "AI" } else { ai.label.trim() };
+        let detail = if ai.detail.chars().count() > 30 {
+            format!("{}…", ai.detail.chars().take(30).collect::<String>())
+        } else {
+            ai.detail.clone()
+        };
+        (ai, 82.0_f64, 22.0 + index as f64 * 36.0, label, detail)
+    }).collect::<Vec<_>>();
     html! {
-        svg class="home-network-topology" viewBox="0 0 220 120" role="img" aria-labelledby="home-network-topology-title home-network-topology-desc" {
+        div class="home-network-topology-scroll" tabindex="0" aria-label="Home network topology diagram" {
+        svg class="home-network-topology" viewBox=(format!("0 0 420 {svg_height}")) height=(svg_height) role="img" aria-labelledby="home-network-topology-title home-network-topology-desc" {
             title id="home-network-topology-title" { "Home network topology" }
             desc id="home-network-topology-desc" { "Console connections to local AI and the Internet." }
-            @for &(_, _, _, edge_x, edge_y) in &ai_nodes {
-                line class=(format!("home-network-topology-edge home-network-topology-edge--{ai_tone}")) data-bind-class="home.network.aiReachability" x1="58" y1="60" x2=(edge_x) y2=(edge_y) {}
+            @if detected_ai.is_empty() {
+                circle class="home-network-topology-node home-network-topology-node--idle" cx="82" cy="48" r="7" {}
+                text class="home-network-topology-placeholder" x="100" y="48" { "No AI detected" }
             }
-            line class=(format!("home-network-topology-edge home-network-topology-edge--{internet_tone}")) data-bind-class="home.network.internetReachability" x1="58" y1="60" x2="129" y2="86" {}
-            circle class=(format!("home-network-topology-node home-network-topology-node--{console_tone}")) data-bind-class="home.network.consoleReachability" cx="42" cy="60" r="16" {}
-            @for &(x, y, radius, _, _) in &ai_nodes {
-                circle class=(format!("home-network-topology-node home-network-topology-node--{ai_tone}")) data-bind-class="home.network.aiReachability" cx=(x) cy=(y) r=(radius) {}
+            @for (ai, x, y, label, detail) in &ai_nodes {
+                line class=(format!("home-network-topology-edge home-network-topology-edge--{}", if ai.alive { "ok" } else { "warn" })) x1="40" y1="20" x2="74" y2=(y) {}
             }
-            circle class=(format!("home-network-topology-node home-network-topology-node--{internet_tone}")) data-bind-class="home.network.internetReachability" cx="145" cy="90" r="16" {}
-            text class="home-network-topology-label" x="42" y="90" text-anchor="middle" { "Console" }
-            defs {
-                clipPath id="home-network-ai-label-clip" {
-                    rect x="78" y="46" width="138" height="16" {}
+            line class=(format!("home-network-topology-edge home-network-topology-edge--{internet_tone}")) data-bind-class="home.network.internetReachability" x1="24" y1="20" x2="24" y2=(svg_height - 24) {}
+            circle class=(format!("home-network-topology-node home-network-topology-node--{console_tone}")) data-bind-class="home.network.consoleReachability" cx="24" cy="20" r="12" {}
+            circle class=(format!("home-network-topology-node home-network-topology-node--{internet_tone}")) data-bind-class="home.network.internetReachability" cx="24" cy=(svg_height - 24) r="12" {}
+            text class="home-network-topology-label" x="42" y="8" { "Console" }
+            text class="home-network-topology-label" x="42" y=(svg_height - 24) { "Internet" }
+            @for (ai, x, y, label, detail) in &ai_nodes {
+                @let tone = if ai.alive { "ok" } else { "warn" };
+                circle class=(format!("home-network-topology-node home-network-topology-node--{tone}")) cx=(x) cy=(y) r="7" {}
+                text class="home-network-topology-label home-network-topology-label--ai" x="98" y=(y - 3.0) {
+                    title { (label) }
+                    (label)
+                }
+                text class="home-network-topology-detail" x="98" y=(y + 10.0) {
+                    title { (ai.detail) }
+                    (detail)
                 }
             }
-            text class="home-network-topology-label" x="145" y="54" text-anchor="middle" clip-path="url(#home-network-ai-label-clip)" {
-                title { (loaded_model_name.unwrap_or("AI")) }
-                (loaded_model_name.unwrap_or("AI"))
-            }
-            text class="home-network-topology-label" x="145" y="114" text-anchor="middle" { "Internet" }
+        }
         }
     }
 }

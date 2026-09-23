@@ -291,7 +291,175 @@ fn repo_id_from_path(path: &Path) -> Option<String> {
     Some(repo)
 }
 
+const AI_NODE_PORTS: &[u16] = &[7777, 11434, 1234, 8188, 7391, 8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089];
+
+fn detect_local_ai_nodes() -> Vec<DetectedAi> {
+    let self_pid = std::process::id();
+    let listening_sockets = proc_listening_sockets();
+    let gpu_compute_processes = nvidia_compute_processes();
+    let mut nodes_by_pid = BTreeMap::new();
+    let Ok(processes) = fs::read_dir("/proc") else { return Vec::new() };
+
+    for entry in processes.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|name| name.parse::<u32>().ok()) else { continue };
+        if pid == self_pid { continue; }
+        let proc_path = entry.path();
+        let comm = fs::read_to_string(proc_path.join("comm")).unwrap_or_default();
+        let args = fs::read(proc_path.join("cmdline")).unwrap_or_default()
+            .split(|byte| *byte == 0)
+            .filter(|part| !part.is_empty())
+            .map(|part| String::from_utf8_lossy(part).into_owned())
+            .collect::<Vec<_>>();
+        let binary = ai_process_binary(comm.trim(), &args);
+        let owned_inodes = proc_owned_socket_inodes(&proc_path);
+        let owned_ports = owned_inodes.iter()
+            .filter_map(|inode| listening_sockets.get(inode).copied())
+            .collect::<BTreeSet<_>>();
+        let candidate_port = owned_ports.iter().copied()
+            .find(|port| AI_NODE_PORTS.contains(port))
+            .or_else(|| owned_ports.iter().next().copied());
+        let gpu_process_name = gpu_compute_processes.get(&pid).map(String::as_str);
+        let gpu_owner = gpu_process_name.is_some() || proc_holds_rocm_kfd(&proc_path);
+        let socket_owner = owned_ports.iter().any(|port| AI_NODE_PORTS.contains(port));
+        if binary.is_empty() && !socket_owner && !gpu_owner { continue; }
+
+        let (kind, label, mut detail) = if !binary.is_empty() {
+            if is_ai_agent_name(binary) {
+                ("agent", binary.to_string(), "AI agent".to_string())
+            } else {
+                let parsed = parse_resident_ai_engine(&safe_engine_parser_input(&args));
+                let label = parsed.function_label;
+                let detail = parsed.model_filename.unwrap_or_else(|| binary.to_string());
+                ("engine", label, detail)
+            }
+        } else {
+            let owner = gpu_process_name
+                .map(safe_process_comm)
+                .unwrap_or_else(|| safe_process_comm(comm.trim()));
+            let source = if socket_owner { "Socket owner" } else { "GPU owner" };
+            let label = format!("{source}: {owner}");
+            ("engine", label.clone(), label)
+        };
+        if let Some(port) = candidate_port {
+            detail = format!("{detail}:{port}");
+        }
+        nodes_by_pid.insert(pid, DetectedAi {
+            kind: kind.to_string(), label, detail, port: candidate_port,
+            alive: proc_path.exists(),
+        });
+    }
+    nodes_by_pid.into_values().collect()
+}
+
+fn ai_process_binary<'a>(comm: &'a str, args: &'a [String]) -> &'a str {
+    let comm_name = Path::new(comm).file_name().and_then(|name| name.to_str()).unwrap_or(comm);
+    if is_ai_process_candidate(comm_name) { return comm_name; }
+    for arg in args.iter().take_while(|arg| !arg.starts_with('-')) {
+        let basename = Path::new(arg).file_name().and_then(|name| name.to_str()).unwrap_or(arg);
+        if is_ai_process_candidate(basename) { return basename; }
+    }
+    ""
+}
+
+fn is_ai_process_candidate(name: &str) -> bool {
+    is_ai_process_name(name) || Path::new(name).file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(is_ai_process_name)
+}
+
+fn safe_engine_parser_input(args: &[String]) -> String {
+    let mut safe_parts = Vec::new();
+    for (index, arg) in args.iter().enumerate() {
+        if matches!(arg.as_str(), "--reranking" | "--embedding") {
+            safe_parts.push(arg.as_str());
+            continue;
+        }
+        let model_value = arg.strip_prefix("--model=")
+            .or_else(|| arg.strip_prefix("--model-path="))
+            .or_else(|| arg.strip_prefix("-m="))
+            .or_else(|| matches!(arg.as_str(), "--model" | "--model-path" | "-m")
+                .then(|| args.get(index + 1).map(String::as_str)).flatten());
+        if let Some(value) = model_value {
+            let basename = Path::new(value).file_name().and_then(|name| name.to_str()).unwrap_or(value);
+            let lower = basename.to_ascii_lowercase();
+            if lower.ends_with(".gguf") || lower.ends_with(".safetensors") || lower.ends_with(".onnx") {
+                safe_parts.push(basename);
+            }
+        }
+    }
+    safe_parts.join(" ")
+}
+
+fn safe_process_comm(comm: &str) -> String {
+    let name = Path::new(comm).file_name().and_then(|name| name.to_str()).unwrap_or(comm);
+    let safe = name.chars().filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')).take(40).collect::<String>();
+    if safe.is_empty() { "Unknown process".to_string() } else { safe }
+}
+
+fn is_ai_process_name(name: &str) -> bool {
+    matches!(name.to_ascii_lowercase().as_str(),
+        "llama-server" | "llama-cli" | "ollama" | "vllm" | "lmstudio" | "koboldcpp" |
+        "text-generation" | "tabby" | "localai" | "comfyui" | "whisper" | "hermes" |
+        "claude" | "codex" | "grok" | "gemini" | "aider" | "opencode" | "unio")
+}
+
+fn is_ai_agent_name(name: &str) -> bool {
+    matches!(name.to_ascii_lowercase().as_str(),
+        "hermes" | "claude" | "codex" | "grok" | "gemini" | "aider" | "opencode" | "unio")
+}
+
+fn proc_listening_sockets() -> HashMap<String, u16> {
+    let mut sockets = HashMap::new();
+    for path in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(contents) = fs::read_to_string(path) else { continue };
+        for line in contents.lines().skip(1) {
+            let fields = line.split_whitespace().collect::<Vec<_>>();
+            if fields.len() <= 9 || fields[3] != "0A" { continue; }
+            let Some(port) = fields[1].rsplit(':').next().and_then(|value| u16::from_str_radix(value, 16).ok()) else { continue };
+            sockets.insert(fields[9].to_string(), port);
+        }
+    }
+    sockets
+}
+
+fn proc_owned_socket_inodes(proc_path: &Path) -> BTreeSet<String> {
+    let mut inodes = BTreeSet::new();
+    let Ok(fds) = fs::read_dir(proc_path.join("fd")) else { return inodes };
+    for fd in fds.flatten() {
+        let Ok(target) = fs::read_link(fd.path()) else { continue };
+        let target = target.to_string_lossy();
+        if let Some(inode) = target.strip_prefix("socket:[").and_then(|target| target.strip_suffix(']')) {
+            inodes.insert(inode.to_string());
+        }
+    }
+    inodes
+}
+
+fn nvidia_compute_processes() -> HashMap<u32, String> {
+    command_stdout(
+        "nvidia-smi",
+        &["--query-compute-apps=pid,process_name", "--format=csv,noheader"],
+    )
+    .into_iter()
+    .flat_map(|output| output.lines().map(str::to_string).collect::<Vec<_>>())
+    .filter_map(|line| {
+        let (pid, process_name) = line.split_once(',')?;
+        Some((pid.trim().parse::<u32>().ok()?, process_name.trim().to_string()))
+    })
+    .collect()
+}
+
+fn proc_holds_rocm_kfd(proc_path: &Path) -> bool {
+    let Ok(fds) = fs::read_dir(proc_path.join("fd")) else { return false };
+    fds.flatten().any(|fd| {
+        fs::read_link(fd.path())
+            .ok()
+            .is_some_and(|target| target == Path::new("/dev/kfd"))
+    })
+}
+
 fn local_ai_status() -> LocalAiStatus {
+    let detected_ai = detect_local_ai_nodes();
     let mut available_models = local_ai_available_models();
     let resident_engines = command_stdout("pgrep", &["-af", "llama|ollama|vllm"])
         .unwrap_or_default()
@@ -350,7 +518,7 @@ fn local_ai_status() -> LocalAiStatus {
     let lan_inference_enabled = cfg.lan_enabled && tcp_port_listening(cfg.lan_port);
     LocalAiStatus {
         load_state,
-        parallel_slots: cfg.concurrency,
+        detected_ai,
         selected_model_id: selected.map(|model| model.id.clone()),
         selected_model_name: selected.map(|model| model.name.clone()),
         loaded_model_id: loaded_model.as_ref().map(|name| model_id(name)),

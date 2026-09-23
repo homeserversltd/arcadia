@@ -122,9 +122,19 @@ struct SyncManifestEntry {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectedAi {
+    pub kind: String,
+    pub label: String,
+    pub detail: String,
+    pub port: Option<u16>,
+    pub alive: bool,
+}
+
+#[derive(Clone, Serialize)]
 pub struct LocalAiStatus {
     pub load_state: String,
-    pub parallel_slots: u32,
+    pub detected_ai: Vec<DetectedAi>,
     pub selected_model_id: Option<String>,
     pub selected_model_name: Option<String>,
     pub loaded_model_id: Option<String>,
