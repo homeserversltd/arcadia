@@ -157,7 +157,6 @@ steps:
     commands:
       - |
         set -eu
-        apk add --no-cache git
         python3 - <<'PY'
         import urllib.request
 
@@ -168,7 +167,6 @@ steps:
         PY
         test -s /tmp/house-ca.pem
         export SSL_CERT_FILE=/tmp/house-ca.pem
-        export GIT_SSL_CAINFO=/tmp/house-ca.pem
         python3 ci/release_publish.py --retain
 
   - name: ci-outcome-arcadia

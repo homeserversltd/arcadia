@@ -220,47 +220,12 @@ def retention_plan(token, current_sha):
     return {"all_count":len(releases), "eligible_count":len(eligible), "kept":keep,
             "older":older, "current":protected, "boundary_tie_ids":boundary_ties}
 
-def tag_ref_exists(token, tag):
+def require_tag_ref_absent(token, tag):
     url = f"{API_ROOT}/repos/{OWNER}/{REPO}/git/refs/tags/{urllib.parse.quote(tag, safe='')}"
-    status, raw = request("GET", url, token)
-    if status == 404:
-        # The Git read is authoritative for the exact ref when the API misses it.
-        return git_ref_exists(tag)
-    if status != 200: raise RuntimeError(f"GET tag ref {tag} returned HTTP {status}")
-    refs = decode(raw, f"tag ref {tag}")
-    if not isinstance(refs, list):
-        raise RuntimeError(f"tag ref readback for {tag} was not a JSON array")
-    expected = f"refs/tags/{tag}"
-    exact_matches = 0
-    for ref in refs:
-        if not isinstance(ref, dict) or not isinstance(ref.get("ref"), str):
-            raise RuntimeError(f"tag ref readback for {tag} contains a malformed entry")
-        # The endpoint performs prefix matching; neighboring names are not the
-        # requested ref and must not be treated as an exact match.
-        if ref["ref"] == expected:
-            exact_matches += 1
-    if exact_matches > 1:
-        raise RuntimeError(f"tag ref readback for {tag} contains duplicate exact refs")
-    return exact_matches == 1
-
-def git_authenticated(args):
-    import subprocess, tempfile
-    askpass = "#!/bin/sh\ncase \"$1\" in *sername*) printf '%s\\n' token ;; *) printf '%s\\n' \"$FORGEJO_TOKEN\" ;; esac\n"
-    with tempfile.TemporaryDirectory(prefix="arcadia-retention-") as directory:
-        askpass_path = os.path.join(directory, "askpass")
-        with open(askpass_path, "w", encoding="utf-8") as script: script.write(askpass)
-        os.chmod(askpass_path, 0o700)
-        env = dict(os.environ, GIT_ASKPASS=askpass_path, GIT_TERMINAL_PROMPT="0")
-        return subprocess.run(args, check=False, capture_output=True, text=True, env=env)
-
-def git_ref_exists(tag):
-    result = git_authenticated(["git", "ls-remote", "https://git.home.arpa/HOMESERVERSLTD/arcadia.git", f"refs/tags/{tag}"])
-    if result.returncode: raise RuntimeError(f"git ls-remote failed for {tag}: {result.stderr.strip()}")
-    return any(line.split("\t", 1)[-1] == f"refs/tags/{tag}" for line in result.stdout.splitlines())
-
-def remove_git_ref(tag):
-    result = git_authenticated(["git", "-c", "credential.helper=", "push", "https://git.home.arpa/HOMESERVERSLTD/arcadia.git", f":refs/tags/{tag}"])
-    if result.returncode: raise RuntimeError(f"governed git tag-ref removal failed for {tag}: {result.stderr.strip()}")
+    status, _ = request("GET", url, token)
+    if status == 404: return
+    if status == 200: raise RuntimeError(f"tag ref {tag} survives deletion (HTTP 200)")
+    raise RuntimeError(f"GET tag ref {tag} returned HTTP {status}")
 
 def retention_execute(token, current_sha):
     receipt = {"status":"failed", "keep_limit":RELEASE_RETENTION, "kept_count":0,
@@ -294,15 +259,8 @@ def retention_execute(token, current_sha):
             receipt["deleted_ids"].append(old["id"])
             tag_url = f"{API_ROOT}/repos/{OWNER}/{REPO}/tags/{urllib.parse.quote(old['tag'], safe='')}"
             tag_status, _ = request("DELETE", tag_url, token)
-            if tag_status not in (200, 204, 404): raise RuntimeError(f"DELETE tag {old['tag']} returned HTTP {tag_status}")
-            api_ref_exists = tag_ref_exists(token, old["tag"])
-            remote_ref_exists = git_ref_exists(old["tag"])
-            if api_ref_exists != remote_ref_exists and api_ref_exists:
-                raise RuntimeError(f"tag ref {old['tag']} API/Git readbacks disagree")
-            if remote_ref_exists:
-                remove_git_ref(old["tag"])
-            if tag_ref_exists(token, old["tag"]) or git_ref_exists(old["tag"]):
-                raise RuntimeError(f"tag ref {old['tag']} persists after deletion")
+            if tag_status not in (204, 404): raise RuntimeError(f"DELETE tag {old['tag']} returned HTTP {tag_status}")
+            require_tag_ref_absent(token, old["tag"])
             receipt["deleted_tags"].append(old["tag"])
         receipt["status"] = "complete"
     except SystemExit as exc:
