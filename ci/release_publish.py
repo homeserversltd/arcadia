@@ -223,13 +223,14 @@ def retention_plan(token, current_sha):
 def require_tag_ref_absent(token, tag):
     url = f"{API_ROOT}/repos/{OWNER}/{REPO}/git/refs/tags/{urllib.parse.quote(tag, safe='')}"
     status, _ = request("GET", url, token)
-    if status == 404: return
-    if status == 200: raise RuntimeError(f"tag ref {tag} survives deletion (HTTP 200)")
+    if status == 404: return True
+    if status == 200: return False
     raise RuntimeError(f"GET tag ref {tag} returned HTTP {status}")
 
 def retention_execute(token, current_sha):
     receipt = {"status":"failed", "keep_limit":RELEASE_RETENTION, "kept_count":0,
-               "deleted_ids":[], "deleted_tags":[], "protected_current_id":None}
+               "deleted_ids":[], "deleted_tags":[], "remaining_tag_refs":[],
+               "protected_current_id":None}
     try:
         plan = retention_plan(token, current_sha)
         current = plan["current"]
@@ -260,8 +261,10 @@ def retention_execute(token, current_sha):
             tag_url = f"{API_ROOT}/repos/{OWNER}/{REPO}/tags/{urllib.parse.quote(old['tag'], safe='')}"
             tag_status, _ = request("DELETE", tag_url, token)
             if tag_status not in (204, 404): raise RuntimeError(f"DELETE tag {old['tag']} returned HTTP {tag_status}")
-            require_tag_ref_absent(token, old["tag"])
-            receipt["deleted_tags"].append(old["tag"])
+            if require_tag_ref_absent(token, old["tag"]):
+                receipt["deleted_tags"].append(old["tag"])
+            else:
+                receipt["remaining_tag_refs"].append(old["tag"])
         receipt["status"] = "complete"
     except SystemExit as exc:
         # Shared fail() uses SystemExit for fatal API/JSON checks. Retention must
