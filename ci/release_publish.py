@@ -8,6 +8,8 @@ RELEASES = f"{API_ROOT}/repos/{OWNER}/{REPO}/releases"
 RELEASE_FLAG = "release.flag"
 def fail(message):
     print(f"release_publish: {message}", file=sys.stderr); raise SystemExit(1)
+def release_tag(sha):
+    return f"sha-{sha}"
 def request(method, url, token, body=None, content_type=None, accept=None):
     headers = {"Authorization": f"token {token}", "User-Agent": "arcadia-woodpecker-release"}
     if content_type: headers["Content-Type"] = content_type
@@ -43,13 +45,19 @@ def expected_assets(release, binary_name, sidecar_name):
         if name not in assets: fail(f"release is missing expected asset {name}")
     return assets
 
-def verify_existing(release, token, binary_name, sidecar_name, digest, sidecar):
+def verify_release_identity(release, sha, tag):
+    if release.get("target_commitish") != sha: fail("existing release target_commitish conflicts with source SHA")
+    if release.get("tag_name") != tag: fail("existing release tag_name conflicts with derived tag")
+
+def verify_existing(release, token, binary_name, sidecar_name, digest, sidecar, sha, tag):
+    verify_release_identity(release, sha, tag)
     assets = expected_assets(release, binary_name, sidecar_name)
     binary = download(assets[binary_name], token, binary_name)
     if hashlib.sha256(binary).hexdigest() != digest: fail(f"downloaded {binary_name} has a conflicting digest")
     if download(assets[sidecar_name], token, sidecar_name) != sidecar: fail(f"downloaded {sidecar_name} has conflicting contents")
 
-def verify_fresh(release, token, binary_name, sidecar_name, digest, sidecar):
+def verify_fresh(release, token, binary_name, sidecar_name, digest, sidecar, sha, tag):
+    verify_release_identity(release, sha, tag)
     assets = expected_assets(release, binary_name, sidecar_name)
     if hashlib.sha256(download(assets[binary_name], token, binary_name)).hexdigest() != digest: fail(f"downloaded {binary_name} has a conflicting digest")
     if download(assets[sidecar_name], token, sidecar_name) != sidecar: fail(f"downloaded {sidecar_name} has conflicting contents")
@@ -76,7 +84,8 @@ def valid_utc_flagged_at(value):
         fail("existing release.flag flagged_at must be UTC")
     return value
 
-def flag_from_release(release, token, expected, description):
+def flag_from_release(release, token, expected, description, sha, tag):
+    verify_release_identity(release, sha, tag)
     assets = assets_of(release)
     asset = assets.get(RELEASE_FLAG)
     if asset is None: fail(f"{description} has no {RELEASE_FLAG} asset")
@@ -91,11 +100,12 @@ def flag_release(token, sha, pipeline_url):
     with open(binary_path, "rb") as binary_file: binary = binary_file.read()
     digest = hashlib.sha256(binary).hexdigest()
     sidecar = f"{digest}  {binary_name}\n".encode("ascii")
-    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(sha, safe='')}"
+    tag = release_tag(sha)
+    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(tag, safe='')}"
     status, raw = request("GET", tag_url, token)
     if status != 200: fail(f"GET release tag returned HTTP {status}")
     release = decode(raw, "existing release")
-    verify_existing(release, token, binary_name, sidecar_name, digest, sidecar)
+    verify_existing(release, token, binary_name, sidecar_name, digest, sidecar, sha, tag)
     assets = assets_of(release)
     if RELEASE_FLAG in assets:
         existing = download(assets[RELEASE_FLAG], token, RELEASE_FLAG)
@@ -104,7 +114,7 @@ def flag_release(token, sha, pipeline_url):
         flagged_at = valid_utc_flagged_at(existing_obj.get("flagged_at"))
         expected = canonical_flag_bytes(sha, digest, flagged_at, pipeline_url)
         if existing != expected: fail("existing release.flag has conflicting contents")
-        print(json.dumps({"status":"noop-flag-identical", "tag":sha, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":"))); return
+        print(json.dumps({"status":"noop-flag-identical", "tag":tag, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":"))); return
     flagged_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     expected = canonical_flag_bytes(sha, digest, flagged_at, pipeline_url)
     release_id = release.get("id")
@@ -115,14 +125,14 @@ def flag_release(token, sha, pipeline_url):
         reread_status, reread_raw = request("GET", tag_url, token)
         if reread_status != 200: fail(f"release flag collision reread returned HTTP {reread_status}")
         reread = decode(reread_raw, "release flag collision reread")
-        flag_from_release(reread, token, expected, "release flag collision reread")
-        print(json.dumps({"status":"noop-flag-identical", "tag":sha, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":"))); return
+        flag_from_release(reread, token, expected, "release flag collision reread", sha, tag)
+        print(json.dumps({"status":"noop-flag-identical", "tag":tag, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":"))); return
     if upload_status not in (200, 201): fail(f"upload of {RELEASE_FLAG} returned HTTP {upload_status}")
     reread_status, reread_raw = request("GET", tag_url, token)
     if reread_status != 200: fail(f"reread of release returned HTTP {reread_status}")
     reread = decode(reread_raw, "release reread")
-    flag_from_release(reread, token, expected, "uploaded release.flag")
-    print(json.dumps({"status":"flagged", "tag":sha, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":")))
+    flag_from_release(reread, token, expected, "uploaded release.flag", sha, tag)
+    print(json.dumps({"status":"flagged", "tag":tag, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":")))
 
 def main():
     flag_mode = "--flag" in sys.argv[1:]
@@ -154,19 +164,20 @@ def main():
     with open(binary_path, "rb") as binary_file: binary = binary_file.read()
     digest = hashlib.sha256(binary).hexdigest(); sidecar = f"{digest}  arcadia-x86_64\n".encode("ascii")
     name = f"arcadia {sha[:8]}"
-    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(sha, safe='')}"; status, raw = request("GET", tag_url, token)
+    tag = release_tag(sha)
+    tag_url = f"{RELEASES}/tags/{urllib.parse.quote(tag, safe='')}"; status, raw = request("GET", tag_url, token)
     if status == 200:
-        verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name, digest, sidecar)
-        print(json.dumps({"status":"noop-identical", "tag":sha, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":"))); return
+        verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name, digest, sidecar, sha, tag)
+        print(json.dumps({"status":"noop-identical", "tag":tag, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":"))); return
     if status != 404: fail(f"GET release tag returned HTTP {status}")
-    payload = {"tag_name":sha, "name":name, "target_commitish":sha, "draft":False, "prerelease":False}; status, raw = request("POST", RELEASES, token, payload)
+    payload = {"tag_name":tag, "name":name, "target_commitish":sha, "draft":False, "prerelease":False}; status, raw = request("POST", RELEASES, token, payload)
     if status == 409:
         status, raw = request("GET", tag_url, token)
         if status != 200: fail(f"release collision reread returned HTTP {status}")
-        verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name, digest, sidecar)
-        print(json.dumps({"status":"noop-identical", "tag":sha, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":"))); return
+        verify_existing(decode(raw, "existing release"), token, binary_name, sidecar_name, digest, sidecar, sha, tag)
+        print(json.dumps({"status":"noop-identical", "tag":tag, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":"))); return
     if status not in (200, 201): fail(f"release creation returned HTTP {status}")
-    release = decode(raw, "release creation"); release_id = release.get("id")
+    release = decode(raw, "release creation"); verify_release_identity(release, sha, tag); release_id = release.get("id")
     if not isinstance(release_id, int): fail("created release has no numeric id")
     if assets_of(release): fail("new release unexpectedly contains assets")
     upload_url = f"{RELEASES}/{release_id}/assets"
@@ -175,6 +186,6 @@ def main():
         if status not in (200, 201): fail(f"upload of {asset_name} returned HTTP {status}")
     status, raw = request("GET", tag_url, token)
     if status != 200: fail(f"reread of release returned HTTP {status}")
-    verify_fresh(decode(raw, "release reread"), token, binary_name, sidecar_name, digest, sidecar)
-    print(json.dumps({"status":"published", "tag":sha, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":")))
+    verify_fresh(decode(raw, "release reread"), token, binary_name, sidecar_name, digest, sidecar, sha, tag)
+    print(json.dumps({"status":"published", "tag":tag, "name":name, "assets":[binary_name, sidecar_name], "sha256":digest, "cargo_version":version}, separators=(",", ":")))
 if __name__ == "__main__": main()
