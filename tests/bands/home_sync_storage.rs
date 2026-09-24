@@ -2338,15 +2338,15 @@
             }
         };
 
-        // Apply (and an absent mode) treats only failed or non-converged receipts as pending.
+        // Apply (and an absent mode) treats only failed receipts as pending.
         set_mode(Some("apply"));
-        write("ready.json", r#"{"changed":true,"ok":true,"final_state":"converged","diff_decision":"replace"}"#);
+        write("ready.json", r#"{"changed":true,"ok":true,"final_state":"current","diff_decision":"replace"}"#);
         assert!(!module_seeking_update(&root, "fixture"));
-        write("failed.json", r#"{"changed":false,"ok":false,"final_state":"converged"}"#);
+        write("failed.json", r#"{"changed":false,"ok":false,"final_state":"blocked"}"#);
         assert!(module_seeking_update(&root, "fixture"));
         std::fs::remove_file(module_dir.join("failed.json")).unwrap();
         write("blocked.json", r#"{"changed":true,"ok":true,"final_state":"blocked"}"#);
-        assert!(module_seeking_update(&root, "fixture"));
+        assert!(!module_seeking_update(&root, "fixture"));
         std::fs::remove_file(module_dir.join("blocked.json")).unwrap();
         set_mode(None);
         assert!(!module_seeking_update(&root, "fixture"));

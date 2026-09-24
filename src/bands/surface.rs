@@ -302,8 +302,6 @@ fn module_seeking_update(suite_root: &Path, module_id: &str) -> bool {
         };
         if apply_mode {
             receipt_bool(&receipt, "ok") == Some(false)
-                || receipt_string(&receipt, "final_state")
-                    .is_some_and(|final_state| final_state != "converged")
         } else {
             receipt_bool(&receipt, "changed") == Some(true)
                 || receipt_bool(&receipt, "ok") == Some(false)
