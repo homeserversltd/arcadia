@@ -172,15 +172,15 @@ fn home_load_card() -> Markup {
                 }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
-                (load_chip_bound("CPU temp", "cpu", "home.telemetry.cpu.temperatureCelsius", "temperature"))
-                (load_chip_bound("CPU usage", "cpu-usage", "home.telemetry.cpu.usagePercent", "percent"))
-                (load_chip_bound("I/O", "io", "home.telemetry.io.pressureAvg10", "pressure"))
-                (load_chip_bound("GPU", "gpu", "home.telemetry.gpu.utilizationPercent", "percent"))
-                (load_chip_bound("GPU temp", "gpu-temperature", "home.telemetry.gpu.temperatureCelsius", "temperature"))
-                (load_chip_bound("Storage temp", "storage-temperature", "home.telemetry.temperature.storage", "temperature"))
-                (load_chip_bound("Fan RPM", "fan", "home.telemetry.fans.0.rpm", "text"))
-                (load_chip_bound("Read/s", "read", "home.telemetry.io.disk.readBytesPerSec", "transfer-rate"))
-                (load_chip_bound("Write/s", "write", "home.telemetry.io.disk.writeBytesPerSec", "transfer-rate"))
+                (load_chip_bound("CPU temp", "cpu", "home.telemetry.cpu.temperatureCelsius", "temperature", Some("gte:82")))
+                (load_chip_bound("CPU usage", "cpu-usage", "home.telemetry.cpu.usagePercent", "percent", None))
+                (load_chip_bound("I/O", "io", "home.telemetry.io.pressureAvg10", "pressure", Some("gte:10")))
+                (load_chip_bound("GPU", "gpu", "home.telemetry.gpu.utilizationPercent", "percent", None))
+                (load_chip_bound("GPU temp", "gpu-temperature", "home.telemetry.gpu.temperatureCelsius", "temperature", None))
+                (load_chip_bound("Storage temp", "storage-temperature", "home.telemetry.temperature.storage", "temperature", None))
+                (load_chip_bound("Fan RPM", "fan", "home.telemetry.fans.0.rpm", "text", None))
+                (load_chip_bound("Read/s", "read", "home.telemetry.io.disk.readBytesPerSec", "transfer-rate", Some("gt:0")))
+                (load_chip_bound("Write/s", "write", "home.telemetry.io.disk.writeBytesPerSec", "transfer-rate", Some("gt:0")))
             }
         }
     }
@@ -195,9 +195,9 @@ fn load_readout(label: &str, key: &str, bind: &str) -> Markup {
     }
 }
 
-fn load_chip_bound(label: &str, key: &str, bind: &str, format: &str) -> Markup {
+fn load_chip_bound(label: &str, key: &str, bind: &str, format: &str, state_rule: Option<&str>) -> Markup {
     html! {
-        div class="load-chip load-chip--idle" data-load-chip=(key) data-bind-class=(bind) {
+        div class="load-chip" data-state="idle" data-load-chip=(key) data-bind-state=(format!("{bind}:{}", state_rule.unwrap_or("unclassified"))) {
             em { (label) }
             strong data-load-chip-value=(key) data-bind=(bind) data-bind-format=(format) { "—" }
         }

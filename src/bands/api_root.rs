@@ -79,7 +79,11 @@ impl ArcadiaLivingMachine {
             snapshot.document.controllers.live_input = input.clone();
             snapshot.document.status.controllers.live_input = input;
             snapshot.document_generation = if document_changed {
-                current.document_generation.saturating_add(1)
+                api_living_document_generation(
+                    current.document_generation,
+                    &current.document,
+                    &snapshot.document,
+                )
             } else {
                 current.document_generation
             };
@@ -100,6 +104,26 @@ impl ArcadiaLivingMachine {
         next.document.status.controllers.live_input = input;
         next.document_generation = current.document_generation.saturating_add(1);
         *guard = Some(Arc::new(next));
+    }
+}
+
+fn api_living_document_changed<T: Serialize>(current: &T, next: &T) -> bool {
+    let Ok(mut current) = serde_json::to_value(current) else { return true; };
+    let Ok(mut next) = serde_json::to_value(next) else { return true; };
+    if let Some(object) = current.as_object_mut() {
+        object.remove("generatedAtUnix");
+    }
+    if let Some(object) = next.as_object_mut() {
+        object.remove("generatedAtUnix");
+    }
+    current != next
+}
+
+fn api_living_document_generation<T: Serialize>(generation: u64, current: &T, next: &T) -> u64 {
+    if api_living_document_changed(current, next) {
+        generation.saturating_add(1)
+    } else {
+        generation
     }
 }
 
@@ -2234,5 +2258,45 @@ mod deferred_warmup_tests {
         assert!(machine.fast_facts_refresh_due(false));
         assert!(machine.expensive_scan_due());
         assert!(!machine.fast_facts_refresh_due(false));
+    }
+
+
+    #[test]
+    fn living_publish_pokes_only_for_storage_document_change() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://arcadia.test".to_string(),
+            product: "Arcadia test".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
+        };
+        refresh_living_state(&state);
+
+        let mut last_generation = state.living.snapshot().document_generation;
+        let mut pokes = 0;
+        for _ in 0..2 {
+            let mut next = (*state.living.snapshot()).clone();
+            next.document.generated_at_unix = next.document.generated_at_unix.saturating_add(1);
+            state.living.publish(Arc::new(next), false, true);
+
+            let generation = state.living.snapshot().document_generation;
+            let poke = last_generation != generation;
+            assert!(!poke, "timestamp-only full publication must stay quiet");
+            pokes += usize::from(poke);
+            last_generation = generation;
+        }
+        assert_eq!(pokes, 0, "two timestamp-only publications must emit no poke");
+
+        let mut next = (*state.living.snapshot()).clone();
+        next.document.storage.used_bytes = next.document.storage.used_bytes.saturating_add(1);
+        state.living.publish(Arc::new(next), false, true);
+
+        let generation = state.living.snapshot().document_generation;
+        assert_eq!(generation, last_generation.saturating_add(1));
+        let poke = last_generation != generation;
+        assert!(poke, "storage change must trigger a generation-driven poke");
+        pokes += usize::from(poke);
+        last_generation = generation;
+        assert_eq!(pokes, 1, "one storage change must emit exactly one poke");
+        assert!(last_generation == generation);
     }
 }

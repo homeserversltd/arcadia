@@ -263,6 +263,10 @@
             "node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '')",
             "[data-bind-class]",
             "node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)))",
+            "[data-bind-state]",
+            "node.setAttribute('data-state', projected)",
+            "function overlayTouches(path, patch)",
+            "(_node, path) => overlayTouches(path, nextOverlay)",
             "[data-bind-show]",
             "node.hidden = !visible",
             "[data-bind-each]",
@@ -283,6 +287,7 @@
 
         for forbidden in [
             "projector-pane-knowledge",
+            "if (!lastDocument) lastDocument = {}",
             "data-view-panel=\"home\"].is-active') && ArcadiaProjector",
             "view-home",
             "view-network",
@@ -290,6 +295,94 @@
         ] {
             assert!(!APP_JS.contains(forbidden), "projector leaked pane knowledge: {forbidden}");
         }
+    }
+
+    #[test]
+    fn pre_document_overlay_is_noop_except_for_load_card_telemetry() {
+        let start = APP_JS.find("const ArcadiaProjector = (() =>").expect("projector start");
+        let end = APP_JS.find("window.ArcadiaProjector = ArcadiaProjector;").expect("projector export")
+            + "window.ArcadiaProjector = ArcadiaProjector;".len();
+        let projector = &APP_JS[start..end];
+        let script = format!(r#"
+const nodes = [];
+function select(nodes, selector) {{
+  const key = selector.match(/^\[data-([a-z-]+)\]$/)?.[1].replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  return key ? nodes.filter((node) => Object.prototype.hasOwnProperty.call(node.dataset, key)) : [];
+}}
+const loadCard = {{ nodes: [], querySelectorAll(selector) {{ return select(this.nodes, selector); }} }};
+const document = {{
+  querySelector(selector) {{ return selector === '[data-load-card]' ? loadCard : null; }},
+  querySelectorAll(selector) {{ return select(nodes, selector); }}
+}};
+const window = {{}};
+function node(dataset, textContent = '') {{
+  return {{ dataset, textContent, attributes: {{}}, style: {{ setProperty() {{}}, removeProperty() {{}} }},
+    setAttribute(name, value) {{ this.attributes[name] = String(value); }},
+    removeAttribute(name) {{ delete this.attributes[name]; }}, closest() {{ return null; }}, querySelectorAll() {{ return []; }} }};
+}}
+const loadStorage = node({{ bind: 'home.storage.percentUsed' }}, 'Load-card Maud');
+const loadCpu = node({{ bindState: 'home.telemetry.cpu.temperatureCelsius:gte:82' }}, 'Load CPU Maud');
+const otherPaneTelemetry = node({{ bindState: 'home.telemetry.cpu.temperatureCelsius:gte:82' }}, 'Other-pane Maud');
+const systemPane = node({{ bind: 'systemPane.adminText' }}, 'Shell Maud');
+loadCpu.attributes['data-state'] = 'Maud';
+otherPaneTelemetry.attributes['data-state'] = 'Maud';
+loadCard.nodes.push(loadStorage, loadCpu);
+nodes.push(loadStorage, loadCpu, otherPaneTelemetry, systemPane);
+{projector}
+let widgets = 0;
+window.ArcadiaProjector.registerWidget('home', () => widgets++);
+window.ArcadiaProjector.applyOverlay({{ systemPane: {{ adminText: 'Admin' }} }});
+if (systemPane.textContent !== 'Shell Maud') throw new Error('unrelated shell overlay changed frame zero');
+window.ArcadiaProjector.applyOverlay({{ home: {{ telemetry: {{ cpu: {{ temperatureCelsius: 94 }} }} }} }});
+if (loadStorage.textContent !== 'Load-card Maud') throw new Error('telemetry changed unrelated binding inside Load card');
+if (loadCpu.attributes['data-state'] !== 'warn') throw new Error('94°C Load chip did not project warn: ' + loadCpu.attributes['data-state']);
+if (otherPaneTelemetry.textContent !== 'Other-pane Maud' || otherPaneTelemetry.attributes['data-state'] !== 'Maud') throw new Error('same telemetry path outside Load card changed before document');
+if (widgets !== 0) throw new Error('pre-document overlay dispatched widgets');
+window.ArcadiaProjector.apply({{ home: {{ storage: {{ percentUsed: 25 }}, telemetry: {{ cpu: {{ temperatureCelsius: 50 }} }} }}, systemPane: {{ adminText: 'Living admin' }} }});
+if (loadStorage.textContent !== '25' || otherPaneTelemetry.attributes['data-state'] !== 'warn' || systemPane.textContent !== 'Admin') throw new Error('full living projection did not update every pane');
+window.ArcadiaProjector.applyOverlay({{ home: {{ telemetry: {{ cpu: {{ temperatureCelsius: 94 }} }} }} }});
+if (loadCpu.attributes['data-state'] !== 'warn' || otherPaneTelemetry.attributes['data-state'] !== 'warn' || widgets !== 2) throw new Error('living overlay lost full projection/widget semantics');
+"#);
+        let output = std::process::Command::new("node").arg("-e").arg(script).output()
+            .expect("node is required for projector behavior regression");
+        assert!(output.status.success(), "node projector behavior regression failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    #[test]
+    fn load_chips_use_projector_threshold_states_and_css_reads_the_projected_state() {
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.example.com/".to_string(),
+            product: "HomeConsole".to_string(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
+        };
+        let rendered = ui::layout(&console_status(&state)).into_string();
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-sync\"")
+                .expect("sync view follows home");
+        let home_html = &rendered[home_start..home_end];
+
+        for rule in [
+            "data-bind-state=\"home.telemetry.cpu.temperatureCelsius:gte:82\"",
+            "data-bind-state=\"home.telemetry.io.pressureAvg10:gte:10\"",
+            "data-bind-state=\"home.telemetry.io.disk.readBytesPerSec:gt:0\"",
+            "data-bind-state=\"home.telemetry.io.disk.writeBytesPerSec:gt:0\"",
+        ] {
+            assert!(home_html.contains(rule), "missing declared Load rule: {rule}");
+        }
+        assert_eq!(home_html.matches("data-bind-state=\"").count(), 9);
+        assert_eq!(home_html.matches("data-state=\"idle\"").count(), 9);
+        assert!(!home_html.contains("data-bind-class=\"home.telemetry."));
+        assert!(APP_CSS.contains(".load-chip[data-state=\"ok\"]"));
+        assert!(APP_CSS.contains(".load-chip[data-state=\"warn\"]"));
+        assert!(APP_CSS.contains(".load-chip[data-state=\"idle\"]"));
+        assert!(!APP_CSS.contains(".load-chip--ok"));
+        assert!(!APP_CSS.contains(".load-chip--warn"));
+        assert!(!APP_CSS.contains(".load-chip--idle"));
     }
 
     #[test]

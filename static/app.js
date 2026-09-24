@@ -489,34 +489,40 @@ const ArcadiaProjector = (() => {
     return Array.from(root.querySelectorAll(selector)).filter((node) => includeGenerated || !node.closest('[data-projector-generated="true"]'));
   }
 
-  function projectScalarBindings(root, state, includeGenerated = false) {
+  function projectScalarBindings(root, state, includeGenerated = false, shouldProject = () => true) {
     boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
-      node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '');
+      if (shouldProject(node, node.dataset.bind)) node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '');
     });
     boundNodes(root, '[data-bind-copy-value]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindCopyValue)) return;
       const value = asText(resolve(node.dataset.bindCopyValue, state));
       node.dataset.copyValue = value;
       node.setAttribute('data-copy-value', value);
     });
     boundNodes(root, '[data-bind-enabled]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindEnabled)) return;
       const enabled = Boolean(resolve(node.dataset.bindEnabled, state));
       node.disabled = !enabled;
       node.setAttribute('aria-disabled', String(!enabled));
     });
     boundNodes(root, '[data-bind-checked]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindChecked)) return;
       node.checked = Boolean(resolve(node.dataset.bindChecked, state));
     });
     boundNodes(root, '[data-bind-value]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindValue)) return;
       const raw = resolve(node.dataset.bindValue, state);
       const value = asText(raw);
       node.value = value;
-      if (node.dataset.bindAriaLabel) node.setAttribute('aria-label', asText(resolve(node.dataset.bindAriaLabel, state)));
+      if (node.dataset.bindAriaLabel && shouldProject(node, node.dataset.bindAriaLabel)) node.setAttribute('aria-label', asText(resolve(node.dataset.bindAriaLabel, state)));
     });
     boundNodes(root, '[data-bind-zero-dash]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bind)) return;
       const value = resolve(node.dataset.bind, state);
       node.textContent = value === 0 || value === '0' ? '—' : asText(value);
     });
     boundNodes(root, '[data-bind-attr-id]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindAttrId)) return;
       const value = asText(resolve(node.dataset.bindAttrId, state));
       if (value) {
         node.dataset.harmoniaModule = value;
@@ -525,9 +531,26 @@ const ArcadiaProjector = (() => {
       }
     });
     boundNodes(root, '[data-bind-class]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindClass)) return;
       node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)));
     });
+    boundNodes(root, '[data-bind-state]', includeGenerated).forEach((node) => {
+      const [path, ...ruleParts] = String(node.dataset.bindState || '').split(':');
+      if (!shouldProject(node, path)) return;
+      const rule = ruleParts.join(':');
+      const value = resolve(path, state);
+      let projected = 'idle';
+      if (value != null && value !== '' && Number.isFinite(Number(value))) {
+        const number = Number(value);
+        const [operator, thresholdText] = (rule || '').split(':');
+        const threshold = Number(thresholdText);
+        if (operator === 'gte' && Number.isFinite(threshold)) projected = number >= threshold ? 'warn' : 'ok';
+        else if (operator === 'gt' && Number.isFinite(threshold)) projected = number > threshold ? 'ok' : 'idle';
+      }
+      node.setAttribute('data-state', projected);
+    });
     boundNodes(root, '[data-bind-show]', includeGenerated).forEach((node) => {
+      if (!shouldProject(node, node.dataset.bindShow)) return;
       const visible = Boolean(resolve(node.dataset.bindShow, state));
       node.hidden = !visible;
       node.setAttribute('aria-hidden', String(!visible));
@@ -535,7 +558,7 @@ const ArcadiaProjector = (() => {
     boundNodes(root, '[data-bind-style]', includeGenerated).forEach((node) => {
       String(node.dataset.bindStyle || '').split(',').forEach((binding) => {
         const [property, path] = binding.split(':').map((part) => part && part.trim());
-        if (!property || !path) return;
+        if (!property || !path || !shouldProject(node, path)) return;
         const value = resolve(path, state);
         if (value == null) node.style.removeProperty(property);
         else node.style.setProperty(property, `${Math.max(0, Math.min(100, Number(value)))}%`);
@@ -544,7 +567,7 @@ const ArcadiaProjector = (() => {
     boundNodes(root, '[data-bind-attr]', includeGenerated).forEach((node) => {
       String(node.dataset.bindAttr || '').split(',').forEach((binding) => {
         const [name, path] = binding.split(':').map((part) => part && part.trim());
-        if (!name || !path) return;
+        if (!name || !path || !shouldProject(node, path)) return;
         const value = resolve(path, state);
         if (value == null) node.removeAttribute(name);
         else node.setAttribute(name, String(value));
@@ -553,14 +576,15 @@ const ArcadiaProjector = (() => {
     boundNodes(root, '[data-bind-style-var]', includeGenerated).forEach((node) => {
       String(node.dataset.bindStyleVar || '').split(',').forEach((binding) => {
         const [name, path] = binding.split(':').map((part) => part && part.trim());
-        if (!name || !path || !name.startsWith('--')) return;
+        if (!name || !path || !name.startsWith('--') || !shouldProject(node, path)) return;
         node.style.setProperty(name, asText(resolve(path, state)));
       });
     });
   }
 
-  function projectEachBindings(root, state, includeGenerated = false) {
+  function projectEachBindings(root, state, includeGenerated = false, shouldProject = () => true) {
     boundNodes(root, '[data-bind-each]', includeGenerated).forEach((host) => {
+      if (!shouldProject(host, host.dataset.bindEach)) return;
       const template = host.firstElementChild?.tagName === 'TEMPLATE' ? host.firstElementChild : null;
       if (!template) return;
       if (host.dataset.bindReplace === 'true') {
@@ -594,9 +618,16 @@ const ArcadiaProjector = (() => {
     });
   }
 
-  function project(root, state, includeGenerated = false) {
-    projectEachBindings(root, state, includeGenerated);
-    projectScalarBindings(root, state, includeGenerated);
+  function project(root, state, includeGenerated = false, shouldProject = () => true) {
+    projectEachBindings(root, state, includeGenerated, shouldProject);
+    projectScalarBindings(root, state, includeGenerated, shouldProject);
+  }
+
+  function overlayTouches(path, patch) {
+    if (!path) return false;
+    const [head, ...tail] = path.split('.');
+    if (!patch || typeof patch !== 'object' || !Object.prototype.hasOwnProperty.call(patch, head)) return false;
+    return tail.length === 0 || overlayTouches(tail.join('.'), patch[head]);
   }
 
   function mergeOverlay(base, patch) {
@@ -624,10 +655,15 @@ const ArcadiaProjector = (() => {
 
   function applyOverlay(nextOverlay) {
     overlay = mergeOverlay(overlay, nextOverlay || {});
-    if (!lastDocument) lastDocument = {};
     const documentState = projectedDocument();
-    project(document, documentState);
-    dispatchWidgets(documentState);
+    if (lastDocument) {
+      project(document, documentState);
+      dispatchWidgets(documentState);
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(nextOverlay?.home || {}, 'telemetry')) return;
+    const loadCard = document.querySelector('[data-load-card]');
+    if (loadCard) project(loadCard, documentState, false, (_node, path) => overlayTouches(path, nextOverlay));
   }
 
   function registerWidget(selectorOrName, fn) {
@@ -832,6 +868,7 @@ function bindHomeLoadSubscription() {
     const point = historyEntry({ ts: data.sampledAt, load: { one: data.load?.oneMinute } });
     if (point) mergeHistory([point]);
     ArcadiaProjector.applyOverlay({ home: { telemetry: data } });
+    drawHistory();
     return true;
   };
   const loadHistoryOnce = async () => {
