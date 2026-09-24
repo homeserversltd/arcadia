@@ -25,6 +25,8 @@ struct ApiTelemetryCache {
 }
 
 const FAST_FACTS_CADENCE_SECONDS: u64 = 5;
+const API_TELEMETRY_HISTORY_TTL_SECONDS: u64 = 60;
+const API_TELEMETRY_HISTORY_ROW_LIMIT: usize = 60;
 
 struct ArcadiaLivingMachine {
     snapshot: Mutex<Option<Arc<ArcadiaLivingState>>>,
@@ -785,14 +787,14 @@ fn refresh_api_telemetry_cache() {
 fn refresh_api_telemetry_history() {
     let now = now_unix_seconds();
     let due = api_telemetry_cache().lock().ok().map(|cache|
-        cache.history_fetched_at_unix == 0 || now.saturating_sub(cache.history_fetched_at_unix) >= 60
+        cache.history_fetched_at_unix == 0 || now.saturating_sub(cache.history_fetched_at_unix) >= API_TELEMETRY_HISTORY_TTL_SECONDS
     ).unwrap_or(false);
     if !due { return; }
-    if let Ok(history) = CaduceusAccessClient::default().get_json("/api/v1/appliance/stats/history") {
-        if let Ok(mut cache) = api_telemetry_cache().lock() {
-            cache.history = history;
-            cache.history_fetched_at_unix = now;
-        }
+    let history = CaduceusAccessClient::default()
+        .get_json(&format!("/api/v1/appliance/stats/history?limit={API_TELEMETRY_HISTORY_ROW_LIMIT}"));
+    if let Ok(mut cache) = api_telemetry_cache().lock() {
+        if let Ok(history) = history { cache.history = history; }
+        cache.history_fetched_at_unix = now;
     }
 }
 

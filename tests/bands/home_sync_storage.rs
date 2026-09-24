@@ -1499,7 +1499,7 @@ if (loadCpu.attributes['data-state'] !== 'warn' || otherPaneTelemetry.attributes
         assert!(source.contains("fn api_telemetry_data"));
         assert!(source.contains("fn api_home_telemetry_data"));
         assert!(source.contains("CaduceusAccessClient::default().get_json(\"/api/v1/appliance/stats\")"));
-        assert!(source.contains("CaduceusAccessClient::default().get_json(\"/api/v1/appliance/stats/history\")"));
+        assert!(source.contains("/api/v1/appliance/stats/history?limit={API_TELEMETRY_HISTORY_ROW_LIMIT}"));
         for forbidden in [
             "/proc/loadavg", "/proc/stat", "/proc/pressure/io", "/proc/diskstats", "/proc/meminfo",
             "/sys/class/thermal",
@@ -1529,6 +1529,25 @@ if (loadCpu.attributes['data-state'] !== 'warn' || otherPaneTelemetry.attributes
         assert!(source.contains("fn refresh_living_telemetry"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
+    }
+
+    #[test]
+    fn telemetry_history_request_is_bounded_and_failures_are_ttl_cached() {
+        let source = include_str!("../../src/bands/api_root.rs");
+        let history_refresh = source
+            .split("fn refresh_api_telemetry_history() {")
+            .nth(1)
+            .and_then(|body| body.split("\n}").next())
+            .expect("history refresh function exists");
+
+        assert!(history_refresh.contains("API_TELEMETRY_HISTORY_TTL_SECONDS"));
+        assert!(history_refresh.contains("format!(\"/api/v1/appliance/stats/history?limit={API_TELEMETRY_HISTORY_ROW_LIMIT}\")"));
+        assert!(history_refresh.contains("if let Ok(history) = history"));
+        assert!(history_refresh.contains("cache.history_fetched_at_unix = now;"));
+        assert!(history_refresh.find("let history =").unwrap()
+            < history_refresh.find("cache.history_fetched_at_unix = now;").unwrap());
+        assert!(source.contains("const API_TELEMETRY_HISTORY_TTL_SECONDS: u64 = 60;"));
+        assert!(source.contains("const API_TELEMETRY_HISTORY_ROW_LIMIT: usize = 60;"));
     }
 
     #[test]
