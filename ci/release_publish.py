@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 import hashlib, json, os, re, sys, time, tomllib, urllib.error, urllib.parse, urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 API_ROOT = "https://git.home.arpa/api/v1"
 OWNER, REPO = "HOMESERVERSLTD", "arcadia"
 PROJECT = f"{OWNER}/{REPO}"
 RELEASES = f"{API_ROOT}/repos/{OWNER}/{REPO}/releases"
 RELEASE_FLAG = "release.flag"
+RELEASE_RETENTION = 20
 def fail(message):
     print(f"release_publish: {message}", file=sys.stderr); raise SystemExit(1)
 def release_tag(sha):
     return f"sha-{sha}"
 def request(method, url, token, body=None, content_type=None, accept=None):
-    headers = {"Authorization": f"token {token}", "User-Agent": "arcadia-woodpecker-release"}
+    headers = {"User-Agent": "arcadia-woodpecker-release"}
+    if token: headers["Authorization"] = f"token {token}"
     if content_type: headers["Content-Type"] = content_type
     if accept: headers["Accept"] = accept
     if isinstance(body, (dict, list)):
@@ -134,7 +136,210 @@ def flag_release(token, sha, pipeline_url):
     flag_from_release(reread, token, expected, "uploaded release.flag", sha, tag)
     print(json.dumps({"status":"flagged", "tag":tag, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":")))
 
+def retention_releases(token):
+    releases = []
+    release_ids = set()
+    first_page_ids = []
+    page = 1
+    while True:
+        url = f"{RELEASES}?{urllib.parse.urlencode({'limit':50, 'page':page})}"
+        status, raw = request("GET", url, token)
+        if status != 200: raise RuntimeError(f"GET releases page {page} returned HTTP {status}")
+        batch = decode(raw, f"releases page {page}")
+        if not isinstance(batch, list): raise RuntimeError(f"releases page {page} is not a JSON array")
+        batch_ids = []
+        for release in batch:
+            if not isinstance(release, dict):
+                raise RuntimeError(f"releases page {page} contains a non-object entry")
+            release_id = release.get("id")
+            if not isinstance(release_id, int) or isinstance(release_id, bool):
+                raise RuntimeError(f"releases page {page} contains a malformed release id")
+            if release_id in release_ids:
+                raise RuntimeError(f"release listing contains duplicate id {release_id}")
+            release_ids.add(release_id)
+            batch_ids.append(release_id)
+        if page == 1: first_page_ids = batch_ids
+        releases.extend(batch)
+        if len(batch) < 50: break
+        page += 1
+    status, raw = request("GET", f"{RELEASES}?{urllib.parse.urlencode({'limit':50, 'page':1})}", token)
+    if status != 200: raise RuntimeError(f"GET releases page 1 consistency read returned HTTP {status}")
+    first_page = decode(raw, "releases page 1 consistency read")
+    if not isinstance(first_page, list):
+        raise RuntimeError("releases page 1 consistency read is not a JSON array")
+    reread_ids = []
+    for release in first_page:
+        if not isinstance(release, dict):
+            raise RuntimeError("releases page 1 consistency read contains a non-object entry")
+        release_id = release.get("id")
+        if not isinstance(release_id, int) or isinstance(release_id, bool):
+            raise RuntimeError("releases page 1 consistency read contains a malformed release id")
+        reread_ids.append(release_id)
+    if reread_ids != first_page_ids:
+        raise RuntimeError("release listing changed during pagination (first-page ids differ)")
+    return releases
+
+def strict_release_tag(release):
+    tag = release.get("tag_name")
+    target = release.get("target_commitish")
+    if not isinstance(tag, str) or not re.fullmatch(r"sha-[0-9a-f]{40}", tag): return None
+    sha = tag[4:]
+    if target != sha: return None
+    return tag
+
+def retention_plan(token, current_sha):
+    releases = retention_releases(token)
+    eligible = []
+    for release in releases:
+        if not isinstance(release, dict): raise RuntimeError("release listing contains a non-object entry")
+        if release.get("draft") is True: continue
+        tag = strict_release_tag(release)
+        if tag is None: continue
+        release_id = release.get("id")
+        if not isinstance(release_id, int) or isinstance(release_id, bool):
+            raise RuntimeError(f"eligible release {tag} has no numeric id")
+        created = release.get("created_at")
+        if not isinstance(created, str) or not created:
+            raise RuntimeError(f"eligible release {tag} has no created_at")
+        try: created_key = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        except ValueError: raise RuntimeError(f"eligible release {tag} has invalid created_at")
+        if created_key.tzinfo is None: raise RuntimeError(f"eligible release {tag} created_at is not timezone-aware")
+        created_key = created_key.astimezone(timezone.utc)
+        eligible.append({"id":release_id, "tag":tag, "created_at":created, "sort_time":created_key})
+    eligible.sort(key=lambda release: (release["sort_time"], release["id"]), reverse=True)
+    keep = eligible[:RELEASE_RETENTION]
+    older = eligible[RELEASE_RETENTION:]
+    current_tag = release_tag(current_sha) if current_sha else None
+    protected = next((r for r in eligible if r["tag"] == current_tag), None)
+    if current_tag and protected is None:
+        raise RuntimeError(f"current published release {current_tag} is absent from eligible releases")
+    boundary_ties = []
+    if len(eligible) > RELEASE_RETENTION:
+        boundary_time = keep[-1]["sort_time"]
+        boundary_ties = [r["id"] for r in eligible if r["sort_time"] == boundary_time]
+    return {"all_count":len(releases), "eligible_count":len(eligible), "kept":keep,
+            "older":older, "current":protected, "boundary_tie_ids":boundary_ties}
+
+def tag_ref_exists(token, tag):
+    url = f"{API_ROOT}/repos/{OWNER}/{REPO}/git/refs/tags/{urllib.parse.quote(tag, safe='')}"
+    status, raw = request("GET", url, token)
+    if status == 404:
+        # The Git read is authoritative for the exact ref when the API misses it.
+        return git_ref_exists(tag)
+    if status != 200: raise RuntimeError(f"GET tag ref {tag} returned HTTP {status}")
+    refs = decode(raw, f"tag ref {tag}")
+    if not isinstance(refs, list):
+        raise RuntimeError(f"tag ref readback for {tag} was not a JSON array")
+    expected = f"refs/tags/{tag}"
+    exact_matches = 0
+    for ref in refs:
+        if not isinstance(ref, dict) or not isinstance(ref.get("ref"), str):
+            raise RuntimeError(f"tag ref readback for {tag} contains a malformed entry")
+        # The endpoint performs prefix matching; neighboring names are not the
+        # requested ref and must not be treated as an exact match.
+        if ref["ref"] == expected:
+            exact_matches += 1
+    if exact_matches > 1:
+        raise RuntimeError(f"tag ref readback for {tag} contains duplicate exact refs")
+    return exact_matches == 1
+
+def git_authenticated(args):
+    import subprocess, tempfile
+    askpass = "#!/bin/sh\ncase \"$1\" in *sername*) printf '%s\\n' token ;; *) printf '%s\\n' \"$FORGEJO_TOKEN\" ;; esac\n"
+    with tempfile.TemporaryDirectory(prefix="arcadia-retention-") as directory:
+        askpass_path = os.path.join(directory, "askpass")
+        with open(askpass_path, "w", encoding="utf-8") as script: script.write(askpass)
+        os.chmod(askpass_path, 0o700)
+        env = dict(os.environ, GIT_ASKPASS=askpass_path, GIT_TERMINAL_PROMPT="0")
+        return subprocess.run(args, check=False, capture_output=True, text=True, env=env)
+
+def git_ref_exists(tag):
+    result = git_authenticated(["git", "ls-remote", "https://git.home.arpa/HOMESERVERSLTD/arcadia.git", f"refs/tags/{tag}"])
+    if result.returncode: raise RuntimeError(f"git ls-remote failed for {tag}: {result.stderr.strip()}")
+    return any(line.split("\t", 1)[-1] == f"refs/tags/{tag}" for line in result.stdout.splitlines())
+
+def remove_git_ref(tag):
+    result = git_authenticated(["git", "-c", "credential.helper=", "push", "https://git.home.arpa/HOMESERVERSLTD/arcadia.git", f":refs/tags/{tag}"])
+    if result.returncode: raise RuntimeError(f"governed git tag-ref removal failed for {tag}: {result.stderr.strip()}")
+
+def retention_execute(token, current_sha):
+    receipt = {"status":"failed", "keep_limit":RELEASE_RETENTION, "kept_count":0,
+               "deleted_ids":[], "deleted_tags":[], "protected_current_id":None}
+    try:
+        plan = retention_plan(token, current_sha)
+        current = plan["current"]
+        receipt.update({"all_count":plan["all_count"], "eligible_count":plan["eligible_count"],
+                       "kept_count":len(plan["kept"]), "kept_ids":[r["id"] for r in plan["kept"]],
+                       "protected_current_id":current["id"] if current else None,
+                       "boundary_tie_ids":plan["boundary_tie_ids"]})
+        if current is None: raise RuntimeError("cannot mutate retention without a current published SHA")
+        # The current release must still carry the verified success flag before pruning.
+        current_url = f"{RELEASES}/{current['id']}"
+        status, raw = request("GET", current_url, token)
+        if status != 200: raise RuntimeError(f"current release readback returned HTTP {status}")
+        live = decode(raw, "current release")
+        verify_release_identity(live, current_sha, release_tag(current_sha))
+        assets = assets_of(live)
+        if RELEASE_FLAG not in assets: raise RuntimeError("current release has no release.flag; retention refused")
+        flag_obj = decode(download(assets[RELEASE_FLAG], token, RELEASE_FLAG), "current release.flag")
+        if not isinstance(flag_obj, dict) or flag_obj.get("schema") != "estate.release-flag.v1" or flag_obj.get("component") != REPO or flag_obj.get("source_sha") != current_sha:
+            raise RuntimeError("current release.flag does not identify the current SHA")
+        for old in plan["older"]:
+            if old["id"] == current["id"]: raise RuntimeError("refusing to delete current published release")
+            url = f"{RELEASES}/{old['id']}"
+            status, _ = request("DELETE", url, token)
+            if status not in (200, 204, 404): raise RuntimeError(f"DELETE release {old['id']} returned HTTP {status}")
+            check, _ = request("GET", url, token)
+            if check != 404: raise RuntimeError(f"release {old['id']} still exists after DELETE (HTTP {check})")
+            receipt["deleted_ids"].append(old["id"])
+            tag_url = f"{API_ROOT}/repos/{OWNER}/{REPO}/tags/{urllib.parse.quote(old['tag'], safe='')}"
+            tag_status, _ = request("DELETE", tag_url, token)
+            if tag_status not in (200, 204, 404): raise RuntimeError(f"DELETE tag {old['tag']} returned HTTP {tag_status}")
+            api_ref_exists = tag_ref_exists(token, old["tag"])
+            remote_ref_exists = git_ref_exists(old["tag"])
+            if api_ref_exists != remote_ref_exists and api_ref_exists:
+                raise RuntimeError(f"tag ref {old['tag']} API/Git readbacks disagree")
+            if remote_ref_exists:
+                remove_git_ref(old["tag"])
+            if tag_ref_exists(token, old["tag"]) or git_ref_exists(old["tag"]):
+                raise RuntimeError(f"tag ref {old['tag']} persists after deletion")
+            receipt["deleted_tags"].append(old["tag"])
+        receipt["status"] = "complete"
+    except SystemExit as exc:
+        # Shared fail() uses SystemExit for fatal API/JSON checks. Retention must
+        # still emit its machine-readable partial-failure receipt.
+        receipt["error"] = f"fail-closed check exited with status {exc.code}"
+    except Exception as exc:
+        receipt["error"] = str(exc)
+    print(json.dumps(receipt, separators=(",", ":")))
+    if receipt["status"] != "complete": raise SystemExit(1)
+
+def plan_retention(token, current_sha):
+    plan = retention_plan(token, current_sha)
+    print(json.dumps({"status":"plan-only", "mutations":False, "keep_limit":RELEASE_RETENTION,
+                      "all_count":plan["all_count"], "eligible_count":plan["eligible_count"],
+                      "kept_ids":[r["id"] for r in plan["kept"]],
+                      "older":[{"id":r["id"], "tag":r["tag"]} for r in plan["older"]],
+                      "protected_current_id":plan["current"]["id"] if plan["current"] else None,
+                      "boundary_tie_ids":plan["boundary_tie_ids"]}, separators=(",", ":")))
+
 def main():
+    args = sys.argv[1:]
+    plan_only = args == ["--plan-retention"]
+    retain = args == ["--retain"]
+    if args and not (plan_only or retain or args == ["--flag"]): fail("usage: release_publish.py [--flag|--plan-retention|--retain]")
+    if plan_only or retain:
+        token = os.environ.get("FORGEJO_TOKEN", "")
+        if retain and not token: fail("FORGEJO_TOKEN is required")
+        sha = os.environ.get("CI_COMMIT_SHA", "")
+        if plan_only:
+            if sha and (len(sha) != 40 or any(c not in "0123456789abcdef" for c in sha)):
+                fail("CI_COMMIT_SHA must be exactly 40 lowercase hexadecimal characters when provided")
+            plan_retention(token, sha); return
+        if len(sha) != 40 or any(c not in "0123456789abcdef" for c in sha): fail("CI_COMMIT_SHA must be exactly 40 lowercase hexadecimal characters")
+        if os.environ.get("CI_COMMIT_BRANCH") != "main" or os.environ.get("CI_PIPELINE_EVENT") != "push":
+            fail("retention mutation is restricted to main push pipelines")
+        retention_execute(token, sha); return
     flag_mode = "--flag" in sys.argv[1:]
     token = os.environ.get("FORGEJO_TOKEN", "")
     if not token: fail("FORGEJO_TOKEN is required")
