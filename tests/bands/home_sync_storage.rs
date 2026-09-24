@@ -81,7 +81,6 @@
             "data-load-readout-value",
             "data-memory-bar",
             "data-memory-used-segment",
-            "data-memory-free-segment",
             "data-memory-used",
             "data-memory-total",
             "data-load-chip-value",
@@ -136,7 +135,7 @@
 
         assert!(!home_html.contains("<h1"));
         assert!(!home_html.contains("<h2"));
-        assert!(!home_html.contains("<p"));
+        assert!(!home_html.contains("<p>") && !home_html.contains("<p "));
 
         for forbidden in [
             "Console Home",
@@ -208,12 +207,17 @@
         assert!(APP_JS.contains("function bindHomeLoadSubscription()"));
         assert!(APP_JS.contains("window.arcadiaHomeLoadSubscriptionState = state"));
         assert!(APP_JS.contains("new EventSource('/api/root/events')"));
-        assert!(APP_JS.contains("fetch('/api/root/events/renew'"));
+        assert!(APP_JS.contains("fetchJsonBounded('/api/root/events/renew'"));
         assert!(APP_JS.contains("JSON.stringify({ leaseId: state.lease.leaseId })"));
-        assert!(APP_JS.contains("source.addEventListener('snapshot', onRoot)"));
-        assert!(APP_JS.contains("source.addEventListener('root', onRoot)"));
-        assert!(APP_JS.contains("source.addEventListener('lease', onLease)"));
-        assert!(APP_JS.contains("source.addEventListener('heartbeat', onHeartbeat)"));
+        assert!(APP_JS.contains("source.addEventListener('stats.tick', () => onPoke('stats.tick'))"));
+        assert!(APP_JS.contains("source.addEventListener('state.changed', () => onPoke('state.changed'))"));
+        assert!(!APP_JS.contains("source.addEventListener('snapshot'"));
+        assert!(!APP_JS.contains("source.addEventListener('root'"));
+        assert!(APP_JS.contains("fetchJsonBounded('/api/root/pull'"));
+        assert!(APP_JS.contains("fetchJsonBounded('/api/root/state'"));
+        assert!(APP_JS.contains("fetch('/api/root/history'"));
+        assert!(APP_JS.contains("source.addEventListener('lease', (event) =>"));
+        assert!(APP_JS.contains("source.addEventListener('heartbeat', (event) =>"));
         assert!(APP_JS.contains("source.addEventListener('expired'"));
         assert!(APP_JS.contains("fetchSnapshotOnce();"));
         assert!(APP_JS.contains("scheduleRetry();"));
@@ -225,16 +229,17 @@
         assert!(APP_JS.contains("clearTimeout(state.retryTimer)"));
         assert!(APP_JS.contains("state.source.close()"));
         assert!(APP_JS.contains("bindHomeLoadSubscription();"));
-        assert!(APP_JS.contains("formatTransferRate"));
-        assert!(APP_JS.contains("readBytesPerSec"));
-        assert!(APP_JS.contains("writeBytesPerSec"));
-        assert!(APP_JS.contains("usagePercent"));
-        assert!(APP_JS.contains("new window.Chart"));
-        assert!(APP_JS.contains("chartCpuUsage"));
-        assert!(APP_JS.contains("chartCpuTemperature"));
-        assert!(APP_JS.contains("data.memory"));
+        assert!(home_html.contains("<svg class=\"load-sparkline\""));
+        assert!(home_html.contains("data-load-history-line"));
+        assert!(home_html.contains("data-load-staleness"));
+        assert!(APP_JS.contains("appendSnapshot(root)"));
+        assert!(APP_JS.contains("ArcadiaProjector.applyOverlay({ home: { telemetry: data } })"));
+        assert!(APP_JS.contains("fetch('/api/root/history'"));
+        assert!(APP_JS.contains("const drawHistory = () => {"));
+        assert!(APP_JS.contains("line.setAttribute('points'"));
+        assert!(APP_JS.contains("formatBinding(resolve(node.dataset.bind, state)"));
+        assert!(!APP_JS.contains("new window.Chart"));
         assert!(!APP_JS.contains("[data-load-headline]"));
-        assert!(APP_JS.contains("fmtLoadAvgPct"));
         assert!(!APP_JS.contains("function bindHomeLoadPolling()"));
         assert!(!APP_JS.contains("window.arcadiaHomeLoadPollState"));
         assert!(!APP_JS.contains("setInterval(poll, pollMs)"));
@@ -242,7 +247,7 @@
         assert!(APP_CSS.contains(".view[data-view-panel=\"home\"].is-active"));
         assert!(!home_html.contains("Now"));
         assert!(!home_html.contains("Games ready to sync"));
-        for forbidden in ["Game Library", "Detected", ">Synced<", "GPU", "Folders unavailable"] {
+        for forbidden in ["Game Library", "Detected", ">Synced<", "Folders unavailable"] {
             assert!(!home_html.contains(forbidden), "unbacked home claim survived: {forbidden}");
         }
     }
@@ -255,7 +260,7 @@
             "window.ArcadiaProjector = ArcadiaProjector",
             "function resolve(path, root)",
             "[data-bind]",
-            "node.textContent = asText(resolve(node.dataset.bind, state))",
+            "node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '')",
             "[data-bind-class]",
             "node.setAttribute('data-state', asState(resolve(node.dataset.bindClass, state)))",
             "[data-bind-show]",
@@ -267,9 +272,10 @@
             "function registerWidget(selectorOrName, fn)",
             "widgets.push({ selectorOrName, fn })",
             "fn(state, widgetContext(selectorOrName))",
-            "dispatchWidgets(lastDocument)",
-            "source.addEventListener('state', onLivingState)",
-            "ArcadiaProjector.apply(JSON.parse(event.data))",
+            "dispatchWidgets(documentState)",
+            "source.addEventListener('state.changed', () => onPoke('state.changed'))",
+            "fetchJsonBounded('/api/root/state'",
+            "ArcadiaProjector.apply(await response.json())",
             "data-bind-class projects normalized values into data-state",
         ] {
             assert!(APP_JS.contains(required), "projector missing {required}");
@@ -1313,7 +1319,15 @@
         assert!(telemetry["data"].get("temperature").is_some());
         assert!(telemetry["data"].get("fans").is_some());
         assert!(telemetry["data"].get("gpu").is_some());
-        assert!(telemetry["data"].get("history").is_some());
+        assert!(telemetry["data"].get("history").is_none());
+        assert_eq!(telemetry["route"], "/api/root");
+        let api = include_str!("../../src/bands/api_root.rs");
+        let history_route = api
+            .split("async fn api_root_history_route")
+            .nth(1)
+            .expect("history route implementation");
+        assert!(history_route.contains("arcadia.api.root.history.v1"));
+        assert!(history_route.contains("\"history\": {\"tiers\": {(tier): entries}"));
         assert!(telemetry["data"]["io"]["disk"].get("readBytesPerSec").is_some());
         assert!(telemetry["data"]["io"]["disk"].get("writeBytesPerSec").is_some());
     }
@@ -1323,6 +1337,9 @@
         let source = include_str!("../../src/main.rs");
         assert!(source.contains(".route(\"/api\", get(api_root_route))"));
         assert!(source.contains(".route(\"/api/root\", get(api_root_route))"));
+        assert!(source.contains(".route(\"/api/root/pull\", get(api_root_pull_route))"));
+        assert!(source.contains(".route(\"/api/root/history\", get(api_root_history_route))"));
+        assert!(source.contains(".route(\"/api/root/state\", get(api_root_state_route))"));
         assert!(source.contains(".route(\"/api/root/events\", get(api_root_events_route))"));
         assert!(source.contains(".route(\"/api/root/events/renew\", post(api_root_events_renew_route))"));
         assert!(source.contains("include!(\"bands/api_root.rs\")"));
@@ -1352,7 +1369,7 @@
     }
 
     #[test]
-    fn api_root_events_route_streams_sse_root_payloads() {
+    fn api_root_events_route_streams_payload_free_stats_and_state_pokes() {
         let source = include_str!("../../src/bands/api_root.rs");
         assert!(source.contains("async fn api_root_events_route"));
         assert!(source.contains("Sse<impl Stream<Item = Result<Event, Infallible>>>"));
@@ -1364,9 +1381,14 @@
         assert!(source.contains("home_telemetry_renew_lease"));
         assert!(source.contains("home_telemetry_lease_status"));
         assert!(source.contains("homeTelemetryLeaseExpired"));
-        assert!(source.contains("Event::default()\n            .event(\"snapshot\")"));
-        assert!(source.contains("Event::default()\n                .event(\"root\")"));
-        assert!(source.contains("Event::default()\n                .event(\"state\")"));
+        assert!(source.contains("Event::default().event(\"stats.tick\").data(\"{}\")"));
+        assert!(source.contains("Event::default().event(\"state.changed\").data(\"{}\")"));
+        assert!(!source.contains(".event(\"snapshot\")"));
+        assert!(!source.contains(".event(\"root\")"));
+        assert!(!source.contains(".event(\"state\")"));
+        assert!(source.contains("last_document_generation != document_generation"));
+        assert!(source.contains("last_document_generation = document_generation"));
+        assert!(source.contains(".take(60)"));
         assert!(source.contains("Event::default().event(\"lease\")"));
         assert!(source.contains("Event::default().event(\"heartbeat\")"));
         assert!(source.contains("Event::default().event(\"expired\")"));
@@ -1398,7 +1420,9 @@
         assert!(source.contains("fn memory_usage"));
         assert!(!source.contains("fn cpu_usage_percent"));
         assert!(source.contains("storageTemperatureCelsius"));
-        assert!(source.contains("\"pressureAvg10\": null"));
+        assert!(source.contains("someAvg10"));
+        assert!(source.contains("\"pressureAvg10\": current.get(\"pressure\")"));
+        assert!(source.contains(".and_then(serde_json::Value::as_f64)"));
         assert!(source.contains("usagePercent"));
         assert!(source.contains("readBytesPerSec"));
         assert!(source.contains("writeBytesPerSec"));
@@ -1407,9 +1431,8 @@
             !source.contains("let root = api_root_object(&state);"),
             "sse root ticks must not rebuild full console_status each second"
         );
-        assert!(source.contains("let snapshot = state.living_snapshot();"));
-        assert!(source.contains("let snapshot = snapshot.root.clone();"));
-        assert!(source.contains("let root = snapshot.telemetry_root.clone();"));
+        assert!(source.contains("async fn api_root_pull_route"));
+        assert!(source.contains("attendance_cached_validate(&document_for_validation, &attendance)"));
         assert!(source.contains("fn refresh_living_telemetry"));
         assert!(source.contains("KeepAlive::new()"));
         assert!(source.contains("Duration::from_secs(15)"));
@@ -2029,7 +2052,9 @@
             "data-bind-attr-id",
             "host.dataset.bindReplace === 'true'",
             "document.addEventListener('change', (event) =>",
-            "ArcadiaProjector.apply(JSON.parse(event.data))",
+            "fetchJsonBounded('/api/root/state'",
+            "ArcadiaProjector.apply(await response.json())",
+            "source.addEventListener('state.changed', () => onPoke('state.changed'))",
         ] {
             assert!(APP_JS.contains(required), "projector missing updates support {required}");
         }

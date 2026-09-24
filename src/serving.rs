@@ -116,10 +116,9 @@ mod tests {
             .find("let http = match serve_config.http_bind")
             .unwrap();
         let serve = main.find("let server = tokio::spawn").unwrap();
-        let refresh = main
-            .find("spawn_blocking(move || refresh_living_state")
-            .unwrap();
-        assert!(bind < serve && serve < refresh);
+        let startup_refresh = main.find("let initial_state = state.clone();").unwrap();
+        let refresh_loop = main.find("let refresh_state = state.clone();").unwrap();
+        assert!(bind < serve && serve < startup_refresh && startup_refresh < refresh_loop);
         assert!(!main.contains("let input_state = state.clone()"));
         assert!(main.contains("HOME_TELEMETRY_CADENCE_SECONDS"));
         assert!(main.contains("Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS)"));
@@ -127,7 +126,15 @@ mod tests {
         assert!(main.contains("refresh_living_telemetry"));
         assert!(main.contains("let has_active_lease = home_telemetry_has_active_lease();"));
         assert!(main.contains("state.living.fast_facts_refresh_due(has_active_lease)"));
-        assert!(main.contains("} else if has_active_lease {"));
         assert!(main.contains("let refresh_requested = state.living.refresh_requested();"));
+        assert!(
+            main.contains("API_FULL_REFRESHING\n                    .compare_exchange(false, true")
+        );
+        assert!(main.contains(
+            "API_TELEMETRY_COLLECTING\n                    .compare_exchange(false, true"
+        ));
+        assert!(main.contains("if has_active_lease\n                && API_TELEMETRY_COLLECTING"));
+        assert!(main.contains("RefreshFlagGuard(&API_FULL_REFRESHING)"));
+        assert!(main.contains("RefreshFlagGuard(&API_TELEMETRY_COLLECTING)"));
     }
 }

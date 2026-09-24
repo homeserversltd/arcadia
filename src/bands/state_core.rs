@@ -199,7 +199,7 @@ pub struct ControllerProfilePresetStatus {
     pub state: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ControllerBindingStatus {
     pub control: String,
@@ -209,7 +209,7 @@ pub struct ControllerBindingStatus {
     pub axis_value: Option<i16>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ControllerInputStatus {
     pub state: String,

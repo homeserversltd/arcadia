@@ -310,6 +310,9 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/health", get(health))
         .route("/api", get(api_root_route))
         .route("/api/root", get(api_root_route))
+        .route("/api/root/pull", get(api_root_pull_route))
+        .route("/api/root/history", get(api_root_history_route))
+        .route("/api/root/state", get(api_root_state_route))
         .route("/api/root/events", get(api_root_events_route))
         .route("/api/root/events/renew", post(api_root_events_renew_route))
         .route("/api/status", get(status))
@@ -700,11 +703,12 @@ async fn main() -> anyhow_free::Result<()> {
     });
 
     let initial_state = state.clone();
-    tokio::task::spawn_blocking(move || refresh_living_state(&initial_state))
-        .await
-        .map_err(|error| {
-            std::io::Error::other(format!("initial Arcadia refresh failed: {error}"))
-        })?;
+    tokio::task::spawn_blocking(move || {
+        refresh_api_telemetry_cache();
+        refresh_living_state(&initial_state);
+    })
+    .await
+    .map_err(|error| std::io::Error::other(format!("initial Arcadia refresh failed: {error}")))?;
 
     let refresh_state = state.clone();
     tokio::spawn(async move {
@@ -717,11 +721,29 @@ async fn main() -> anyhow_free::Result<()> {
             let refresh_requested = state.living.refresh_requested();
             let full_refresh_due = refresh_requested
                 || last_full_refresh.elapsed() >= Duration::from_secs(FAST_FACTS_CADENCE_SECONDS);
-            if state.living.fast_facts_refresh_due(has_active_lease) && full_refresh_due {
-                let _ = tokio::task::spawn_blocking(move || refresh_living_state(&state)).await;
+            if state.living.fast_facts_refresh_due(has_active_lease)
+                && full_refresh_due
+                && API_FULL_REFRESHING
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                let state = state.clone();
+                tokio::task::spawn_blocking(move || {
+                    let _guard = RefreshFlagGuard(&API_FULL_REFRESHING);
+                    refresh_living_state(&state);
+                });
                 last_full_refresh = tokio::time::Instant::now();
-            } else if has_active_lease {
-                let _ = tokio::task::spawn_blocking(move || refresh_living_telemetry(&state)).await;
+            }
+            if has_active_lease
+                && API_TELEMETRY_COLLECTING
+                    .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+            {
+                tokio::task::spawn_blocking(move || {
+                    let _guard = RefreshFlagGuard(&API_TELEMETRY_COLLECTING);
+                    refresh_api_telemetry_cache();
+                    refresh_living_telemetry(&state);
+                });
             }
         }
     });

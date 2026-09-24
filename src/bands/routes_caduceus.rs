@@ -900,7 +900,7 @@ mod arcadia_debug_tests {
 
 
     #[test]
-    fn attendance_open_sends_pin_exousia_envelope_and_accepts_opaque_proof() {
+    fn attendance_open_sends_plain_json_and_accepts_opaque_proof() {
         let _guard = CADUCEUS_ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -913,15 +913,12 @@ mod arcadia_debug_tests {
             assert!(request.starts_with("POST /api/v1/exousia/open HTTP/1.1"));
             let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
             let value: serde_json::Value = serde_json::from_str(body).expect("attendance open JSON");
-            assert_eq!(value["schema"], "caduceus.staff.v1");
-            assert_eq!(value["transition"], "exousia.open");
-            assert_eq!(value["version"], 1);
-            assert!(value["timestamp"].as_u64().is_some());
-            assert!(value["target"].is_null());
-            assert_eq!(value["flags"]["exousia"]["pin"], "2468");
-            assert_eq!(value["payload"]["pin"], "2468");
-            assert_eq!(value["payload"]["documentId"], "doc-open");
-            assert_eq!(value["payload"]["documentIncarnation"], "doc-open");
+            assert_eq!(value["pin"], "2468");
+            assert_eq!(value["documentId"], "doc-open");
+            assert_eq!(value["documentIncarnation"], "doc-open");
+            for envelope_field in ["schema", "transition", "version", "timestamp", "target", "flags", "payload"] {
+                assert!(value.get(envelope_field).is_none(), "unexpected staff field: {envelope_field}");
+            }
             let response = r#"{"ok":true,"attendance":"attendance-proof"}"#;
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
         });
@@ -937,7 +934,7 @@ mod arcadia_debug_tests {
     }
 
     #[test]
-    fn attendance_validate_sends_attendance_exousia_envelope_and_accepts_success() {
+    fn attendance_validate_sends_plain_json_and_accepts_success() {
         let _guard = CADUCEUS_ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
@@ -950,24 +947,33 @@ mod arcadia_debug_tests {
             assert!(request.starts_with("POST /api/v1/exousia/validate HTTP/1.1"));
             let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
             let value: serde_json::Value = serde_json::from_str(body).expect("attendance validate JSON");
-            assert_eq!(value["schema"], "caduceus.staff.v1");
-            assert_eq!(value["transition"], "exousia.validate");
-            assert_eq!(value["version"], 1);
-            assert!(value["timestamp"].as_u64().is_some());
-            assert!(value["target"].is_null());
-            let expected = serde_json::json!({
-                "attendance": "attendance-proof",
-                "documentId": "doc-current",
-                "documentIncarnation": "doc-current",
-            });
-            assert_eq!(value["flags"]["exousia"], expected);
-            assert_eq!(value["payload"], expected);
+            assert_eq!(value["attendance"], "attendance-proof");
+            assert_eq!(value["documentId"], "doc-current");
+            assert_eq!(value["documentIncarnation"], "doc-current");
+            for envelope_field in ["schema", "transition", "version", "timestamp", "target", "flags", "payload"] {
+                assert!(value.get(envelope_field).is_none(), "unexpected staff field: {envelope_field}");
+            }
             let response = r#"{"ok":true}"#;
             write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
+
+            let (mut stream, _) = listener.accept().expect("attendance invalidate request");
+            let request = read_http_request(&mut stream);
+            assert!(request.starts_with("POST /api/v1/exousia/invalidate HTTP/1.1"));
+            let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
+            let value: serde_json::Value = serde_json::from_str(body).expect("attendance invalidate JSON");
+            assert_eq!(value["attendance"], "attendance-proof");
+            assert_eq!(value["documentId"], "doc-current");
+            assert_eq!(value["documentIncarnation"], "doc-current");
+            for envelope_field in ["schema", "transition", "version", "timestamp", "target", "flags", "payload"] {
+                assert!(value.get(envelope_field).is_none(), "unexpected staff field: {envelope_field}");
+            }
+            let response = r#"{"ok":false,"code":"caduceus-attendance-refused"}"#;
+            write!(stream, "HTTP/1.1 401 Unauthorized\r\nContent-Length: {}\r\n\r\n{response}", response.len()).unwrap();
         });
         std::env::set_var("CADUCEUS_STAFF_SOCKET", &socket);
         let attendance = AttendanceProof::parse("attendance-proof").unwrap();
         let call = CaduceusAccessClient::default().attendance_validate(&attendance, "doc-current");
+        let invalidate = CaduceusAccessClient::default().attendance_invalidate(&attendance, "doc-current");
         handle.join().unwrap();
         std::env::remove_var("CADUCEUS_STAFF_SOCKET");
         let _ = std::fs::remove_file(&socket);
@@ -975,6 +981,10 @@ mod arcadia_debug_tests {
         assert_eq!(call.status, 200);
         assert_eq!(call.code, "none");
         assert!(call.proof.is_none());
+        assert!(!invalidate.ok);
+        assert_eq!(invalidate.status, 401);
+        assert_eq!(invalidate.code, "caduceus-attendance-refused");
+        assert!(invalidate.proof.is_none());
     }
 
     #[test]

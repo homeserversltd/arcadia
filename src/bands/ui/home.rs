@@ -143,89 +143,65 @@ fn home_storage_everything_else_size(status: &ConsoleStatus) -> String {
 }
 
 fn home_load_card() -> Markup {
-    let telemetry = crate::api_telemetry_data();
-    let formatted = crate::api_home_telemetry_data();
-    let load = telemetry.get("load").cloned().unwrap_or_default();
-    let memory = telemetry.get("memory").cloned().unwrap_or_default();
-    let io = telemetry.get("io").and_then(|value| value.get("disk")).cloned().unwrap_or_default();
-    let one = load.get("oneMinute").and_then(serde_json::Value::as_f64);
-    let cores = std::thread::available_parallelism().map(|count| count.get() as f64).unwrap_or(1.0).max(1.0);
-    let five = load.get("fiveMinute").and_then(serde_json::Value::as_f64);
-    let fifteen = load.get("fifteenMinute").and_then(serde_json::Value::as_f64);
-    let memory_used = memory.get("usedBytes").and_then(serde_json::Value::as_u64).unwrap_or(0);
-    let memory_total = memory.get("totalBytes").and_then(serde_json::Value::as_u64).unwrap_or(0);
-    let memory_percent = memory.get("usedPercent").and_then(serde_json::Value::as_f64).unwrap_or(0.0).clamp(0.0, 100.0);
-    let rate = |key: &str| io.get(key).and_then(serde_json::Value::as_f64).map(crate::telemetry_human_rate).unwrap_or_else(|| "—".to_string());
-    let display = |path: &[&str]| -> String {
-        path.iter()
-            .fold(&formatted, |value, key| value.get(*key).unwrap_or(&serde_json::Value::Null))
-            .as_str()
-            .unwrap_or("—")
-            .to_string()
-    };
-    let first_fan = formatted
-        .get("fans")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|fans| fans.first())
-        .cloned()
-        .unwrap_or_default();
     html! {
-        article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" {
+        article class="operational-card load-home-card" aria-label="Load dashboard" data-load-card data-load-retry-ms="5000" data-stale="false" {
             div class="card-head" aria-label="Load" { h3 { "Load" } }
-            div class="load-chart-wrap" aria-label="Load history" role="img" { (home_load_sparkline(&telemetry)) }
+            div class="load-chart-wrap" aria-label="Load history" role="img" {
+                span class="load-sparkline-placeholder" { "Gathering history…" }
+                svg class="load-sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true" {
+                    polyline data-load-history-line points="" fill="none" stroke="currentColor" stroke-width="1.5" {}
+                }
+            }
+            span class="load-staleness" data-load-staleness aria-live="polite" {}
             div class="load-average-readouts" aria-label="Load average" {
-                (load_readout("1m", "oneMinute", one, cores))
-                (load_readout("5m", "fiveMinute", five, cores))
-                (load_readout("15m", "fifteenMinute", fifteen, cores))
+                (load_readout("1m", "oneMinute", "home.telemetry.load.oneMinute"))
+                (load_readout("5m", "fiveMinute", "home.telemetry.load.fiveMinute"))
+                (load_readout("15m", "fifteenMinute", "home.telemetry.load.fifteenMinute"))
             }
             div class="memory-usage" aria-label="System RAM used" {
-                div class="storage-bar storage-bar--home" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow=(format!("{memory_percent:.0}")) data-memory-bar {
-                    span class="storage-segment storage-segment--other" style=(format!("width: {memory_percent:.0}%")) data-memory-used-segment {}
-                    span class="storage-segment storage-segment--free" style=(format!("width: {:.0}%", 100.0 - memory_percent)) data-memory-free-segment {}
+                div class="storage-bar storage-bar--home" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-bind-attr="aria-valuenow:home.telemetry.memory.usedPercent" data-memory-bar {
+                    span class="storage-segment storage-segment--other" data-bind-style="width:home.telemetry.memory.usedPercent" data-memory-used-segment {}
                 }
-                div class="state-rows state-rows--compact" { div class="home-detail-row" { span { "RAM used:" } strong data-memory-used data-bind="home.telemetry.memory.usedBytes" { (human_size(memory_used)) } span data-memory-total { " / " (human_size(memory_total)) } } }
+                div class="state-rows state-rows--compact" {
+                    div class="home-detail-row" {
+                        span { "RAM used:" }
+                        strong data-memory-used data-bind="home.telemetry.memory.usedBytes" data-bind-format="bytes" { "—" }
+                        span { " / " }
+                        strong data-memory-total data-bind="home.telemetry.memory.totalBytes" data-bind-format="bytes" { "—" }
+                    }
+                }
             }
             div class="load-telemetry-grid" aria-label="Telemetry" {
-                (load_chip_bound("CPU temp", "cpu", &display(&["cpu", "temperatureCelsius"]), "home.telemetry.cpu.temperatureCelsius"))
-                (load_chip_bound("CPU usage", "cpu-usage", &display(&["cpu", "usagePercent"]), "home.telemetry.cpu.usagePercent"))
-                (load_chip_bound("I/O", "io", &display(&["io", "pressureAvg10"]), "home.telemetry.io.pressureAvg10"))
-                (load_chip_bound("GPU", "gpu", &display(&["gpu", "utilizationPercent"]), "home.telemetry.gpu.utilizationPercent"))
-                (load_chip_bound("GPU temp", "gpu-temperature", &display(&["gpu", "temperatureCelsius"]), "home.telemetry.gpu.temperatureCelsius"))
-                (load_chip_bound("Storage temp", "storage-temperature", &display(&["temperature", "storage"]), "home.telemetry.temperature.storage"))
-                (load_chip_bound("Fan RPM", "fan", first_fan.get("rpm").and_then(serde_json::Value::as_str).unwrap_or("—"), "home.telemetry.fans.0.rpm"))
-                (load_chip_bound("Read/s", "read", &rate("readBytesPerSec"), "home.telemetry.io.disk.readBytesPerSec"))
-                (load_chip_bound("Write/s", "write", &rate("writeBytesPerSec"), "home.telemetry.io.disk.writeBytesPerSec"))
+                (load_chip_bound("CPU temp", "cpu", "home.telemetry.cpu.temperatureCelsius", "temperature"))
+                (load_chip_bound("CPU usage", "cpu-usage", "home.telemetry.cpu.usagePercent", "percent"))
+                (load_chip_bound("I/O", "io", "home.telemetry.io.pressureAvg10", "pressure"))
+                (load_chip_bound("GPU", "gpu", "home.telemetry.gpu.utilizationPercent", "percent"))
+                (load_chip_bound("GPU temp", "gpu-temperature", "home.telemetry.gpu.temperatureCelsius", "temperature"))
+                (load_chip_bound("Storage temp", "storage-temperature", "home.telemetry.temperature.storage", "temperature"))
+                (load_chip_bound("Fan RPM", "fan", "home.telemetry.fans.0.rpm", "text"))
+                (load_chip_bound("Read/s", "read", "home.telemetry.io.disk.readBytesPerSec", "transfer-rate"))
+                (load_chip_bound("Write/s", "write", "home.telemetry.io.disk.writeBytesPerSec", "transfer-rate"))
             }
         }
     }
 }
 
-fn home_load_sparkline(telemetry: &serde_json::Value) -> Markup {
-    let values: Vec<f64> = telemetry.get("history").and_then(|h| h.get("tiers")).and_then(|t| t.get("minute")).and_then(serde_json::Value::as_array).into_iter().flatten().filter_map(|entry| entry.get("aggregation").and_then(|a| a.get("loadOne")).and_then(serde_json::Value::as_f64)).collect();
-    if values.is_empty() {
-        return html! { span class="load-sparkline-placeholder" { "Gathering history…" } };
-    }
-    let max = values.iter().copied().fold(1.0, f64::max);
-    let denominator = values.len().saturating_sub(1).max(1) as f64;
-    let points = values.iter().enumerate().map(|(i, value)| format!("{:.1},{:.1}", if values.len() == 1 { 50.0 } else { i as f64 * 100.0 / denominator }, 38.0 - value / max * 34.0)).collect::<Vec<_>>().join(" ");
-    html! { svg class="load-sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" { title { "Minute load history" } desc { "Load average over the most recent minute buckets." } polyline points=(points) fill="none" stroke="currentColor" stroke-width="1.5" {} } }
-}
-
-fn load_readout(label: &str, key: &str, value: Option<f64>, cores: f64) -> Markup {
-    let display = value
-        .map(|number| ((number / cores) * 100.0).clamp(0.0, 100.0))
-        .map(|percent| format!("{percent:.1}%"))
-        .unwrap_or_else(|| "—".to_string());
+fn load_readout(label: &str, key: &str, bind: &str) -> Markup {
     html! {
         div class="load-average-readout" data-load-readout=(key) {
             span { (label) }
-            strong data-load-readout-value=(key) { (display) }
+            strong data-load-readout-value=(key) data-bind=(bind) data-bind-format="load-average" { "—" }
         }
     }
 }
 
-fn load_chip_bound(label: &str, key: &str, value: &str, bind: &str) -> Markup {
-    html! { div class="load-chip load-chip--idle" data-load-chip=(key) { em { (label) } strong data-load-chip-value=(key) data-bind=(bind) { (value) } } }
+fn load_chip_bound(label: &str, key: &str, bind: &str, format: &str) -> Markup {
+    html! {
+        div class="load-chip load-chip--idle" data-load-chip=(key) data-bind-class=(bind) {
+            em { (label) }
+            strong data-load-chip-value=(key) data-bind=(bind) data-bind-format=(format) { "—" }
+        }
+    }
 }
 
 fn home_network_card(status: &ConsoleStatus) -> Markup {

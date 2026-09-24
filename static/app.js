@@ -459,6 +459,28 @@ const ArcadiaProjector = (() => {
     return String(value);
   }
 
+  function formatBinding(value, format) {
+    if (value == null || value === '') return format ? '—' : asText(value);
+    const number = Number(value);
+    if (format && format !== 'text' && !Number.isFinite(number)) return '—';
+    switch (format) {
+      case 'text': return asText(value);
+      case 'load-average': return number.toFixed(2);
+      case 'percent': return `${number.toFixed(1)}%`;
+      case 'temperature': return `${number.toFixed(1)}°C`;
+      case 'pressure': return `${number.toFixed(1)}%`;
+      case 'bytes': {
+        if (number < 0) return '—';
+        if (number < 1024) return `${number} B`;
+        if (number < 1024 ** 2) return `${(number / 1024).toFixed(1)} KB`;
+        if (number < 1024 ** 3) return `${(number / 1024 ** 2).toFixed(1)} MB`;
+        return `${(number / 1024 ** 3).toFixed(1)} GB`;
+      }
+      case 'transfer-rate': return formatTransferRate(number);
+      default: return asText(value);
+    }
+  }
+
   function asState(value) {
     return asText(value).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
   }
@@ -469,7 +491,7 @@ const ArcadiaProjector = (() => {
 
   function projectScalarBindings(root, state, includeGenerated = false) {
     boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
-      node.textContent = asText(resolve(node.dataset.bind, state));
+      node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '');
     });
     boundNodes(root, '[data-bind-copy-value]', includeGenerated).forEach((node) => {
       const value = asText(resolve(node.dataset.bindCopyValue, state));
@@ -509,6 +531,24 @@ const ArcadiaProjector = (() => {
       const visible = Boolean(resolve(node.dataset.bindShow, state));
       node.hidden = !visible;
       node.setAttribute('aria-hidden', String(!visible));
+    });
+    boundNodes(root, '[data-bind-style]', includeGenerated).forEach((node) => {
+      String(node.dataset.bindStyle || '').split(',').forEach((binding) => {
+        const [property, path] = binding.split(':').map((part) => part && part.trim());
+        if (!property || !path) return;
+        const value = resolve(path, state);
+        if (value == null) node.style.removeProperty(property);
+        else node.style.setProperty(property, `${Math.max(0, Math.min(100, Number(value)))}%`);
+      });
+    });
+    boundNodes(root, '[data-bind-attr]', includeGenerated).forEach((node) => {
+      String(node.dataset.bindAttr || '').split(',').forEach((binding) => {
+        const [name, path] = binding.split(':').map((part) => part && part.trim());
+        if (!name || !path) return;
+        const value = resolve(path, state);
+        if (value == null) node.removeAttribute(name);
+        else node.setAttribute(name, String(value));
+      });
     });
     boundNodes(root, '[data-bind-style-var]', includeGenerated).forEach((node) => {
       String(node.dataset.bindStyleVar || '').split(',').forEach((binding) => {
@@ -584,7 +624,7 @@ const ArcadiaProjector = (() => {
 
   function applyOverlay(nextOverlay) {
     overlay = mergeOverlay(overlay, nextOverlay || {});
-    if (!lastDocument) return;
+    if (!lastDocument) lastDocument = {};
     const documentState = projectedDocument();
     project(document, documentState);
     dispatchWidgets(documentState);
@@ -742,287 +782,211 @@ function bindHomeLoadSubscription() {
   if (!card) return;
   const retryMs = Math.max(2000, Number(card.dataset.loadRetryMs || 5000));
   const state = {
-    source: null,
-    lease: null,
-    heartbeat: null,
-    renewalTimer: null,
-    retryTimer: null,
-    inFlight: false,
-    events: 0,
-    fallbackSnapshots: 0,
-    fallback: false,
-    cachedRoot: null,
-    chart: null,
-    chartLabels: [],
-    chartCpuUsage: [],
-    chartCpuTemperature: [],
-    lastContactUnix: null,
-    expiresAtUnix: null,
+    source: null, lease: null, heartbeat: null, renewalTimer: null, retryTimer: null,
+    watchdogTimer: null, inFlight: false, followUp: false, events: 0,
+    fallbackSnapshots: 0, streamPulls: 0, fallback: false, cachedRoot: null,
+    historyLoaded: false, historyPoints: [], lastFrameAt: 0,
   };
   window.arcadiaHomeLoadSubscriptionState = state;
   const homeIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
-  const setText = (selector, text) => { const node = card.querySelector(selector); if (node) node.textContent = text; };
-  const setChip = (key, text, stateName = 'idle') => {
-    setText(`[data-load-chip-value="${key}"]`, text);
-    const chip = card.querySelector(`[data-load-chip="${key}"]`);
-    if (chip) chip.className = `load-chip load-chip--${stateName}`;
-  };
-  const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
-  const fmtLoadAvgPct = (value, cores) => value == null ? '—' : `${((value / Math.max(1, cores)) * 100).toFixed(1)}%`;
-  const fmtTemp = (value) => value == null ? '—' : `${value.toFixed(1)}°C`;
-  const fmtPressure = (value) => value == null ? '—' : `${value.toFixed(1)}%`;
-  const formatBytes = (value) => {
-    if (value == null || value < 0) return '—';
-    if (value < 1024) return `${value} B`;
-    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-    if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-  const updateChart = (usage, temperature) => {
-    const canvas = card.querySelector('#loadChart');
-    if (!canvas || typeof window.Chart !== 'function') return;
-    state.chartLabels.push(new Date().toLocaleTimeString([], { minute: '2-digit', second: '2-digit' }));
-    state.chartCpuUsage.push(usage);
-    state.chartCpuTemperature.push(temperature);
-    while (state.chartLabels.length > 60) { state.chartLabels.shift(); state.chartCpuUsage.shift(); state.chartCpuTemperature.shift(); }
-    if (!state.chart) {
-      state.chart = new window.Chart(canvas, {
-        type: 'line',
-        data: {
-          labels: state.chartLabels,
-          datasets: [
-            {
-              label: 'CPU usage',
-              data: state.chartCpuUsage,
-              borderColor: '#5dc9ff',
-              backgroundColor: 'rgba(93, 201, 255, 0.12)',
-              tension: 0.25,
-              pointRadius: 0,
-              yAxisID: 'usage',
-            },
-            {
-              label: 'CPU temperature',
-              data: state.chartCpuTemperature,
-              borderColor: '#f5a65b',
-              backgroundColor: 'rgba(245, 166, 91, 0.12)',
-              tension: 0.25,
-              pointRadius: 0,
-              yAxisID: 'temperature',
-            },
-          ],
-        },
-        options: {
-          animation: false,
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            usage: {
-              position: 'left',
-              min: 0,
-              max: 100,
-              ticks: { callback: (value) => `${value}%` },
-            },
-            temperature: {
-              position: 'right',
-              ticks: { callback: (value) => `${value}°C` },
-              grid: { drawOnChartArea: false },
-            },
-            x: { display: false },
-          },
-        },
-      });
-    } else state.chart.update('none');
-  };
-  const apply = (root) => {
-    state.cachedRoot = root;
-    const telemetry = (root.children || []).find((node) => node.id === 'telemetry') || {};
-    const data = telemetry.data || {};
-    const load = data.load || {};
-    const io = data.io || {};
-    const disk = io.disk || {};
-    const one = number(load.oneMinute);
-    const five = number(load.fiveMinute);
-    const fifteen = number(load.fifteenMinute);
-    const cores = Number(navigator.hardwareConcurrency || 1);
-    const usage = number(data.cpu?.usagePercent);
-    const temp = number(data.cpu?.temperatureCelsius);
-    setText('[data-load-readout-value="oneMinute"]', fmtLoadAvgPct(one, cores));
-    setText('[data-load-readout-value="fiveMinute"]', fmtLoadAvgPct(five, cores));
-    setText('[data-load-readout-value="fifteenMinute"]', fmtLoadAvgPct(fifteen, cores));
-    updateChart(usage, temp);
-    const memory = data.memory || {};
-    const memoryPercent = number(memory.usedPercent);
-    const memoryUsed = number(memory.usedBytes);
-    const memoryTotal = number(memory.totalBytes);
-    setText('[data-memory-used]', formatBytes(memoryUsed));
-    setText('[data-memory-total]', memoryTotal == null ? '' : ` / ${formatBytes(memoryTotal)}`);
-    const boundedMemoryPercent = memoryPercent == null ? null : Math.max(0, Math.min(100, memoryPercent));
-    const memoryUsedSegment = card.querySelector("[data-memory-used-segment]");
-    const memoryFreeSegment = card.querySelector("[data-memory-free-segment]");
-    const memoryProgress = card.querySelector("[data-memory-bar]");
-    if (memoryUsedSegment && boundedMemoryPercent != null) memoryUsedSegment.style.width = String(boundedMemoryPercent) + "%";
-    if (memoryFreeSegment && boundedMemoryPercent != null) memoryFreeSegment.style.width = String(100 - boundedMemoryPercent) + "%";
-    if (memoryProgress && boundedMemoryPercent != null) memoryProgress.setAttribute("aria-valuenow", String(Math.round(boundedMemoryPercent)));
-    const pressure = number(io.pressureAvg10);
-    setChip('cpu', fmtTemp(temp), temp == null ? 'idle' : (temp >= 82 ? 'warn' : 'ok'));
-    setChip('io', fmtPressure(pressure), pressure == null ? 'idle' : (pressure >= 10 ? 'warn' : 'ok'));
-    const readRate = number(disk.readBytesPerSec);
-    const writeRate = number(disk.writeBytesPerSec);
-    setChip('read', readRate == null ? '—' : formatTransferRate(readRate), readRate > 0 ? 'ok' : 'idle');
-    setChip('write', writeRate == null ? '—' : formatTransferRate(writeRate), writeRate > 0 ? 'ok' : 'idle');
-  };
   const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
   const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
-  const stopEvents = () => {
+  const clearWatchdog = () => { if (state.watchdogTimer) clearTimeout(state.watchdogTimer); state.watchdogTimer = null; };
+  const setStale = (stale) => {
+    card.dataset.stale = String(stale);
+    const indicator = card.querySelector('[data-load-staleness]');
+    if (indicator) indicator.textContent = stale ? 'Stats stream stale; reconnecting…' : '';
+  };
+  const snapshotTelemetry = (root) => {
+    const telemetry = (root?.children || []).find((node) => node.id === 'telemetry');
+    return telemetry?.data && typeof telemetry.data === 'object' ? telemetry.data : null;
+  };
+  const historyEntry = (entry) => {
+    const ts = entry?.ts;
+    const value = entry?.load?.one;
+    return typeof ts === 'number' && Number.isFinite(ts) && typeof value === 'number' && Number.isFinite(value)
+      ? { ts, value }
+      : null;
+  };
+  const readTier = (tier) => Array.isArray(tier) ? tier.map(historyEntry).filter(Boolean) : [];
+  const mergeHistory = (entries) => {
+    const points = new Map(state.historyPoints.map((point) => [point.ts, point]));
+    entries.forEach((point) => points.set(point.ts, point));
+    state.historyPoints = Array.from(points.values()).sort((a, b) => a.ts - b.ts).slice(-60);
+  };
+  const drawHistory = () => {
+    const line = card.querySelector('[data-load-history-line]');
+    const placeholder = card.querySelector('.load-sparkline-placeholder');
+    if (!line) return;
+    const points = state.historyPoints;
+    if (placeholder) placeholder.hidden = points.length > 0;
+    line.closest('svg')?.toggleAttribute('hidden', points.length === 0);
+    const max = Math.max(1, ...points.map((point) => point.value));
+    const denominator = Math.max(1, points.length - 1);
+    line.setAttribute('points', points.map((point, index) => `${points.length === 1 ? 50 : index * 100 / denominator},${38 - point.value / max * 34}`).join(' '));
+  };
+  ArcadiaProjector.registerWidget('home-load-history', drawHistory);
+  const appendSnapshot = (root) => {
+    const data = snapshotTelemetry(root);
+    if (!data) return false;
+    const point = historyEntry({ ts: data.sampledAt, load: { one: data.load?.oneMinute } });
+    if (point) mergeHistory([point]);
+    ArcadiaProjector.applyOverlay({ home: { telemetry: data } });
+    return true;
+  };
+  const loadHistoryOnce = async () => {
+    if (state.historyLoaded) return;
+    state.historyLoaded = true;
+    try {
+      const response = await fetch('/api/root/history', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
+      if (!response.ok) return;
+      const document = await response.json();
+      const tiers = document?.history?.tiers || {};
+      const raw = readTier(tiers.raw);
+      mergeHistory(raw.length ? raw : readTier(tiers.minute));
+      drawHistory();
+    } catch (_) {}
+  };
+  const clearEvents = () => {
     if (state.source) { state.source.close(); ArcadiaObservation.stream('home-root-sse', 'closed'); }
     state.source = null;
     clearRenewal();
+    clearWatchdog();
     clearRetry();
+  };
+  const fetchJsonBounded = async (url, options = {}, timeoutMs = 8000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try { return await fetch(url, { ...options, signal: controller.signal }); }
+    finally { clearTimeout(timer); }
   };
   const fetchSnapshotOnce = async () => {
     if (!homeIsActive() || state.inFlight) return;
     state.inFlight = true;
     try {
-      const res = await fetch('/api/root', { headers: { Accept: 'application/json' }, cache: 'no-store' });
-      if (res.ok) {
-        apply(await res.json());
+      const response = await fetchJsonBounded('/api/root', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
+      if (response.ok) {
+        const root = await response.json();
+        state.cachedRoot = root;
+        appendSnapshot(root);
         state.fallbackSnapshots += 1;
         ArcadiaObservation.currentness('status-refresh', state.fallbackSnapshots === 1 ? 'recovered' : 'changed');
-      } else {
-        ArcadiaObservation.runtime('degraded', 'status-refresh');
-        ArcadiaObservation.currentness('status-refresh', 'stale');
+      } else ArcadiaObservation.currentness('status-refresh', 'stale');
+    } catch (_) { ArcadiaObservation.currentness('status-refresh', 'stale'); }
+    finally { state.inFlight = false; }
+  };
+  const fetchLivingState = async () => {
+    try {
+      const response = await fetchJsonBounded('/api/root/state', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
+      if (response.ok) ArcadiaProjector.apply(await response.json());
+    } catch (_) {}
+  };
+  const pullSnapshot = async () => {
+    if (!homeIsActive()) return;
+    if (state.inFlight) { state.followUp = true; return; }
+    state.inFlight = true;
+    try {
+      const response = await fetchJsonBounded('/api/root/pull', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
+      if (!response.ok) throw new Error('snapshot pull failed');
+      const root = await response.json();
+      if (appendSnapshot(root)) {
+        state.cachedRoot = root;
+        state.streamPulls += 1;
+        state.events += 1;
+        ArcadiaObservation.currentness('status-refresh', state.streamPulls === 1 ? 'current' : 'changed');
       }
-    } catch (_) {
-      ArcadiaObservation.runtime('fault', 'status-refresh');
-      ArcadiaObservation.currentness('status-refresh', 'stale');
-      // Snapshot fallback stays silent; the card keeps its cached values.
-    } finally {
+    } catch (_) { ArcadiaObservation.currentness('status-refresh', 'stale'); }
+    finally {
       state.inFlight = false;
+      if (state.followUp && homeIsActive()) { state.followUp = false; pullSnapshot(); }
     }
   };
   const scheduleRetry = () => {
     clearRetry();
     if (!homeIsActive()) return;
-    state.retryTimer = setTimeout(() => {
-      state.retryTimer = null;
-      startEvents();
-    }, retryMs);
+    state.retryTimer = setTimeout(() => { state.retryTimer = null; startEvents(); }, retryMs);
+  };
+  const scheduleWatchdog = () => {
+    clearWatchdog();
+    state.watchdogTimer = setTimeout(() => {
+      state.watchdogTimer = null;
+      if (!homeIsActive() || !state.source) return;
+      setStale(true);
+      ArcadiaObservation.currentness('home-root-sse', 'stale');
+      clearEvents();
+      state.fallback = true;
+      fetchSnapshotOnce();
+      scheduleRetry();
+    }, 32000);
   };
   const scheduleRenewal = () => {
     clearRenewal();
     if (!homeIsActive() || !state.lease?.leaseId) return;
-    const renewMs = Math.max(1000, Number(state.lease.renewAfterSeconds || 10) * 1000);
-    state.renewalTimer = setTimeout(renewLease, renewMs);
+    state.renewalTimer = setTimeout(renewLease, Math.max(1000, Number(state.lease.renewAfterSeconds || 10) * 1000));
   };
   const renewLease = async () => {
     if (!homeIsActive() || !state.lease?.leaseId) return clearRenewal();
     try {
-      const res = await fetch('/api/root/events/renew', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ leaseId: state.lease.leaseId }),
-        cache: 'no-store',
-        keepalive: true,
+      const response = await fetchJsonBounded('/api/root/events/renew', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ leaseId: state.lease.leaseId }), cache: 'no-store', keepalive: true,
       });
-      if (!res.ok) throw new Error('lease expired');
-      state.lease = await res.json();
-      state.lastContactUnix = state.lease.lastContactUnix;
-      state.expiresAtUnix = state.lease.expiresAtUnix;
+      if (!response.ok) throw new Error('lease expired');
+      state.lease = await response.json();
       scheduleRenewal();
     } catch (_) {
-      stopEvents();
-      if (homeIsActive()) {
-        state.fallback = true;
-        fetchSnapshotOnce();
-        scheduleRetry();
-      }
+      clearEvents();
+      if (homeIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
     }
   };
   const startEvents = () => {
     clearRetry();
     state.fallback = false;
-    if (!homeIsActive()) return stopEvents();
-    if (!('EventSource' in window)) {
-      state.fallback = true;
-      fetchSnapshotOnce();
-      return scheduleRetry();
-    }
+    if (!homeIsActive()) return clearEvents();
+    loadHistoryOnce();
+    if (!('EventSource' in window)) { state.fallback = true; fetchSnapshotOnce(); return scheduleRetry(); }
     if (state.source) return;
     try {
       const source = new EventSource('/api/root/events');
       ArcadiaObservation.stream('home-root-sse', 'opened');
       state.source = source;
-      const onRoot = (event) => {
-        if (!homeIsActive()) return stopEvents();
-        try {
-          apply(JSON.parse(event.data));
-          ArcadiaObservation.currentness('home-root-sse', state.events ? 'changed' : 'current');
-          state.events += 1;
-        } catch (_) {
-          // Ignore malformed event payloads and keep the last known values.
-        }
+      const onPoke = (eventName) => {
+        if (!homeIsActive()) return clearEvents();
+        state.lastFrameAt = Date.now();
+        setStale(false);
+        scheduleWatchdog();
+        if (eventName === 'stats.tick') pullSnapshot();
+        else fetchLivingState();
       };
-      const onLease = (event) => {
-        try {
-          state.lease = JSON.parse(event.data);
-          state.lastContactUnix = state.lease.lastContactUnix;
-          state.expiresAtUnix = state.lease.expiresAtUnix;
-          scheduleRenewal();
-        } catch (_) {}
-      };
-      const onHeartbeat = (event) => {
-        try {
-          state.heartbeat = JSON.parse(event.data);
-          state.expiresAtUnix = state.heartbeat.expiresAtUnix;
-        } catch (_) {}
-      };
-      const onLivingState = (event) => {
-        try {
-          ArcadiaProjector.apply(JSON.parse(event.data));
-        } catch (_) {
-          // Ignore malformed living-state payloads and keep the last projected document.
-        }
-      };
-      source.addEventListener('snapshot', onRoot);
-      source.addEventListener('root', onRoot);
-      source.addEventListener('state', onLivingState);
-      source.addEventListener('lease', onLease);
-      source.addEventListener('heartbeat', onHeartbeat);
-      source.addEventListener('expired', () => {
-        stopEvents();
-        if (homeIsActive()) {
-          state.fallback = true;
-          fetchSnapshotOnce();
-          scheduleRetry();
-        }
+      source.addEventListener('stats.tick', () => onPoke('stats.tick'));
+      source.addEventListener('state.changed', () => onPoke('state.changed'));
+      source.addEventListener('lease', (event) => {
+        try { state.lease = JSON.parse(event.data); setStale(false); scheduleWatchdog(); scheduleRenewal(); } catch (_) {}
       });
-      source.onmessage = onRoot;
+      source.addEventListener('heartbeat', (event) => {
+        try { state.heartbeat = JSON.parse(event.data); setStale(false); scheduleWatchdog(); } catch (_) {}
+      });
+      source.addEventListener('expired', () => {
+        clearEvents();
+        if (homeIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
+      });
       source.onerror = () => {
         ArcadiaObservation.runtime('degraded', 'home-root-sse');
         ArcadiaObservation.currentness('home-root-sse', 'stale');
-        stopEvents();
-        if (homeIsActive()) {
-          state.fallback = true;
-          fetchSnapshotOnce();
-          scheduleRetry();
-        }
+        clearEvents();
+        if (homeIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
       };
-    } catch (_) {
-      state.fallback = true;
-      fetchSnapshotOnce();
-      scheduleRetry();
-    }
+      scheduleWatchdog();
+    } catch (_) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
   };
-  const stop = () => {
-    stopEvents();
-  };
+  const stop = () => { clearEvents(); state.followUp = false; };
   const start = () => {
     if (!homeIsActive()) return stop();
-    if (state.cachedRoot) apply(state.cachedRoot);
+    setStale(false);
+    if (state.cachedRoot) appendSnapshot(state.cachedRoot);
     startEvents();
   };
-  window.arcadiaHomeLoadSubscription = { start, stop, homeIsActive, startEvents, fetchSnapshotOnce, renewLease };
+  window.arcadiaHomeLoadSubscription = { start, stop, homeIsActive, startEvents, fetchSnapshotOnce, pullSnapshot, renewLease };
   document.addEventListener('arcadia:view-change', () => { if (homeIsActive()) start(); else stop(); });
   document.addEventListener('visibilitychange', () => { if (homeIsActive()) start(); else stop(); });
   start();

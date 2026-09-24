@@ -2,6 +2,61 @@
 // verifies a PIN or treats an attendance proof as authority without Caduceus.
 const CADUCEUS_ACCESS_TIMEOUT: Duration = Duration::from_secs(3);
 const CADUCEUS_ACCESS_MAX_REQUEST: usize = 4 * 1024;
+const ATTENDANCE_CACHE_TTL: Duration = Duration::from_secs(5);
+struct AttendanceVerdict {
+    ok: OnceLock<bool>,
+    invalidated: std::sync::atomic::AtomicBool,
+    expires_at: Mutex<Option<std::time::Instant>>,
+}
+
+static ATTENDANCE_VERDICTS: OnceLock<Mutex<HashMap<(String, String), (Arc<AttendanceVerdict>, Option<std::time::Instant>)>>> = OnceLock::new();
+
+fn attendance_verdict_cache() -> &'static Mutex<HashMap<(String, String), (Arc<AttendanceVerdict>, Option<std::time::Instant>)>> {
+    ATTENDANCE_VERDICTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn attendance_cache_bust(document: &str, attendance: &AttendanceProof) {
+    if let Ok(mut cache) = attendance_verdict_cache().lock() {
+        if let Some((verdict, _)) = cache.remove(&(document.to_string(), attendance.expose().to_string())) {
+            verdict.invalidated.store(true, Ordering::Release);
+        }
+    }
+}
+
+fn attendance_cached_validate(document: &str, attendance: &AttendanceProof) -> bool {
+    let key = (document.to_string(), attendance.expose().to_string());
+    let now = std::time::Instant::now();
+    let verdict = if let Ok(mut cache) = attendance_verdict_cache().lock() {
+        cache.retain(|_, (_, expires)| expires.is_none_or(|expires| expires > now));
+        if let Some((verdict, _)) = cache.get(&key) { verdict.clone() }
+        else {
+            let verdict = Arc::new(AttendanceVerdict {
+                ok: OnceLock::new(),
+                invalidated: std::sync::atomic::AtomicBool::new(false),
+                expires_at: Mutex::new(None),
+            });
+            cache.insert(key.clone(), (verdict.clone(), None));
+            verdict
+        }
+    } else { return false; };
+    let valid = *verdict.ok.get_or_init(|| CaduceusAccessClient::default().attendance_validate(attendance, document).ok)
+        && !verdict.invalidated.load(Ordering::Acquire);
+    let expires_at = if valid {
+        verdict.expires_at.lock().ok().map(|mut expires| {
+            *expires.get_or_insert_with(|| std::time::Instant::now() + ATTENDANCE_CACHE_TTL)
+        })
+    } else { None };
+    if let Ok(mut cache) = attendance_verdict_cache().lock() {
+        if cache.get(&key).is_some_and(|(cached, _)| Arc::ptr_eq(cached, &verdict)) {
+            if let Some(expires_at) = expires_at.filter(|_| !verdict.invalidated.load(Ordering::Acquire)) {
+                cache.insert(key, (verdict.clone(), Some(expires_at)));
+            } else {
+                cache.remove(&key);
+            }
+        }
+    }
+    valid && !verdict.invalidated.load(Ordering::Acquire)
+}
 
 #[derive(Clone, PartialEq, Eq)]
 struct AttendanceProof(String);
@@ -335,8 +390,6 @@ impl CaduceusAccessClient {
     }
 
     fn call(&self, operation: AttendanceOperation, body: serde_json::Value) -> AttendanceCall {
-        let flags = match operation { AttendanceOperation::Open => serde_json::json!({"exousia": {"pin": body.get("pin")}}), _ => serde_json::json!({"exousia": {"attendance": body.get("attendance"), "documentId": body.get("documentId"), "documentIncarnation": body.get("documentIncarnation")}}) };
-        let body = caduceus_staff_envelope(operation.path(), body, flags);
         let Ok(encoded) = serde_json::to_vec(&body) else {
             return AttendanceCall::refused(0, "caduceus-attendance-request-invalid");
         };
@@ -554,7 +607,9 @@ async fn caduceus_attendance_open_route(
             "caduceus-attendance-document-required",
         );
     };
-    let call = CaduceusAccessClient::default().attendance_open(pin, &document);
+    let pin = pin.to_string();
+    let call = tokio::task::spawn_blocking(move || CaduceusAccessClient::default().attendance_open(&pin, &document))
+        .await.unwrap_or_else(|_| AttendanceCall::refused(503, "caduceus-attendance-worker-failed"));
     let status = attendance_failure_status(&call);
     (status, Json(attendance_projection(call))).into_response()
 }
@@ -569,7 +624,8 @@ async fn caduceus_attendance_validate_route(headers: axum::http::HeaderMap) -> R
     let Some(attendance) = attendance_from_headers(&headers) else {
         return attendance_refusal(StatusCode::UNAUTHORIZED, "caduceus-attendance-required");
     };
-    let call = CaduceusAccessClient::default().attendance_validate(&attendance, &document);
+    let call = tokio::task::spawn_blocking(move || CaduceusAccessClient::default().attendance_validate(&attendance, &document))
+        .await.unwrap_or_else(|_| AttendanceCall::refused(503, "caduceus-attendance-worker-failed"));
     let status = attendance_failure_status(&call);
     (status, Json(attendance_projection(call))).into_response()
 }
@@ -584,7 +640,9 @@ async fn caduceus_attendance_invalidate_route(headers: axum::http::HeaderMap) ->
     let Some(attendance) = attendance_from_headers(&headers) else {
         return attendance_refusal(StatusCode::UNAUTHORIZED, "caduceus-attendance-required");
     };
-    let call = CaduceusAccessClient::default().attendance_invalidate(&attendance, &document);
+    attendance_cache_bust(&document, &attendance);
+    let call = tokio::task::spawn_blocking(move || CaduceusAccessClient::default().attendance_invalidate(&attendance, &document))
+        .await.unwrap_or_else(|_| AttendanceCall::refused(503, "caduceus-attendance-worker-failed"));
     let status = attendance_failure_status(&call);
     (status, Json(attendance_projection(call))).into_response()
 }

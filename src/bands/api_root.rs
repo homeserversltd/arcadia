@@ -1,6 +1,7 @@
 #[derive(Clone)]
 struct ArcadiaLivingState {
     generated_at_unix: u64,
+    document_generation: u64,
     model_lanes: Vec<ModelLane>,
     status: ConsoleStatus,
     network: NetworkState,
@@ -19,6 +20,7 @@ struct ApiTelemetryCache {
     current: serde_json::Value,
     history: serde_json::Value,
     history_fetched_at_unix: u64,
+    sampled_at: Option<u64>,
     models: Vec<LocalAiModelStatus>,
 }
 
@@ -63,7 +65,7 @@ impl ArcadiaLivingMachine {
     fn expensive_scan_due(&self) -> bool {
         self.refresh_requested.swap(false, Ordering::AcqRel)
     }
-    fn publish(&self, snapshot: Arc<ArcadiaLivingState>, expensive: bool) {
+    fn publish(&self, snapshot: Arc<ArcadiaLivingState>, expensive: bool, document_changed: bool) {
         if expensive {
             self.last_expensive_scan_unix.store(now_unix_seconds(), Ordering::Release);
         }
@@ -76,18 +78,27 @@ impl ArcadiaLivingMachine {
             snapshot.status.controllers.live_input = input.clone();
             snapshot.document.controllers.live_input = input.clone();
             snapshot.document.status.controllers.live_input = input;
+            snapshot.document_generation = if document_changed {
+                current.document_generation.saturating_add(1)
+            } else {
+                current.document_generation
+            };
+        } else if document_changed {
+            snapshot.document_generation = snapshot.document_generation.max(1);
         }
         *guard = Some(Arc::new(snapshot));
     }
     fn publish_controller_input(&self, input: ControllerInputStatus) {
         let mut guard = self.snapshot.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(current) = guard.as_ref() else { return; };
+        if current.controller_input == input { return; }
         let mut next = (**current).clone();
         next.controller_input = input.clone();
         next.controllers.live_input = input.clone();
         next.status.controllers.live_input = input.clone();
         next.document.controllers.live_input = input.clone();
         next.document.status.controllers.live_input = input;
+        next.document_generation = current.document_generation.saturating_add(1);
         *guard = Some(Arc::new(next));
     }
 }
@@ -103,6 +114,7 @@ fn refresh_controller_input(state: &AppState) {
 }
 
 fn refresh_living_state(state: &AppState) {
+    let _publisher = API_SNAPSHOT_PUBLISHER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let expensive = state.living.expensive_scan_due();
     let previous = state
         .living
@@ -126,16 +138,13 @@ fn refresh_living_state(state: &AppState) {
         previous.as_ref().map(|snapshot| snapshot.status.library.clone())
             .unwrap_or_else(|| library_status(&storage))
     };
-    refresh_api_telemetry_cache();
     let local_ai_status = local_ai_status();
     api_telemetry_cache_set_models(&local_ai_status.available_models);
-    let model_lanes = match CaduceusAccessClient::default().model_lanes() {
-        Ok(model_lanes) => model_lanes,
-        Err(_) => previous
-            .as_ref()
-            .map(|snapshot| snapshot.model_lanes.clone())
-            .unwrap_or_default(),
-    };
+    let model_lanes = api_telemetry_cache().lock().ok()
+        .and_then(|cache| cache.current.get("model_lanes").cloned())
+        .and_then(|value| serde_json::from_value(value).ok())
+        .or_else(|| previous.as_ref().map(|snapshot| snapshot.model_lanes.clone()))
+        .unwrap_or_default();
     let ai = local_ai_state_from_status(state, &storage, &local_ai_status);
     let controllers = controller_status_machine();
     let controller_input = controllers.live_input.clone();
@@ -159,6 +168,7 @@ fn refresh_living_state(state: &AppState) {
     state.living.publish(
         Arc::new(ArcadiaLivingState {
             generated_at_unix,
+            document_generation: 0,
             model_lanes,
             status,
             network,
@@ -172,31 +182,19 @@ fn refresh_living_state(state: &AppState) {
             document,
         }),
         expensive,
+        true,
     );
 }
 
 fn refresh_living_telemetry(state: &AppState) {
-    refresh_api_telemetry_cache();
+    let _publisher = API_SNAPSHOT_PUBLISHER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let snapshot = state.living.snapshot();
     let generated_at_unix = now_unix_seconds();
-    let root = api_root_object_from_status(state, &snapshot.status, generated_at_unix);
-    let telemetry_root = api_root_telemetry_tick_from_root(&root, generated_at_unix);
-    let document = api_living_state_document_from_parts(
-        snapshot.status.clone(),
-        snapshot.storage.clone(),
-        snapshot.network.clone(),
-        snapshot.ai.clone(),
-        snapshot.controllers.clone(),
-        snapshot.system.clone(),
-        snapshot.model_lanes.clone(),
-        generated_at_unix,
-    );
-    let mut next = (*snapshot).clone();
-    next.generated_at_unix = generated_at_unix;
-    next.root = root;
-    next.telemetry_root = telemetry_root;
-    next.document = document;
-    state.living.publish(Arc::new(next), false);
+    let mut root = (*snapshot).clone();
+    root.generated_at_unix = generated_at_unix;
+    root.root = api_root_object_from_status(state, &snapshot.status, generated_at_unix);
+    root.telemetry_root = api_root_telemetry_tick_from_root(&root.root, generated_at_unix);
+    state.living.publish(Arc::new(root), false, false);
 }
 
 #[derive(Clone, Serialize)]
@@ -740,22 +738,37 @@ fn api_telemetry_cache_set_models(models: &[LocalAiModelStatus]) {
     }
 }
 
+static API_TELEMETRY_COLLECTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static API_FULL_REFRESHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static API_SNAPSHOT_PUBLISHER: Mutex<()> = Mutex::new(());
+
+struct RefreshFlagGuard(&'static std::sync::atomic::AtomicBool);
+impl Drop for RefreshFlagGuard {
+    fn drop(&mut self) { self.0.store(false, Ordering::Release); }
+}
+
 fn refresh_api_telemetry_cache() {
-    let now = now_unix_seconds();
-    let history_due = api_telemetry_cache().lock().ok().map(|cache| {
-        cache.history_fetched_at_unix == 0
-            || now.saturating_sub(cache.history_fetched_at_unix) >= 60
-    }).unwrap_or(false);
     let current = CaduceusAccessClient::default().get_json("/api/v1/appliance/stats").ok();
-    let history = if history_due {
-        CaduceusAccessClient::default().get_json("/api/v1/appliance/stats/history").ok()
-    } else {
-        None
-    };
+    let sampled_at = current.as_ref()
+        .and_then(|value| value.get("ts"))
+        .and_then(serde_json::Value::as_u64);
     if let Ok(mut cache) = api_telemetry_cache().lock() {
-        if let Some(current) = current { cache.current = current; }
-        if let Some(history) = history { cache.history = history; }
-        if history_due { cache.history_fetched_at_unix = now; }
+        if let Some(current) = current { cache.current = current; cache.sampled_at = sampled_at; }
+    }
+    refresh_api_telemetry_history();
+}
+
+fn refresh_api_telemetry_history() {
+    let now = now_unix_seconds();
+    let due = api_telemetry_cache().lock().ok().map(|cache|
+        cache.history_fetched_at_unix == 0 || now.saturating_sub(cache.history_fetched_at_unix) >= 60
+    ).unwrap_or(false);
+    if !due { return; }
+    if let Ok(history) = CaduceusAccessClient::default().get_json("/api/v1/appliance/stats/history") {
+        if let Ok(mut cache) = api_telemetry_cache().lock() {
+            cache.history = history;
+            cache.history_fetched_at_unix = now;
+        }
     }
 }
 
@@ -770,9 +783,7 @@ pub(crate) fn api_telemetry_data() -> serde_json::Value {
     let current = &cache.current;
     let load = current.get("load").cloned().unwrap_or(serde_json::Value::Null);
     let one = load.get("one").and_then(serde_json::Value::as_f64);
-    let cores = std::thread::available_parallelism().map(|count| count.get() as f64).unwrap_or(1.0).max(1.0);
-    let cpu_usage = current.get("cpu").and_then(|cpu| cpu.get("usagePercent")).and_then(serde_json::Value::as_f64)
-        .or_else(|| one.map(|value| (value / cores * 100.0).min(100.0)));
+    let cpu_usage = current.get("cpu").and_then(|cpu| cpu.get("usagePercent")).and_then(serde_json::Value::as_f64);
     let memory = current.get("memory").cloned().unwrap_or(serde_json::Value::Null);
     let total = memory.get("MemTotal").or_else(|| memory.get("totalBytes")).and_then(serde_json::Value::as_u64);
     let used = memory.get("usedBytes").and_then(serde_json::Value::as_u64);
@@ -785,10 +796,10 @@ pub(crate) fn api_telemetry_data() -> serde_json::Value {
         "load": { "oneMinute": one, "fiveMinute": load.get("five").and_then(serde_json::Value::as_f64), "fifteenMinute": load.get("fifteen").and_then(serde_json::Value::as_f64) },
         "cpu": { "usagePercent": cpu_usage, "temperatureCelsius": cpu_temperature },
         "memory": { "usedBytes": used, "totalBytes": total, "usedPercent": used_percent },
-        "io": { "disk": { "readBytesPerSec": throughput.get("readBytesPerSecond"), "writeBytesPerSec": throughput.get("writeBytesPerSecond") }, "pressureAvg10": null },
+        "io": { "disk": { "readBytesPerSec": throughput.get("readBytesPerSecond"), "writeBytesPerSec": throughput.get("writeBytesPerSecond") }, "pressureAvg10": current.get("pressure").and_then(|value| value.get("io")).and_then(|value| value.get("someAvg10")).and_then(serde_json::Value::as_f64) },
         "temperature": temperature, "storageTemperatureCelsius": storage_temperature, "fans": current.get("fans"),
         "gpu": current.get("gpu"),
-        "history": cache.history, "localAi": { "models": cache.models },
+        "sampledAt": cache.sampled_at, "localAi": { "models": cache.models },
     })
 }
 
@@ -944,6 +955,111 @@ async fn api_root_route(State(state): State<Arc<AppState>>) -> Json<ApiRootObjec
     Json(state.living_snapshot().root.clone())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GuestTelemetryProjection {
+    sampled_at: serde_json::Value,
+    load: serde_json::Value,
+    cpu: serde_json::Value,
+    memory: serde_json::Value,
+    io: serde_json::Value,
+    temperature: serde_json::Value,
+    storage_temperature_celsius: serde_json::Value,
+    fans: serde_json::Value,
+    gpu: serde_json::Value,
+    local_ai: serde_json::Value,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdminTelemetryProjection {
+    #[serde(flatten)]
+    guest: GuestTelemetryProjection,
+    admin: bool,
+    processes: serde_json::Value,
+    per_disk_io: serde_json::Value,
+    self_telemetry: serde_json::Value,
+}
+
+fn guest_telemetry_projection(data: &serde_json::Value) -> GuestTelemetryProjection {
+    GuestTelemetryProjection {
+        sampled_at: data.get("sampledAt").cloned().unwrap_or(serde_json::Value::Null),
+        load: data.get("load").cloned().unwrap_or(serde_json::Value::Null),
+        cpu: data.get("cpu").cloned().unwrap_or(serde_json::Value::Null),
+        memory: data.get("memory").cloned().unwrap_or(serde_json::Value::Null),
+        io: data.get("io").cloned().unwrap_or(serde_json::Value::Null),
+        temperature: data.get("temperature").cloned().unwrap_or(serde_json::Value::Null),
+        storage_temperature_celsius: data.get("storageTemperatureCelsius").cloned().unwrap_or(serde_json::Value::Null),
+        fans: data.get("fans").cloned().unwrap_or(serde_json::Value::Null),
+        gpu: data.get("gpu").cloned().unwrap_or(serde_json::Value::Null),
+        local_ai: data.get("localAi").cloned().unwrap_or(serde_json::Value::Null),
+    }
+}
+
+async fn api_root_pull_route(State(state): State<Arc<AppState>>, headers: axum::http::HeaderMap) -> Response {
+    let attendance = attendance_from_headers(&headers);
+    let document = document_incarnation_from_headers(&headers);
+    let admin = if let (Some(document), Some(attendance)) = (document, attendance) {
+        let document_for_validation = document.clone();
+        tokio::task::spawn_blocking(move || attendance_cached_validate(&document_for_validation, &attendance))
+            .await.unwrap_or(false)
+    } else { false };
+    let mut root = state.living_snapshot().root.clone();
+    if let Some(node) = root.children.iter_mut().find(|node| node.id == "telemetry") {
+        let data = api_telemetry_data();
+        node.data = if admin {
+            let current = api_telemetry_cache().lock().ok().map(|cache| cache.current.clone()).unwrap_or_default();
+            let projection = AdminTelemetryProjection {
+                guest: guest_telemetry_projection(&data),
+                admin: true,
+                processes: current.get("processes").cloned().unwrap_or(serde_json::Value::Null),
+                per_disk_io: current.get("disk").and_then(|disk| disk.get("io")).cloned().unwrap_or(serde_json::Value::Null),
+                self_telemetry: current.get("self").cloned().unwrap_or(serde_json::Value::Null),
+            };
+            serde_json::to_value(projection).unwrap_or_default()
+        } else {
+            serde_json::to_value(guest_telemetry_projection(&data)).unwrap_or_default()
+        };
+    }
+    Json(root).into_response()
+}
+
+async fn api_root_history_route() -> Json<serde_json::Value> {
+    let (tier, entries) = api_telemetry_cache().lock().ok().map(|cache| {
+        let history = &cache.history;
+        let raw = history.get("tiers").and_then(|tiers| tiers.get("raw"))
+            .and_then(serde_json::Value::as_array)
+            .map(|entries| entries.iter().rev().filter_map(|entry| {
+                let ts = entry.get("ts")?.as_u64()?;
+                let one = entry.get("load")?.get("one")?.as_f64()?;
+                Some(serde_json::json!({"ts": ts, "load": {"one": one}}))
+            }).take(60).collect::<Vec<_>>())
+            .unwrap_or_default();
+        if !raw.is_empty() {
+            ("raw", raw.into_iter().rev().collect::<Vec<_>>())
+        } else {
+            let minute = history.get("tiers").and_then(|tiers| tiers.get("minute"))
+                .and_then(serde_json::Value::as_array)
+                .map(|entries| entries.iter().rev().filter_map(|entry| {
+                    // Caduceus minute buckets are Unix minutes; the page consumes Unix seconds.
+                    let ts = entry.get("bucket")?.as_u64()?.checked_mul(60)?;
+                    let one = entry.get("aggregation")?.get("loadOne")?.as_f64()?;
+                    Some(serde_json::json!({"ts": ts, "load": {"one": one}}))
+                }).take(60).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>())
+                .unwrap_or_default();
+            ("minute", minute)
+        }
+    }).unwrap_or_else(|| ("raw", Vec::new()));
+    Json(serde_json::json!({
+        "schema": "arcadia.api.root.history.v1",
+        "history": {"tiers": {(tier): entries}}
+    }))
+}
+
+async fn api_root_state_route(State(state): State<Arc<AppState>>) -> Json<ApiLivingStateDocument> {
+    Json(state.living_snapshot().document.clone())
+}
+
 async fn api_root_events_renew_route(
     Json(request): Json<HomeTelemetryRenewRequest>,
 ) -> impl IntoResponse {
@@ -968,20 +1084,17 @@ async fn api_root_events_route(
     let lease = home_telemetry_create_lease();
     let lease_id = lease.lease_id.clone();
     let stream = async_stream::stream! {
-        let snapshot = state.living_snapshot();
-        let snapshot = snapshot.root.clone();
-        let snapshot_json = serde_json::to_string(&snapshot)
-            .unwrap_or_else(|_| "{}".to_string());
-        yield Ok(Event::default()
-            .event("snapshot")
-            .id(snapshot.generated_at_unix.to_string())
-            .data(snapshot_json));
-
         let lease_json = serde_json::to_string(&lease)
             .unwrap_or_else(|_| "{}".to_string());
         yield Ok(Event::default().event("lease").data(lease_json));
+        yield Ok(Event::default().event("stats.tick").data("{}"));
+
+        let initial = state.living_snapshot();
+        let mut last_document_generation = initial.document_generation;
+        yield Ok(Event::default().event("state.changed").data("{}"));
 
         let mut tick = tokio::time::interval(Duration::from_secs(HOME_TELEMETRY_CADENCE_SECONDS));
+        tick.tick().await;
         loop {
             tick.tick().await;
             let Some(status) = home_telemetry_lease_status(&lease_id) else {
@@ -997,22 +1110,13 @@ async fn api_root_events_route(
                 break;
             };
 
+            yield Ok(Event::default().event("stats.tick").data("{}"));
             let snapshot = state.living_snapshot();
-            let root = snapshot.telemetry_root.clone();
-            let payload = serde_json::to_string(&root)
-                .unwrap_or_else(|_| "{}".to_string());
-            yield Ok(Event::default()
-                .event("root")
-                .id(root.generated_at_unix.to_string())
-                .data(payload));
-
-            let living_state = snapshot.document.clone();
-            let living_state_json = serde_json::to_string(&living_state)
-                .unwrap_or_else(|_| "{}".to_string());
-            yield Ok(Event::default()
-                .event("state")
-                .id(living_state.generated_at_unix.to_string())
-                .data(living_state_json));
+            let document_generation = snapshot.document_generation;
+            if last_document_generation != document_generation {
+                yield Ok(Event::default().event("state.changed").data("{}"));
+                last_document_generation = document_generation;
+            }
 
             let heartbeat = serde_json::to_string(&status)
                 .unwrap_or_else(|_| "{}".to_string());
