@@ -285,6 +285,34 @@ fn read_json_value(path: &str) -> Option<serde_json::Value> {
         .and_then(|text| serde_json::from_str(&text).ok())
 }
 
+fn module_seeking_update(suite_root: &Path, module_id: &str) -> bool {
+    let apply_mode = read_json_value(&suite_root.join("run.json").to_string_lossy())
+        .and_then(|run| receipt_string(&run, "mode"))
+        .is_none_or(|mode| mode == "apply");
+    let Ok(entries) = fs::read_dir(suite_root.join("modules").join(module_id)) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            return false;
+        }
+        let Some(receipt) = read_json_value(&path.to_string_lossy()) else {
+            return false;
+        };
+        if apply_mode {
+            receipt_bool(&receipt, "ok") == Some(false)
+                || receipt_string(&receipt, "final_state")
+                    .is_some_and(|final_state| final_state != "converged")
+        } else {
+            receipt_bool(&receipt, "changed") == Some(true)
+                || receipt_bool(&receipt, "ok") == Some(false)
+                || receipt_string(&receipt, "diff_decision")
+                    .is_some_and(|decision| decision != "empty")
+        }
+    })
+}
+
 fn receipt_string(value: &serde_json::Value, key: &str) -> Option<String> {
     value.get(key).and_then(|v| v.as_str()).map(str::to_string)
 }
@@ -457,6 +485,8 @@ fn harmonia_module_statuses(enabled: &[String]) -> Vec<HarmoniaModuleStatus> {
                 description,
                 enabled: enabled_flag,
                 present,
+                seeking_update: enabled_flag
+                    && (!present || module_seeking_update(Path::new(suite_root), &id)),
                 state: state.to_string(),
                 receipt_path,
                 pinned_module_membership: harmonia_module_membership(&id).map(str::to_string),

@@ -653,6 +653,15 @@ pub struct ApiHomeUpdatesState {
     pub readiness_ratio: String,
     pub pending_updates: String,
     pub last_ran: String,
+    pub modules: Vec<ApiHomeUpdateModuleState>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiHomeUpdateModuleState {
+    pub id: String,
+    pub label: String,
+    pub seeking_update: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -1693,6 +1702,14 @@ fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
             readiness_ratio: format!("{updates_ready}/{updates_enabled}"),
             pending_updates: status.updates.pending_updates.to_string(),
             last_ran: status.updates.last_update_run.clone(),
+            modules: enabled_home_update_modules(&status.updates.modules)
+                .into_iter()
+                .map(|module| ApiHomeUpdateModuleState {
+                    id: module.id.clone(),
+                    label: module.label.clone(),
+                    seeking_update: module.seeking_update,
+                })
+                .collect(),
         },
         ai: ApiHomeAiState {
             state: status.local_ai.load_state.clone(),

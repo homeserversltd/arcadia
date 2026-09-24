@@ -72,9 +72,24 @@ pub struct HarmoniaModuleStatus {
     pub description: String,
     pub enabled: bool,
     pub present: bool,
+    pub seeking_update: bool,
     pub state: String,
     pub receipt_path: String,
     pub pinned_module_membership: Option<String>,
+}
+
+fn enabled_home_update_modules(modules: &[HarmoniaModuleStatus]) -> Vec<&HarmoniaModuleStatus> {
+    let mut enabled = modules
+        .iter()
+        .filter(|module| module.enabled)
+        .collect::<Vec<_>>();
+    enabled.sort_by(|a, b| {
+        b.seeking_update
+            .cmp(&a.seeking_update)
+            .then_with(|| a.label.to_lowercase().cmp(&b.label.to_lowercase()))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    enabled
 }
 
 #[derive(Serialize)]

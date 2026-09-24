@@ -1819,6 +1819,7 @@
                     description: String::new(),
                     enabled: true,
                     present: true,
+                    seeking_update: false,
                     state: "enabled".to_string(),
                     receipt_path: "/synthetic/receipt.json".to_string(),
                     pinned_module_membership: Some(membership.to_string()),
@@ -2319,4 +2320,115 @@
         assert!(APP_JS.contains("value === 0 || value === '0' ? '—'"));
         assert!(APP_JS.contains("node.setAttribute('aria-disabled', String(!enabled))"));
         assert!(!APP_JS.contains("[data-admin-projection]').forEach((node) => { node.textContent"));
+    }
+
+    #[test]
+    fn module_update_receipts_use_run_mode_and_ignore_malformed_steps() {
+        let root = std::env::temp_dir().join(format!("arcadia-home-update-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let module_dir = root.join("modules").join("fixture");
+        std::fs::create_dir_all(&module_dir).unwrap();
+        let write = |name: &str, value: &str| std::fs::write(module_dir.join(name), value).unwrap();
+        let set_mode = |mode: Option<&str>| {
+            let path = root.join("run.json");
+            if let Some(mode) = mode {
+                std::fs::write(path, format!(r#"{{"mode":"{mode}"}}"#)).unwrap();
+            } else {
+                let _ = std::fs::remove_file(path);
+            }
+        };
+
+        // Apply (and an absent mode) treats only failed or non-converged receipts as pending.
+        set_mode(Some("apply"));
+        write("ready.json", r#"{"changed":true,"ok":true,"final_state":"converged","diff_decision":"replace"}"#);
+        assert!(!module_seeking_update(&root, "fixture"));
+        write("failed.json", r#"{"changed":false,"ok":false,"final_state":"converged"}"#);
+        assert!(module_seeking_update(&root, "fixture"));
+        std::fs::remove_file(module_dir.join("failed.json")).unwrap();
+        write("blocked.json", r#"{"changed":true,"ok":true,"final_state":"blocked"}"#);
+        assert!(module_seeking_update(&root, "fixture"));
+        std::fs::remove_file(module_dir.join("blocked.json")).unwrap();
+        set_mode(None);
+        assert!(!module_seeking_update(&root, "fixture"));
+
+        // Check/plan receipts retain diff evidence; receipt scanning never reads per-step mode.
+        std::fs::remove_file(module_dir.join("ready.json")).unwrap();
+        write("changed.json", r#"{"changed":true,"ok":true,"final_state":"converged","diff_decision":"empty","mode":"apply"}"#);
+        set_mode(Some("check"));
+        assert!(module_seeking_update(&root, "fixture"));
+        std::fs::remove_file(module_dir.join("changed.json")).unwrap();
+        write("diff.json", r#"{"changed":false,"ok":true,"diff_decision":"replace","mode":"apply"}"#);
+        assert!(module_seeking_update(&root, "fixture"));
+        std::fs::remove_file(module_dir.join("diff.json")).unwrap();
+        set_mode(Some("plan"));
+        write("plan.json", r#"{"changed":true,"ok":true,"diff_decision":"empty"}"#);
+        assert!(module_seeking_update(&root, "fixture"));
+        std::fs::remove_file(module_dir.join("plan.json")).unwrap();
+        write("empty.json", r#"{"changed":false,"ok":true,"diff_decision":"empty"}"#);
+        write("broken.json", "{");
+        assert!(!module_seeking_update(&root, "fixture"));
+        assert!(!module_seeking_update(&root, "missing"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn home_updates_projects_enabled_flagged_first_then_label_and_id() {
+        let mk = |id: &str, label: &str, enabled: bool, seeking_update: bool| HarmoniaModuleStatus {
+            id: id.to_string(), label: label.to_string(), description: String::new(), enabled,
+            present: true, seeking_update, state: "enabled".to_string(), receipt_path: String::new(),
+            pinned_module_membership: None,
+        };
+        let modules = vec![
+            mk("zeta", "Alpha", true, true),
+            mk("disabled", "Aardvark", false, true),
+            mk("beta", "Alpha", true, true),
+            mk("ready", "Beta", true, false),
+        ];
+        let ordered = enabled_home_update_modules(&modules);
+        assert_eq!(ordered.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["beta", "zeta", "ready"]);
+        let state = AppState {
+            started_unix: 0,
+            canonical_url: "http://console.example.com/".into(),
+            product: "HomeConsole".into(),
+            living: Arc::new(ArcadiaLivingMachine::new()),
+        };
+        let mut status = console_status(&state);
+        status.updates.modules = modules;
+        let rendered = ui::layout(&status).into_string();
+        let home_start = rendered
+            .find("<section id=\"view-home\"")
+            .expect("home view starts");
+        let home_end = home_start
+            + rendered[home_start..]
+                .find("<section id=\"view-sync\"")
+                .expect("sync view follows home");
+        let html = &rendered[home_start..home_end];
+        for expected in [
+            "data-bind-each=\"home.updates.modules\"",
+            "data-bind-replace=\"true\"",
+            "data-bind-show=\"seekingUpdate\"",
+            "data-bind=\"label\"",
+            "check-updates",
+            "Enabled modules",
+            "Beta",
+            "Alpha",
+        ] {
+            assert!(html.contains(expected), "home Updates markup missing {expected}");
+        }
+        assert!(html.find("check-updates").unwrap() < html.find("Enabled modules").unwrap());
+        let rows = html
+            .split("class=\"updates-home-module-row\"")
+            .skip(2)
+            .map(|row| row.split("</div>").next().unwrap_or_default())
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 3, "three enabled rows render after the projector template");
+        assert!(rows[0].contains(">Alpha</span>") && rows[0].contains("↑"));
+        assert!(rows[1].contains(">Alpha</span>") && rows[1].contains("↑"));
+        assert!(rows[2].contains(">Beta</span>") && !rows[2].contains("↑"));
+        assert!(!html.contains("Aardvark"), "disabled modules are omitted from the server render");
+        let projected = api_home_state(&status);
+        assert_eq!(projected.updates.modules.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["beta", "zeta", "ready"]);
+        assert_eq!(projected.updates.modules.iter().map(|m| m.seeking_update).collect::<Vec<_>>(), [true, true, false]);
+        let serialized = serde_json::to_value(projected).unwrap();
+        assert_eq!(serialized["updates"]["modules"][0]["seekingUpdate"], true);
     }

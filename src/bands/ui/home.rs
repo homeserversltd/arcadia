@@ -439,6 +439,23 @@ fn home_updates_card(status: &ConsoleStatus) -> Markup {
             div class="inline-actions inline-actions--compact updates-home-actions" {
                 (action_button(ButtonVariant::Primary, "Check", "check-updates", "/api/actions/check-updates"))
             }
+            h4 class="updates-home-module-heading" { "Enabled modules" }
+            div class="updates-home-module-list" aria-label="Enabled modules" data-bind-each="home.updates.modules" data-bind-replace="true" {
+                template {
+                    div class="updates-home-module-row" {
+                        span class="updates-home-module-indicator" aria-hidden="true" data-bind-show="seekingUpdate" { "↑" }
+                        span data-bind="label" {}
+                    }
+                }
+                @for module in enabled_home_update_modules(&status.updates.modules) {
+                    div class="updates-home-module-row" {
+                        span class="updates-home-module-indicator" aria-hidden="true" {
+                            @if module.seeking_update { "↑" }
+                        }
+                        span { (&module.label) }
+                    }
+                }
+            }
         }
     }
 }
