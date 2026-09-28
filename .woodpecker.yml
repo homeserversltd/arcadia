@@ -93,12 +93,20 @@ steps:
         PY
 
   - name: build-arcadia-release
-    image: rust:1-bookworm
+    image: git.home.arpa/homeserversltd/rust-house:house
     when:
       - event: push
         branch: main
     commands:
-      - ARCADIA_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
+      - |
+        set -eu
+        mkdir -p target/release
+        rustc -Vv > target/release/rustc-vv.txt
+        cat target/release/rustc-vv.txt
+        rustc_version="$(awk -F': ' '$1 == "release" { print $2; count++ } END { if (count != 1) exit 1 }' target/release/rustc-vv.txt)"
+        printf '%s\n' "$rustc_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+        printf '%s\n' "$rustc_version" > target/release/rustc-version
+        ARCADIA_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
 
   - name: publish-arcadia-release
     image: python:3.12-alpine
