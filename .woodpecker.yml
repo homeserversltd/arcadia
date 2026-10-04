@@ -179,6 +179,7 @@ steps:
 
   - name: github-latest-arcadia
     image: python:3.12-alpine
+    failure: ignore
     when:
       - event: push
         branch: main
