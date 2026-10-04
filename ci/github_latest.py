@@ -32,7 +32,7 @@ EXPECTED_ASSETS = (BINARY_NAME, SIDECAR_NAME, FLAG_NAME)
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(rb"^([0-9a-f]{64})  arcadia-x86_64\n$")
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
-MIRROR_WAIT_ATTEMPTS = 12
+MIRROR_WAIT_ATTEMPTS = 37
 MIRROR_WAIT_SECONDS = 5
 PLAN_MODE = False
 
@@ -434,6 +434,7 @@ def run_plan(sha, forgejo_token, github_token):
             ref_action = "no-op" if current_sha == sha else ("force-update" if current_sha else "create")
             actions = [
                 f"set Forgejo {LATEST_REF} to {sha} (forceful update when it exists)",
+                f"POST /repos/{OWNER}/{REPO}/push_mirrors-sync to synchronize Forgejo push mirrors",
                 f"wait for mirrored GitHub {LATEST_REF} to resolve to {sha}",
                 "create or update only the GitHub latest release with the three listed assets",
             ]
@@ -516,6 +517,14 @@ def move_forgejo_latest(token, sha):
     if readback is None or readback["target_sha"] != sha:
         fail("Forgejo latest-tag ref did not read back at the requested SHA")
     return "force-pushed"
+
+
+def sync_forgejo_push_mirrors(token):
+    path = f"/repos/{OWNER}/{REPO}/push_mirrors-sync"
+    status, _ = forgejo_api("POST", path, token)
+    print(f"Forgejo push-mirror sync returned HTTP {status}", file=sys.stderr)
+    if status < 200 or status >= 300:
+        fail(f"Forgejo push-mirror sync returned HTTP {status}")
 
 
 def wait_for_mirrored_github_ref(token, sha):
@@ -669,6 +678,7 @@ def run_publish(sha, forgejo_token, github_token):
         fail(f"GitHub latest-release GET returned HTTP {current_release_status}")
 
     forgejo_action = move_forgejo_latest(forgejo_token, sha)
+    sync_forgejo_push_mirrors(forgejo_token)
     wait_for_mirrored_github_ref(github_token, sha)
     ensure_current_forgejo_main(forgejo_token, sha, "GitHub latest-release inspection")
 
