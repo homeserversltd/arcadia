@@ -75,6 +75,11 @@
   background: color-mix(in srgb, var(--theme-bg-raised) 78%, transparent);
 }
 .updates-command-rail .btn { min-height: var(--ux-updates-command-min-height); }
+.updates-automatic-switch { flex: 1 1 100%; }
+.updates-automatic-switch .pin-toggle-track { width: var(--ux-updates-module-toggle-width); height: var(--ux-updates-module-toggle-height); }
+.updates-automatic-switch .pin-toggle-thumb { width: var(--ux-updates-module-toggle-thumb-size); height: var(--ux-updates-module-toggle-thumb-size); }
+.updates-automatic-switch input:indeterminate + .pin-toggle-track { border-style: dashed; background: color-mix(in srgb, var(--theme-idle) 40%, var(--theme-field-surface)); }
+.updates-automatic-switch .updates-automatic-status { display: block; }
 .updates-board {
   min-height: 0;
   display: grid;

@@ -139,6 +139,169 @@ async fn action_check_updates() -> (StatusCode, Json<ConsoleActionResponse>) {
     )
 }
 
+#[derive(Deserialize)]
+struct HarmoniaServiceToggleRequest {
+    state: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HarmoniaServiceResponse {
+    ok: bool,
+    action: &'static str,
+    enabled: Option<bool>,
+    active: Option<bool>,
+    first_missing_signal: Option<String>,
+    message: String,
+    #[serde(flatten)]
+    upstream_fields: BTreeMap<String, serde_json::Value>,
+}
+
+fn harmonia_service_response(
+    upstream_status: u16,
+    action: &'static str,
+    upstream: serde_json::Value,
+    fallback_message: &str,
+) -> (StatusCode, Json<HarmoniaServiceResponse>) {
+    let http_ok = (200..300).contains(&upstream_status);
+    let ok = upstream
+        .get("ok")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(http_ok)
+        && http_ok;
+    let enabled = upstream
+        .get("enabled")
+        .and_then(serde_json::Value::as_bool);
+    let active = upstream
+        .get("active")
+        .and_then(serde_json::Value::as_bool);
+    let first_missing_signal = upstream
+        .get("firstMissingSignal")
+        .or_else(|| upstream.get("first_missing_signal"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let message = upstream
+        .get("message")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(if ok {
+            fallback_message
+        } else {
+            "Automatic updates service refused."
+        })
+        .to_string();
+    let mut upstream_fields = BTreeMap::new();
+    if let Some(object) = upstream.as_object() {
+        for (key, value) in object {
+            if !matches!(
+                key.as_str(),
+                "ok" | "action" | "enabled" | "active" | "firstMissingSignal"
+                    | "first_missing_signal" | "message"
+            ) {
+                upstream_fields.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    (
+        StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::BAD_GATEWAY),
+        Json(HarmoniaServiceResponse {
+            ok,
+            action,
+            enabled,
+            active,
+            first_missing_signal,
+            message,
+            upstream_fields,
+        }),
+    )
+}
+
+fn harmonia_service_error(
+    action: &'static str,
+    signal: &'static str,
+) -> (StatusCode, Json<HarmoniaServiceResponse>) {
+    harmonia_service_response(
+        StatusCode::BAD_GATEWAY.as_u16(),
+        action,
+        serde_json::json!({
+            "ok": false,
+            "firstMissingSignal": signal,
+            "message": format!("Automatic updates service is unavailable ({signal})."),
+        }),
+        "Automatic updates service is unavailable.",
+    )
+}
+
+async fn action_harmonia_service_status(
+) -> (StatusCode, Json<HarmoniaServiceResponse>) {
+    const PATH: &str = "/api/v1/update/service/status";
+    const ACTION: &str = "harmonia-service-status";
+    match caduceus_raw_request(
+        "GET",
+        PATH,
+        None,
+        CADUCEUS_ACCESS_TIMEOUT,
+        CADUCEUS_MAX_OBSERVATION_RESPONSE_BODY,
+    ) {
+        Ok((status, response)) => match caduceus_receipt_response(status, response) {
+            Ok(value) => harmonia_service_response(
+                status,
+                ACTION,
+                value,
+                "Automatic updates status received.",
+            ),
+            Err(signal) => harmonia_service_error(ACTION, signal),
+        },
+        Err(error) => harmonia_service_error(ACTION, caduceus_http_error(error)),
+    }
+}
+
+async fn action_harmonia_service_toggle(
+    Json(body): Json<HarmoniaServiceToggleRequest>,
+) -> (StatusCode, Json<HarmoniaServiceResponse>) {
+    const PATH: &str = "/api/v1/update/service/toggle";
+    const ACTION: &str = "harmonia-service-toggle";
+    if !matches!(body.state.as_str(), "on" | "off") {
+        return harmonia_service_response(
+            StatusCode::BAD_REQUEST.as_u16(),
+            ACTION,
+            serde_json::json!({
+                "ok": false,
+                "firstMissingSignal": "update-service-state-invalid",
+                "message": "Automatic updates state must be on or off.",
+            }),
+            "Automatic updates state must be on or off.",
+        );
+    }
+    let payload = serde_json::json!({ "state": body.state });
+    let encoded = match serde_json::to_vec(&caduceus_staff_envelope(
+        PATH,
+        payload,
+        serde_json::Value::Null,
+    )) {
+        Ok(encoded) if encoded.len() <= CADUCEUS_ACCESS_MAX_REQUEST => encoded,
+        Ok(_) => return harmonia_service_error(ACTION, "caduceus-http-request-too-large"),
+        Err(_) => return harmonia_service_error(ACTION, "caduceus-http-invalid-json"),
+    };
+    match caduceus_raw_request(
+        "POST",
+        PATH,
+        Some(&encoded),
+        CADUCEUS_ACCESS_TIMEOUT,
+        CADUCEUS_MAX_COMMAND_RESPONSE_BODY,
+    ) {
+        Ok((status, response)) => match caduceus_receipt_response(status, response) {
+            Ok(value) => harmonia_service_response(
+                status,
+                ACTION,
+                value,
+                "Automatic updates setting receipt received.",
+            ),
+            Err(signal) => harmonia_service_error(ACTION, signal),
+        },
+        Err(error) => harmonia_service_error(ACTION, caduceus_http_error(error)),
+    }
+}
+
 async fn action_harmonia_module_toggle(
     Json(body): Json<HarmoniaModuleToggleRequest>,
 ) -> (StatusCode, Json<HarmoniaModuleToggleResponse>) {

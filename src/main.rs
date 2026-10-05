@@ -480,6 +480,10 @@ async fn main() -> anyhow_free::Result<()> {
             post(arcadia_debug_emit_route).layer(DefaultBodyLimit::max(16 * 1024)),
         )
         .route("/api/harmonia/ledger", get(harmonia_ledger_route))
+        .route(
+            "/api/harmonia/service",
+            get(action_harmonia_service_status).post(action_harmonia_service_toggle),
+        )
         .route("/api/caduceus/health", get(caduceus_health_proxy_route))
         .route(
             "/api/caduceus/v1/identity",

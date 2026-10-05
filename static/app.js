@@ -3686,7 +3686,124 @@ async function updateHarmoniaPinnedGroup(button) {
   }
 }
 
+function bindHarmoniaServiceSwitch() {
+  const pane = document.querySelector('[data-harmonia-updates]');
+  const toggle = pane?.querySelector('[data-harmonia-automatic-updates-toggle]');
+  const status = pane?.querySelector('[data-harmonia-automatic-updates-status]');
+  if (!pane || !toggle || !status || toggle.dataset.harmoniaAutomaticUpdatesBound === 'true') return;
+  toggle.dataset.harmoniaAutomaticUpdatesBound = 'true';
+
+  let requestSequence = 0;
+  let statusRequest = null;
+  let mutationPending = false;
+  const updatesActive = () => Boolean(pane.closest('[data-view-panel="updates"]')?.classList.contains('is-active'));
+  const setUnavailable = (message) => {
+    toggle.indeterminate = true;
+    toggle.checked = false;
+    toggle.setAttribute('aria-checked', 'mixed');
+    toggle.disabled = true;
+    status.textContent = message;
+  };
+  const invalidateStatusRequest = (message) => {
+    requestSequence += 1;
+    statusRequest?.abort();
+    statusRequest = null;
+    setUnavailable(message);
+  };
+  const renderStatus = (data) => {
+    const enabled = typeof data?.enabled === 'boolean' ? data.enabled : null;
+    const active = typeof data?.active === 'boolean' ? data.active : null;
+    const signal = data?.firstMissingSignal || data?.first_missing_signal || '';
+    toggle.indeterminate = enabled === null;
+    toggle.checked = enabled === true;
+    toggle.setAttribute('aria-checked', enabled === null ? 'mixed' : String(enabled));
+    toggle.disabled = mutationPending || enabled === null || active === null || data?.ok === false;
+    const enabledText = enabled === null ? 'Unavailable' : (enabled ? 'On' : 'Off');
+    const activeText = active === null ? 'Unavailable' : (active ? 'Active' : 'Inactive');
+    const detail = data?.ok === false ? (signal || data.message || 'Status unavailable') : '';
+    status.textContent = [`Updates ${enabledText}`, `Timer ${activeText}`, detail].filter(Boolean).join(' · ');
+  };
+  const refreshStatus = async () => {
+    if (mutationPending) {
+      setUnavailable('Saving automatic updates setting…');
+      return;
+    }
+    if (!updatesActive()) {
+      invalidateStatusRequest('Status refreshes when Updates opens.');
+      return;
+    }
+    requestSequence += 1;
+    const sequence = requestSequence;
+    statusRequest?.abort();
+    const controller = new AbortController();
+    statusRequest = controller;
+    setUnavailable('Loading service state…');
+    try {
+      const response = await fetch('/api/harmonia/service', {
+        headers: { accept: 'application/json' },
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      if (!response.ok) data.ok = false;
+      if (sequence !== requestSequence || !updatesActive()) return;
+      renderStatus(data);
+    } catch (_) {
+      if (sequence !== requestSequence || !updatesActive()) return;
+      renderStatus({ ok: false, enabled: null, active: null, message: 'Automatic updates status is unavailable.' });
+    } finally {
+      if (sequence === requestSequence) statusRequest = null;
+    }
+  };
+
+  toggle.addEventListener('change', async () => {
+    if (!updatesActive() || mutationPending || toggle.disabled || toggle.indeterminate) return;
+    const state = toggle.checked ? 'on' : 'off';
+    mutationPending = true;
+    requestSequence += 1;
+    statusRequest?.abort();
+    statusRequest = null;
+    setUnavailable('Saving automatic updates setting…');
+    clearMessage('console-action-message');
+    try {
+      const response = await fetch('/api/harmonia/service', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json', ...caduceusAttendanceHeaders() },
+        body: JSON.stringify({ state }),
+        cache: 'no-store',
+      });
+      let data = {};
+      try { data = await response.json(); } catch (_) {}
+      if (!response.ok) data.ok = false;
+      const signal = data.firstMissingSignal || data.first_missing_signal;
+      const message = [data.message || (data.ok === true ? 'Automatic updates setting saved.' : 'Automatic updates setting refused.'), signal ? `Signal: ${signal}` : ''].filter(Boolean).join('\n');
+      setMessage('console-action-message', message, data.ok === true ? 'success' : 'error');
+      ArcadiaObservation.action('automatic-updates', data.ok === true ? 'settled' : 'refused');
+    } catch (_) {
+      setMessage('console-action-message', 'Automatic updates request failed.', 'error');
+      ArcadiaObservation.action('automatic-updates', 'fault');
+    } finally {
+      mutationPending = false;
+      if (updatesActive()) await refreshStatus();
+      else setUnavailable('Status refreshes when Updates opens.');
+    }
+  });
+
+  document.addEventListener('arcadia:view-change', (event) => {
+    if (event.detail?.view === 'updates') void refreshStatus();
+    else invalidateStatusRequest('Status refreshes when Updates opens.');
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && updatesActive()) void refreshStatus();
+    else if (document.visibilityState !== 'visible') invalidateStatusRequest('Status refreshes when Updates opens.');
+  });
+  if (updatesActive()) void refreshStatus();
+  else setUnavailable('Status refreshes when Updates opens.');
+}
+
 function bindHarmoniaModules() {
+  bindHarmoniaServiceSwitch();
   hydrateHarmoniaLedgerSummary();
   document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
   document.addEventListener('change', (event) => {

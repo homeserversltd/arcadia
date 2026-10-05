@@ -17,6 +17,14 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
                         }
                     }
                     div class="harmonia-command-rail updates-command-rail" data-harmonia-update-controls="true" {
+                        label class="updates-module-switch updates-automatic-switch" data-harmonia-automatic-updates-switch="true" {
+                            input type="checkbox" data-harmonia-automatic-updates-toggle="true" aria-label="Automatic updates" aria-checked="mixed" disabled;
+                            span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
+                            span class="updates-module-copy" {
+                                strong { "Automatic updates" }
+                                span class="updates-automatic-status" data-harmonia-automatic-updates-status="true" aria-live="polite" { "Loading service state…" }
+                            }
+                        }
                         (action_button(ButtonVariant::Secondary, "Check state", "check-updates", "/api/actions/check-updates"))
                         (action_button(ButtonVariant::Primary, "Sync", "update-gui", "/api/actions/update-gui"))
                         button class="btn btn--secondary" type="button" data-harmonia-ledger-open="true" { "Ledger" }
