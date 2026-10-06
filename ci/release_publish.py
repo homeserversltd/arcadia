@@ -63,7 +63,7 @@ def verify_fresh(release, token, binary_name, sidecar_name, digest, sidecar, sha
     assets = expected_assets(release, binary_name, sidecar_name)
     if hashlib.sha256(download(assets[binary_name], token, binary_name)).hexdigest() != digest: fail(f"downloaded {binary_name} has a conflicting digest")
     if download(assets[sidecar_name], token, sidecar_name) != sidecar: fail(f"downloaded {sidecar_name} has conflicting contents")
-def canonical_flag_bytes(sha, digest, flagged_at, pipeline_url, rustc_version=None):
+def canonical_flag_bytes(sha, digest, flagged_at, pipeline_url, rustc_version=None, env_sha=None):
     payload = {
         "schema": "estate.release-flag.v1",
         "component": REPO,
@@ -74,6 +74,8 @@ def canonical_flag_bytes(sha, digest, flagged_at, pipeline_url, rustc_version=No
     }
     if rustc_version is not None:
         payload["rustc_version"] = rustc_version
+    if env_sha is not None:
+        payload["env_sha"] = env_sha
     return (json.dumps(payload, indent=2) + "\n").encode("utf-8")
 
 def staged_rustc_version():
@@ -91,6 +93,21 @@ def staged_rustc_version():
         fail("staged rustc version must be exactly X.Y.Z followed by one newline")
     return staged[:-1]
 
+def staged_env_sha():
+    target_directory = os.environ.get("CARGO_TARGET_DIR", "target")
+    path = os.path.join(target_directory, "release", "env-sha")
+    staged = ""
+    try:
+        with open(path, "r", encoding="ascii") as env_sha_file:
+            staged = env_sha_file.read()
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as exc:
+        fail(f"cannot read staged env sha: {exc}")
+    if not re.fullmatch(r"[0-9a-f]{64}\n", staged):
+        fail("staged env sha must be exactly 64 lowercase hexadecimal characters followed by one newline")
+    return staged[:-1]
+
 def valid_utc_flagged_at(value):
     if not isinstance(value, str) or not value:
         fail("existing release.flag has no valid flagged_at")
@@ -103,7 +120,7 @@ def valid_utc_flagged_at(value):
         fail("existing release.flag flagged_at must be UTC")
     return value
 
-def flag_from_release(release, token, expected, description, sha, tag):
+def flag_from_release(release, token, expected, description, sha, tag, allow_existing=False):
     verify_release_identity(release, sha, tag)
     assets = assets_of(release)
     asset = assets.get(RELEASE_FLAG)
@@ -113,10 +130,24 @@ def flag_from_release(release, token, expected, description, sha, tag):
     if not isinstance(actual_obj, dict): fail(f"{description} {RELEASE_FLAG} is not a JSON object")
     expected_obj = decode(expected, "expected release.flag")
     if not isinstance(expected_obj, dict): fail("expected release.flag is not a JSON object")
+    if allow_existing:
+        existing_rustc_version = staged_rustc_version() if "rustc_version" in actual_obj else None
+        existing_env_sha = staged_env_sha() if "env_sha" in actual_obj else None
+        existing_pipeline_url = (
+            expected_obj.get("pipeline_url")
+            if "rustc_version" in actual_obj
+            else actual_obj.get("pipeline_url")
+        )
+        collision_expected = canonical_flag_bytes(
+            sha, expected_obj.get("sha256"), valid_utc_flagged_at(actual_obj.get("flagged_at")),
+            existing_pipeline_url, existing_rustc_version, existing_env_sha,
+        )
+        if actual != collision_expected: fail(f"{description} has conflicting contents")
+        return
     if "rustc_version" not in actual_obj:
         legacy_expected = canonical_flag_bytes(
             sha, expected_obj.get("sha256"), valid_utc_flagged_at(actual_obj.get("flagged_at")),
-            actual_obj.get("pipeline_url"),
+            actual_obj.get("pipeline_url"), env_sha=staged_env_sha() if "env_sha" in actual_obj else None,
         )
         if actual != legacy_expected: fail(f"{description} has conflicting contents")
         return
@@ -125,6 +156,7 @@ def flag_from_release(release, token, expected, description, sha, tag):
 def flag_release(token, sha, pipeline_url):
     target_directory = os.environ.get("CARGO_TARGET_DIR", "target")
     rustc_version = staged_rustc_version()
+    env_sha = staged_env_sha()
     binary_name = "arcadia-x86_64"; sidecar_name = "arcadia-x86_64.sha256"
     binary_path = os.path.join(target_directory, "release", REPO)
     if not os.path.isfile(binary_path): fail(f"release binary does not exist: {binary_path}")
@@ -144,12 +176,15 @@ def flag_release(token, sha, pipeline_url):
         if not isinstance(existing_obj, dict): fail("existing release.flag is not a JSON object")
         flagged_at = valid_utc_flagged_at(existing_obj.get("flagged_at"))
         existing_rustc_version = rustc_version if "rustc_version" in existing_obj else None
+        existing_env_sha = env_sha if "env_sha" in existing_obj else None
         existing_pipeline_url = pipeline_url if existing_rustc_version is not None else existing_obj.get("pipeline_url")
-        expected = canonical_flag_bytes(sha, digest, flagged_at, existing_pipeline_url, existing_rustc_version)
+        expected = canonical_flag_bytes(
+            sha, digest, flagged_at, existing_pipeline_url, existing_rustc_version, existing_env_sha,
+        )
         if existing != expected: fail("existing release.flag has conflicting contents")
         print(json.dumps({"status":"noop-flag-identical", "tag":tag, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":"))); return
     flagged_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    expected = canonical_flag_bytes(sha, digest, flagged_at, pipeline_url, rustc_version)
+    expected = canonical_flag_bytes(sha, digest, flagged_at, pipeline_url, rustc_version, env_sha)
     release_id = release.get("id")
     if not isinstance(release_id, int) or isinstance(release_id, bool): fail("release has no numeric id")
     upload_url = f"{RELEASES}/{release_id}/assets?{urllib.parse.urlencode({'name':RELEASE_FLAG})}"
@@ -158,7 +193,7 @@ def flag_release(token, sha, pipeline_url):
         reread_status, reread_raw = request("GET", tag_url, token)
         if reread_status != 200: fail(f"release flag collision reread returned HTTP {reread_status}")
         reread = decode(reread_raw, "release flag collision reread")
-        flag_from_release(reread, token, expected, "release flag collision reread", sha, tag)
+        flag_from_release(reread, token, expected, "release flag collision reread", sha, tag, allow_existing=True)
         print(json.dumps({"status":"noop-flag-identical", "tag":tag, "asset":RELEASE_FLAG, "sha256":digest}, separators=(",", ":"))); return
     if upload_status not in (200, 201): fail(f"upload of {RELEASE_FLAG} returned HTTP {upload_status}")
     reread_status, reread_raw = request("GET", tag_url, token)
