@@ -757,5 +757,3 @@ async fn main() -> anyhow_free::Result<()> {
         .map_err(|error| std::io::Error::other(format!("Arcadia server task failed: {error}")))??;
     Ok(())
 }
-
-include!("../tests/index.rsi");

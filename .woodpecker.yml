@@ -111,104 +111,47 @@ steps:
         printf '%s\n' "$env_sha" > target/release/env-sha
         ARCADIA_BUILD_SHA="$CI_COMMIT_SHA" cargo build --release --locked
 
-  - name: publish-arcadia-release
+  - name: pool-publish-arcadia
     image: python:3.12-alpine
     when:
       - event: push
         branch: main
-    environment:
-      FORGEJO_TOKEN:
-        from_secret: FORGEJO_TOKEN
-    commands:
-      - |
-        set -eu
-        python3 - <<'PY'
-        import urllib.request
-
-        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle") as response:
-            ca_bundle = response.read()
-        with open("/tmp/house-ca.pem", "wb") as bundle_file:
-            bundle_file.write(ca_bundle)
-        PY
-        test -s /tmp/house-ca.pem
-        export SSL_CERT_FILE=/tmp/house-ca.pem
-        python3 ci/release_publish.py
-
-  - name: flag-arcadia-release
-    image: python:3.12-alpine
-    when:
-      - event: push
-        branch: main
-    environment:
-      FORGEJO_TOKEN:
-        from_secret: FORGEJO_TOKEN
-    commands:
-      - |
-        set -eu
-        python3 - <<'PY'
-        import urllib.request
-
-        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle") as response:
-            ca_bundle = response.read()
-        with open("/tmp/house-ca.pem", "wb") as bundle_file:
-            bundle_file.write(ca_bundle)
-        PY
-        test -s /tmp/house-ca.pem
-        export SSL_CERT_FILE=/tmp/house-ca.pem
-        python3 ci/release_publish.py --flag
-
-  - name: retain-arcadia-releases
-    image: python:3.12-alpine
-    when:
-      - event: push
-        branch: main
-    environment:
-      FORGEJO_TOKEN:
-        from_secret: FORGEJO_TOKEN
-    commands:
-      - |
-        set -eu
-        python3 - <<'PY'
-        import urllib.request
-
-        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle") as response:
-            ca_bundle = response.read()
-        with open("/tmp/house-ca.pem", "wb") as bundle_file:
-            bundle_file.write(ca_bundle)
-        PY
-        test -s /tmp/house-ca.pem
-        export SSL_CERT_FILE=/tmp/house-ca.pem
-        python3 ci/release_publish.py --retain
-
-  - name: github-latest-arcadia
-    image: python:3.12-alpine
-    failure: ignore
-    when:
-      - event: push
-        branch: main
-    failure: ignore
     environment:
       FORGEJO_TOKEN:
         from_secret: FORGEJO_TOKEN
       GITHUB_TOKEN:
         from_secret: github_token
+      WUKONG_STAFF_SHA: e935d283453995b96a32f5cdb1db1a6a7846ae4d
     commands:
       - |
         set -eu
         apk add --no-cache git
+        if [ -z "$${FORGEJO_TOKEN:-}" ]; then
+          echo "pool-publish-arcadia: required secret FORGEJO_TOKEN is missing" >&2
+          exit 1
+        fi
         python3 - <<'PY'
         import urllib.request
 
-        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle", timeout=15) as response:
+        with urllib.request.urlopen("http://192.168.123.1:7100/v1/trust/ca-bundle", timeout=30) as response:
             ca_bundle = response.read()
         if not ca_bundle:
-            raise SystemExit("empty house CA bundle")
-        with open("/tmp/house-ca.pem", "wb") as bundle_file:
+            raise SystemExit("pool-publish-arcadia: trust CA bundle is empty")
+        with open("/tmp/pool-publish-house-ca.pem", "wb") as bundle_file:
             bundle_file.write(ca_bundle)
         PY
-        test -s /tmp/house-ca.pem
-        export SSL_CERT_FILE=/tmp/house-ca.pem
-        python3 ci/github_latest.py
+        test -s /tmp/pool-publish-house-ca.pem
+        export SSL_CERT_FILE=/tmp/pool-publish-house-ca.pem
+        export GIT_SSL_CAINFO=/tmp/pool-publish-house-ca.pem
+        export GIT_CONFIG_COUNT=1
+        export GIT_CONFIG_KEY_0=credential.https://git.home.arpa.helper
+        export GIT_CONFIG_VALUE_0='!f() { if [ "$${1}" = get ]; then printf "username=x-token\npassword=%s\n" "$${FORGEJO_TOKEN}"; fi; }; f'
+        git clone --depth 1 --no-checkout https://git.home.arpa/HOMESERVERSLTD/wukong-staff.git wukong-staff
+        git -C wukong-staff fetch --depth 1 origin "$${WUKONG_STAFF_SHA}"
+        git -C wukong-staff checkout --detach "$${WUKONG_STAFF_SHA}"
+        test "$(git -C wukong-staff rev-parse HEAD)" = "$${WUKONG_STAFF_SHA}"
+        export WUKONG_MEMBER_ROOT="$${PWD}"
+        exec sh wukong-staff/ci/arcadia/pipeline.sh
 
   - name: ci-outcome-arcadia
     image: python:3.12-alpine
