@@ -121,7 +121,7 @@ steps:
         from_secret: FORGEJO_TOKEN
       GITHUB_TOKEN:
         from_secret: github_token
-      WUKONG_STAFF_SHA: e935d283453995b96a32f5cdb1db1a6a7846ae4d
+      WUKONG_STAFF_SHA: c849d8da6c7b58e4ffe9ce17ac023edf58a6cc81
     commands:
       - |
         set -eu
