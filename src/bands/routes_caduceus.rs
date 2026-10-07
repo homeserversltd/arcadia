@@ -380,30 +380,6 @@ async fn caduceus_receipts_ledger_proxy_route(
     }
 }
 
-async fn caduceus_update_service_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/update/status").await
-}
-
-async fn caduceus_update_service_toggle_proxy_route(
-    Json(body): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    let payload = if body.get("state").is_some() {
-        body
-    } else {
-        serde_json::json!({ "state": "on" })
-    };
-    let rendered =
-        serde_json::to_string(&payload).unwrap_or_else(|_| "{\"state\":\"on\"}".to_string());
-    match CaduceusAccessClient::default().post_json_with_timeout(
-        "/api/v1/update/now",
-        serde_json::from_str(&rendered).unwrap_or_default(),
-        Duration::from_secs(300)
-    ) {
-        Ok(value) => (StatusCode::OK, Json(value)).into_response(),
-        Err(signal) => caduceus_proxy_error("/api/v1/update/now", signal),
-    }
-}
-
 async fn caduceus_gui_update_now_proxy_route() -> impl IntoResponse {
     match CaduceusAccessClient::default().post_json_with_timeout(
         "/api/v1/update/now",

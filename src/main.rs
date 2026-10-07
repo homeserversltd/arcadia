@@ -534,14 +534,6 @@ async fn main() -> anyhow_free::Result<()> {
             get(caduceus_receipts_ledger_proxy_route),
         )
         .route(
-            "/api/caduceus/v1/update/service/status",
-            get(caduceus_update_service_status_proxy_route),
-        )
-        .route(
-            "/api/caduceus/v1/update/service/toggle",
-            post(caduceus_update_service_toggle_proxy_route),
-        )
-        .route(
             "/api/caduceus/v1/gui/update/now",
             post(caduceus_gui_update_now_proxy_route),
         )
