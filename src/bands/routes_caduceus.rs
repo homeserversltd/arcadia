@@ -460,23 +460,71 @@ async fn caduceus_local_ai_runtime_update_proxy_route() -> impl IntoResponse {
 async fn caduceus_profile_module_toggle_proxy_route(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let rendered = serde_json::to_string(&body)
-        .unwrap_or_else(|_| "{\"module_id\":\"\",\"enabled\":false}".to_string());
-    match CaduceusAccessClient::default().post_json_with_timeout(
-        "/api/v1/doors",
-        serde_json::from_str(&rendered).unwrap_or_default(),
-        Duration::from_secs(300)
+    let module_id = body
+        .get("module_id")
+        .or_else(|| body.get("moduleId"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if module_id.is_empty() || module_id.len() > 96 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "first_missing_signal": "module-id-invalid",
+            })),
+        )
+            .into_response();
+    }
+    let Some(enabled) = body.get("enabled").and_then(serde_json::Value::as_bool) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "ok": false,
+                "first_missing_signal": "module-toggle-enabled-invalid",
+            })),
+        )
+            .into_response();
+    };
+    let path = format!(
+        "/api/v1/update/modules/{}",
+        caduceus_encode_path_segment(module_id),
+    );
+    match CaduceusAccessClient::default().post_raw_json_with_timeout(
+        &path,
+        serde_json::json!({ "enabled": enabled }),
+        Duration::from_secs(300),
     ) {
-        Ok(value) => {
-            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+        Ok((upstream_status, value)) if !(200..300).contains(&upstream_status) => {
+            let signal = value
+                .get("firstMissingSignal")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("caduceus-http-upstream-refused");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "schema": "arcadia.caduceus.proxy.error.v1",
+                    "ok": false,
+                    "path": path,
+                    "first_missing_signal": signal,
+                })),
+            )
+                .into_response()
+        }
+        Ok((_upstream_status, value)) => {
+            let ok = value
+                .get("ok")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
             let status = if ok {
                 StatusCode::OK
             } else {
                 StatusCode::BAD_REQUEST
             };
+            // Forward the complete receipt so id, enabled, and unknown fields survive.
             (status, Json(value)).into_response()
         }
-        Err(signal) => caduceus_proxy_error("/api/v1/doors", signal),
+        Err(signal) => caduceus_proxy_error(&path, signal),
     }
 }
 

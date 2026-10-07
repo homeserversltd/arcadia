@@ -315,38 +315,56 @@ async fn action_harmonia_module_toggle(
             "Module id must be lowercase letters, numbers, and hyphens only.".to_string(),
         );
     }
-    let payload = serde_json::json!({
-        "module_id": module_id,
-        "enabled": body.enabled,
-    });
-    let rendered = serde_json::to_string(&payload).unwrap_or_default();
-    let Ok(value) = CaduceusAccessClient::default().post_json_with_timeout(
-        "/api/v1/doors",
-        serde_json::from_str(&rendered).unwrap_or_default(),
-        Duration::from_secs(300)
-    ) else {
-        return harmonia_module_toggle_response(
-            StatusCode::BAD_GATEWAY,
-            false,
-            module_id.to_string(),
-            body.enabled,
-            "Caduceus module toggle route is unreachable.".to_string(),
-        );
+    let path = format!(
+        "/api/v1/update/modules/{}",
+        caduceus_encode_path_segment(module_id),
+    );
+    let (upstream_status, value) = match CaduceusAccessClient::default()
+        .post_raw_json_with_timeout(
+            &path,
+            serde_json::json!({ "enabled": body.enabled }),
+            Duration::from_secs(300),
+        )
+    {
+        Ok(receipt) => receipt,
+        Err(_) => {
+            return harmonia_module_toggle_response(
+                StatusCode::BAD_GATEWAY,
+                false,
+                module_id.to_string(),
+                body.enabled,
+                "Caduceus module toggle route is unreachable.".to_string(),
+            );
+        }
     };
-    let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
-    let message = value
-        .get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or(if ok {
-            if body.enabled {
+    let ok = (200..300).contains(&upstream_status)
+        && value.get("ok").and_then(serde_json::Value::as_bool).unwrap_or(false);
+    let receipt_module_id = value
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(module_id)
+        .to_string();
+    let receipt_enabled = value
+        .get("enabled")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(body.enabled);
+    let message = if ok {
+        value
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(if receipt_enabled {
                 "Module enabled for the next Harmonia run."
             } else {
                 "Module disabled for the next Harmonia run."
-            }
-        } else {
-            "Caduceus could not update the Harmonia profile."
-        })
-        .to_string();
+            })
+            .to_string()
+    } else {
+        value
+            .get("firstMissingSignal")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("Caduceus could not update the Harmonia profile.")
+            .to_string()
+    };
     harmonia_module_toggle_response(
         if ok {
             StatusCode::OK
@@ -354,8 +372,8 @@ async fn action_harmonia_module_toggle(
             StatusCode::BAD_REQUEST
         },
         ok,
-        module_id.to_string(),
-        body.enabled,
+        receipt_module_id,
+        receipt_enabled,
         message,
     )
 }

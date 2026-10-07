@@ -294,6 +294,18 @@ fn caduceus_receipt_response(_status: u16, response: Vec<u8>) -> Result<serde_js
     serde_json::from_slice(&response).map_err(|_| "caduceus-http-invalid-json")
 }
 
+fn caduceus_encode_path_segment(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
 struct CaduceusAccessClient;
 
 impl Default for CaduceusAccessClient {
@@ -343,6 +355,28 @@ impl CaduceusAccessClient {
     ) -> Result<(u16, serde_json::Value), &'static str> {
         let encoded = serde_json::to_vec(&caduceus_staff_envelope_with_target(path, payload, flags, target))
             .map_err(|_| "caduceus-http-invalid-json")?;
+        if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
+            return Err("caduceus-http-request-too-large");
+        }
+        let (status, response) = caduceus_raw_request(
+            "POST",
+            path,
+            Some(&encoded),
+            timeout,
+            CADUCEUS_MAX_COMMAND_RESPONSE_BODY,
+        )
+        .map_err(caduceus_http_error)?;
+        let value = caduceus_receipt_response(status, response)?;
+        Ok((status, value))
+    }
+
+    fn post_raw_json_with_timeout(
+        &self,
+        path: &str,
+        payload: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<(u16, serde_json::Value), &'static str> {
+        let encoded = serde_json::to_vec(&payload).map_err(|_| "caduceus-http-invalid-json")?;
         if encoded.len() > CADUCEUS_ACCESS_MAX_REQUEST {
             return Err("caduceus-http-request-too-large");
         }
