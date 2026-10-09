@@ -70,6 +70,18 @@
   --ux-text-xl: 20px;
   --ux-text-max: 22px;
 
+  --ux-load-content-gap: 4px;
+  --ux-load-chart-block-size: 36px;
+  --ux-load-chart-min-block-size: 28px;
+  --ux-load-detail-padding-block: 4px;
+  --ux-load-line-height: 1.15;
+  --ux-load-memory-bar-block-size: 7px;
+  --ux-load-readout-padding-block: 2px;
+  --ux-load-telemetry-max-block-size: min(30dvh, 180px);
+  --ux-load-chip-min-inline: 116px;
+  --ux-load-chip-padding: 5px 7px;
+  --ux-load-chip-radius: 13px;
+
   --ux-controls-gap: 7px;
   --ux-controller-pool-card-min-height: 128px;
   --ux-controller-pool-action-min-height: 36px;

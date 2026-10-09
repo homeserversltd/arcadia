@@ -149,7 +149,7 @@ fn home_load_card() -> Markup {
             div class="load-chart-wrap" aria-label="Load history" role="img" {
                 span class="load-sparkline-placeholder" { "Gathering history…" }
                 svg class="load-sparkline" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true" {
-                    polyline data-load-history-line points="" fill="none" stroke="currentColor" stroke-width="1.5" {}
+                    polyline data-load-history-line points="" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" {}
                 }
             }
             span class="load-staleness" data-load-staleness aria-live="polite" {}
@@ -162,25 +162,28 @@ fn home_load_card() -> Markup {
                 div class="storage-bar storage-bar--home" role="progressbar" aria-valuemin="0" aria-valuemax="100" data-bind-attr="aria-valuenow:home.telemetry.memory.usedPercent" data-memory-bar {
                     span class="storage-segment storage-segment--other" data-bind-style="width:home.telemetry.memory.usedPercent" data-memory-used-segment {}
                 }
-                div class="state-rows state-rows--compact" {
-                    div class="home-detail-row" {
-                        span { "RAM used:" }
-                        strong data-memory-used data-bind="home.telemetry.memory.usedBytes" data-bind-format="bytes" { "—" }
-                        span { " / " }
-                        strong data-memory-total data-bind="home.telemetry.memory.totalBytes" data-bind-format="bytes" { "—" }
-                    }
+                div class="load-memory-readout" aria-label="RAM used and total" {
+                    span { "RAM used:" }
+                    strong data-memory-used data-bind="home.telemetry.memory.usedBytes" data-bind-format="bytes" { "—" }
+                    span aria-hidden="true" { "/" }
+                    strong data-memory-total data-bind="home.telemetry.memory.totalBytes" data-bind-format="bytes" { "—" }
                 }
             }
-            div class="load-telemetry-grid" aria-label="Telemetry" {
-                (load_chip_bound("CPU temp", "cpu", "home.telemetry.cpu.temperatureCelsius", "temperature", Some("gte:82")))
-                (load_chip_bound("CPU usage", "cpu-usage", "home.telemetry.cpu.usagePercent", "percent", None))
-                (load_chip_bound("I/O", "io", "home.telemetry.io.pressureAvg10", "pressure", Some("gte:10")))
-                (load_chip_bound("GPU", "gpu", "home.telemetry.gpu.utilizationPercent", "percent", None))
-                (load_chip_bound("GPU temp", "gpu-temperature", "home.telemetry.gpu.temperatureCelsius", "temperature", None))
-                (load_chip_bound("Storage temp", "storage-temperature", "home.telemetry.temperature.storage", "temperature", None))
-                (load_chip_bound("Fan RPM", "fan", "home.telemetry.fans.0.rpm", "text", None))
-                (load_chip_bound("Read/s", "read", "home.telemetry.io.disk.readBytesPerSec", "transfer-rate", Some("gt:0")))
-                (load_chip_bound("Write/s", "write", "home.telemetry.io.disk.writeBytesPerSec", "transfer-rate", Some("gt:0")))
+            details class="load-telemetry-disclosure" {
+                summary { "More telemetry" }
+                div class="load-telemetry-scroll" tabindex="0" role="region" aria-label="Load telemetry details" {
+                    div class="load-telemetry-grid" aria-label="Telemetry" {
+                        (load_chip_bound("CPU temp", "cpu", "home.telemetry.cpu.temperatureCelsius", "temperature", Some("gte:82")))
+                        (load_chip_bound("CPU usage", "cpu-usage", "home.telemetry.cpu.usagePercent", "percent", None))
+                        (load_chip_bound("I/O", "io", "home.telemetry.io.pressureAvg10", "pressure", Some("gte:10")))
+                        (load_chip_bound("GPU", "gpu", "home.telemetry.gpu.utilizationPercent", "percent", None))
+                        (load_chip_bound("GPU temp", "gpu-temperature", "home.telemetry.gpu.temperatureCelsius", "temperature", None))
+                        (load_chip_bound("Storage temp", "storage-temperature", "home.telemetry.temperature.storage", "temperature", None))
+                        (load_chip_bound("Fan RPM", "fan", "home.telemetry.fans.0.rpm", "text", None))
+                        (load_chip_bound("Read/s", "read", "home.telemetry.io.disk.readBytesPerSec", "transfer-rate", Some("gt:0")))
+                        (load_chip_bound("Write/s", "write", "home.telemetry.io.disk.writeBytesPerSec", "transfer-rate", Some("gt:0")))
+                    }
+                }
             }
         }
     }
