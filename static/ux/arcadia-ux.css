@@ -107,7 +107,7 @@
   --ux-updates-module-min-height: 48px;
   --ux-updates-module-column-gap: 4px;
   --ux-updates-module-gap: 2px;
-  --ux-updates-module-padding: 2px 4px;
+  --ux-updates-module-padding: 6px;
   --ux-updates-module-radius: 15px;
   --ux-updates-module-switch-gap: 4px;
   --ux-updates-module-toggle-width: 36px;
@@ -122,8 +122,8 @@
   --ux-updates-core-columns: 5;
   --ux-updates-aside-inline: 228px;
   --ux-updates-core-member-min-height: 126px;
-  --ux-updates-module-card-min-height: 128px;
-  --ux-updates-module-inner-gap: 2px;
+  --ux-updates-module-card-min-height: 124px;
+  --ux-updates-module-inner-gap: 1px;
   --ux-updates-text-min-size: 12px;
 }
 

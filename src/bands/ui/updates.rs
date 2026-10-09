@@ -69,7 +69,6 @@ fn updates_view(status: &ConsoleStatus) -> Markup {
 
             footer class="updates-footer" {
                 span { "— means the source did not provide that evidence." }
-                button class="btn btn--ghost updates-details-link" type="button" data-updates-details="evidence" { "Evidence details" }
             }
             div id="console-action-message" class="message" hidden {}
         }

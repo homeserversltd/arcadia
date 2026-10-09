@@ -213,7 +213,7 @@
   display: grid;
   grid-template-rows: auto auto auto auto;
   gap: var(--ux-updates-module-inner-gap);
-  padding: 8px;
+  padding: var(--ux-updates-module-padding);
   border: 1px solid var(--line);
   border-radius: var(--ux-updates-module-radius);
   background: color-mix(in srgb, var(--theme-field-surface) 68%, transparent);
@@ -260,7 +260,7 @@
 .updates-footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px; }
 .updates-footer > span { color: var(--muted); font-size: var(--ux-text-xs); }
 .updates-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.updates-detail-content { display: grid; gap: 10px; color: var(--muted); font-size: var(--ux-text-sm); line-height: 1.4; }
+.updates-detail-content { --ux-text-xs: var(--ux-updates-text-min-size); display: grid; gap: 10px; color: var(--muted); font-size: var(--ux-text-sm); line-height: 1.4; }
 .updates-detail-content section { display: grid; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .updates-detail-content strong { color: var(--cream); font-size: var(--ux-text-sm); font-weight: 550; }
 .updates-detail-content code,
