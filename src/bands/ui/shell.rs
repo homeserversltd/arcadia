@@ -1,47 +1,9 @@
 fn header(status: &ConsoleStatus) -> Markup {
-    let (updates_label, updates_class, updates_tip) = match status.updates.state.as_str() {
-        "available" => (
-            "Available".to_string(),
-            "warn",
-            format!(
-                "Update available · {}",
-                status
-                    .updates
-                    .available_version
-                    .as_deref()
-                    .unwrap_or("version unknown")
-            ),
-        ),
-        "current" => (
-            "Current".to_string(),
-            "good",
-            format!("Harmonia current · {}", status.updates.current_version),
-        ),
-        "repair_pending" => (
-            "Update needed".to_string(),
-            "warn",
-            "Press Sync to update enabled modules".to_string(),
-        ),
-        "checking" => (
-            "Checking".to_string(),
-            "warn",
-            "Checking for updates".to_string(),
-        ),
-        "installing" => (
-            "Installing".to_string(),
-            "warn",
-            "Installing update".to_string(),
-        ),
-        "error" => (
-            "Error".to_string(),
-            "bad",
-            "Update check failed".to_string(),
-        ),
-        _ => (
-            "Unknown".to_string(),
-            "idle",
-            "Update state unknown".to_string(),
-        ),
+    let updates = crate::api_updates_pane_state(status);
+    let updates_class = match updates.state_class {
+        "available" => "good",
+        "error" => "warn",
+        _ => "idle",
     };
     let ai_ready = status.network.lan_ai_reachable || status.local_ai.lan_inference_enabled;
     let ai_label = if ai_ready {
@@ -63,7 +25,7 @@ fn header(status: &ConsoleStatus) -> Markup {
             div class="header-indicators header-indicators--currentness" aria-label="HomeConsole currentness" {
                 (currentness_status_chip("network", "Network", &status.network.connection_type, network_class(status.network.active_type.as_str()), &network_tooltip(status), "network"))
                 (currentness_status_chip("sync", "Games", "Library", "idle", "Game library and sync", "sync"))
-                (currentness_status_chip("updates", "Updates", &updates_label, updates_class, &updates_tip, "updates"))
+                (currentness_status_chip("updates", "Updates", &updates.state_label, updates_class, &updates.check_detail, "updates"))
                 (currentness_status_chip("uptime", "Uptime", &status.runtime.machine_uptime, "idle", "Machine uptime", "system"))
                 (currentness_status_chip("local-ai", "LAN AI", ai_label, if ai_ready { "good" } else { "idle" }, ai_tip, "local-ai"))
                 (currentness_status_chip("pin", "Lock", if status.gui_pin.pin_required { "PIN required" } else { "Open" }, if status.gui_pin.pin_required { "warn" } else { "idle" }, if status.gui_pin.pin_required { "PIN required for GUI changes" } else { "GUI changes are open without PIN" }, "system"))

@@ -1177,6 +1177,10 @@ function bindConsoleActions() {
         const data = await postJson(endpoint, assignBody);
         const variant = data.ok ? 'success' : 'error';
         setMessage('console-action-message', formatActionResult(data), variant);
+        if (action === 'check-updates' || action === 'update-gui') {
+          const refreshed = await refreshUpdatesProjection();
+          if (!refreshed) setMessage('console-action-message', 'Fresh Updates readback is unavailable; the displayed evidence may be stale.', 'error');
+        }
         PopupManager.showToast(data.message || (data.ok ? 'Done' : 'Failed'), variant);
         ArcadiaObservation.action(action, data.ok ? 'settled' : 'refused');
         if (action === 'sync-games' && data.ok !== false) markOnboardingFirstSyncComplete(data);
@@ -1227,6 +1231,22 @@ async function getJson(url) {
   try { data = await res.json(); } catch (_) { data = {}; }
   if (!res.ok) data.ok = false;
   return data;
+}
+
+async function refreshUpdatesProjection() {
+  try {
+    const response = await fetch('/api/root/state', {
+      headers: { accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok) return false;
+    const state = await response.json();
+    if (!state?.updatesPane) return false;
+    ArcadiaProjector.apply(state);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 const STORAGE_TEMPLATE_IDS = {
@@ -3462,7 +3482,7 @@ function harmoniaLedgerValue(entry, names, fallback = '') {
 
 function harmoniaModuleLabel(moduleId) {
   const module = document.querySelector(`[data-harmonia-module="${CSS.escape(String(moduleId || ''))}"]`);
-  return module?.querySelector('.updates-module-copy strong')?.textContent?.trim() || moduleLabelFromId(moduleId);
+  return module?.querySelector('[data-bind="label"]')?.textContent?.trim() || moduleLabelFromId(moduleId);
 }
 
 function harmoniaLedgerRuns(entries) {
@@ -3492,15 +3512,21 @@ function harmoniaLedgerModuleRow(entry, explicitModuleId = '') {
   const label = document.createElement('strong');
   label.textContent = harmoniaModuleLabel(moduleId);
   const identity = document.createElement('span');
-  identity.textContent = `${moduleId} · ${hasEntry ? String(harmoniaLedgerValue(entry, ['module_version', 'moduleVersion'], '—')) : '—'}`;
-  copy.append(label, identity);
+  const moduleVersion = hasEntry ? harmoniaLedgerValue(entry, ['module_version', 'moduleVersion'], '—') : '—';
+  identity.textContent = `Declared module ${moduleVersion}`;
+  const transition = document.createElement('span');
+  transition.textContent = 'Before — → Result —';
+  transition.style.color = 'var(--muted)';
+  transition.style.fontSize = 'var(--ux-text-xs)';
+  copy.append(label, identity, transition);
   const status = document.createElement('b');
   status.className = `system-status system-status--${hasEntry ? (harmoniaLedgerValue(entry, ['ok'], entry.ok) === false ? 'error' : 'available') : 'disabled'}`;
-  status.textContent = hasEntry
-    ? (harmoniaLedgerValue(entry, ['ok'], entry.ok) === false
-      ? 'Failed'
-      : (harmoniaLedgerValue(entry, ['changed'], entry.changed) === true ? 'Changed' : 'OK'))
-    : 'No receipt yet';
+  if (!hasEntry) status.textContent = 'No receipt yet';
+  else if (harmoniaLedgerValue(entry, ['ok'], entry.ok) === false) status.textContent = 'Failed';
+  else {
+    const changed = harmoniaLedgerValue(entry, ['changed'], entry.changed);
+    status.textContent = changed === true ? 'Changed' : (changed === false ? 'No-op' : 'OK');
+  }
   row.append(copy, status);
   if (hasEntry) {
     const ok = harmoniaLedgerValue(entry, ['ok'], entry.ok) !== false;
@@ -3549,10 +3575,17 @@ function renderHarmoniaLedgerPage(content, data) {
   content.appendChild(list);
   const pager = document.createElement('div');
   pager.className = 'harmonia-ledger-pager';
-  const prev = buttonNode('Previous');
+  const pagerButton = (label) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn--secondary';
+    button.textContent = label;
+    return button;
+  };
+  const prev = pagerButton('Previous');
   const count = document.createElement('span');
   count.textContent = `${page} / ${totalPages}`;
-  const next = buttonNode('Next');
+  const next = pagerButton('Next');
   prev.disabled = page <= 1;
   next.disabled = page >= totalPages;
   prev.addEventListener('click', () => loadHarmoniaLedgerPage(page - 1, content));
@@ -3631,58 +3664,165 @@ function openHarmoniaLedger() {
   loadHarmoniaLedgerPage(1, content);
 }
 
+function updatesDetailSection(body, title, copy) {
+  const section = document.createElement('section');
+  const heading = document.createElement('strong');
+  heading.textContent = title;
+  const text = document.createElement('p');
+  text.textContent = copy;
+  section.append(heading, text);
+  body.appendChild(section);
+  return section;
+}
+
+function updatesDetailField(section, label, value) {
+  const row = document.createElement('p');
+  const name = document.createElement('strong');
+  name.textContent = `${label}: `;
+  const content = document.createElement('span');
+  content.textContent = value == null || value === '' ? '—' : String(value);
+  row.append(name, content);
+  section.appendChild(row);
+}
+
+function updatesProjectedState() {
+  const projected = ArcadiaProjector.currentDocument()?.updatesPane;
+  if (projected) return projected;
+  const initial = document.getElementById('updates-pane-state')?.textContent;
+  if (!initial) return null;
+  try { return JSON.parse(initial); } catch (_) { return null; }
+}
+
+function updatesProjectedModule(moduleId) {
+  const pane = updatesProjectedState();
+  return [...(pane?.coreModules || []), ...(pane?.modules || [])].find((module) => module.id === moduleId) || null;
+}
+
+function showUpdatesDetails(title, build) {
+  const body = document.createElement('div');
+  body.className = 'updates-detail-content';
+  build(body);
+  PopupManager.showModal({ title, body, hideDefaultAction: true, surfaceId: 'modal:updates-details' });
+}
+
+function openUpdatesModuleDetails(button) {
+  const card = button.closest('[data-harmonia-module]');
+  const moduleId = card?.dataset.harmoniaModule || '';
+  const module = updatesProjectedModule(moduleId);
+  if (!module) {
+    PopupManager.showToast('Module evidence is unavailable.', 'error');
+    return;
+  }
+  showUpdatesDetails(`${module.label} details`, (body) => {
+    updatesDetailSection(body, 'Declared module', module.description || 'No module description was supplied.');
+    const membership = updatesDetailSection(body, 'Profile state', 'Enablement, presence, membership, and update evidence are separate observations.');
+    updatesDetailField(membership, 'Module id', module.id);
+    updatesDetailField(membership, 'Enabled', module.enabled);
+    updatesDetailField(membership, 'Present', module.present);
+    updatesDetailField(membership, 'Pinned membership', module.pinnedModuleMembership ?? 'Unknown');
+    updatesDetailField(membership, 'Receipt signal', module.seekingUpdate ? 'Receipt needs review' : 'No seeking-update signal');
+    updatesDetailField(membership, 'Status', module.currentnessLabel);
+    const comparison = updatesDetailSection(body, 'Now → Next', 'Arcadia does not receive this module’s installed identity, selected target identity, known-good proof time, or release date. None is inferred from the Arcadia binary version, a manifest version, or an accepted request.');
+    updatesDetailField(comparison, 'Current identity', module.currentIdentity);
+    updatesDetailField(comparison, 'Target identity', module.targetIdentity);
+    updatesDetailField(comparison, 'Installed proof date', module.proofDate);
+    updatesDetailField(comparison, 'Release date', module.releaseDate);
+    const receipt = updatesDetailSection(body, 'Receipt source', 'The path is the module receipt path supplied by Arcadia status. Open History for ledger entries and their preserved raw JSON.');
+    updatesDetailField(receipt, 'Receipt path', module.receipt);
+    updatesDetailSection(body, 'Scoped update', module.updateAllowed
+      ? 'Scoped module request is available for independent modules.'
+      : 'Scoped module request is unavailable for grouped or unknown membership.');
+  });
+}
+
+function openUpdatesDetails(kind) {
+  const pane = updatesProjectedState();
+  const receipts = pane?.receipts || {};
+  if (kind === 'automatic') {
+    showUpdatesDetails('Automatic updates', (body) => {
+      updatesDetailSection(body, 'Service readback', 'The switch reads /api/harmonia/service. It stays disabled and mixed when either enabled or active is unavailable; that is not Off. A known enabled value and timer active value are shown separately.');
+      updatesDetailSection(body, 'Owner choice', 'Arcadia preserves the operator’s setting. The existing POST uses { state: "on" } or { state: "off" }; opening Details does not change it.');
+    });
+    return;
+  }
+  if (kind === 'module') return;
+  showUpdatesDetails(kind === 'core' ? 'Core and update evidence' : 'Updates evidence', (body) => {
+    const state = updatesDetailSection(body, 'Latest observation', 'Check and suite outcomes remain separate from installed presence and currentness. Failed or absent check evidence is uncertainty, not a green or zero result.');
+    updatesDetailField(state, 'Check', pane?.checkLabel);
+    updatesDetailField(state, 'Check detail', pane?.checkDetail);
+    updatesDetailField(state, 'Suite receipt', pane?.suiteLabel);
+    updatesDetailField(state, 'Suite detail', pane?.suiteDetail);
+    updatesDetailField(state, 'Projected update state', pane?.state);
+    updatesDetailField(state, 'Core inventory', (pane?.coreModules || []).map((module) => module.label).join(', ') || 'Unavailable');
+    updatesDetailField(state, 'Independent inventory', (pane?.modules || []).map((module) => module.label).join(', ') || 'Unavailable');
+    const grouping = updatesDetailSection(body, 'Membership boundary', 'Core is formed only from explicit pinned_module_membership values other than unpinned. Missing membership remains unknown. Core is the body’s declared module grouping, not the collective stamp membership.');
+    updatesDetailField(grouping, 'Collective stamp participants', 'Harmonia, Caduceus, Sbin, Coronatio, Arcadia');
+    updatesDetailField(grouping, 'Keyman', 'Outside the collective stamp');
+    updatesDetailField(grouping, 'Sudoers', 'Rides Harmonia known-good');
+    updatesDetailField(grouping, 'Ruyi peer observation', 'Unavailable: Arcadia has no declared consumer or proxy');
+    const dates = updatesDetailSection(body, 'Date and identity meaning', 'Now and Next need actual installed and selected target evidence. Proof date belongs to the installed known-good evidence; release date belongs to the selected release. Last receipt is a receipt-file modification label, not a proof/install/release date.');
+    updatesDetailField(dates, 'Current / target identities', 'Not supplied by Arcadia status');
+    updatesDetailField(dates, 'Proof / release dates', 'Not supplied by Arcadia status');
+    updatesDetailField(dates, 'Last receipt (file modification label)', pane?.lastRan);
+    const source = updatesDetailSection(body, 'Receipt paths', 'The suite and check paths below come from Arcadia’s existing status projection. History reads the existing paginated ledger; absent before/result fields remain absent.');
+    updatesDetailField(source, 'Suite receipt', receipts.suite);
+    updatesDetailField(source, 'Check receipt', receipts.check);
+    updatesDetailField(source, 'Module root', receipts.moduleRoot);
+    updatesDetailSection(body, 'Action boundaries', 'Check posts {} to /api/actions/check-updates. Update now posts {} to /api/actions/update-gui for the profile action. Only explicitly unpinned modules get POST /api/actions/update-module with { module_id }; a grouped or unknown module receives no scoped update action. A successful request is not an installed-state readback.');
+  });
+}
+
 async function updateHarmoniaModuleCard(button) {
   const card = button.closest('[data-harmonia-module]');
   const moduleId = card?.dataset.harmoniaModule || button.dataset.harmoniaModuleUpdate || '';
   const message = card?.querySelector('[data-harmonia-module-update-message]');
   if (!moduleId || button.disabled) return;
-  const original = button.textContent;
+  let outcomeText = 'Waiting for receipt readback…';
+  let outcomeLabel = 'Requesting…';
+  let outcomeState = 'pending';
   button.disabled = true;
-  button.textContent = 'Updating…';
-  if (message) message.textContent = 'Independent update in progress…';
+  button.textContent = outcomeLabel;
+  button.dataset.updateState = outcomeState;
+  if (message) {
+    message.textContent = outcomeText;
+    message.hidden = false;
+  }
   try {
     const data = await postJson(button.dataset.updateEndpoint || '/api/actions/update-module', { module_id: moduleId });
-    const text = data.ok
-      ? (data.message || 'Module update accepted.')
+    outcomeText = data.ok
+      ? `Update request accepted for ${moduleId}; installed state awaits fresh receipt evidence.`
       : (data.first_missing_signal || data.firstMissingSignal || data.message || 'Module update refused.');
-    if (message) message.textContent = text;
-    button.textContent = data.ok ? 'Update accepted' : 'Update refused';
-    button.dataset.updateState = data.ok ? 'success' : 'refused';
-    PopupManager.showToast(text, data.ok ? 'success' : 'error');
+    outcomeLabel = data.ok ? 'Requested' : 'Update refused';
+    outcomeState = data.ok ? 'accepted' : 'refused';
+    if (message) message.textContent = outcomeText;
+    button.textContent = outcomeLabel;
+    button.dataset.updateState = outcomeState;
+    PopupManager.showToast(outcomeText, data.ok ? 'success' : 'error');
   } catch (_) {
-    if (message) message.textContent = 'Module update request failed.';
-    button.textContent = 'Update failed';
-    button.dataset.updateState = 'error';
+    outcomeText = 'Module update request failed.';
+    outcomeLabel = 'Request failed';
+    outcomeState = 'error';
+    if (message) message.textContent = outcomeText;
+    button.textContent = outcomeLabel;
+    button.dataset.updateState = outcomeState;
     PopupManager.showToast('Module update request failed', 'error');
   } finally {
-    button.disabled = false;
-    if (button.textContent === 'Updating…') button.textContent = original;
-  }
-}
-
-async function updateHarmoniaPinnedGroup(button) {
-  const card = button.closest('[data-harmonia-pinned-update]');
-  const message = card?.querySelector('[data-harmonia-suite-update-message]');
-  if (button.disabled) return;
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = 'Updating pinned modules…';
-  if (message) message.textContent = 'Whole-suite update in progress…';
-  try {
-    const data = await postJson(button.dataset.endpoint || '/api/actions/update-gui', {});
-    const text = data.message || data.stderr || (data.ok ? 'Pinned module update accepted.' : 'Pinned module update refused.');
-    if (message) message.textContent = text;
-    button.textContent = data.ok ? 'Update accepted' : 'Update refused';
-    button.dataset.updateState = data.ok ? 'success' : 'refused';
-    PopupManager.showToast(text, data.ok ? 'success' : 'error');
-  } catch (_) {
-    if (message) message.textContent = 'Pinned module update request failed.';
-    button.textContent = 'Update failed';
-    button.dataset.updateState = 'error';
-    PopupManager.showToast('Pinned module update request failed', 'error');
-  } finally {
-    button.disabled = false;
-    if (button.textContent === 'Updating pinned modules…') button.textContent = original;
+    const refreshed = await refreshUpdatesProjection();
+    if (!refreshed) outcomeText += ' Fresh Updates readback is unavailable; the displayed evidence may be stale.';
+    const freshCard = document.querySelector(`[data-harmonia-module=${CSS.escape(String(moduleId))}]`);
+    const freshMessage = freshCard?.querySelector('[data-harmonia-module-update-message]');
+    const freshButton = freshCard?.querySelector('[data-harmonia-module-update]');
+    if (freshMessage) {
+      freshMessage.textContent = outcomeText;
+      freshMessage.hidden = false;
+    }
+    if (freshButton) {
+      freshButton.textContent = outcomeLabel;
+      freshButton.dataset.updateState = outcomeState;
+      freshButton.disabled = false;
+    } else if (button.isConnected) {
+      button.disabled = false;
+    }
   }
 }
 
@@ -3805,25 +3945,69 @@ function bindHarmoniaServiceSwitch() {
 function bindHarmoniaModules() {
   bindHarmoniaServiceSwitch();
   hydrateHarmoniaLedgerSummary();
-  document.querySelectorAll('[data-harmonia-ledger-open]').forEach((button) => button.addEventListener('click', openHarmoniaLedger));
-  document.addEventListener('change', (event) => {
+  ArcadiaProjector.registerWidget('updatesPane', (state) => {
+    const pane = state?.updatesPane;
+    if (!pane) return;
+    const chip = document.querySelector('[data-chip-kind="updates"]');
+    if (!chip) return;
+    const label = String(pane.stateLabel ?? '');
+    const detail = String(pane.checkDetail ?? '');
+    const statusClass = pane.stateClass === 'available' ? 'good' : (pane.stateClass === 'error' ? 'warn' : 'idle');
+    const value = chip.querySelector('strong');
+    if (value) value.textContent = label;
+    chip.setAttribute('aria-label', `Updates: ${label}`);
+    chip.setAttribute('data-tooltip', detail);
+    chip.classList.remove('status-badge--good', 'status-badge--warn', 'status-badge--bad', 'status-badge--idle');
+    chip.classList.add(`status-badge--${statusClass}`);
+  });
+  document.addEventListener('change', async (event) => {
     const input = event.target.closest?.('[data-harmonia-module-switch]');
     if (!input) return;
-    toggleHarmoniaModule(input.value, input.checked, null);
+    const moduleId = input.value
+      || input.closest('[data-harmonia-module]')?.dataset.harmoniaModule
+      || input.dataset.harmoniaModuleSwitch
+      || '';
+    if (!moduleId) return;
+    const projectedEnabled = updatesProjectedModule(moduleId)?.enabled;
+    const previousChecked = typeof projectedEnabled === 'boolean' ? projectedEnabled : !input.checked;
+    input.disabled = true;
+    try {
+      await toggleHarmoniaModule(moduleId, input.checked, null);
+    } finally {
+      let refreshed = false;
+      try { refreshed = await refreshUpdatesProjection(); }
+      finally { input.disabled = false; }
+      if (!refreshed) {
+        input.checked = previousChecked;
+        setMessage('console-action-message', 'Fresh module readback is unavailable; the displayed enablement may be stale.', 'error');
+      }
+    }
   });
   document.addEventListener('click', (event) => {
+    const historyButton = event.target.closest?.('[data-harmonia-ledger-open]');
+    if (historyButton) {
+      event.preventDefault();
+      openHarmoniaLedger();
+      return;
+    }
+    const detailButton = event.target.closest?.('[data-updates-module-details]');
+    if (detailButton) {
+      event.preventDefault();
+      openUpdatesModuleDetails(detailButton);
+      return;
+    }
+    const detailsLink = event.target.closest?.('[data-updates-details]');
+    if (detailsLink) {
+      event.preventDefault();
+      openUpdatesDetails(detailsLink.dataset.updatesDetails || 'evidence');
+      return;
+    }
     const moduleButton = event.target.closest?.('[data-harmonia-module-update]');
     if (moduleButton) {
       event.preventDefault();
       event.stopPropagation();
       updateHarmoniaModuleCard(moduleButton);
       return;
-    }
-    const pinnedButton = event.target.closest?.('[data-harmonia-suite-update]');
-    if (pinnedButton) {
-      event.preventDefault();
-      event.stopPropagation();
-      updateHarmoniaPinnedGroup(pinnedButton);
     }
   });
 }

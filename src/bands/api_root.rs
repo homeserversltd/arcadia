@@ -581,14 +581,21 @@ pub struct ApiUpdatesPaneState {
     pub state: String,
     pub state_label: String,
     pub state_class: &'static str,
+    pub product: String,
     pub last_ran: String,
-    pub pending_updates: String,
-    pub readiness_ratio: String,
+    pub module_count: String,
     pub module_line: String,
-    pub suite: &'static str,
-    pub check: &'static str,
+    pub modules_empty_label: String,
+    pub inventory_available: bool,
+    pub core_available: bool,
+    pub check_label: String,
+    pub check_detail: String,
+    pub suite_label: String,
+    pub suite_detail: String,
+    pub attention_title: String,
+    pub attention_copy: String,
+    pub core_modules: Vec<ApiUpdatesModuleState>,
     pub modules: Vec<ApiUpdatesModuleState>,
-    pub pinned: Vec<ApiUpdatesPinnedGroupState>,
     pub receipts: ApiUpdatesReceiptsState,
 }
 
@@ -597,24 +604,24 @@ pub struct ApiUpdatesPaneState {
 pub struct ApiUpdatesModuleState {
     pub id: String,
     pub label: String,
+    pub description: String,
     pub enabled: bool,
-    pub state: String,
-    pub state_label: &'static str,
+    pub present: bool,
+    pub seeking_update: bool,
+    pub pinned_module_membership: Option<String>,
+    pub membership_label: String,
+    pub state_label: String,
     pub state_class: &'static str,
-    pub version: String,
+    pub currentness_label: String,
+    pub currentness_class: &'static str,
+    pub current_identity: String,
+    pub target_identity: String,
+    pub proof_date: String,
+    pub release_date: String,
     pub receipt: String,
     pub update_allowed: bool,
     pub update_label: &'static str,
     pub update_message: &'static str,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiUpdatesPinnedGroupState {
-    pub label: &'static str,
-    pub members: Vec<String>,
-    pub button_label: &'static str,
-    pub message: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -1223,28 +1230,33 @@ fn api_living_state_document(state: &AppState) -> ApiLivingStateDocument {
 }
 
 
-fn api_updates_state_label(state: &str) -> String {
-    match state {
-        "current" => "Current".to_string(),
-        "available" => "Updates available".to_string(),
-        "repair_pending" => "Update needed".to_string(),
-        "unknown" => "Check needed".to_string(),
-        other => other.split(['-', '_']).filter(|part| !part.is_empty()).map(|part| {
-            let mut chars = part.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        }).collect::<Vec<_>>().join(" "),
+fn api_updates_state_label(status: &UpdatesStatus) -> String {
+    if !status.check_ok {
+        if status.check_missing_signal == "not-checked" {
+            "Check needed".to_string()
+        } else {
+            "Check unavailable".to_string()
+        }
+    } else if status.state == "repair_pending" {
+        "Receipt needs review".to_string()
+    } else if status.check_changed || status.pending_updates > 0 {
+        "Updates reported".to_string()
+    } else {
+        "No update signalled".to_string()
     }
 }
 
-fn api_updates_state_class(state: &str) -> &'static str {
-    match state {
-        "current" => "available",
-        "available" | "repair_pending" => "error",
-        "unknown" => "unknown",
-        _ => "disabled",
+fn api_updates_state_class(status: &UpdatesStatus) -> &'static str {
+    if !status.check_ok {
+        "unknown"
+    } else if status.state == "repair_pending"
+        || status.check_changed
+        || status.pending_updates > 0
+        || status.first_missing_signal != "none"
+    {
+        "error"
+    } else {
+        "available"
     }
 }
 
@@ -1258,61 +1270,218 @@ fn api_updates_module_state(module: &crate::HarmoniaModuleStatus) -> (&'static s
     }
 }
 
-fn api_updates_pane_state(status: &ConsoleStatus) -> ApiUpdatesPaneState {
-    let enabled = status.updates.modules.iter().filter(|module| module.enabled).count();
-    let ready = status.updates.modules.iter().filter(|module| module.enabled && module.present).count();
-    ApiUpdatesPaneState {
-        state: status.updates.state.clone(),
-        state_label: api_updates_state_label(&status.updates.state),
-        state_class: api_updates_state_class(&status.updates.state),
-        last_ran: status.updates.last_update_run.clone(),
-        pending_updates: status.updates.pending_updates.to_string(),
-        readiness_ratio: format!("{ready}/{enabled}"),
-        module_line: format!("{} ready · {} need update", ready, enabled.saturating_sub(ready)),
-        suite: if status.updates.suite_ok { "Current" } else { "Needs update" },
-        check: if status.updates.check_ok { "Current" } else { "Check needed" },
-        modules: status.updates.modules.iter()
-            .filter(|module| module.pinned_module_membership.is_none() || module.pinned_module_membership.as_deref() == Some("unpinned"))
-            .map(|module| {
-            let (state_label, state_class) = api_updates_module_state(module);
-            let update_allowed = module.pinned_module_membership.as_deref() == Some("unpinned");
-            ApiUpdatesModuleState {
-                id: module.id.clone(),
-                label: module.label.clone(),
-                enabled: module.enabled,
-                state: module.state.clone(),
-                state_label,
-                state_class,
-                version: if module.present { status.updates.current_version.clone() } else { "Pending".to_string() },
-                receipt: module.receipt_path.clone(),
-                update_allowed,
-                update_label: if update_allowed { "Update module" } else { "Independent update unavailable" },
-                update_message: if update_allowed { "Ready for an independent update." } else { "Harmonia membership does not permit an independent update." },
-            }
-        }).collect(),
-        pinned: {
-            let members = status.updates.modules.iter()
-                .filter(|module| module
-                    .pinned_module_membership
-                    .as_deref()
-                    .is_some_and(|membership| membership != "unpinned"))
-                .map(|module| module.label.clone())
-                .collect::<Vec<_>>();
-            if members.is_empty() {
-                Vec::new()
-            } else {
-                vec![ApiUpdatesPinnedGroupState {
-                    label: "Pinned modules",
-                    members,
-                    button_label: "Update pinned modules",
-                    message: "Updates the pinned module group with the whole-suite Sync action.",
-                }]
-            }
+fn api_updates_module_projection(
+    module: &crate::HarmoniaModuleStatus,
+    updates: &UpdatesStatus,
+) -> ApiUpdatesModuleState {
+    let update_allowed = module.pinned_module_membership.as_deref() == Some("unpinned");
+    let (state_label, state_class) = if !module.enabled {
+        ("Disabled", "disabled")
+    } else if module.present {
+        ("Present", "available")
+    } else {
+        ("Missing", "error")
+    };
+    let (currentness_label, currentness_class) = if !module.enabled {
+        ("Disabled", "disabled")
+    } else if !module.present {
+        ("Not present", "unknown")
+    } else if !updates.check_ok {
+        if updates.check_missing_signal == "not-checked" {
+            ("Not checked", "unknown")
+        } else {
+            ("Check unavailable", "error")
+        }
+    } else if module.seeking_update {
+        ("Receipt needs review", "error")
+    } else {
+        ("No update signalled", "unknown")
+    };
+    ApiUpdatesModuleState {
+        id: module.id.clone(),
+        label: module.label.clone(),
+        description: module.description.clone(),
+        enabled: module.enabled,
+        present: module.present,
+        seeking_update: module.seeking_update,
+        pinned_module_membership: module.pinned_module_membership.clone(),
+        membership_label: match module.pinned_module_membership.as_deref() {
+            Some("unpinned") => "Independent".to_string(),
+            Some(_) => "Core".to_string(),
+            None => "Membership unknown".to_string(),
         },
+        state_label: state_label.to_string(),
+        state_class,
+        currentness_label: currentness_label.to_string(),
+        currentness_class,
+        // Arcadia has no installed/target identities or component release/proof dates
+        // in its declared status inputs. Keep the absence explicit rather than using
+        // the Arcadia binary version, manifest declaration, or a requested target.
+        current_identity: "—".to_string(),
+        target_identity: "—".to_string(),
+        proof_date: "—".to_string(),
+        release_date: "—".to_string(),
+        receipt: module.receipt_path.clone(),
+        update_allowed,
+        update_label: if update_allowed { "Update" } else { "" },
+        update_message: if update_allowed {
+            ""
+        } else if module.pinned_module_membership.is_none() {
+            "Membership is unknown; scoped update unavailable."
+        } else {
+            "Grouped module; update through Update now."
+        },
+    }
+}
+
+fn api_updates_pane_state(status: &ConsoleStatus) -> ApiUpdatesPaneState {
+    let updates = &status.updates;
+    let inventory_available = updates.module_inventory_available;
+    let core_modules = updates
+        .modules
+        .iter()
+        .filter(|module| {
+            module
+                .pinned_module_membership
+                .as_deref()
+                .is_some_and(|membership| membership != "unpinned")
+        })
+        .map(|module| api_updates_module_projection(module, updates))
+        .collect::<Vec<_>>();
+    let modules = updates
+        .modules
+        .iter()
+        .filter(|module| {
+            !module
+                .pinned_module_membership
+                .as_deref()
+                .is_some_and(|membership| membership != "unpinned")
+        })
+        .map(|module| api_updates_module_projection(module, updates))
+        .collect::<Vec<_>>();
+    let independent = updates
+        .modules
+        .iter()
+        .filter(|module| module.pinned_module_membership.as_deref() == Some("unpinned"))
+        .count();
+    let unclassified = updates
+        .modules
+        .iter()
+        .filter(|module| module.pinned_module_membership.is_none())
+        .count();
+    let module_line = if inventory_available {
+        format!(
+            "{} Core · {} independent · {} unclassified",
+            core_modules.len(), independent, unclassified
+        )
+    } else {
+        "Module inventory unavailable".to_string()
+    };
+    let (check_label, check_detail) = if updates.check_ok {
+        if updates.check_changed {
+            (
+                "Updates reported".to_string(),
+                "The latest successful check reported a change.".to_string(),
+            )
+        } else {
+            (
+                "Checked".to_string(),
+                "The latest check completed successfully.".to_string(),
+            )
+        }
+    } else if updates.check_missing_signal == "not-checked" {
+        (
+            "Check needed".to_string(),
+            "No successful check is available yet.".to_string(),
+        )
+    } else {
+        (
+            "Check unavailable".to_string(),
+            "The latest check did not produce a successful result.".to_string(),
+        )
+    };
+    let (suite_label, suite_detail) = if updates.suite_ok {
+        (
+            "Suite receipt passed".to_string(),
+            "The latest suite receipt reports success.".to_string(),
+        )
+    } else if updates.state == "repair_pending" && updates.check_ok {
+        (
+            "Suite receipt needs review".to_string(),
+            "The suite outcome is not confirmed successful.".to_string(),
+        )
+    } else {
+        (
+            "Suite outcome unavailable".to_string(),
+            "A successful suite receipt is not available; this status does not distinguish an absent receipt from a failed receipt.".to_string(),
+        )
+    };
+    let (attention_title, attention_copy) = if !updates.check_ok {
+        (
+            if updates.check_missing_signal == "not-checked" {
+                "Needs a check"
+            } else {
+                "Check unavailable"
+            }
+            .to_string(),
+            "Update availability is not confirmed.".to_string(),
+        )
+    } else if updates.state == "repair_pending" {
+        (
+            "Receipt needs review".to_string(),
+            "A suite receipt does not confirm a successful update.".to_string(),
+        )
+    } else if updates.check_changed || updates.pending_updates > 0 {
+        (
+            "Updates reported".to_string(),
+            "The latest check reported update activity.".to_string(),
+        )
+    } else if updates.first_missing_signal != "none" {
+        (
+            "Receipt needs review".to_string(),
+            "A suite or module receipt needs attention.".to_string(),
+        )
+    } else {
+        (
+            "No update signalled".to_string(),
+            "The latest successful check reported no update.".to_string(),
+        )
+    };
+    ApiUpdatesPaneState {
+        state: updates.state.clone(),
+        state_label: api_updates_state_label(updates),
+        state_class: api_updates_state_class(updates),
+        product: status.product.clone(),
+        last_ran: updates.last_update_run.clone(),
+        module_count: if inventory_available {
+            updates.modules.len().to_string()
+        } else {
+            "—".to_string()
+        },
+        module_line,
+        modules_empty_label: if modules.is_empty() {
+            if inventory_available {
+                "No independent modules declared.".to_string()
+            } else {
+                "Module inventory unavailable.".to_string()
+            }
+        } else {
+            String::new()
+        },
+        inventory_available,
+        core_available: !core_modules.is_empty(),
+        check_label,
+        check_detail,
+        suite_label,
+        suite_detail,
+        attention_title,
+        attention_copy,
+        core_modules,
+        modules,
         receipts: ApiUpdatesReceiptsState {
-            suite: status.updates.latest_receipt.clone(),
-            check: status.updates.latest_check_receipt.clone(),
-            module_root: status.updates.module_root.clone(),
+            suite: updates.latest_receipt.clone(),
+            check: updates.latest_check_receipt.clone(),
+            module_root: updates.module_root.clone(),
         },
     }
 }

@@ -85,6 +85,8 @@ fn updates_status() -> UpdatesStatus {
     let check_receipt = "/var/lib/harmonia/receipts/homeconsole-check-latest/run.json";
     let arcadia_receipt = "/var/lib/harmonia/receipts/arcadia-gui-latest/run.json";
     let profile = harmonia_profile_modules();
+    let module_inventory_available = profile.is_some();
+    let declared_modules = profile.as_deref().unwrap_or_default();
     let suite = read_json_value(suite_receipt);
     let check = read_json_value(check_receipt);
     let receipt = suite
@@ -143,7 +145,8 @@ fn updates_status() -> UpdatesStatus {
         receipt_string(&receipt, "profile_id").unwrap_or_else(|| "homeconsole".to_string());
     let identity =
         receipt_string(&receipt, "identity").unwrap_or_else(|| "homeconsole".to_string());
-    let module_count = receipt_usize(&receipt, "module_count").unwrap_or(profile.len());
+    let module_count = receipt_usize(&receipt, "module_count")
+        .unwrap_or_else(|| declared_modules.len());
     let operation_count = receipt_usize(&receipt, "operation_count").unwrap_or(0);
     let arcadia_ok = arcadia
         .as_ref()
@@ -160,7 +163,10 @@ fn updates_status() -> UpdatesStatus {
     } else {
         "repair_pending"
     };
-    let modules = harmonia_module_statuses(&profile);
+    let modules = profile
+        .as_deref()
+        .map(harmonia_module_statuses)
+        .unwrap_or_default();
     let last_update_run = harmonia_last_run_label(suite_receipt, check_receipt);
     let pending_updates =
         harmonia_pending_updates(&modules, check.as_ref(), suite.as_ref(), check_ok, suite_ok);
@@ -177,6 +183,7 @@ fn updates_status() -> UpdatesStatus {
         check_missing_signal,
         first_missing_signal,
         module_count,
+        module_inventory_available,
         operation_count,
         last_update_run,
         pending_updates,
@@ -391,34 +398,15 @@ fn harmonia_independent_update_allowed(module_id: &str) -> bool {
     harmonia_module_membership(module_id) == Some("unpinned")
 }
 
-fn harmonia_profile_modules() -> Vec<String> {
-    read_json_value(HOMECONSOLE_PROFILE)
-        .and_then(|json| {
-            json.get("modules")
-                .and_then(|modules| modules.as_array())
-                .map(|modules| {
-                    modules
-                        .iter()
-                        .filter_map(|m| m.as_str().map(str::to_string))
-                        .collect()
-                })
-        })
-        .filter(|modules: &Vec<String>| !modules.is_empty())
-        .unwrap_or_else(|| {
-            vec![
-                "identity",
-                "system-packages",
-                "harmonia-runtime",
-                "keyman-runtime",
-                "homeconsole-sync-runtime",
-                "rust-build-toolchain",
-                "arcadia-gui-runtime",
-                "pinned-artifacts-runtime",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
-        })
+fn harmonia_profile_modules() -> Option<Vec<String>> {
+    let profile = read_json_value(HOMECONSOLE_PROFILE)?;
+    let modules = profile.get("modules")?.as_array()?;
+    Some(
+        modules
+            .iter()
+            .filter_map(|module| module.as_str().map(str::to_string))
+            .collect(),
+    )
 }
 
 fn harmonia_all_known_modules(enabled: &[String]) -> Vec<String> {

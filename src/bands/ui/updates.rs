@@ -1,108 +1,80 @@
 fn updates_view(status: &ConsoleStatus) -> Markup {
+    let pane = crate::api_updates_pane_state(status);
+    let pane_json = serde_json::to_string(&pane)
+        .unwrap_or_else(|_| "{}".to_string())
+        .replace('<', "\\u003c");
     view_shell(
         "updates",
         "",
         "",
         "",
         html! {
-            div class="updates-pane harmonia-panel harmonia-panel--update-center" data-updates-pane-family="updatesPane" data-harmonia-updates="true" data-bind-class="updatesPane.stateClass" {
-                div class="updates-status-board" data-updates-status-board="true" {
-                    article class="updates-state-card updates-state-card--hero" {
-                        span class="updates-kicker" { "Harmonia state" }
-                        strong data-bind="updatesPane.stateLabel" { (harmonia_update_pressure_label(&status.updates)) }
-                        div class="updates-state-meta" {
-                            span { "Last ran " b data-bind="updatesPane.lastRan" { (status.updates.last_update_run) } }
-                            span { "Updates " b data-bind="updatesPane.pendingUpdates" { (status.updates.pending_updates) } }
-                            span { "Modules " b data-bind="updatesPane.readinessRatio" { (harmonia_module_readiness_line(&status.updates.modules)) } }
-                        }
-                    }
-                    div class="harmonia-command-rail updates-command-rail" data-harmonia-update-controls="true" {
-                        label class="updates-module-switch updates-automatic-switch" data-harmonia-automatic-updates-switch="true" {
-                            input type="checkbox" data-harmonia-automatic-updates-toggle="true" aria-label="Automatic updates" aria-checked="mixed" disabled;
-                            span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
-                            span class="updates-module-copy" {
-                                strong { "Automatic updates" }
-                                span class="updates-automatic-status" data-harmonia-automatic-updates-status="true" aria-live="polite" { "Loading service state…" }
-                            }
-                        }
-                        (action_button(ButtonVariant::Secondary, "Check state", "check-updates", "/api/actions/check-updates"))
-                        (action_button(ButtonVariant::Primary, "Sync", "update-gui", "/api/actions/update-gui"))
-                        button class="btn btn--secondary" type="button" data-harmonia-ledger-open="true" { "Ledger" }
-                    }
+        div class="updates-pane harmonia-panel harmonia-panel--update-center" data-updates-pane-family="updatesPane" data-harmonia-updates="true" data-bind-class="updatesPane.stateClass" {
+            script id="updates-pane-state" type="application/json" { (PreEscaped(pane_json)) }
+            header class="updates-header" {
+                span class="updates-state-pill" data-state=(pane.state_class) data-bind-class="updatesPane.stateClass" role="status" data-bind="updatesPane.stateLabel" { (pane.state_label) }
+                div class="updates-actions" data-harmonia-update-controls="true" {
+                    (action_button(ButtonVariant::Secondary, "Check", "check-updates", "/api/actions/check-updates"))
+                    (action_button(ButtonVariant::Primary, "Update now", "update-gui", "/api/actions/update-gui"))
+                    button class="btn btn--secondary" type="button" data-harmonia-ledger-open="true" { "History" }
                 }
-
-                div class="updates-board" data-harmonia-default-grid="true" {
-                    article class="harmonia-module-pane updates-module-pane" data-harmonia-module-pane="true" {
-                        div class="harmonia-pane-chrome updates-pane-chrome" {
-                            strong { "Modules" }
-                            span data-bind="updatesPane.moduleLine" { (harmonia_module_grid_line(&status.updates.modules)) }
-                        }
-                        div class="harmonia-module-grid updates-module-grid" data-harmonia-module-grid="true" data-bind-each="updatesPane.modules" data-bind-replace="true" {
-                            template {
-                                article class="updates-module" data-harmonia-module="" data-bind-class="stateClass" data-bind-attr-id="id" data-module-enabled="" {
-                                    label class="updates-module-switch" data-harmonia-module-switch-row="" {
-                                        input type="checkbox" data-harmonia-module-switch="" data-bind-checked="enabled" data-bind-value="id" aria-label="Harmonia module enabled";
-                                        span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
-                                        span class="updates-module-copy" {
-                                            strong data-bind="label" {}
-                                            span data-bind="description" {}
-                                            span data-bind="id" {}
-                                        }
-                                    }
-                                    span class="updates-module-version" { em { "Version" } strong data-bind="version" {} }
-                                    div class="updates-module-action" data-bind-show="updateAllowed" {
-                                        button class="btn btn--secondary updates-module-update" type="button" data-harmonia-module-update="" data-bind="updateLabel" aria-label="Update Harmonia module" {}
-                                        span class="updates-module-update-message" data-bind="updateMessage" {}
-                                    }
-                                    b class="system-status" data-bind-class="stateClass" data-bind="stateLabel" {}
-                                }
-                            }
-                            @for module in &status.updates.modules {
-                                @if module.pinned_module_membership.is_none() || module.pinned_module_membership.as_deref() == Some("unpinned") {
-                                    (harmonia_module_row(module, &status.updates.current_version))
-                                }
-                            }
-                        }
-                        div class="updates-pinned-grid" data-bind-each="updatesPane.pinned" data-bind-replace="true" {
-                            template {
-                                article class="updates-pinned-module" data-harmonia-pinned-update="true" {
-                                    div class="updates-pinned-copy" {
-                                        strong data-bind="label" {}
-                                        div class="updates-pinned-members" data-bind-each="members" {
-                                            template { span data-bind="." {} }
-                                        }
-                                        span class="updates-pinned-message" data-harmonia-suite-update-message="true" data-bind="message" {}
-                                    }
-                                    button class="btn btn--primary updates-pinned-update" type="button" data-harmonia-suite-update="true" data-endpoint="/api/actions/update-gui" data-bind="buttonLabel" {}
-                                }
-                            }
-                            (harmonia_pinned_group(status))
-                        }
-                    }
-                    (harmonia_update_availability_pane(&status.updates))
-                }
-                details class="collapsible-log harmonia-receipts updates-receipts" {
-                    summary { "Readbacks" }
-                    div class="system-field-grid" {
-                        (updates_system_field_bound("Suite", "updatesPane.receipts.suite", &status.updates.latest_receipt))
-                        (updates_system_field_bound("Check", "updatesPane.receipts.check", &status.updates.latest_check_receipt))
-                        (updates_system_field_bound("Module root", "updatesPane.receipts.moduleRoot", &status.updates.module_root))
-                    }
-                }
-                div id="console-action-message" class="message" hidden {}
             }
-        },
-    )
-}
 
-fn harmonia_pending_label(count: usize) -> String {
-    if count == 0 {
-        "None".to_string()
-    } else if count == 1 {
-        "1 update".to_string()
-    } else {
-        format!("{count} updates")
-    }
+            section class="updates-automatic" aria-label="Automatic updates" {
+                label class="updates-automatic-switch" data-harmonia-automatic-updates-switch="true" {
+                    input type="checkbox" data-harmonia-automatic-updates-toggle="true" aria-label="Automatic updates" aria-checked="mixed" disabled;
+                    span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
+                    span class="updates-automatic-copy" {
+                        strong { "Automatic updates" }
+                        span class="updates-automatic-status" data-harmonia-automatic-updates-status="true" aria-live="polite" { "Loading service state…" }
+                    }
+                }
+                button class="btn btn--ghost updates-details-link" type="button" data-updates-details="automatic" { "Details" }
+            }
+
+            main class="updates-board" data-harmonia-default-grid="true" {
+                section class="updates-module-pane" aria-label="Your update modules" {
+                    header class="updates-inventory-heading" {
+                        div {
+                            h2 { "Your modules" }
+                            span class="updates-inventory-count" data-bind="updatesPane.moduleCount" { (pane.module_count) }
+                        }
+                        span class="updates-inventory-summary" data-bind="updatesPane.moduleLine" { (pane.module_line) }
+                    }
+                    article class="updates-core" data-updates-core="true" data-bind-show="updatesPane.coreAvailable" hidden[!pane.core_available] {
+                        header class="updates-core-head" {
+                            div { strong { "Core" } span { "Kept together" } }
+                            button class="btn btn--ghost updates-details-link" type="button" data-updates-details="core" { "Details ↗" }
+                        }
+                        div class="updates-core-grid" data-bind-each="updatesPane.coreModules" data-bind-replace="true" {
+                            template { (updates_core_member(None)) }
+                            @for module in &pane.core_modules { (updates_core_member(Some(module))) }
+                        }
+                    }
+                    div class="updates-module-grid" data-harmonia-module-grid="true" data-bind-each="updatesPane.modules" data-bind-replace="true" {
+                        template { (updates_module_card(None)) }
+                        @for module in &pane.modules { (updates_module_card(Some(module))) }
+                    }
+                    p class="updates-inventory-empty" data-bind="updatesPane.modulesEmptyLabel" data-bind-show="updatesPane.modulesEmptyLabel" hidden[pane.modules_empty_label.is_empty()] { (pane.modules_empty_label) }
+                    }
+
+                aside class="updates-attention" data-state=(pane.state_class) data-bind-class="updatesPane.stateClass" aria-live="polite" {
+                    span class="updates-attention-kicker" data-bind="updatesPane.checkLabel" { (pane.check_label) }
+                    h2 data-bind="updatesPane.attentionTitle" { (pane.attention_title) }
+                    p data-bind="updatesPane.attentionCopy" { (pane.attention_copy) }
+                    p class="updates-attention-detail" data-bind="updatesPane.checkDetail" { (pane.check_detail) }
+                    button class="btn btn--ghost updates-details-link" type="button" data-updates-details="evidence" { "Evidence details ↗" }
+                }
+            }
+
+            footer class="updates-footer" {
+                span { "— means the source did not provide that evidence." }
+                button class="btn btn--ghost updates-details-link" type="button" data-updates-details="evidence" { "Evidence details" }
+            }
+            div id="console-action-message" class="message" hidden {}
+        }
+    },
+    )
 }
 
 fn harmonia_module_readiness(modules: &[crate::HarmoniaModuleStatus]) -> (usize, usize) {
@@ -114,187 +86,81 @@ fn harmonia_module_readiness(modules: &[crate::HarmoniaModuleStatus]) -> (usize,
     (ready, enabled)
 }
 
-fn harmonia_module_readiness_line(modules: &[crate::HarmoniaModuleStatus]) -> String {
-    let (ready, enabled) = harmonia_module_readiness(modules);
-    format!("{ready}/{enabled}")
-}
-
-fn harmonia_module_grid_line(modules: &[crate::HarmoniaModuleStatus]) -> String {
-    let (ready, enabled) = harmonia_module_readiness(modules);
-    let waiting = enabled.saturating_sub(ready);
-    format!("{ready} ready · {waiting} need update")
-}
-
-fn harmonia_update_pressure_label(status: &crate::UpdatesStatus) -> String {
-    let (ready, enabled) = harmonia_module_readiness(&status.modules);
-    let unavailable = enabled.saturating_sub(ready);
-    if status.check_missing_signal == "not-checked" {
-        return "Check needed".to_string();
-    }
-    if !status.check_ok || status.check_changed {
-        return "Updates available".to_string();
-    }
-    if !status.suite_ok || status.suite_changed {
-        return "Update needed".to_string();
-    }
-    if unavailable > 0 {
-        return format!("{unavailable} module(s) unavailable");
-    }
-    "Current".to_string()
-}
-
-fn harmonia_update_availability_pane(status: &crate::UpdatesStatus) -> Markup {
-    let tiles = harmonia_update_tiles(status);
+fn updates_core_member(module: Option<&crate::ApiUpdatesModuleState>) -> Markup {
+    let id = module.map(|module| module.id.as_str()).unwrap_or("");
+    let label = module.map(|module| module.label.as_str()).unwrap_or("");
+    let state_label = module.map(|module| module.state_label.as_str()).unwrap_or("Unknown");
+    let state_class = module.map(|module| module.state_class).unwrap_or("unknown");
+    let current_identity = module.map(|module| module.current_identity.as_str()).unwrap_or("—");
+    let target_identity = module.map(|module| module.target_identity.as_str()).unwrap_or("—");
+    let proof_date = module.map(|module| module.proof_date.as_str()).unwrap_or("—");
+    let release_date = module.map(|module| module.release_date.as_str()).unwrap_or("—");
     html! {
-        article class=(format!("harmonia-update-pane updates-available-pane harmonia-update-pane--{}", if tiles.is_empty() { "zero" } else { "available" })) data-harmonia-update-pane="true" data-update-count=(status.pending_updates) {
-            div class="harmonia-pane-chrome updates-pane-chrome" {
-                strong { "Available" }
-                span data-bind="updatesPane.pendingUpdates" { (harmonia_pending_label(status.pending_updates)) }
+        article class="updates-core-member" data-harmonia-module=(id) data-bind-attr-id="id" data-state=(state_class) data-bind-class="stateClass" {
+            header class="updates-core-member-head" {
+                strong data-bind="label" { (label) }
             }
-            @if tiles.is_empty() {
-                div class="harmonia-zero-updates" data-zero-updates="true" data-harmonia-last-run="true" {
-                    strong { "Zero updates available" }
-                    span { (harmonia_update_pressure_label(status)) }
-                    div class="updates-last-run" {
-                        b { "Last run" }
-                        span { "Loading the latest module results…" }
-                    }
-                }
-            } @else {
-                div class="updates-update-heading" { (harmonia_update_modules_heading(tiles.len())) }
-                div class="harmonia-update-tiles" data-harmonia-update-tiles="true" {
-                    @for (kind, label, value, detail) in tiles {
-                        article class="harmonia-update-tile harmonia-update-tile--module" data-update-kind=(kind) {
-                            strong { (label) }
-                            b { (value) }
-                            span { (detail) }
-                        }
-                    }
-                }
+            div class="updates-compare" {
+                div { span { "Now" } strong data-bind="currentIdentity" { (current_identity) } }
+                span class="updates-compare-arrow" aria-hidden="true" { "→" }
+                div { span { "Next" } strong data-bind="targetIdentity" { (target_identity) } }
             }
+            div class="updates-date-pair" {
+                span { "Proof " b data-bind="proofDate" { (proof_date) } }
+                span { "Release " b data-bind="releaseDate" { (release_date) } }
+            }
+            button class="btn btn--ghost updates-module-details" type="button" data-updates-module-details="true" aria-label=(format!("Details for {}", label)) { "Details" }
+            span class="updates-sr-only" data-bind="stateLabel" { (state_label) }
         }
     }
 }
 
-fn harmonia_update_modules_heading(count: usize) -> String {
-    if count == 1 {
-        "1 module needs update".to_string()
-    } else {
-        format!("{count} modules need update")
-    }
-}
-
-fn harmonia_update_tiles(status: &crate::UpdatesStatus) -> Vec<(&str, &str, String, String)> {
-    let mut tiles = Vec::new();
-
-    for module in status
-        .modules
-        .iter()
-        .filter(|module| module.enabled && !module.present)
-    {
-        tiles.push((
-            module.id.as_str(),
-            module.label.as_str(),
-            "Update needed".to_string(),
-            "Press Sync to update this module".to_string(),
-        ));
-    }
-
-    if tiles.is_empty() && (!status.check_ok || status.check_changed || status.pending_updates > 0)
-    {
-        tiles.push((
-            "enabled-modules",
-            "Enabled modules",
-            harmonia_pending_label(status.pending_updates.max(1)),
-            "Press Sync to update enabled modules".to_string(),
-        ));
-    }
-
-    tiles
-}
-
-fn harmonia_pinned_group(status: &ConsoleStatus) -> Markup {
-    let members = status
-        .updates
-        .modules
-        .iter()
-        .filter(|module| {
-            module
-                .pinned_module_membership
-                .as_deref()
-                .is_some_and(|membership| membership != "unpinned")
-        })
-        .map(|module| module.label.clone())
-        .collect::<Vec<_>>();
-    if members.is_empty() {
-        return html! {};
-    }
+fn updates_module_card(module: Option<&crate::ApiUpdatesModuleState>) -> Markup {
+    let id = module.map(|module| module.id.as_str()).unwrap_or("");
+    let label = module.map(|module| module.label.as_str()).unwrap_or("");
+    let enabled = module.is_some_and(|module| module.enabled);
+    let state_label = module.map(|module| module.state_label.as_str()).unwrap_or("Unknown");
+    let state_class = module.map(|module| module.state_class).unwrap_or("unknown");
+    let membership_label = module.map(|module| module.membership_label.as_str()).unwrap_or("Membership unknown");
+    let current_identity = module.map(|module| module.current_identity.as_str()).unwrap_or("—");
+    let target_identity = module.map(|module| module.target_identity.as_str()).unwrap_or("—");
+    let proof_date = module.map(|module| module.proof_date.as_str()).unwrap_or("—");
+    let release_date = module.map(|module| module.release_date.as_str()).unwrap_or("—");
+    let update_allowed = module.is_some_and(|module| module.update_allowed);
+    let update_label = module.map(|module| module.update_label).unwrap_or("Update");
+    let update_message = module.map(|module| module.update_message).unwrap_or("");
     html! {
-        article class="updates-pinned-module" data-harmonia-pinned-update="true" {
-            div class="updates-pinned-copy" {
-                strong { "Pinned modules" }
-                div class="updates-pinned-members" {
-                    @for member in members { span { (member) } }
+        article class="updates-module" data-harmonia-module=(id) data-bind-attr-id="id" data-state=(state_class) data-bind-class="stateClass" {
+            header class="updates-module-head" {
+                span class="updates-module-mark" aria-hidden="true" {
+                    svg viewBox="0 0 20 20" focusable="false" { path d="M3 6 10 2l7 4v8l-7 4-7-4z M3 6l7 4 7-4 M10 10v8" {} }
                 }
-                span class="updates-pinned-message" data-harmonia-suite-update-message="true" { "Updates this group with the whole-suite Sync action." }
-            }
-            button class="btn btn--primary updates-pinned-update" type="button" data-harmonia-suite-update="true" data-endpoint="/api/actions/update-gui" { "Update pinned modules" }
-        }
-    }
-}
-
-fn harmonia_module_row(module: &crate::HarmoniaModuleStatus, current_version: &str) -> Markup {
-    let status_tone = if module.enabled && module.present {
-        "available"
-    } else if module.enabled {
-        "error"
-    } else {
-        "disabled"
-    };
-    let status_label = if module.enabled {
-        if module.present {
-            "Enabled"
-        } else {
-            "Update needed"
-        }
-    } else {
-        "Disabled"
-    };
-    let version = if module.present {
-        current_version
-    } else {
-        "Pending"
-    };
-    html! {
-        article class="updates-module" data-state=(status_tone) data-harmonia-module=(module.id) data-module-enabled=(module.enabled) data-bind-class="updatesPane.modules.stateClass" {
-            label class="updates-module-switch" data-harmonia-module-switch-row=(module.id) {
-                input type="checkbox" checked[module.enabled] data-harmonia-module-switch=(module.id) data-enabled=(module.enabled) aria-label=(format!("{} module enabled", module.label));
-                span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
-                span class="updates-module-copy" {
-                    strong { (module.label) }
-                    @if !module.description.is_empty() {
-                        span class="updates-module-description" { (&module.description) }
-                    }
-                    span { (module.id) }
+                div class="updates-module-title" {
+                    strong data-bind="label" { (label) }
+                    span class="updates-module-membership" data-bind="membershipLabel" { (membership_label) }
+                }
+                label class="updates-module-switch" data-harmonia-module-switch-row=(id) {
+                    input type="checkbox" value=(id) checked[enabled] data-harmonia-module-switch="" data-bind-value="id" data-bind-checked="enabled" data-bind-aria-label="label" aria-label=(format!("Enable {} module", label));
+                    span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
                 }
             }
-            span class="updates-module-version" { em { "Version" } strong { (version) } }
-            @if module.pinned_module_membership.as_deref() == Some("unpinned") {
-                div class="updates-module-action" {
-                    button class="btn btn--secondary updates-module-update" type="button" data-harmonia-module-update=(module.id) data-update-endpoint="/api/actions/update-module" aria-label=(format!("Update {} module", module.label)) { "Update module" }
-                    span class="updates-module-update-message" data-harmonia-module-update-message=(module.id) { "Ready for an independent update." }
-                }
+            div class="updates-compare" aria-label="Current and target identity" {
+                div { span { "Now" } strong data-bind="currentIdentity" { (current_identity) } }
+                span class="updates-compare-arrow" aria-hidden="true" { "→" }
+                div { span { "Next" } strong data-bind="targetIdentity" { (target_identity) } }
             }
-            b class=(format!("system-status system-status--{}", status_tone)) { (status_label) }
-        }
-    }
-}
-
-fn updates_system_field_bound(label: &str, bind: &str, value: &str) -> Markup {
-    html! {
-        div class="system-field" {
-            span { (label) }
-            strong data-bind=(bind) { (value) }
+            div class="updates-date-pair" {
+                span { "Proof " b data-bind="proofDate" { (proof_date) } }
+                span { "Release " b data-bind="releaseDate" { (release_date) } }
+            }
+            footer class="updates-module-foot" {
+                div class="updates-module-actions" {
+                    button class="btn btn--ghost updates-module-details" type="button" data-updates-module-details="true" aria-label=(format!("Details for {}", label)) { "Details" }
+                    button class="btn btn--secondary updates-module-update" type="button" data-harmonia-module-update=(id) data-update-endpoint="/api/actions/update-module" data-bind="updateLabel" data-bind-show="updateAllowed" hidden[!update_allowed] aria-label=(format!("Update {} module", label)) { (update_label) }
+                }
+                span class="updates-module-update-message" data-harmonia-module-update-message=(id) data-bind="updateMessage" data-bind-show="updateMessage" hidden[update_message.is_empty()] { (update_message) }
+            }
+            span class="updates-sr-only" data-bind="stateLabel" { (state_label) }
         }
     }
 }
