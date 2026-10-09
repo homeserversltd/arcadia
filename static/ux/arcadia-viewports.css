@@ -30,11 +30,14 @@
   .system-ca-state, .system-ca-form { grid-template-columns: 1fr; }
   .storage-hero { grid-template-columns: 1fr; }
   .section-heading { align-items: start; flex-direction: column; }
-  .local-ai-hero { grid-template-columns: auto minmax(0, 1fr); }
-  .local-ai-hero-endpoint { grid-column: 1 / -1; }
-  .local-ai-state-list, .local-ai-access-grid { grid-template-columns: 1fr; }
   .sync-orb-stage { grid-template-columns: auto minmax(0, 1fr); }
   .sync-orb-actions { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) and (min-width: 721px) {
+  .view[data-view-panel="local-ai"].is-active { overflow-x: hidden; overflow-y: auto; }
+  .view[data-view-panel="local-ai"] .local-ai-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .view[data-view-panel="local-ai"] .local-ai-card--library { grid-column: 1 / -1; }
+  .view[data-view-panel="local-ai"] .local-ai-model-row { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   :root {
@@ -61,6 +64,14 @@
 .system-row-actions { justify-content: flex-start; }
   .storage-model-row, .storage-table-row > summary, .storage-table-row.storage-table-head, .location-row { grid-template-columns: 1fr; align-items: start; }
   .view[data-view-panel="home"].is-active, .view[data-view-panel="storage"].is-active, .view[data-view-panel="local-ai"].is-active, .view[data-view-panel="network"].is-active, .view[data-view-panel="system"].is-active { display: block; }
+  .view[data-view-panel="local-ai"].is-active { height: auto; overflow: visible; }
+  .view[data-view-panel="local-ai"] .local-ai-page { min-height: 0; }
+  .view[data-view-panel="local-ai"] .local-ai-overview-grid { grid-template-columns: minmax(0, 1fr); }
+  .view[data-view-panel="local-ai"] .local-ai-card--library { grid-column: auto; }
+  .view[data-view-panel="local-ai"] .local-ai-model-row,
+  .view[data-view-panel="local-ai"] .local-ai-library-row,
+  .view[data-view-panel="local-ai"] .local-ai-engine-row,
+  .view[data-view-panel="local-ai"] .local-ai-lane-row { grid-template-columns: minmax(0, 1fr); }
   .view[data-view-panel="home"] .home-operational-grid, .view[data-view-panel="storage"] .storage-category-list, .view[data-view-panel="network"] .network-workbench { grid-template-columns: 1fr; }
   .view[data-view-panel="home"] .storage-mini-rows, .view[data-view-panel="home"] .compact-select-label, .view[data-view-panel="home"] .state-row:nth-child(n+3), .view[data-view-panel="home"] .reachability:nth-child(n+3), .view[data-view-panel="home"] .inline-actions--compact .btn:nth-child(n+3), .view[data-view-panel="home"] .sync-folder-list, .view[data-view-panel="sync"] .sync-folder-list, .view[data-view-panel="sync"] .sync-result-card, .view[data-view-panel="updates"] .harmonia-module-grid, .view[data-view-panel="updates"] .harmonia-receipts, .view[data-view-panel="system"] .system-card--ssh .system-field:nth-child(n+4), .view[data-view-panel="system"] .system-card--trust .system-field:nth-child(n+4), .view[data-view-panel="system"] .system-card--ssh .command-box, .view[data-view-panel="system"] .system-card--ssh .settings-form, .view[data-view-panel="system"] .system-card--trust .settings-form, .view[data-view-panel="system"] .system-card--services .system-service-row:nth-child(n+4), .view[data-view-panel="storage"] .storage-compact-entry, .view[data-view-panel="storage"] .storage-category-row em, .view[data-view-panel="storage"] .storage-category-mini, .view[data-view-panel="storage"] .storage-category-row .btn:nth-of-type(n+2), .view[data-view-panel="network"] .network-compact-grid .system-field:nth-child(n+4), .view[data-view-panel="network"] .network-service-row:nth-child(n+3) { display: revert; }
   .view[data-view-panel="storage"] .storage-category-row, .view[data-view-panel="network"] .network-service-row { grid-template-columns: 1fr; }

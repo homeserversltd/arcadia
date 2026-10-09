@@ -24,17 +24,33 @@ const PopupManager = (() => {
 
   let pendingConfirmResolve = null;
   let openSurface = null;
+  let mountedNodeRestore = null;
 
-  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '', surfaceId, parentSurfaceId = '' }) {
+  function restoreMountedNode() {
+    const saved = mountedNodeRestore;
+    if (!saved) return;
+    mountedNodeRestore = null;
+    const { node, parent, nextSibling, hidden } = saved;
+    if (parent) parent.insertBefore(node, nextSibling?.parentNode === parent ? nextSibling : null);
+    node.hidden = hidden;
+  }
+
+  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '', surfaceId, parentSurfaceId = '', restoreNode = false }) {
     const el = overlay();
     if (!el) return;
-    previousFocus = document.activeElement;
+    const replacingMountedNode = Boolean(mountedNodeRestore);
+    if (el.hidden || !replacingMountedNode) previousFocus = document.activeElement;
     title().textContent = modalTitle || 'Arcadia Console';
     setOverlayVariant(el, variant);
     const card = el.querySelector('.modal-card');
     if (card) setCardVariant(card, variant);
     document.body.classList.toggle('modal-fullscreen-open', variant === 'fullscreen');
     const target = content();
+    restoreMountedNode();
+    if (restoreNode && body instanceof Node && body.parentNode) {
+      mountedNodeRestore = { node: body, parent: body.parentNode, nextSibling: body.nextSibling, hidden: body.hidden };
+      body.hidden = false;
+    }
     target.textContent = '';
     if (body instanceof Node) target.appendChild(body);
     else target.textContent = body || '';
@@ -55,6 +71,7 @@ const PopupManager = (() => {
     const card = el.querySelector('.modal-card');
     if (card) setCardVariant(card, '');
     document.body.classList.remove('modal-fullscreen-open');
+    restoreMountedNode();
     content().textContent = '';
     actions()?.removeAttribute('hidden');
     if (openSurface) window.ArcadiaObservationAdapters?.presenter(openSurface.id, openSurface.class, 'closed', openSurface.parent);
@@ -489,6 +506,13 @@ const ArcadiaProjector = (() => {
     return Array.from(root.querySelectorAll(selector)).filter((node) => includeGenerated || !node.closest('[data-projector-generated="true"]'));
   }
 
+  function localAiDraftPending(node, value, checked = false) {
+    if (!node.hasAttribute('data-ai-draft') || !node.closest('.local-ai-modal-section[data-ai-modal-section]') || node.dataset.aiDraftDirty !== 'true') return false;
+    const matchesLivingValue = checked ? node.checked === Boolean(value) : node.value === asText(value);
+    if (matchesLivingValue) delete node.dataset.aiDraftDirty;
+    return !matchesLivingValue;
+  }
+
   function projectScalarBindings(root, state, includeGenerated = false, shouldProject = () => true) {
     boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
       if (shouldProject(node, node.dataset.bind)) node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '');
@@ -507,12 +531,15 @@ const ArcadiaProjector = (() => {
     });
     boundNodes(root, '[data-bind-checked]', includeGenerated).forEach((node) => {
       if (!shouldProject(node, node.dataset.bindChecked)) return;
-      node.checked = Boolean(resolve(node.dataset.bindChecked, state));
+      const checked = Boolean(resolve(node.dataset.bindChecked, state));
+      if (localAiDraftPending(node, checked, true)) return;
+      node.checked = checked;
     });
     boundNodes(root, '[data-bind-value]', includeGenerated).forEach((node) => {
       if (!shouldProject(node, node.dataset.bindValue)) return;
       const raw = resolve(node.dataset.bindValue, state);
       const value = asText(raw);
+      if (localAiDraftPending(node, value)) return;
       node.value = value;
       if (node.dataset.bindAriaLabel && shouldProject(node, node.dataset.bindAriaLabel)) node.setAttribute('aria-label', asText(resolve(node.dataset.bindAriaLabel, state)));
     });
@@ -3087,94 +3114,161 @@ async function postAI(endpoint, body = {}, label = 'Local AI action') {
   return data;
 }
 
+let localAIDisclosureOrigin = null;
+let localAIControlsBound = false;
+
+function resetLocalAIDisclosure() {
+  document.querySelectorAll('[data-ai-modal][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+  localAIDisclosureOrigin = null;
+}
+
+function openLocalAIDisclosure(name, trigger) {
+  const owner = document.getElementById('local-ai-modal-owner');
+  const section = Array.from(owner?.querySelectorAll('[data-ai-modal-section]') || []).find((node) => node.dataset.aiModalSection === name);
+  if (!section) return;
+  const returnFocus = localAIDisclosureOrigin || trigger;
+  if (localAIDisclosureOrigin) PopupManager.closeModal();
+  document.querySelectorAll('[data-ai-modal]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+  localAIDisclosureOrigin = returnFocus;
+  returnFocus?.setAttribute('aria-expanded', 'true');
+  PopupManager.showModal({
+    title: section.querySelector('h2')?.textContent?.trim() || 'Local AI',
+    body: section,
+    hideDefaultAction: true,
+    variant: 'local-ai',
+    surfaceId: 'modal:local-ai',
+    parentSurfaceId: 'pane:local-ai',
+    restoreNode: true,
+  });
+}
+
 function bindLocalAIControls() {
-  document.querySelectorAll('[data-ai-action]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
+  if (localAIControlsBound) return;
+  localAIControlsBound = true;
+  document.addEventListener('arcadia:modal-close', resetLocalAIDisclosure);
+  document.addEventListener('arcadia:modal-open', (event) => {
+    if (event.detail?.variant !== 'local-ai') resetLocalAIDisclosure();
+  });
+  const markDraft = (event) => {
+    const field = event.target;
+    if (field instanceof HTMLInputElement && field.hasAttribute('data-ai-draft') && field.closest('.local-ai-modal-section[data-ai-modal-section]')) {
+      field.dataset.aiDraftDirty = 'true';
+    }
+  };
+  document.addEventListener('input', markDraft);
+  document.addEventListener('change', markDraft);
+  document.addEventListener('click', async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const disclosure = target.closest('[data-ai-modal]');
+    if (disclosure) {
       event.preventDefault();
-      const action = button.dataset.aiAction;
-      const modelId = button.dataset.modelId || null;
-      const filename = button.dataset.filename || null;
-      const original = button.textContent;
-      button.disabled = true;
-      button.textContent = action.includes('download') ? 'Downloading…' : 'Working…';
+      openLocalAIDisclosure(disclosure.dataset.aiModal, disclosure);
+      return;
+    }
+    const hfSelect = target.closest('[data-ai-hf-select]');
+    if (hfSelect) {
+      const filename = hfSelect.dataset.filename;
+      const input = hfForm()?.querySelector('input[name="filename"]');
+      if (filename && input) input.value = filename;
+      return;
+    }
+    const logsButton = target.closest('[data-ai-logs]');
+    if (logsButton) {
       try {
-        if (action === 'runtime-check-update') await postAI('/api/ai/runtime/check-update', {}, 'Runtime check complete');
-        else if (action === 'runtime-update') await postAI('/api/ai/runtime/update', {}, 'Runtime update started');
-        else if (action === 'runtime-restart') await postAI('/api/ai/runtime/restart', {}, 'Runtime restart complete');
-        else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'recommended' }, 'Recommended model install');
-        else if (action === 'model-select') await postAI('/api/ai/model/select', { modelId }, 'Model selected');
-        else if (action === 'model-load') await postAI('/api/ai/model/load', { modelId }, 'Model load requested');
-        else if (action === 'model-unload') await postAI('/api/ai/model/unload', {}, 'Model unloaded');
-        else if (action === 'model-remove') {
-          if (!window.confirm('Remove this model from console storage?\nGames and artwork are not affected.')) return;
-          await postAI('/api/ai/models/remove', { modelId, filename, confirm: 'REMOVE_MODEL' }, 'Model removed');
-        }
-        else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'API enabled');
-        else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'API disabled');
-        else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'API tested');
-        else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
-        else if (action === 'lan-enable') await applyLocalAIPort(true);
-        else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
-        else if (action === 'hf-list-files') await fetchHFFiles();
-        else if (action === 'hf-download') await downloadHFModel();
-      } catch (_) {
-        setMessage('ai-message', 'Local AI request failed.', 'error');
-        PopupManager.showToast('Local AI request failed', 'error');
-      } finally {
-        button.disabled = false;
-        button.textContent = original;
+        const state = await requestAIState();
+        const activity = state.activity || {};
+        PopupManager.showModal({ title: 'Local AI Logs', body: [activity.runtimeUpdateLog, activity.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
+      } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
+      return;
+    }
+    const revert = target.closest('[data-ai-port-revert]');
+    if (revert) {
+      const form = document.getElementById('ai-lan-form');
+      const input = form?.querySelector('input[name="port"]');
+      if (input) {
+        input.value = form.dataset.activePort || '7777';
+        delete input.dataset.aiDraftDirty;
       }
-    });
-  });
-  const importForm = document.getElementById('ai-import-form');
-  if (importForm) importForm.addEventListener('submit', async (event) => {
+      return;
+    }
+    const button = target.closest('[data-ai-action]');
+    if (!button) return;
     event.preventDefault();
-    const input = importForm.querySelector('input[type="file"]');
-    const file = input?.files?.[0];
-    if (!file) return PopupManager.showToast('Choose a .gguf model file first', 'error');
-    if (!file.name.toLowerCase().endsWith('.gguf')) return PopupManager.showToast('Only .gguf model files are supported', 'error');
-    const progress = document.getElementById('ai-import-progress');
-    const data = new FormData();
-    data.append('model', file, file.name);
-    if (progress) { progress.hidden = false; progress.value = 10; }
+    const action = button.dataset.aiAction;
+    const modelId = button.dataset.modelId || null;
+    const filename = button.dataset.filename || null;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = action.includes('download') ? 'Downloading…' : 'Working…';
     try {
-      const res = await fetch('/api/ai/models/import', { method: 'POST', body: data, headers: { accept: 'application/json' } });
-      const payload = await res.json().catch(() => ({}));
-      if (progress) progress.value = 100;
-      PopupManager.showToast(payload.message || (res.ok ? 'Model imported' : 'Model import failed'), res.ok && payload.ok !== false ? 'success' : 'error');
-      if (!res.ok || payload.ok === false) setMessage('ai-message', payload.message || 'Model import failed.', 'error'); else clearMessage('ai-message');
-    } catch (_) { PopupManager.showToast('Model import request failed', 'error'); }
+      if (action === 'runtime-check-update') await postAI('/api/ai/runtime/check-update', {}, 'Runtime check complete');
+      else if (action === 'runtime-update') await postAI('/api/ai/runtime/update', {}, 'Runtime update started');
+      else if (action === 'runtime-restart') await postAI('/api/ai/runtime/restart', {}, 'Runtime restart complete');
+      else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'recommended' }, 'Recommended model install');
+      else if (action === 'model-select') await postAI('/api/ai/model/select', { modelId }, 'Model selected');
+      else if (action === 'model-load') await postAI('/api/ai/model/load', { modelId }, 'Model load requested');
+      else if (action === 'model-unload') await postAI('/api/ai/model/unload', {}, 'Model unloaded');
+      else if (action === 'model-remove') {
+        if (!window.confirm('Remove this model from console storage?\nGames and artwork are not affected.')) return;
+        await postAI('/api/ai/models/remove', { modelId, filename, confirm: 'REMOVE_MODEL' }, 'Model removed');
+      }
+      else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'API enabled');
+      else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'API disabled');
+      else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'API tested');
+      else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
+      else if (action === 'lan-enable') await applyLocalAIPort(true);
+      else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
+      else if (action === 'hf-list-files') await fetchHFFiles();
+      else if (action === 'hf-download') await downloadHFModel();
+    } catch (_) {
+      setMessage('ai-message', 'Local AI request failed.', 'error');
+      PopupManager.showToast('Local AI request failed', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
   });
-  const lanForm = document.getElementById('ai-lan-form');
-  if (lanForm) lanForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await saveLocalAIPort();
+  document.addEventListener('submit', async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.id === 'ai-import-form') {
+      event.preventDefault();
+      const input = form.querySelector('input[type="file"]');
+      const file = input?.files?.[0];
+      if (!file) return PopupManager.showToast('Choose a .gguf model file first', 'error');
+      if (!file.name.toLowerCase().endsWith('.gguf')) return PopupManager.showToast('Only .gguf model files are supported', 'error');
+      const progress = document.getElementById('ai-import-progress');
+      const data = new FormData();
+      data.append('model', file, file.name);
+      if (progress) { progress.hidden = false; progress.value = 10; }
+      try {
+        const res = await fetch('/api/ai/models/import', { method: 'POST', body: data, headers: { accept: 'application/json' } });
+        const payload = await res.json().catch(() => ({}));
+        if (progress) progress.value = 100;
+        PopupManager.showToast(payload.message || (res.ok ? 'Model imported' : 'Model import failed'), res.ok && payload.ok !== false ? 'success' : 'error');
+        if (!res.ok || payload.ok === false) setMessage('ai-message', payload.message || 'Model import failed.', 'error'); else clearMessage('ai-message');
+      } catch (_) { PopupManager.showToast('Model import request failed', 'error'); }
+      return;
+    }
+    if (form.id === 'ai-lan-form') {
+      event.preventDefault();
+      await saveLocalAIPort();
+      return;
+    }
+    if (form.id === 'ai-settings-form') {
+      event.preventDefault();
+      const val = (name) => form.querySelector(`[name="${name}"]`);
+      await postAI('/api/ai/settings', {
+        contextSize: Number(val('contextSize')?.value || 4096),
+        gpuLayers: Number(val('gpuLayers')?.value || -1),
+        threads: Number(val('threads')?.value || 0),
+        batch: Number(val('batch')?.value || 512),
+        startApiOnBoot: Boolean(val('startApiOnBoot')?.checked),
+        autoLoadLastModel: Boolean(val('autoLoadLastModel')?.checked),
+      }, 'Local AI settings saved');
+    }
   });
-  lanForm?.querySelector('[data-ai-port-revert]')?.addEventListener('click', () => {
-    const active = lanForm.dataset.activePort || '7777';
-    const input = lanForm.querySelector('input[name="port"]');
-    if (input) input.value = active;
-  });
-  const settingsForm = document.getElementById('ai-settings-form');
-  if (settingsForm) settingsForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const val = (name) => settingsForm.querySelector(`[name="${name}"]`);
-    await postAI('/api/ai/settings', {
-      contextSize: Number(val('contextSize')?.value || 4096),
-      gpuLayers: Number(val('gpuLayers')?.value || -1),
-      threads: Number(val('threads')?.value || 0),
-      batch: Number(val('batch')?.value || 512),
-      startApiOnBoot: Boolean(val('startApiOnBoot')?.checked),
-      autoLoadLastModel: Boolean(val('autoLoadLastModel')?.checked),
-    }, 'Local AI settings saved');
-  });
-  document.querySelectorAll('[data-ai-logs]').forEach((button) => button.addEventListener('click', async () => {
-    try {
-      const state = await requestAIState();
-      const a = state.activity || {};
-      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
-    } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
-  }));
 }
 
 function localAIPortPayload() {
@@ -3221,23 +3315,13 @@ function hfRequest() {
 async function fetchHFFiles() {
   const req = hfRequest();
   const data = await postJson('/api/ai/models/huggingface/list-files', { repoId: req.repoId, revision: req.revision });
-  const root = document.getElementById('hf-file-results');
-  if (root) {
-    root.textContent = '';
-    (data.files || []).forEach((file) => {
-      const row = document.createElement('div');
-      row.className = 'network-row';
-      row.innerHTML = `<span><strong>${escapeHtml(file.filename)}</strong><em>${file.sizeBytes ? formatBytes(file.sizeBytes) : 'Size unknown'}</em></span>`;
-      const select = document.createElement('button');
-      select.className = 'btn btn--secondary';
-      select.type = 'button';
-      select.textContent = 'Select';
-      select.addEventListener('click', () => { const f = hfForm()?.querySelector('input[name="filename"]'); if (f) f.value = file.filename; });
-      row.appendChild(select);
-      root.appendChild(row);
-    });
-    if (!data.files?.length) root.textContent = data.message || 'No compatible .gguf files found.';
-  }
+  const files = Array.isArray(data.files) ? data.files.map((file) => ({
+    filename: file.filename,
+    sizeLabel: file.sizeBytes == null || !Number.isFinite(Number(file.sizeBytes)) ? 'Size unknown' : formatBytes(Number(file.sizeBytes)),
+  })) : [];
+  ArcadiaProjector.applyOverlay({ localAiFiles: files });
+  const installer = document.querySelector('[data-hf-installer]');
+  if (installer) ArcadiaProjector.project(installer, ArcadiaProjector.currentDocument());
   PopupManager.showToast(data.message || 'Hugging Face files fetched', data.ok ? 'success' : 'error');
 }
 async function downloadHFModel() {

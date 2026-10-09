@@ -118,6 +118,15 @@
   --ux-updates-module-status-min-inline: 66px;
   --ux-updates-module-status-max-inline: 72px;
   --ux-updates-module-status-padding: 2px 4px;
+
+  --ux-local-ai-grid-gap: var(--ux-grid-gap);
+  --ux-local-ai-card-gap: 10px;
+  --ux-local-ai-card-padding: 14px;
+  --ux-local-ai-readout-gap: 8px;
+  --ux-local-ai-disclosure-padding: 14px;
+  --ux-local-ai-card-radius: 18px;
+  --ux-local-ai-modal-max-width: 900px;
+  --ux-local-ai-detail-max-block: min(72dvh, 760px);
 }
 
 .ux-appliance-command-rail {

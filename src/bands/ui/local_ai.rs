@@ -1,326 +1,353 @@
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
-    let selected_name = status
-        .local_ai
-        .selected_model_name
-        .as_deref()
-        .unwrap_or("No model selected");
-    let loaded_name = status
-        .local_ai
-        .loaded_model_name
-        .as_deref()
-        .unwrap_or("No model loaded");
-    let port = status.local_ai.lan_inference_port.unwrap_or(7777);
-    let endpoint = format!(
-        "{}:{}",
-        status.identity.web_origin.trim_end_matches('/'),
-        port
-    );
-    let base_url = format!("{}/v1", endpoint);
-    let api_ready = status.local_ai.lan_inference_enabled;
+    // ConsoleStatus can carry a discovery heuristic; saved selection comes from ai.loadedModel.
+    let selected_name = "Reading saved selection";
+    let loaded_name = "Reading reported model";
+    let port = status.local_ai.lan_inference_port;
+    let port_label = port
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "Reading saved port".to_string());
     let model_count = status.local_ai.available_models.len();
     let library_model_count = status.local_ai.library_models.len();
-    let selected_present = status.local_ai.selected_model_id.is_some();
-    let model_loaded = matches!(
-        status.local_ai.load_state.as_str(),
-        "hot" | "loaded" | "running"
-    ) || status.local_ai.loaded_model_id.is_some()
-        || status.local_ai.loaded_model_name.is_some();
-    let model_state =
-        local_ai_model_state_label(status, model_loaded, selected_present, model_count);
-    let model_state_class =
-        local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
-    let api_state = if api_ready {
-        "API reachable"
-    } else {
-        "API not listening"
+    let accelerator_usage = match (
+        status.local_ai.gpu_memory_used_bytes,
+        status.local_ai.gpu_memory_total_bytes,
+    ) {
+        (Some(used), Some(total)) => format!("{} / {}", human_bytes(used), human_bytes(total)),
+        _ => "No capacity telemetry reported".to_string(),
     };
-    let access_state = if api_ready {
-        "Trusted LAN enabled"
-    } else {
-        "Console only"
-    };
-    let next_action = if model_count == 0 {
-        "Import a GGUF model"
-    } else if !selected_present {
-        "Select a model"
-    } else if !model_loaded {
-        "Load the selected model"
-    } else if !api_ready {
-        "Test or enable API access"
-    } else {
-        "Copy the client endpoint"
-    };
+    let selected_present = false;
+    let model_loaded = false;
+    let model_state = "Reading saved model state";
+    let model_state_class = "unknown";
+    let listener_state = "Reading saved access state";
+
     view_shell(
         "local-ai",
         "",
         "",
         "",
         html! {
-            section class=(format!("local-ai-hero local-ai-hero--{}", model_state_class)) aria-label="Local AI status" data-ai-auto-refresh="true" data-bind-class="localAiPane.hero.stateClass" data-state=(model_state_class) {
-                div class="local-ai-orb" aria-hidden="true" { "◉" }
-                div class="local-ai-hero-copy" {
-                    span { "Local AI" }
-                    strong data-ai-model-state="true" data-bind="localAiPane.hero.headline" { (model_state) }
-                    p { span data-bind="localAiPane.hero.nextAction" { (next_action) } " · " span data-bind="localAiPane.hero.endpoint" { (if api_ready { endpoint.as_str() } else { "No active endpoint" }) } }
-                }
-                div class="local-ai-hero-endpoint" {
-                    span { "Client endpoint" }
-                    code id="ai-endpoint-readback" data-ai-endpoint=(if api_ready { endpoint.as_str() } else { "" }) data-bind="localAiPane.hero.endpoint" {
-                        (if api_ready { endpoint.as_str() } else { "No active endpoint" })
+            main class="local-ai-page" aria-labelledby="local-ai-title" data-ai-auto-refresh="true" {
+                header class="local-ai-heading ux-appliance-pane-chrome" {
+                    div class="local-ai-heading-copy" {
+                        span class="local-ai-kicker" { "On-device models" }
+                        h1 id="local-ai-title" { "Local AI" }
+                        p { "Choose a model, review its runtime state, and manage local access." }
                     }
-                    div class="local-ai-actions" {
-                        @if api_ready { (copy_button("Copy endpoint", &endpoint)) }
-                        @else { button class="btn btn--secondary" type="button" disabled title="Load a model and start the API before copying an endpoint." { "Copy endpoint" } }
+                    span class="system-status local-ai-state-badge" data-bind="localAiPane.model.state" data-bind-class="localAiPane.model.stateClass" data-state=(model_state_class) {
+                        (model_state)
                     }
                 }
-            }
 
-            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--model" aria-label="Model control" data-bind-class="localAiPane.model.stateClass" data-state=(model_state_class) {
-                div class="local-ai-card-head" {
-                    strong { "Model control" }
-                    span class=(format!("system-status system-status--{}", model_state_class)) data-bind="localAiPane.model.state" { (model_state) }
-                }
-                div class="local-ai-state-list" {
-                    (ai_state_tile("Selected", selected_name, if selected_present { "Ready to load" } else { "Choose or import a model" }, "selected"))
-                    (ai_state_tile("Serving now", loaded_name, if model_loaded { "Available for client calls" } else { "No model invoked" }, "loaded"))
-                    (ai_state_tile("Model library", &format!("{} library", library_model_count), if library_model_count == 0 { "Empty" } else { "Plain list ready" }, "library"))
-                    @if let Some(accelerator) = status.local_ai.gpu_memory.as_deref() { (ai_state_tile("Accelerator", accelerator, "Read from backend telemetry", "accelerator")) }
-                }
-                div class="local-ai-resident-engines" aria-label="Resident AI engines" {
-                    strong { "Resident engines" }
-                    @if status.local_ai.resident_engines.is_empty() { p { "None detected" } }
-                    @else { @for engine in &status.local_ai.resident_engines { div class="local-ai-resident-engine" { span { (&engine.function_label) } strong { (engine.model_filename.as_deref().unwrap_or("Model details unavailable")) } } } }
-                }
-                div class="inline-actions inline-actions--compact local-ai-actions" {
-                    @if status.local_ai.available_models.is_empty() { (nav_focus_button("Import model", "local-ai", "local-ai-import")) }
-                    @else if !selected_present { (nav_focus_button("Choose model", "local-ai", "installed-models")) }
-                    @else if !model_loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(status.local_ai.selected_model_id.as_deref().unwrap_or("")) { "Load model" } }
-                    @if model_loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
-                    button class="btn btn--secondary" type="button" data-ai-logs="true" { "Open logs" }
-                }
-                @if model_count == 0 {
-                    div class="local-ai-empty" { strong { "No GGUF model installed" } p { "Import a model file or fetch a compatible Hugging Face GGUF before enabling client access." } }
-                }
-            }
+                section class="local-ai-overview-grid ux-grid-3" aria-label="Local AI overview" {
+                    article class="local-ai-card local-ai-card--model" aria-labelledby="local-ai-model-title" {
+                        div class="local-ai-card-head" {
+                            div { span class="local-ai-kicker" { "Model" } h2 id="local-ai-model-title" { "Identity & state" } }
+                            span class="system-status" data-bind="localAiPane.model.loadBadge" data-bind-class="localAiPane.model.stateClass" data-state=(model_state_class) { "Reading model state" }
+                        }
+                        dl class="local-ai-facts" {
+                            div class="local-ai-fact" { dt { "Selected" } dd data-bind="localAiPane.model.selected" { (selected_name) } }
+                            div class="local-ai-fact" { dt { "Loaded model" } dd data-bind="localAiPane.model.servingNow" { (loaded_name) } }
+                        }
+                        p class="local-ai-note" data-bind="localAiPane.model.servingDetail" {
+                            "Backend-reported model state; this is not an API health check."
+                        }
+                        div class="local-ai-actions ux-row-actions" {
+                            button class="btn btn--primary" type="button" data-ai-action="model-load" data-bind-attr="data-model-id:ai.loadedModel.selectedModelId" data-bind-enabled="localAiPane.model.hasSelectedModel" disabled[!selected_present] { "Load selected" }
+                            button class="btn btn--secondary" type="button" data-ai-action="model-unload" data-bind-enabled="localAiPane.model.modelLoaded" disabled[!model_loaded] { "Unload" }
+                            button class="btn btn--secondary" type="button" data-ai-modal="models" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Library" }
+                        }
+                    }
 
-            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--lanes" aria-label="Model serving lanes" {
-                div class="local-ai-card-head" {
-                    strong { "Model serving lanes" }
-                    (action_button(ButtonVariant::Primary, "Refresh", "model-lanes-pulse", "/api/caduceus/v1/model-lanes/pulse"))
-                }
-                div class="storage-detail-table" data-bind-each="modelLanes" {
-                    template {
-                        div class="storage-detail-table-row" {
-                            span data-bind="alias" {}
-                            span { "Slots " strong data-bind="total_slots" {} }
-                            span { "Context " strong data-bind="n_ctx_per_slot" {} }
-                            span { "Busy " strong data-bind="busy_slots" {} }
+                    article class="local-ai-card local-ai-card--access" aria-labelledby="local-ai-access-title" {
+                        div class="local-ai-card-head" {
+                            div { span class="local-ai-kicker" { "Access" } h2 id="local-ai-access-title" { "Local API" } }
+                            span class="system-status" data-bind="localAiPane.access.state" data-bind-class="localAiPane.access.stateClass" data-state="unknown" { (listener_state) }
+                        }
+                        dl class="local-ai-facts" {
+                            div class="local-ai-fact" { dt { "Configured mode" } dd data-bind="localAiPane.access.mode" { "Read from Local AI settings" } }
+                            div class="local-ai-fact" { dt { "Saved port" } dd data-bind="localAiPane.access.port" { (port_label) } }
+                        }
+                        p class="local-ai-note" data-bind="localAiPane.access.lanDetail" {
+                            "A listener observation does not establish remote reachability or API health."
+                        }
+                        div class="local-ai-endpoint" data-bind-show="localAiPane.hero.endpointAvailable" hidden {
+                            span class="local-ai-kicker" { "Configured LAN URL" }
+                            code data-bind="localAiPane.hero.endpoint" { "No configured LAN URL" }
+                            button class="btn btn--secondary" type="button" data-copy-value="" data-bind-copy-value="localAiPane.access.baseUrl" data-bind-enabled="localAiPane.hero.endpointAvailable" disabled { "Copy base URL" }
+                        }
+                        div class="local-ai-actions ux-row-actions" {
+                            button class="btn btn--primary" type="button" data-ai-action="inference-enable" { "API on" }
+                            button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
+                            button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
+                            button class="btn btn--secondary" type="button" data-ai-modal="access" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Configure access" }
+                        }
+                    }
+
+                    article class="local-ai-card local-ai-card--library" aria-labelledby="local-ai-library-title" {
+                        div class="local-ai-card-head" {
+                            div { span class="local-ai-kicker" { "Manage" } h2 id="local-ai-library-title" { "Acquisition & preferences" } }
+                            span class="local-ai-count" data-bind="localAiPane.model.libraryCount" { (format!("{} library", library_model_count)) }
+                        }
+                        p class="local-ai-note" { "Import a GGUF from this console, fetch one from a repository, or adjust runtime preferences." }
+                        div class="local-ai-actions ux-row-actions" {
+                            button class="btn btn--primary" type="button" data-ai-modal="add" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Add a model" }
+                            button class="btn btn--secondary" type="button" data-ai-modal="customize" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Customize" }
                         }
                     }
                 }
+
+                nav class="local-ai-support-rail ux-appliance-command-rail" aria-label="Local AI details" {
+                    span class="local-ai-support-label" { "More details" }
+                    button class="btn btn--secondary" type="button" data-ai-modal="resources" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Resources & engines" }
+                    button class="btn btn--secondary" type="button" data-ai-modal="lanes" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Serving lanes" }
+                    button class="btn btn--secondary" type="button" data-ai-logs="true" { "Activity & logs" }
+                }
+                div id="ai-message" class="message" hidden {}
             }
 
-            section id="local-ai-inference" class="local-ai-section ai-manager-section local-ai-card local-ai-card--access" aria-label="API access" tabindex="-1" {
-                div class="local-ai-card-head" {
-                    strong { "API access" }
-                    span class=(format!("system-status system-status--{}", if api_ready { "available" } else { "disabled" })) { (api_state) }
-                }
-                div class="local-ai-access-grid" {
-                    (ai_state_tile("Internal API", if api_ready { "Listening" } else { "Off" }, if api_ready { "Health test can run now" } else { "Load a model before client calls" }, "api"))
-                    (ai_state_tile("LAN API", access_state, if api_ready { "Trusted LAN only" } else { "Disabled until explicitly enabled" }, "lan"))
-                    (ai_state_tile("Port", &port.to_string(), "Saved HomeConsole Local AI port", "port"))
-                    (ai_state_tile("OpenAI base URL", if api_ready { &base_url } else { "Unavailable" }, if api_ready { "Use this in clients" } else { "No base URL until API listens" }, "endpoint"))
-                }
-                div class="inline-actions inline-actions--compact local-ai-actions" {
-                    button class="btn btn--primary" type="button" data-ai-action="inference-enable" disabled[model_count == 0] title=(if model_count == 0 { "Install a GGUF model before enabling API access." } else { "Enable console-local API mode." }) { "API on" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-disable" { "API off" }
-                    button class="btn btn--secondary" type="button" data-ai-action="inference-test" { "Test API" }
-                    @if api_ready { (copy_button("Copy base URL", &base_url)) } @else { button class="btn btn--secondary" type="button" disabled title="No API endpoint is reachable yet." { "Copy base URL" } }
-                }
-                p class="local-ai-help" { "Internal mode keeps the service on this console. LAN mode exposes only the saved port to trusted home-network clients." }
-            }
-
-            section class="local-ai-section ai-manager-section local-ai-card local-ai-card--config" aria-label="Port management" {
-                div class="local-ai-card-head" {
-                    strong { "Port management" }
-                    span class="system-status system-status--unknown" id="ai-port-state" data-active-port=(port) { "Active " (port) }
-                }
-                form class="settings-form settings-form--inline local-ai-port-form" id="ai-lan-form" data-active-port=(port) {
-                    label { span { "LAN/API port" } input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port) aria-describedby="ai-port-help"; }
-                    p id="ai-port-help" class="local-ai-help" { "Save validates the port without exposing LAN. Enable LAN applies the saved port to trusted-home-LAN access." }
-                    div class="inline-actions inline-actions--compact local-ai-actions" {
-                        button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
-                        button class="btn btn--secondary" type="button" data-ai-port-revert="true" { "Revert" }
-                        button class="btn btn--secondary" type="button" data-ai-action="lan-enable" disabled[!model_loaded] title=(if model_loaded { "Expose Local AI on the trusted LAN." } else { "Load a model before exposing LAN access." }) { "Enable LAN" }
-                        button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" }
+            div id="local-ai-modal-owner" class="local-ai-modal-owner" hidden {
+                section class="local-ai-modal-section" data-ai-modal-section="models" aria-labelledby="local-ai-models-dialog-title" hidden {
+                    div class="local-ai-modal-intro" {
+                        span class="local-ai-kicker" { "Model library" }
+                        h2 id="local-ai-models-dialog-title" { "Installed models" }
+                        p { "Selection, load state, and file details are reported independently." }
+                    }
+                    div class="local-ai-model-list" data-bind-each="localAiPane.installedModels" data-bind-replace="true" aria-label="Installed GGUF models" {
+                        template {
+                            article class="local-ai-model-row" data-bind-attr="data-selected:selected" {
+                                div class="local-ai-model-copy" {
+                                    strong class="local-ai-model-name" data-bind="name" {}
+                                    span class="local-ai-model-filename" data-bind="filename" {}
+                                    div class="local-ai-model-meta" {
+                                        span { "Size " strong data-bind="size" {} }
+                                        span { "Quantization " strong data-bind="quantization" {} }
+                                        span { "Use " strong data-bind="recommendedUse" {} }
+                                    }
+                                }
+                                div class="local-ai-actions ux-row-actions" {
+                                    button class="btn btn--secondary" type="button" data-ai-action="model-select" data-bind-attr="data-model-id:id" data-bind-show="canSelect" { "Select" }
+                                    button class="btn btn--primary" type="button" data-ai-action="model-load" data-bind-attr="data-model-id:id" data-bind-show="canLoad" { "Load" }
+                                    button class="btn btn--secondary" type="button" data-ai-action="model-unload" data-bind-show="canUnload" { "Unload" }
+                                    button class="btn btn--danger" type="button" data-ai-action="model-remove" data-bind-attr="data-model-id:id,data-filename:filename" data-bind-show="canRemove" { "Remove" }
+                                }
+                            }
+                        }
+                        @for model in &status.local_ai.available_models { (installed_model_card(model, status)) }
+                    }
+                    div class="local-ai-empty" data-bind-show="localAiPane.model.noInstalledModels" hidden[model_count != 0] {
+                        strong { "No installed models" }
+                        p { "Add a local GGUF or fetch a compatible file to begin." }
+                    }
+                    section class="local-ai-library-section" aria-labelledby="local-ai-library-list-title" {
+                        h3 id="local-ai-library-list-title" { "Library entries" }
+                        ul class="local-ai-library-list" data-bind-each="ai.libraryModels" data-bind-replace="true" aria-label="All model library entries" {
+                            template {
+                                li class="local-ai-library-row" {
+                                    strong data-bind="name" {}
+                                    span { span data-bind="lane" {} " · " span data-bind="status" {} " · " span data-bind="size" {} }
+                                }
+                            }
+                            @for model in &status.local_ai.library_models {
+                                li class="local-ai-library-row" {
+                                    strong { (model.name) }
+                                    span { (model.lane) " · " (model.status) " · " (model.size) }
+                                }
+                            }
+                        }
+                        div class="local-ai-empty" data-bind-show="localAiPane.model.noLibraryModels" hidden[library_model_count != 0] {
+                            p { "No library entries are currently reported." }
+                        }
+                    }
+                    div class="local-ai-actions ux-row-actions" {
+                        button class="btn btn--primary" type="button" data-ai-modal="add" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Add a model" }
+                        button class="btn btn--secondary" type="button" data-ai-action="models-rescan" { "Rescan storage" }
                     }
                 }
-            }
 
-            section id="local-ai-import" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model import" tabindex="-1" {
-                form class="settings-form" id="ai-import-form" enctype="multipart/form-data" {
-                    label { span { "Import GGUF model" } input class="field" type="file" name="model" accept=".gguf"; }
-                    div class="inline-actions local-ai-actions" { button class="btn btn--primary" type="submit" { "Import model" } button class="btn btn--secondary" type="button" data-ai-action="models-rescan" { "Rescan storage" } }
-                    progress id="ai-import-progress" max="100" value="0" hidden {}
-                }
-            }
-
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Model library" {
-                (model_library_plain_dropdown(status))
-                div class="model-grid" {
-                    @if status.local_ai.available_models.is_empty() {
-                        article class="model-card" { strong class="model-name" { "No models installed" } span class="model-filename" { "Import a local .gguf file or download a compatible Hugging Face file." } div class="inline-actions local-ai-actions" { (nav_focus_button("Import model", "local-ai", "local-ai-import")) (nav_focus_button("Get GGUF", "local-ai", "get-models")) } }
-                    } @else {
-                        @for model in &status.local_ai.available_models {
-                            (installed_model_card(model, status))
+                section class="local-ai-modal-section" data-ai-modal-section="add" aria-labelledby="local-ai-add-title" hidden {
+                    div class="local-ai-modal-intro" {
+                        span class="local-ai-kicker" { "Acquisition" }
+                        h2 id="local-ai-add-title" { "Add a model" }
+                        p { "Only GGUF model files are accepted by the existing import and download controls." }
+                    }
+                    article class="local-ai-disclosure-card" aria-labelledby="local-ai-import-title" {
+                        h3 id="local-ai-import-title" { "Import from this console" }
+                        form class="settings-form" id="ai-import-form" enctype="multipart/form-data" {
+                            label { span { "GGUF file" } input class="field" type="file" name="model" accept=".gguf"; }
+                            div class="local-ai-actions ux-row-actions" {
+                                button class="btn btn--primary" type="submit" { "Import model" }
+                                button class="btn btn--secondary" type="button" data-ai-action="models-rescan" { "Rescan storage" }
+                            }
+                            progress id="ai-import-progress" max="100" value="0" hidden {}
+                        }
+                    }
+                    article class="local-ai-disclosure-card" data-hf-installer="true" aria-labelledby="local-ai-hf-title" {
+                        h3 id="local-ai-hf-title" { "Hugging Face GGUF" }
+                        label { span { "Repository" } input class="field" name="repoId" placeholder="TheBloke/example-GGUF" autocomplete="off"; }
+                        label { span { "File" } input class="field" name="filename" placeholder="example.Q4_K_M.gguf" autocomplete="off"; }
+                        label { span { "Revision" } input class="field" name="revision" placeholder="main" autocomplete="off"; }
+                        div class="local-ai-actions ux-row-actions" {
+                            button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch files" }
+                            button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" }
+                        }
+                        div id="hf-file-results" class="local-ai-hf-results" data-bind-each="localAiFiles" data-bind-replace="true" aria-live="polite" {
+                            template {
+                                div class="local-ai-hf-row" {
+                                    span class="local-ai-hf-file" data-bind="filename" {}
+                                    span class="local-ai-hf-size" data-bind="sizeLabel" {}
+                                    button class="btn btn--secondary" type="button" data-ai-hf-select="true" data-bind-attr="data-filename:filename" { "Use file" }
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            section id="get-models" class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Get GGUF" tabindex="-1" {
-                article class="form-card" data-hf-installer="true" {
-                    h3 { "Hugging Face GGUF" }
-                    label { span { "Repository" } input class="field" name="repoId" placeholder="TheBloke/example-GGUF" autocomplete="off"; }
-                    label { span { "File" } input class="field" name="filename" placeholder="example.Q4_K_M.gguf" autocomplete="off"; }
-                    label { span { "Revision" } input class="field" name="revision" placeholder="main" autocomplete="off"; }
-                    div class="inline-actions local-ai-actions" { button class="btn btn--secondary" type="button" data-ai-action="hf-list-files" { "Fetch files" } button class="btn btn--primary" type="button" data-ai-action="hf-download" { "Download" } }
-                    div id="hf-file-results" class="diagnostics-results" {}
+                section class="local-ai-modal-section" data-ai-modal-section="access" aria-labelledby="local-ai-access-dialog-title" hidden {
+                    div class="local-ai-modal-intro" {
+                        span class="local-ai-kicker" { "Network access" }
+                        h2 id="local-ai-access-dialog-title" { "Configure access" }
+                        p { "The setting and observed listener are separate facts. This pane does not test remote reachability." }
+                    }
+                    article class="local-ai-disclosure-card" {
+                        div class="local-ai-card-head" {
+                            h3 { "Listener and mode" }
+                            span class="system-status" data-bind="localAiPane.access.state" data-bind-class="localAiPane.access.stateClass" data-state="unknown" { (listener_state) }
+                        }
+                        dl class="local-ai-facts" {
+                            div class="local-ai-fact" { dt { "Configured mode" } dd data-bind="localAiPane.access.mode" { "Read from Local AI settings" } }
+                            div class="local-ai-fact" { dt { "LAN setting" } dd data-bind="localAiPane.access.lan" { "Read from Local AI settings" } }
+                            div class="local-ai-fact" { dt { "Saved port" } dd data-bind="localAiPane.access.port" { (port_label) } }
+                        }
+                        p class="local-ai-note" data-bind="localAiPane.access.lanDetail" { "Remote reachability is not tested." }
+                    }
+                    form class="settings-form local-ai-port-form" id="ai-lan-form" data-active-port=(port.map(|value| value.to_string()).unwrap_or_default()) data-bind-attr="data-active-port:ai.inference.port" {
+                        label {
+                            span { "LAN/API port" }
+                            input class="field" name="port" type="number" inputmode="numeric" min="1024" max="65535" value=(port.map(|value| value.to_string()).unwrap_or_default()) data-bind-value="ai.inference.port" data-ai-draft="port" aria-describedby="ai-port-help";
+                        }
+                        p id="ai-port-help" class="local-ai-note" { "Saving changes the configured port; enabling LAN is a separate action." }
+                        div class="local-ai-actions ux-row-actions" {
+                            button class="btn btn--primary" type="submit" data-ai-port-save="true" { "Save port" }
+                            button class="btn btn--secondary" type="button" data-ai-port-revert="true" { "Revert" }
+                            button class="btn btn--secondary" type="button" data-ai-action="lan-enable" title="Expose Local AI on the trusted LAN" { "Enable LAN" }
+                            button class="btn btn--secondary" type="button" data-ai-action="lan-disable" { "Disable LAN" }
+                        }
+                    }
                 }
-            }
 
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Client handoff" {
-                div class="system-field-grid" {
-                    (system_field("Hermes/Pi base URL", if api_ready { &base_url } else { "Enable API first" }))
+                section class="local-ai-modal-section" data-ai-modal-section="customize" aria-labelledby="local-ai-customize-title" hidden {
+                    div class="local-ai-modal-intro" {
+                        span class="local-ai-kicker" { "Preferences" }
+                        h2 id="local-ai-customize-title" { "Customize Local AI" }
+                        p { "Saved runtime settings are shown below. Changes remain in the form until you save or revert them." }
+                    }
+                    details class="local-ai-disclosure" {
+                        summary { "Model runtime settings" }
+                        form class="settings-form local-ai-settings-grid" id="ai-settings-form" {
+                            label { span { "Context size" } input class="field" name="contextSize" type="number" min="512" max="262144" value="" data-bind-value="ai.settings.contextSize" data-ai-draft="contextSize"; }
+                            label { span { "Accelerator layers" } input class="field" name="gpuLayers" type="number" min="-1" max="999" value="" data-bind-value="ai.settings.gpuLayers" data-ai-draft="gpuLayers"; }
+                            label { span { "Threads" } input class="field" name="threads" type="number" min="0" max="256" value="" data-bind-value="ai.settings.threads" data-ai-draft="threads"; }
+                            label { span { "Batch size" } input class="field" name="batch" type="number" min="1" max="8192" value="" data-bind-value="ai.settings.batch" data-ai-draft="batch"; }
+                            label class="local-ai-choice" { input type="checkbox" name="startApiOnBoot" data-bind-checked="ai.settings.startApiOnBoot" data-ai-draft="startApiOnBoot"; span { "Start API on boot" } }
+                            label class="local-ai-choice" { input type="checkbox" name="autoLoadLastModel" data-bind-checked="ai.settings.autoLoadLastModel" data-ai-draft="autoLoadLastModel"; span { "Auto-load last model" } }
+                            div class="local-ai-actions ux-row-actions" { button class="btn btn--primary" type="submit" { "Save settings" } }
+                        }
+                    }
+                    details class="local-ai-disclosure" {
+                        summary { "Startup and selection" }
+                        dl class="local-ai-facts" {
+                            div class="local-ai-fact" { dt { "Preferred model" } dd data-bind="ai.settings.preferredModelId" { "None reported" } }
+                            div class="local-ai-fact" { dt { "API startup" } dd data-bind="ai.settings.startApiOnBoot" { "Read from saved settings" } }
+                            div class="local-ai-fact" { dt { "Last-model startup" } dd data-bind="ai.settings.autoLoadLastModel" { "Read from saved settings" } }
+                        }
+                    }
                 }
-            }
 
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Settings" {
-                form class="settings-form settings-form--inline" id="ai-settings-form" {
-                    label { span { "Context" } input class="field" name="contextSize" type="number" value="4096" min="512" max="262144"; }
-                    @if status.local_ai.gpu_memory.is_some() { label { span { "Accelerator layers" } input class="field" name="gpuLayers" type="number" value="-1" min="-1" max="999"; } }
-                    label { span { "Threads" } input class="field" name="threads" type="number" value="0" min="0" max="256"; }
-                    label { span { "Batch" } input class="field" name="batch" type="number" value="512" min="1" max="8192"; }
-                    label class="model-choice" { input type="checkbox" name="startApiOnBoot"; span { "Start API on boot" } }
-                    label class="model-choice" { input type="checkbox" name="autoLoadLastModel"; span { "Auto-load last model" } }
-                    button class="btn btn--primary" type="submit" { "Save settings" }
+                section class="local-ai-modal-section" data-ai-modal-section="resources" aria-labelledby="local-ai-resources-title" hidden {
+                    div class="local-ai-modal-intro" {
+                        span class="local-ai-kicker" { "Observed resources" }
+                        h2 id="local-ai-resources-title" { "Resources & engines" }
+                        p { "Hardware telemetry and process observations are readbacks, not inference health checks." }
+                    }
+                    dl class="local-ai-facts local-ai-resource-facts" {
+                        div class="local-ai-fact" { dt { "Accelerator memory" } dd data-bind="status.local_ai.gpu_memory" { (status.local_ai.gpu_memory.as_deref().unwrap_or("No telemetry reported")) } }
+                        div class="local-ai-fact" { dt { "Accelerator use / total" } dd { (accelerator_usage) } }
+                        div class="local-ai-fact" { dt { "Model storage" } dd data-bind="status.storage.ai_models.size" { (status.storage.ai_models.size) } }
+                        div class="local-ai-fact" { dt { "Storage capacity" } dd { (human_bytes(status.storage.total_bytes)) } }
+                        div class="local-ai-fact" { dt { "Free storage" } dd data-bind="status.storage.free" { (status.storage.free) } }
+                        div class="local-ai-fact" { dt { "Runtime process signal" } dd data-bind="ai.runtime.serverState" { "Read from runtime state" } }
+                    }
+                    div class="local-ai-actions ux-row-actions" { (nav_button("Open Storage", "storage")) }
+                    h3 { "Resident engines" }
+                    div class="local-ai-engine-list" data-bind-each="status.local_ai.resident_engines" data-bind-replace="true" aria-label="Resident AI engines" {
+                        template {
+                            div class="local-ai-engine-row" { strong data-bind="functionLabel" {} span data-bind="modelFilename" { "Model details unavailable" } }
+                        }
+                        @for engine in &status.local_ai.resident_engines {
+                            div class="local-ai-engine-row" { strong { (&engine.function_label) } span { (engine.model_filename.as_deref().unwrap_or("Model details unavailable")) } }
+                        }
+                    }
+                    div class="local-ai-empty" data-bind-show="localAiPane.model.noResidentEngines" hidden[!status.local_ai.resident_engines.is_empty()] {
+                        p { "No resident engines are currently reported." }
+                    }
                 }
-            }
 
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Hardware and storage" {
-                @if let (Some(used), Some(total)) = (status.local_ai.gpu_memory_used_bytes, status.local_ai.gpu_memory_total_bytes) {
-                    (meter_block("Accelerator", &human_bytes(used), &human_bytes(total), used, total))
-                } @else { div class="empty-state" { strong { "No accelerator telemetry source reported" } } }
-                (meter_block("AI model storage", &status.storage.ai_models.size, &status.storage.free, status.storage.ai_models.bytes, status.storage.total_bytes.max(1)))
-                div class="inline-actions local-ai-actions" { (nav_button("Open Storage", "storage")) }
-            }
-
-            section class="local-ai-section ai-manager-section ai-manager-section--desktop-detail" aria-label="Diagnostics" {
-                div id="ai-activity" class="system-field-grid" { (system_field("Operation", if api_ready { "serving client calls" } else { "idle" })) (system_field("Last error", "Read from /api/ai/state")) }
-                details class="collapsible-log" { summary { "llama.cpp update" } pre { code { "Read from backend logs." } } }
-                details class="collapsible-log" { summary { "Model import/load" } pre { code { "Read from backend logs." } } }
-            }
-            div id="ai-message" class="message" hidden {}
-        },
-    )
-}
-
-fn model_library_plain_dropdown(status: &ConsoleStatus) -> Markup {
-    html! {
-        article class="form-card model-library-plain" data-model-library-plain="true" {
-            label {
-                span { "All library models" }
-                select class="field" name="modelLibraryPlain" data-model-library-select="true" autocomplete="off" {
-                    @if status.local_ai.library_models.is_empty() {
-                        option value="" { "No model-library entries found" }
-                    } @else {
-                        @for model in &status.local_ai.library_models {
-                            option value=(model.id) {
-                                (model.lane) " · " (model.name) " · " (model.status) " · " (model.size)
+                section class="local-ai-modal-section" data-ai-modal-section="lanes" aria-labelledby="local-ai-lanes-title" hidden {
+                    div class="local-ai-modal-intro" {
+                        span class="local-ai-kicker" { "Runtime inventory" }
+                        h2 id="local-ai-lanes-title" { "Model serving lanes" }
+                        p { "Lane capacity is read from the living state; refresh requests the existing pulse endpoint." }
+                    }
+                    div class="local-ai-card-head" {
+                        span class="local-ai-note" { "Current lanes" }
+                        (action_button(ButtonVariant::Secondary, "Refresh lanes", "model-lanes-pulse", "/api/caduceus/v1/model-lanes/pulse"))
+                    }
+                    div class="local-ai-lane-list" data-bind-each="modelLanes" data-bind-replace="true" aria-label="Model lanes" {
+                        template {
+                            article class="local-ai-lane-row" {
+                                strong data-bind="alias" {}
+                                span { "Slots " strong data-bind="total_slots" {} }
+                                span { "Context " strong data-bind="n_ctx_per_slot" {} }
+                                span { "Busy " strong data-bind="busy_slots" {} }
                             }
                         }
                     }
                 }
             }
-            div class="model-library-plain-readback" aria-label="Model library count" {
-                (status.local_ai.library_models.len()) " total · includes untested and unseated library entries"
+        },
+    )
+}
+
+fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatus) -> Markup {
+    let selected = status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str());
+    let loaded = status.local_ai.loaded_model_id.as_deref() == Some(model.id.as_str());
+    html! {
+        article class="local-ai-model-row" data-selected=(selected.to_string()) {
+            div class="local-ai-model-copy" {
+                strong class="local-ai-model-name" { (model.name) @if model.is_recommended { " · Recommended" } }
+                span class="local-ai-model-filename" { (model.filename) }
+                div class="local-ai-model-meta" {
+                    span { "Size " strong { (model.size) } }
+                    span { "Quantization " strong { (model.quantization.as_deref().unwrap_or("Unknown")) } }
+                    span { "Use " strong { (model.recommended_use.unwrap_or("Balanced")) } }
+                }
+            }
+            div class="local-ai-actions ux-row-actions" {
+                @if !selected { button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" } }
+                @if !loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(model.id) { "Load" } }
+                @if loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
+                @if !loaded { button class="btn btn--danger" type="button" data-ai-action="model-remove" data-model-id=(model.id) data-filename=(model.filename) { "Remove" } }
             }
         }
     }
 }
 
-fn local_ai_model_state_label(
-    status: &ConsoleStatus,
-    model_loaded: bool,
-    selected_present: bool,
-    model_count: usize,
-) -> &'static str {
-    if status.local_ai.load_state == "error" {
-        "Backend error"
-    } else if model_loaded {
-        "Model loaded"
-    } else if selected_present {
-        "Model selected, not loaded"
-    } else if model_count > 0 {
-        "Models installed, none selected"
-    } else {
-        "No model loaded"
-    }
-}
-
-fn local_ai_state_class(load_state: &str, model_loaded: bool, model_count: usize) -> &'static str {
-    if load_state == "error" {
-        "error"
-    } else if model_loaded {
-        "available"
-    } else if model_count > 0 {
-        "partial"
-    } else {
-        "disabled"
-    }
-}
-
-fn ai_state_tile(label: &str, value: &str, detail: &str, kind: &str) -> Markup {
-    html! {
-        div class="local-ai-state-tile" data-ai-tile=(kind) {
-            span { (label) }
-            strong { (value) }
-            em { (detail) }
-        }
-    }
-}
-
-fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatus) -> Markup {
-    let selected = status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str());
-    let hot = status.local_ai.loaded_model_id.as_deref() == Some(model.id.as_str());
-    html! { article id="installed-models" class=(if selected { "model-card model-card--selected" } else { "model-card" }) {
-        strong class="model-name" { (model.name) @if model.is_recommended { " · Recommended" } }
-        span class="model-filename" { (model.filename) }
-        div class="model-meta-row" {
-            (model_meta("Size", &model.size))
-            (model_meta("Quantization", model.quantization.as_deref().unwrap_or("Unknown")))
-            (model_meta("Use", model.recommended_use.unwrap_or("Balanced")))
-            (model_meta("State", if hot { "Hot" } else if selected { "Cold" } else { "Installed" }))
-        }
-        div class="inline-actions inline-actions--compact local-ai-actions" {
-            @if !selected { button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" } }
-            @if !hot { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(model.id) { "Load" } }
-            @if hot { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } span class="model-status" { "Unload before removing this model." } }
-            @else { button class="btn btn--danger" type="button" data-ai-action="model-remove" data-model-id=(model.id) data-filename=(model.filename) { "Remove" } }
-        }
-    } }
-}
-
-fn meter_block(label: &str, used: &str, total: &str, used_bytes: u64, total_bytes: u64) -> Markup {
-    html! { div class="storage-summary ai-meter" { div class="card-head" { h3 { (label) } strong { (used) " / " (total) } } div class="storage-bar" { span class="storage-segment storage-segment--ai" style=(format!("width: {}%", ((used_bytes.saturating_mul(100) / total_bytes.max(1)).min(100)))) {} } } }
-}
-
 fn human_bytes(bytes: u64) -> String {
     let gib = bytes as f64 / 1024.0 / 1024.0 / 1024.0;
     if gib >= 1.0 {
-        format!("{:.1} GB", gib)
+        format!("{gib:.1} GB")
     } else {
         format!("{} MB", bytes / 1024 / 1024)
     }
 }
-
