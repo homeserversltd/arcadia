@@ -559,6 +559,7 @@ pub struct ApiLocalAiPaneHeroState {
 pub struct ApiLocalAiPaneModelState {
     pub state: String,
     pub state_class: &'static str,
+    pub selected_model_id: Option<String>,
     pub selected: String,
     pub serving_now: String,
     pub selected_detail: &'static str,
@@ -1454,11 +1455,18 @@ fn api_network_pane_state(status: &ConsoleStatus) -> ApiNetworkPaneState {
 }
 
 fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLocalAiPaneState {
-    let selected_model_id = ai.loaded_model.selected_model_id.as_deref();
-    let selected_name = ai
-        .loaded_model
-        .selected_model_name
-        .clone()
+    let selected_model_id = selected_model_id();
+    let selected_name = selected_model_id
+        .as_ref()
+        .and_then(|id| {
+            status
+                .local_ai
+                .available_models
+                .iter()
+                .find(|model| &model.id == id)
+                .map(|model| model.name.clone())
+        })
+        .or_else(|| selected_model_id.as_ref().map(|id| format!("Saved selection unavailable ({id})")))
         .unwrap_or_else(|| "No model selected".to_string());
     let loaded_name = ai
         .loaded_model
@@ -1506,7 +1514,7 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
         .available_models
         .iter()
         .map(|model| {
-            let selected = selected_model_id == Some(model.id.as_str());
+            let selected = selected_model_id.as_deref() == Some(model.id.as_str());
             let loaded = ai.loaded_model.loaded_model_id.as_deref() == Some(model.id.as_str());
             ApiLocalAiPaneInstalledModelState {
                 id: model.id.clone(),
@@ -1550,6 +1558,7 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
         model: ApiLocalAiPaneModelState {
             state: state.to_string(),
             state_class,
+            selected_model_id,
             selected: selected_name,
             serving_now: loaded_name,
             selected_detail: if selected_present { "Current Local AI selection" } else { "Choose or add a model" },

@@ -1,5 +1,5 @@
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
-    // ConsoleStatus can carry a discovery heuristic; saved selection comes from ai.loadedModel.
+    // ConsoleStatus may carry discovery heuristics; persisted selection is localAiPane.model.selectedModelId.
     let selected_name = "Reading saved selection";
     let loaded_name = "Reading reported model";
     let port = status.local_ai.lan_inference_port;
@@ -8,13 +8,6 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
         .unwrap_or_else(|| "Reading saved port".to_string());
     let model_count = status.local_ai.available_models.len();
     let library_model_count = status.local_ai.library_models.len();
-    let accelerator_usage = match (
-        status.local_ai.gpu_memory_used_bytes,
-        status.local_ai.gpu_memory_total_bytes,
-    ) {
-        (Some(used), Some(total)) => format!("{} / {}", human_bytes(used), human_bytes(total)),
-        _ => "No capacity telemetry reported".to_string(),
-    };
     let selected_present = false;
     let model_loaded = false;
     let model_state = "Reading saved model state";
@@ -53,7 +46,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                             "Backend-reported model state; this is not an API health check."
                         }
                         div class="local-ai-actions ux-row-actions" {
-                            button class="btn btn--primary" type="button" data-ai-action="model-load" data-bind-attr="data-model-id:ai.loadedModel.selectedModelId" data-bind-enabled="localAiPane.model.hasSelectedModel" disabled[!selected_present] { "Load selected" }
+                            button class="btn btn--primary" type="button" data-ai-action="model-load" data-bind-attr="data-model-id:localAiPane.model.selectedModelId" data-bind-enabled="localAiPane.model.hasSelectedModel" disabled[!selected_present] { "Load selected" }
                             button class="btn btn--secondary" type="button" data-ai-action="model-unload" data-bind-enabled="localAiPane.model.modelLoaded" disabled[!model_loaded] { "Unload" }
                             button class="btn btn--secondary" type="button" data-ai-modal="models" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Library" }
                         }
@@ -240,7 +233,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     div class="local-ai-modal-intro" {
                         span class="local-ai-kicker" { "Preferences" }
                         h2 id="local-ai-customize-title" { "Customize Local AI" }
-                        p { "Saved runtime settings are shown below. Changes remain in the form until you save or revert them." }
+                        p { "Saved runtime settings are shown below. Changes remain in the form until you save them." }
                     }
                     details class="local-ai-disclosure" {
                         summary { "Model runtime settings" }
@@ -272,9 +265,16 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     }
                     dl class="local-ai-facts local-ai-resource-facts" {
                         div class="local-ai-fact" { dt { "Accelerator memory" } dd data-bind="status.local_ai.gpu_memory" { (status.local_ai.gpu_memory.as_deref().unwrap_or("No telemetry reported")) } }
-                        div class="local-ai-fact" { dt { "Accelerator use / total" } dd { (accelerator_usage) } }
+                        div class="local-ai-fact" {
+                            dt { "Accelerator use / total" }
+                            dd {
+                                span data-bind="status.local_ai.gpu_memory_used_bytes" data-bind-format="bytes" { (status.local_ai.gpu_memory_used_bytes.map(human_bytes).unwrap_or_else(|| "-".to_string())) }
+                                " / "
+                                span data-bind="status.local_ai.gpu_memory_total_bytes" data-bind-format="bytes" { (status.local_ai.gpu_memory_total_bytes.map(human_bytes).unwrap_or_else(|| "-".to_string())) }
+                            }
+                        }
                         div class="local-ai-fact" { dt { "Model storage" } dd data-bind="status.storage.ai_models.size" { (status.storage.ai_models.size) } }
-                        div class="local-ai-fact" { dt { "Storage capacity" } dd { (human_bytes(status.storage.total_bytes)) } }
+                        div class="local-ai-fact" { dt { "Storage capacity" } dd data-bind="status.storage.total_bytes" data-bind-format="bytes" { (human_bytes(status.storage.total_bytes)) } }
                         div class="local-ai-fact" { dt { "Free storage" } dd data-bind="status.storage.free" { (status.storage.free) } }
                         div class="local-ai-fact" { dt { "Runtime process signal" } dd data-bind="ai.runtime.serverState" { "Read from runtime state" } }
                     }
@@ -320,10 +320,9 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
 }
 
 fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatus) -> Markup {
-    let selected = status.local_ai.selected_model_id.as_deref() == Some(model.id.as_str());
     let loaded = status.local_ai.loaded_model_id.as_deref() == Some(model.id.as_str());
     html! {
-        article class="local-ai-model-row" data-selected=(selected.to_string()) {
+        article class="local-ai-model-row" data-selected="false" {
             div class="local-ai-model-copy" {
                 strong class="local-ai-model-name" { (model.name) @if model.is_recommended { " · Recommended" } }
                 span class="local-ai-model-filename" { (model.filename) }
@@ -334,7 +333,7 @@ fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatu
                 }
             }
             div class="local-ai-actions ux-row-actions" {
-                @if !selected { button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" } }
+                button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" }
                 @if !loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(model.id) { "Load" } }
                 @if loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
                 @if !loaded { button class="btn btn--danger" type="button" data-ai-action="model-remove" data-model-id=(model.id) data-filename=(model.filename) { "Remove" } }

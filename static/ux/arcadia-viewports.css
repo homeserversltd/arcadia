@@ -37,7 +37,8 @@
   .view[data-view-panel="local-ai"].is-active { overflow-x: hidden; overflow-y: auto; }
   .view[data-view-panel="local-ai"] .local-ai-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .view[data-view-panel="local-ai"] .local-ai-card--library { grid-column: 1 / -1; }
-  .view[data-view-panel="local-ai"] .local-ai-model-row { grid-template-columns: minmax(0, 1fr); }
+  .view[data-view-panel="local-ai"] .local-ai-model-row,
+  .modal-card--local-ai .local-ai-model-row { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   :root {
@@ -72,6 +73,28 @@
   .view[data-view-panel="local-ai"] .local-ai-library-row,
   .view[data-view-panel="local-ai"] .local-ai-engine-row,
   .view[data-view-panel="local-ai"] .local-ai-lane-row { grid-template-columns: minmax(0, 1fr); }
+  .modal-card--local-ai .local-ai-settings-grid,
+  .modal-card--local-ai .local-ai-facts,
+  .modal-card--local-ai .local-ai-library-row,
+  .modal-card--local-ai .local-ai-engine-row,
+  .modal-card--local-ai .local-ai-model-row,
+  .modal-card--local-ai .local-ai-lane-row,
+  .modal-card--local-ai .local-ai-hf-row {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    max-inline-size: 100%;
+  }
+  .modal-card--local-ai .local-ai-settings-grid > *,
+  .modal-card--local-ai .local-ai-facts > *,
+  .modal-card--local-ai .local-ai-library-row > *,
+  .modal-card--local-ai .local-ai-engine-row > *,
+  .modal-card--local-ai .local-ai-model-row > *,
+  .modal-card--local-ai .local-ai-lane-row > *,
+  .modal-card--local-ai .local-ai-hf-row > * {
+    min-width: 0;
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+  }
   .view[data-view-panel="home"] .home-operational-grid, .view[data-view-panel="storage"] .storage-category-list, .view[data-view-panel="network"] .network-workbench { grid-template-columns: 1fr; }
   .view[data-view-panel="home"] .storage-mini-rows, .view[data-view-panel="home"] .compact-select-label, .view[data-view-panel="home"] .state-row:nth-child(n+3), .view[data-view-panel="home"] .reachability:nth-child(n+3), .view[data-view-panel="home"] .inline-actions--compact .btn:nth-child(n+3), .view[data-view-panel="home"] .sync-folder-list, .view[data-view-panel="sync"] .sync-folder-list, .view[data-view-panel="sync"] .sync-result-card, .view[data-view-panel="updates"] .harmonia-module-grid, .view[data-view-panel="updates"] .harmonia-receipts, .view[data-view-panel="system"] .system-card--ssh .system-field:nth-child(n+4), .view[data-view-panel="system"] .system-card--trust .system-field:nth-child(n+4), .view[data-view-panel="system"] .system-card--ssh .command-box, .view[data-view-panel="system"] .system-card--ssh .settings-form, .view[data-view-panel="system"] .system-card--trust .settings-form, .view[data-view-panel="system"] .system-card--services .system-service-row:nth-child(n+4), .view[data-view-panel="storage"] .storage-compact-entry, .view[data-view-panel="storage"] .storage-category-row em, .view[data-view-panel="storage"] .storage-category-mini, .view[data-view-panel="storage"] .storage-category-row .btn:nth-of-type(n+2), .view[data-view-panel="network"] .network-compact-grid .system-field:nth-child(n+4), .view[data-view-panel="network"] .network-service-row:nth-child(n+3) { display: revert; }
   .view[data-view-panel="storage"] .storage-category-row, .view[data-view-panel="network"] .network-service-row { grid-template-columns: 1fr; }
