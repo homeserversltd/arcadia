@@ -506,12 +506,167 @@ const ArcadiaProjector = (() => {
     return Array.from(root.querySelectorAll(selector)).filter((node) => includeGenerated || !node.closest('[data-projector-generated="true"]'));
   }
 
-  function localAiDraftPending(node, value, checked = false) {
-    if (!node.hasAttribute('data-ai-draft') || !node.closest('.local-ai-modal-section[data-ai-modal-section]') || node.dataset.aiDraftDirty !== 'true') return false;
-    const matchesLivingValue = checked ? node.checked === Boolean(value) : node.value === asText(value);
-    if (matchesLivingValue) delete node.dataset.aiDraftDirty;
-    return !matchesLivingValue;
+  const editStates = new WeakMap();
+  const editSequenceModulus = 0x80000000;
+
+  function isDraftControl(node) {
+    return node?.dataset?.bindEdit === 'draft'
+      && (node instanceof HTMLInputElement || node instanceof HTMLSelectElement || node instanceof HTMLTextAreaElement)
+      && (node.hasAttribute('data-bind-checked') || node.hasAttribute('data-bind-value'));
   }
+
+  function normalizeEditValue(node, value) {
+    if (node.hasAttribute('data-bind-checked')) return Boolean(value);
+    const text = value == null ? '' : asText(value);
+    if (node instanceof HTMLInputElement && node.type === 'number' && text !== '') {
+      const number = Number(text);
+      if (Number.isFinite(number)) return number;
+    }
+    return text;
+  }
+
+  function readEditValue(node) {
+    return node.hasAttribute('data-bind-checked')
+      ? Boolean(node.checked)
+      : normalizeEditValue(node, node.value);
+  }
+
+  function writeEditValue(node, value) {
+    if (node.hasAttribute('data-bind-checked')) node.checked = Boolean(value);
+    else node.value = value == null ? '' : asText(value);
+  }
+
+  function editBindingValue(node, state = projectedDocument()) {
+    const path = node.hasAttribute('data-bind-checked') ? node.dataset.bindChecked : node.dataset.bindValue;
+    return resolve(path, state);
+  }
+
+  function nextEditSequence(sequence) {
+    return (sequence + 1) % editSequenceModulus;
+  }
+
+  function editSequenceIsNewer(candidate, previous) {
+    if (previous == null) return true;
+    const distance = (candidate - previous + editSequenceModulus) % editSequenceModulus;
+    return distance > 0 && distance < editSequenceModulus / 2;
+  }
+
+  function editStateFor(node, projectedValue, priorValue) {
+    let state = editStates.get(node);
+    if (state) return state;
+    const initial = projectedValue === undefined
+      ? (node.hasAttribute('data-bind-checked') ? node.defaultChecked : node.defaultValue)
+      : projectedValue;
+    const current = readEditValue(node);
+    const previous = priorValue === undefined
+      ? current
+      : normalizeEditValue(node, priorValue);
+    state = {
+      baseline: normalizeEditValue(node, initial === undefined ? current : initial),
+      dirty: false,
+      revision: 0,
+      submission: 0,
+      acknowledgedSubmission: null,
+      lastValue: previous,
+      hold: null,
+    };
+    editStates.set(node, state);
+    return state;
+  }
+
+  function projectDraftControl(node, value) {
+    if (!isDraftControl(node)) return false;
+    const incoming = normalizeEditValue(node, value);
+    const state = editStateFor(node, incoming);
+    const current = readEditValue(node);
+    if (state.hold && incoming !== state.hold.value) {
+      state.baseline = state.hold.value;
+      state.dirty = current !== state.baseline;
+      return true;
+    }
+    if (state.hold) state.hold = null;
+    state.baseline = incoming;
+    if (state.dirty && current !== incoming) return true;
+    writeEditValue(node, incoming);
+    state.dirty = false;
+    state.lastValue = incoming;
+    return true;
+  }
+
+  function draftNodes(root) {
+    const nodes = [];
+    if (isDraftControl(root)) nodes.push(root);
+    root?.querySelectorAll?.('[data-bind-edit="draft"]').forEach((node) => {
+      if (isDraftControl(node)) nodes.push(node);
+    });
+    return nodes;
+  }
+
+  function captureDrafts(root, submittedValues) {
+    if (!submittedValues || typeof submittedValues !== 'object') return [];
+    const captured = [];
+    draftNodes(root).forEach((node) => {
+      const name = node.name;
+      if (!name || !Object.prototype.hasOwnProperty.call(submittedValues, name)) return;
+      const state = editStateFor(node, editBindingValue(node));
+      state.submission = nextEditSequence(state.submission);
+      captured.push({
+        node,
+        revision: state.revision,
+        submission: state.submission,
+        current: readEditValue(node),
+        value: normalizeEditValue(node, submittedValues[name]),
+      });
+    });
+    return captured;
+  }
+
+  function acknowledgeDrafts(captured) {
+    (captured || []).forEach((entry) => {
+      const state = editStates.get(entry.node);
+      if (!state || !editSequenceIsNewer(entry.submission, state.acknowledgedSubmission)) return;
+      state.acknowledgedSubmission = entry.submission;
+      state.baseline = entry.value;
+      state.hold = { value: entry.value };
+      const current = readEditValue(entry.node);
+      const unchanged = state.revision === entry.revision && current === entry.current;
+      if (unchanged) {
+        writeEditValue(entry.node, entry.value);
+        state.dirty = false;
+        state.lastValue = entry.value;
+      } else {
+        state.dirty = current !== entry.value;
+        state.lastValue = current;
+      }
+    });
+  }
+
+  function resetEdit(node, value) {
+    if (!isDraftControl(node)) return false;
+    const state = editStateFor(node, editBindingValue(node));
+    const resetValue = normalizeEditValue(node, value);
+    state.revision = nextEditSequence(state.revision);
+    state.baseline = resetValue;
+    state.dirty = false;
+    state.hold = null;
+    state.lastValue = resetValue;
+    writeEditValue(node, resetValue);
+    return true;
+  }
+
+  function recordEdit(event) {
+    const node = event.target;
+    if (!isDraftControl(node)) return;
+    const priorValue = node.hasAttribute('data-bind-checked') ? node.defaultChecked : node.defaultValue;
+    const state = editStateFor(node, editBindingValue(node), priorValue);
+    const current = readEditValue(node);
+    if (current !== state.lastValue) state.revision = nextEditSequence(state.revision);
+    state.lastValue = current;
+    state.dirty = current !== state.baseline;
+  }
+
+  document.addEventListener('input', recordEdit);
+  document.addEventListener('change', recordEdit);
 
   function projectScalarBindings(root, state, includeGenerated = false, shouldProject = () => true) {
     boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
@@ -532,15 +687,13 @@ const ArcadiaProjector = (() => {
     boundNodes(root, '[data-bind-checked]', includeGenerated).forEach((node) => {
       if (!shouldProject(node, node.dataset.bindChecked)) return;
       const checked = Boolean(resolve(node.dataset.bindChecked, state));
-      if (localAiDraftPending(node, checked, true)) return;
-      node.checked = checked;
+      if (!projectDraftControl(node, checked)) node.checked = checked;
     });
     boundNodes(root, '[data-bind-value]', includeGenerated).forEach((node) => {
       if (!shouldProject(node, node.dataset.bindValue)) return;
       const raw = resolve(node.dataset.bindValue, state);
       const value = asText(raw);
-      if (localAiDraftPending(node, value)) return;
-      node.value = value;
+      if (!projectDraftControl(node, value)) node.value = value;
       if (node.dataset.bindAriaLabel && shouldProject(node, node.dataset.bindAriaLabel)) node.setAttribute('aria-label', asText(resolve(node.dataset.bindAriaLabel, state)));
     });
     boundNodes(root, '[data-bind-zero-dash]', includeGenerated).forEach((node) => {
@@ -703,7 +856,7 @@ const ArcadiaProjector = (() => {
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
   // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
   // data-bind-copy-value and data-bind-enabled keep presenter-owned controls stable while values change.
-  return { apply, applyOverlay, registerWidget, resolve, project, currentDocument: () => projectedDocument() };
+  return { apply, applyOverlay, registerWidget, resolve, project, currentDocument: () => projectedDocument(), captureDrafts, acknowledgeDrafts, resetEdit };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
 
@@ -3120,6 +3273,13 @@ async function postAI(endpoint, body = {}, label = 'Local AI action') {
   return data;
 }
 
+async function postLocalAIWithDrafts(form, endpoint, body, label, submittedValues = body) {
+  const captured = ArcadiaProjector.captureDrafts(form, submittedValues);
+  const data = await postAI(endpoint, body, label);
+  if (data?.ok === true) ArcadiaProjector.acknowledgeDrafts(captured);
+  return data;
+}
+
 let localAIDisclosureOrigin = null;
 let localAIControlsBound = false;
 
@@ -3137,8 +3297,9 @@ function openLocalAIDisclosure(name, trigger) {
   document.querySelectorAll('[data-ai-modal]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
   localAIDisclosureOrigin = returnFocus;
   returnFocus?.setAttribute('aria-expanded', 'true');
+  const nativeTitle = section.querySelector('[data-modal-title]')?.textContent?.trim() || 'Local AI';
   PopupManager.showModal({
-    title: section.querySelector('h2')?.textContent?.trim() || 'Local AI',
+    title: nativeTitle,
     body: section,
     hideDefaultAction: true,
     variant: 'local-ai',
@@ -3155,14 +3316,6 @@ function bindLocalAIControls() {
   document.addEventListener('arcadia:modal-open', (event) => {
     if (event.detail?.variant !== 'local-ai') resetLocalAIDisclosure();
   });
-  const markDraft = (event) => {
-    const field = event.target;
-    if (field instanceof HTMLInputElement && field.hasAttribute('data-ai-draft') && field.closest('.local-ai-modal-section[data-ai-modal-section]')) {
-      field.dataset.aiDraftDirty = 'true';
-    }
-  };
-  document.addEventListener('input', markDraft);
-  document.addEventListener('change', markDraft);
   document.addEventListener('click', async (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
@@ -3192,10 +3345,8 @@ function bindLocalAIControls() {
     if (revert) {
       const form = document.getElementById('ai-lan-form');
       const input = form?.querySelector('input[name="port"]');
-      if (input) {
-        input.value = form.dataset.activePort || '7777';
-        delete input.dataset.aiDraftDirty;
-      }
+      const activePort = form?.getAttribute('data-active-port');
+      if (input && activePort != null) ArcadiaProjector.resetEdit(input, activePort);
       return;
     }
     const button = target.closest('[data-ai-action]');
@@ -3265,14 +3416,15 @@ function bindLocalAIControls() {
     if (form.id === 'ai-settings-form') {
       event.preventDefault();
       const val = (name) => form.querySelector(`[name="${name}"]`);
-      await postAI('/api/ai/settings', {
+      const body = {
         contextSize: Number(val('contextSize')?.value || 4096),
         gpuLayers: Number(val('gpuLayers')?.value || -1),
         threads: Number(val('threads')?.value || 0),
         batch: Number(val('batch')?.value || 512),
         startApiOnBoot: Boolean(val('startApiOnBoot')?.checked),
         autoLoadLastModel: Boolean(val('autoLoadLastModel')?.checked),
-      }, 'Local AI settings saved');
+      };
+      await postLocalAIWithDrafts(form, '/api/ai/settings', body, 'Local AI settings saved');
     }
   });
 }
@@ -3288,6 +3440,7 @@ function localAIPortPayload() {
 }
 
 async function saveLocalAIPort() {
+  const form = document.getElementById('ai-lan-form');
   let payload;
   try { payload = localAIPortPayload(); }
   catch (error) {
@@ -3295,10 +3448,11 @@ async function saveLocalAIPort() {
     PopupManager.showToast(error.message, 'error');
     return null;
   }
-  return await postAI('/api/ai/settings', { lanPort: payload.port }, 'Local AI port saved');
+  return await postLocalAIWithDrafts(form, '/api/ai/settings', { lanPort: payload.port }, 'Local AI port saved', { port: payload.port });
 }
 
 async function applyLocalAIPort(enableLan) {
+  const form = document.getElementById('ai-lan-form');
   let payload;
   try { payload = localAIPortPayload(); }
   catch (error) {
@@ -3306,7 +3460,7 @@ async function applyLocalAIPort(enableLan) {
     PopupManager.showToast(error.message, 'error');
     return null;
   }
-  return await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port }, 'LAN access applied');
+  return await postLocalAIWithDrafts(form, '/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port }, 'LAN access applied', { port: payload.port });
 }
 
 function hfForm() { return document.querySelector('[data-hf-installer]'); }

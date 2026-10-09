@@ -48,6 +48,11 @@
   --ux-button-min-height: 34px;
   --ux-button-padding-block: 7px;
   --ux-button-padding-inline: 10px;
+  --ux-system-fit-button-tile-min-inline: 150px;
+  --ux-system-fit-ca-panel-min-inline: 300px;
+  --ux-system-fit-access-panel-min-inline: 340px;
+  --ux-system-fit-field-min-height: 38px;
+  --ux-system-fit-field-padding: 8px 10px;
   --ux-button-radius: 16px;
   --ux-compact-button-min-height: 34px;
   --ux-compact-button-padding-block: 7px;
@@ -119,14 +124,35 @@
   --ux-updates-module-status-max-inline: 72px;
   --ux-updates-module-status-padding: 2px 4px;
 
-  --ux-local-ai-grid-gap: var(--ux-grid-gap);
-  --ux-local-ai-card-gap: 10px;
-  --ux-local-ai-card-padding: 14px;
-  --ux-local-ai-readout-gap: 8px;
-  --ux-local-ai-disclosure-padding: 14px;
+  --ux-local-ai-grid-gap: 12px;
+  --ux-local-ai-card-gap: 14px;
+  --ux-local-ai-card-padding: 18px;
+  --ux-local-ai-readout-gap: 12px;
+  --ux-local-ai-disclosure-padding: 18px;
   --ux-local-ai-card-radius: 18px;
+  --ux-local-ai-card-head-gap: var(--ux-card-header-gap);
+  --ux-local-ai-card-head-inset: 9px;
+  --ux-local-ai-identity-row-padding: 8px 0;
+  --ux-local-ai-readout-padding: 10px 11px;
+  --ux-local-ai-readout-radius: 14px;
+  --ux-local-ai-row-gap: 8px;
+  --ux-local-ai-row-column-gap: 14px;
+  --ux-local-ai-row-padding: 10px 12px;
+  --ux-local-ai-row-radius: 14px;
+  --ux-local-ai-list-gap: var(--ux-grid-gap);
+  --ux-local-ai-disclosure-gap: 12px;
+  --ux-local-ai-disclosure-radius: 16px;
   --ux-local-ai-modal-max-width: 900px;
   --ux-local-ai-detail-max-block: min(72dvh, 760px);
+  --ux-local-ai-control-min-height: 42px;
+  --ux-local-ai-control-radius: 14px;
+  --ux-local-ai-action-min-height: 40px;
+  --ux-local-ai-choice-min-height: 42px;
+  --ux-local-ai-choice-gap: 9px;
+  --ux-local-ai-choice-padding: 8px 10px;
+  --ux-local-ai-choice-radius: 12px;
+  --ux-local-ai-choice-control-size: 18px;
+  --ux-local-ai-selected-model-size: 22px;
 }
 
 .ux-appliance-command-rail {

@@ -84,12 +84,14 @@
 }
 .status-badge[data-tooltip]::before {
   content: attr(data-tooltip);
-  position: absolute;
+  display: none;
+  position: fixed;
   left: 50%;
-  top: calc(100% + 10px);
-  z-index: 20;
+  top: 24px;
+  z-index: 100;
   width: max-content;
-  max-width: min(280px, 72vw);
+  max-width: min(280px, calc(100vw - 24px));
+  box-sizing: border-box;
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--theme-accent) 38%, var(--line));
   border-radius: 12px;
@@ -108,9 +110,9 @@
   transition: opacity .14s ease, transform .14s ease, visibility .14s ease;
 }
 .status-badge[data-tooltip]::after { pointer-events: none; }
-.status-badge[data-tooltip]:hover::before, .status-badge[data-tooltip]:focus-visible::before { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
-.header-indicators .status-badge:last-child[data-tooltip]::before { left: auto; right: 0; transform: translate(0, -4px); }
-.header-indicators .status-badge:last-child[data-tooltip]:hover::before, .header-indicators .status-badge:last-child[data-tooltip]:focus-visible::before { transform: translate(0, 0); }
+.top-header .status-badge[data-tooltip]:hover,
+.top-header .status-badge[data-tooltip]:focus-visible { transform: none; }
+.status-badge[data-tooltip]:hover::before, .status-badge[data-tooltip]:focus-visible::before { display: block; opacity: 1; visibility: visible; transform: translate(-50%, 0); }
 
 .workspace { display: grid; grid-template-columns: var(--ux-workspace-sidebar-width) minmax(0, 1fr); gap: var(--ux-shell-gap); min-height: 0; padding-bottom: 0; }
 .sidebar-launcher {

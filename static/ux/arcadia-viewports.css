@@ -14,8 +14,8 @@
     --ux-launcher-icon-max-size: 34px;
   }
   .app-shell { padding: 10px; }
-  .top-header { align-items: flex-start; flex-direction: column; }
-  .header-indicators { margin-left: 0; justify-content: flex-start; }
+  .top-header { align-items: stretch; flex-direction: column; }
+  .header-indicators { width: 100%; max-width: 100%; margin-left: 0; justify-content: flex-start; }
   .workspace { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
   .sidebar-launcher { padding: 8px; }
   .launcher-label { font-size: 11px; }
@@ -26,6 +26,10 @@
   .priority-strip { grid-template-columns: 1fr; align-items: start; }
   .load-home-card { grid-column: auto; }
   .system-redo, .system-power-panel, .system-power-actions, .sync-rom-panel { grid-template-columns: 1fr; }
+  .view[data-view-panel="system"].is-active { height: auto; max-height: none; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+  .view[data-view-panel="system"].is-active .system-redo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; min-height: 0; align-items: stretch; }
+  .view[data-view-panel="system"].is-active .system-access-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; overflow: visible; }
+  .view[data-view-panel="system"].is-active .system-ca-panel { overflow: visible; }
   .system-button-tile { aspect-ratio: auto; max-height: none; grid-auto-rows: minmax(44px, auto); }
   .system-ca-state, .system-ca-form { grid-template-columns: 1fr; }
   .storage-hero { grid-template-columns: 1fr; }
@@ -61,6 +65,9 @@
   .view { padding: 20px; }
   .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid, .system-access-stack, .pin-form-row, .sync-rom-panel, .sync-running-panel, .harmonia-default-grid, .harmonia-update-tiles { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
+  .view[data-view-panel="system"].is-active { display: block; height: auto; min-height: 0; overflow: visible; }
+  .view[data-view-panel="system"].is-active .system-redo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; }
+  .view[data-view-panel="system"].is-active .system-access-stack { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }
   .storage-model-row, .storage-table-row > summary, .storage-table-row.storage-table-head, .location-row { grid-template-columns: 1fr; align-items: start; }

@@ -199,5 +199,53 @@ h3, .section-heading h3, .network-summary-title, .sync-command-copy h3 { font-si
   display: none;
 }
 
+/* Keep the live access cards legible inside the desktop appliance viewport. */
+.view[data-view-panel="system"].is-active .system-redo {
+  grid-template-columns:
+    minmax(var(--ux-system-fit-button-tile-min-inline), .55fr)
+    minmax(var(--ux-system-fit-ca-panel-min-inline), 1.1fr)
+    minmax(var(--ux-system-fit-access-panel-min-inline), 1.15fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+.view[data-view-panel="system"].is-active .system-button-tile,
+.view[data-view-panel="system"].is-active .system-ca-panel,
+.view[data-view-panel="system"].is-active .system-access-panel {
+  min-width: 0;
+  min-height: 0;
+}
+.view[data-view-panel="system"].is-active .system-ca-panel {
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.view[data-view-panel="system"].is-active .system-access-stack {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.view[data-view-panel="system"].is-active .system-access-panel .access-pin-card--mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+.view[data-view-panel="system"].is-active .system-access-panel .pin-toggle {
+  width: 100%;
+}
+.view[data-view-panel="system"].is-active .system-access-panel .field {
+  min-height: var(--ux-system-fit-field-min-height);
+  padding: var(--ux-system-fit-field-padding);
+}
+.view[data-view-panel="system"].is-active .system-access-panel .settings-action-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.view[data-view-panel="system"].is-active .system-access-panel .settings-action-row__action {
+  grid-column: 1 / -1;
+  justify-items: stretch;
+}
+.view[data-view-panel="system"].is-active .system-access-panel .settings-action-row__action .btn {
+  min-height: var(--ux-button-min-height);
+}
+
 
 

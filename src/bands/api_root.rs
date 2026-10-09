@@ -1565,10 +1565,10 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
             serving_detail: "Backend-reported model state; not an API health check.",
             library_count: format!("{library_model_count} library"),
             library_detail: if library_model_count == 0 { "No library entries reported" } else { "Library entries reported by Local AI state" },
-            load_badge: if status.local_ai.load_state.is_empty() {
-                "Load state unavailable".to_string()
-            } else {
-                status.local_ai.load_state.clone()
+            load_badge: match status.local_ai.load_state.as_str() {
+                "" => "Load state unavailable".to_string(),
+                "cold" => "Idle".to_string(),
+                state => state.to_string(),
             },
             has_selected_model: selected_present,
             model_loaded,
