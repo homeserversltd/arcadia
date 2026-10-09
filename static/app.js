@@ -3113,9 +3113,10 @@ async function requestAIState() {
 
 async function postAI(endpoint, body = {}, label = 'Local AI action') {
   const data = await postJson(endpoint, body);
+  const message = data.message || (data.ok ? label : 'Local AI action unavailable.');
   if (data.ok) clearMessage('ai-message');
-  else setMessage('ai-message', data.message || label, 'error');
-  PopupManager.showToast(data.message || label, data.ok ? 'success' : 'error');
+  else setMessage('ai-message', message, 'error');
+  PopupManager.showToast(message, data.ok ? 'success' : 'error');
   return data;
 }
 
@@ -3327,7 +3328,8 @@ async function fetchHFFiles() {
   ArcadiaProjector.applyOverlay({ localAiFiles: files });
   const installer = document.querySelector('[data-hf-installer]');
   if (installer) ArcadiaProjector.project(installer, ArcadiaProjector.currentDocument());
-  PopupManager.showToast(data.message || 'Hugging Face files fetched', data.ok ? 'success' : 'error');
+  const message = data.message || (data.ok ? 'Hugging Face files fetched' : 'Hugging Face files unavailable.');
+  PopupManager.showToast(message, data.ok ? 'success' : 'error');
 }
 async function downloadHFModel() {
   const req = hfRequest();
