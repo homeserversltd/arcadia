@@ -123,7 +123,10 @@
   --ux-updates-module-status-min-inline: 66px;
   --ux-updates-module-status-max-inline: 72px;
   --ux-updates-module-status-padding: 2px 4px;
+}
 
+/* Local AI domain tokens. */
+:root {
   --ux-local-ai-grid-gap: 12px;
   --ux-local-ai-card-gap: 14px;
   --ux-local-ai-card-padding: 18px;
