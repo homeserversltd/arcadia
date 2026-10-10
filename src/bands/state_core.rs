@@ -109,9 +109,9 @@ pub struct TrustStatus {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrustRenewEvidence {
-    pub recorded_fingerprint: String,
-    pub served_fingerprint: String,
-    pub gateway_seat: String,
+    pub recorded_fingerprint: Option<String>,
+    pub served_fingerprint: Option<String>,
+    pub gateway_seat: serde_json::Value,
 }
 
 #[derive(Clone, Serialize)]

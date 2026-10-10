@@ -4065,11 +4065,15 @@ function bindSystemTrustAndAccessForms() {
     try { feed = await getJson('/api/caduceus/v1/interactables'); }
     catch (_) { feed = { ok: false }; }
     renewal.replaceChildren();
-    const item = Array.isArray(feed.items)
-      ? feed.items.find((candidate) => candidate?.id === 'household-trust-renew' && candidate?.kind === 'household-trust-renew')
+    const item = Array.isArray(feed.interactables)
+      ? feed.interactables.find((candidate) => candidate?.id === 'household-trust-renew' && candidate?.kind === 'household-trust-renew')
       : null;
     if (!item) { renewal.hidden = true; return; }
     const evidence = item.evidence || {};
+    const gatewaySeat = evidence.gateway_seat;
+    const gateway = gatewaySeat && typeof gatewaySeat.ipv4 === 'string' && Number.isInteger(gatewaySeat.caduceus_port)
+      ? `${gatewaySeat.ipv4}:${gatewaySeat.caduceus_port}`
+      : '—';
     const copy = document.createElement('div');
     copy.className = 'household-trust-renewal__copy';
     const heading = document.createElement('strong');
@@ -4080,6 +4084,7 @@ function bindSystemTrustAndAccessForms() {
     for (const [label, value] of [
       ['Recorded fingerprint', evidence.recorded_fingerprint],
       ['Served fingerprint', evidence.served_fingerprint],
+      ['Gateway', gateway],
     ]) {
       const fingerprint = document.createElement('span');
       fingerprint.className = 'household-trust-renewal__fingerprint';

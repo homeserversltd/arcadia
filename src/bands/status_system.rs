@@ -148,15 +148,29 @@ fn record_household_trust_unavailable() {
 }
 
 fn household_renew_evidence(value: &serde_json::Value) -> Option<TrustRenewEvidence> {
-    let item = value.get("items")?.as_array()?.iter().find(|item| {
-        item.get("id").and_then(serde_json::Value::as_str) == Some("household-trust-renew")
-            && item.get("kind").and_then(serde_json::Value::as_str) == Some("household-trust-renew")
-    })?;
+    let item = value
+        .get("interactables")?
+        .as_array()?
+        .iter()
+        .find(|item| {
+            item.get("id").and_then(serde_json::Value::as_str) == Some("household-trust-renew")
+                && item.get("kind").and_then(serde_json::Value::as_str)
+                    == Some("household-trust-renew")
+        })?;
     let evidence = item.get("evidence")?;
     Some(TrustRenewEvidence {
-        recorded_fingerprint: evidence.get("recorded_fingerprint")?.as_str()?.to_string(),
-        served_fingerprint: evidence.get("served_fingerprint")?.as_str()?.to_string(),
-        gateway_seat: evidence.get("gateway_seat")?.as_str()?.to_string(),
+        recorded_fingerprint: evidence
+            .get("recorded_fingerprint")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        served_fingerprint: evidence
+            .get("served_fingerprint")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        gateway_seat: evidence
+            .get("gateway_seat")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
     })
 }
 
