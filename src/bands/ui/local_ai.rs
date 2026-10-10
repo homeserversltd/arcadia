@@ -1,16 +1,44 @@
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
-    // ConsoleStatus may carry discovery heuristics; persisted selection is localAiPane.model.selectedModelId.
-    let selected_name = "Reading saved selection";
-    let loaded_name = "Reading reported model";
+    let installed_models = local_ai_available_models();
+    let selected_model_id = selected_model_id();
+    let selected_available = selected_model_id
+        .as_ref()
+        .is_some_and(|id| installed_models.iter().any(|model| &model.id == id));
+    let selected_name = selected_model_id
+        .as_ref()
+        .and_then(|id| installed_models.iter().find(|model| &model.id == id))
+        .map(|model| model.name.clone())
+        .or_else(|| {
+            selected_model_id
+                .as_ref()
+                .map(|id| format!("Saved selection unavailable ({id})"))
+        })
+        .unwrap_or_else(|| "No model selected".to_string());
+    let loaded_name = status
+        .local_ai
+        .loaded_model_name
+        .as_deref()
+        .or(status.local_ai.loaded_model.as_deref())
+        .unwrap_or("No model reported loaded");
     let port = status.local_ai.lan_inference_port;
     let port_label = port
         .map(|value| value.to_string())
         .unwrap_or_else(|| "Reading saved port".to_string());
-    let model_count = status.local_ai.available_models.len();
+    let model_count = installed_models.len();
     let library_model_count = status.local_ai.library_models.len();
-    let selected_present = false;
-    let model_loaded = false;
-    let model_state_class = "unknown";
+    let can_load_selected_model = selected_available;
+    let model_loaded = matches!(
+        status.local_ai.load_state.as_str(),
+        "hot" | "loaded" | "running"
+    ) || status.local_ai.loaded_model_id.is_some()
+        || status.local_ai.loaded_model_name.is_some();
+    let model_state_class =
+        api_local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
+    let load_badge = match status.local_ai.load_state.as_str() {
+        "" => "Load state unavailable".to_string(),
+        "cold" => "Idle".to_string(),
+        state => state.to_string(),
+    };
     let listener_state = "Reading saved access state";
 
     view_shell(
@@ -24,14 +52,14 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                     article class="local-ai-card local-ai-card--model" aria-labelledby="local-ai-model-title" {
                         div class="local-ai-card-head" {
                             h2 id="local-ai-model-title" { "Model" }
-                            span class="system-status" title="Backend-reported load state; this is not an API health check." aria-description="Backend-reported load state; this is not an API health check." data-bind="localAiPane.model.loadBadge" data-bind-class="localAiPane.model.stateClass" data-state=(model_state_class) { "Reading model state" }
+                            span class="system-status" title="Backend-reported load state; this is not an API health check." aria-description="Backend-reported load state; this is not an API health check." data-bind="localAiPane.model.loadBadge" data-bind-class="localAiPane.model.stateClass" data-state=(model_state_class) { (load_badge) }
                         }
                         dl class="local-ai-model-identity" aria-label="Selected and loaded models" {
                             div class="local-ai-model-identity-row" { dt { "Selected" } dd title="Persisted Local AI selection." aria-description="Persisted Local AI selection." data-bind="localAiPane.model.selected" { (selected_name) } }
                             div class="local-ai-model-identity-row" { dt { "Loaded" } dd title="Backend-reported loaded model; API health is not tested." aria-description="Backend-reported loaded model; API health is not tested." data-bind="localAiPane.model.servingNow" { (loaded_name) } }
                         }
                         div class="local-ai-actions ux-row-actions" {
-                            button class="btn btn--primary" type="button" data-ai-action="model-load" data-bind-attr="data-model-id:localAiPane.model.selectedModelId" data-bind-enabled="localAiPane.model.hasSelectedModel" disabled[!selected_present] { "Load selected" }
+                            button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(selected_model_id.as_deref().unwrap_or_default()) data-bind-attr="data-model-id:localAiPane.model.selectedModelId" data-bind-enabled="localAiPane.model.canLoadSelectedModel" disabled[!can_load_selected_model] { "Load selected" }
                             button class="btn btn--secondary" type="button" data-ai-action="model-unload" data-bind-enabled="localAiPane.model.modelLoaded" disabled[!model_loaded] { "Unload" }
                             button class="btn btn--secondary" type="button" data-ai-modal="models" aria-expanded="false" aria-controls="local-ai-modal-owner" { "Library" }
                         }
@@ -98,7 +126,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
                                 }
                             }
                         }
-                        @for model in &status.local_ai.available_models { (installed_model_card(model, status)) }
+                        @for model in &installed_models { (installed_model_card(model, status, selected_model_id.as_deref())) }
                     }
                     div class="local-ai-empty" data-bind-show="localAiPane.model.noInstalledModels" hidden[model_count != 0] {
                         strong { "No installed models" }
@@ -271,10 +299,16 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
     )
 }
 
-fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatus) -> Markup {
+fn installed_model_card(
+    model: &crate::LocalAiModelStatus,
+    status: &ConsoleStatus,
+    selected_model_id: Option<&str>,
+) -> Markup {
+    let selected = selected_model_id == Some(model.id.as_str());
+    let selected_attr = if selected { "true" } else { "false" };
     let loaded = status.local_ai.loaded_model_id.as_deref() == Some(model.id.as_str());
     html! {
-        article class="local-ai-model-row" data-selected="false" {
+        article class="local-ai-model-row" data-selected=(selected_attr) {
             div class="local-ai-model-copy" {
                 strong class="local-ai-model-name" { (model.name) @if model.is_recommended { " · Recommended" } }
                 span class="local-ai-model-filename" { (model.filename) }
@@ -285,7 +319,7 @@ fn installed_model_card(model: &crate::LocalAiModelStatus, status: &ConsoleStatu
                 }
             }
             div class="local-ai-actions ux-row-actions" {
-                button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" }
+                @if !selected { button class="btn btn--secondary" type="button" data-ai-action="model-select" data-model-id=(model.id) { "Select" } }
                 @if !loaded { button class="btn btn--primary" type="button" data-ai-action="model-load" data-model-id=(model.id) { "Load" } }
                 @if loaded { button class="btn btn--secondary" type="button" data-ai-action="model-unload" { "Unload" } }
                 @if !loaded { button class="btn btn--danger" type="button" data-ai-action="model-remove" data-model-id=(model.id) data-filename=(model.filename) { "Remove" } }

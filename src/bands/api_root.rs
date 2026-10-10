@@ -568,6 +568,7 @@ pub struct ApiLocalAiPaneModelState {
     pub library_detail: &'static str,
     pub load_badge: String,
     pub has_selected_model: bool,
+    pub can_load_selected_model: bool,
     pub model_loaded: bool,
     pub has_installed_models: bool,
     pub no_installed_models: bool,
@@ -1456,16 +1457,13 @@ fn api_network_pane_state(status: &ConsoleStatus) -> ApiNetworkPaneState {
 
 fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLocalAiPaneState {
     let selected_model_id = selected_model_id();
-    let selected_name = selected_model_id
-        .as_ref()
-        .and_then(|id| {
-            status
-                .local_ai
-                .available_models
-                .iter()
-                .find(|model| &model.id == id)
-                .map(|model| model.name.clone())
-        })
+    let scanner_models = local_ai_available_models();
+    let selected_model = selected_model_id.as_ref().and_then(|id| {
+        scanner_models.iter().find(|model| &model.id == id)
+    });
+    let selected_available = selected_model.is_some();
+    let selected_name = selected_model
+        .map(|model| model.name.clone())
         .or_else(|| selected_model_id.as_ref().map(|id| format!("Saved selection unavailable ({id})")))
         .unwrap_or_else(|| "No model selected".to_string());
     let loaded_name = ai
@@ -1484,7 +1482,7 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
         .flatten();
     let endpoint_available = endpoint.is_some();
     let base_url = endpoint.as_ref().map(|url| format!("{url}/v1"));
-    let model_count = status.local_ai.available_models.len();
+    let model_count = scanner_models.len();
     let library_model_count = ai.library_models.len();
     let selected_present = selected_model_id.is_some();
     let model_loaded = matches!(
@@ -1492,7 +1490,13 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
         "hot" | "loaded" | "running"
     ) || ai.loaded_model.loaded_model_id.is_some()
         || ai.loaded_model.loaded_model_name.is_some();
-    let state = api_local_ai_model_state_label(status, model_loaded, selected_present, model_count);
+    let state = api_local_ai_model_state_label(
+        status,
+        model_loaded,
+        selected_present,
+        selected_available,
+        model_count,
+    );
     let state_class = api_local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
     let (mode, internal) = match ai.inference.access_mode.as_str() {
         "off" => ("Off", "API mode is configured off"),
@@ -1509,9 +1513,7 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
     } else {
         "LAN setting off"
     };
-    let installed_models = status
-        .local_ai
-        .available_models
+    let installed_models = scanner_models
         .iter()
         .map(|model| {
             let selected = selected_model_id.as_deref() == Some(model.id.as_str());
@@ -1545,14 +1547,14 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
             endpoint: endpoint.unwrap_or_else(|| "No configured LAN URL".to_string()),
             endpoint_available,
             endpoint_state: if endpoint_available { "available" } else { "disabled" },
-            next_action: if model_count == 0 {
-                "Add a model"
-            } else if !selected_present {
-                "Choose a model"
-            } else if !model_loaded {
-                "Load the selected model"
-            } else {
+            next_action: if model_loaded {
                 "Review access settings"
+            } else if model_count == 0 {
+                "Add a model"
+            } else if !selected_available {
+                "Choose a model"
+            } else {
+                "Load the selected model"
             },
         },
         model: ApiLocalAiPaneModelState {
@@ -1561,7 +1563,13 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
             selected_model_id,
             selected: selected_name,
             serving_now: loaded_name,
-            selected_detail: if selected_present { "Current Local AI selection" } else { "Choose or add a model" },
+            selected_detail: if selected_available {
+                "Current Local AI selection"
+            } else if selected_present {
+                "Saved selection is unavailable in installed models"
+            } else {
+                "Choose or add a model"
+            },
             serving_detail: "Backend-reported model state; not an API health check.",
             library_count: format!("{library_model_count} library"),
             library_detail: if library_model_count == 0 { "No library entries reported" } else { "Library entries reported by Local AI state" },
@@ -1571,6 +1579,7 @@ fn api_local_ai_pane_state(status: &ConsoleStatus, ai: &LocalAIState) -> ApiLoca
                 state => state.to_string(),
             },
             has_selected_model: selected_present,
+            can_load_selected_model: selected_available,
             model_loaded,
             has_installed_models: model_count > 0,
             no_installed_models: model_count == 0,
@@ -1638,14 +1647,17 @@ fn api_local_ai_model_state_label(
     status: &ConsoleStatus,
     model_loaded: bool,
     selected_present: bool,
+    selected_available: bool,
     model_count: usize,
 ) -> &'static str {
     if status.local_ai.load_state == "error" {
         "Backend error"
     } else if model_loaded {
         "Model loaded · backend report"
-    } else if selected_present {
+    } else if selected_available {
         "Model selected, not loaded"
+    } else if selected_present {
+        "Saved selection unavailable"
     } else if model_count > 0 {
         "Models installed, none selected"
     } else {
