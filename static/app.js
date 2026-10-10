@@ -4025,6 +4025,7 @@ function bindSystemTrustAndAccessForms() {
     .find((row) => row.querySelector('em')?.textContent.trim() === 'Active bundle')?.querySelector('strong');
   const setUnavailable = (data) => {
     field('state').textContent = 'Unavailable';
+    field('state').title = '';
     field('state').className = 'system-status system-status--error';
     field('fingerprint').textContent = '—';
     field('fingerprint').title = '';
@@ -4048,6 +4049,7 @@ function bindSystemTrustAndAccessForms() {
       data.fingerprint,
       data.bundle_fingerprint,
     ].find((fingerprint) => typeof fingerprint === 'string' && fingerprint.length > 0) || '';
+    field('state').title = fullFingerprint;
     field('state').textContent = installed ? 'Bound' : 'Waiting for HomeServer';
     field('state').className = `system-status system-status--${installed ? 'available' : 'unknown'}`;
     field('fingerprint').textContent = fullFingerprint ? fullFingerprint.slice(0, 20) : '—';
