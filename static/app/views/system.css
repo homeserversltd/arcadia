@@ -223,14 +223,9 @@
   min-width: 0;
 }
 .household-trust-card__head > span { font-size: var(--ux-text-md); font-weight: 900; }
-.household-trust-card__copy { margin: 0; color: var(--muted); font-size: var(--ux-text-sm); }
-.household-trust-card__action { display: grid; gap: var(--ux-control-gap); min-width: 0; }
-.household-trust-card__action > label { font-size: var(--ux-text-xs); font-weight: 800; }
-.household-trust-card__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--ux-control-gap); min-width: 0; }
-.household-trust-card__controls .btn { min-height: var(--ux-button-min-height); white-space: nowrap; }
 .household-trust-card__fields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--ux-control-gap);
   min-width: 0;
 }
@@ -239,8 +234,24 @@
 .system-manual-install[open] > summary { margin-bottom: var(--ux-grid-gap); }
 .household-trust-card .system-field { padding: 7px 8px; }
 .household-trust-card .system-field em { font-size: 9px; }
-.household-trust-card .system-field strong { font-size: var(--ux-text-xs); }
-.household-trust-card > .btn { min-height: var(--ux-button-min-height); align-self: end; white-space: nowrap; }
+.household-trust-card .system-field strong { font-size: var(--ux-text-xs); overflow-wrap: anywhere; }
+.household-trust-renewal {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: center;
+  gap: var(--ux-control-gap);
+  min-width: 0;
+  padding: var(--ux-card-padding);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 38%, var(--line));
+  border-radius: var(--ux-button-radius);
+  background: color-mix(in srgb, var(--theme-field-surface) 76%, transparent);
+}
+.household-trust-renewal[hidden] { display: none; }
+.household-trust-renewal__copy { display: grid; gap: var(--ux-control-gap); min-width: 0; }
+.household-trust-renewal__copy > strong { font-size: var(--ux-text-sm); }
+.household-trust-renewal__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ux-control-gap); min-width: 0; }
+.household-trust-renewal__fingerprint { min-width: 0; overflow-wrap: anywhere; color: var(--muted); font-size: var(--ux-text-xs); }
+.household-trust-renewal > .btn { min-height: var(--ux-button-min-height); white-space: nowrap; }
 .household-trust-card__error {
   grid-column: 1 / -1;
   margin: 0;

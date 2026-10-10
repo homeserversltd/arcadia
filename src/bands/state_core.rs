@@ -99,8 +99,19 @@ pub struct TrustStatus {
     pub ca_subject: Option<String>,
     pub ca_issuer: Option<String>,
     pub ca_not_after: Option<String>,
-    pub ca_path: &'static str,
+    pub ca_path: Option<&'static str>,
     pub https_probe_url: &'static str,
+    pub caduceus_available: bool,
+    pub ring_fingerprint: Option<String>,
+    pub renew: Option<TrustRenewEvidence>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustRenewEvidence {
+    pub recorded_fingerprint: String,
+    pub served_fingerprint: String,
+    pub gateway_seat: String,
 }
 
 #[derive(Clone, Serialize)]

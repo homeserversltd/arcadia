@@ -24,33 +24,27 @@ fn system_view(status: &ConsoleStatus) -> Markup {
                         }
                         div class="system-ca-copy" {
                             strong { "Household trust" }
-                            p { "Fetch the HomeServer HTTPS bundle automatically, or upload a manual bundle when needed. Only one bundle is active at a time." }
+                            p { "This console binds the HomeServer certificate on its own the first time it meets it." }
                         }
                     }
                     section class="household-trust-card" data-household-trust="true" aria-label="Household trust" {
                         div class="household-trust-card__head" {
                             span { "Household trust" }
-                            b class="system-status system-status--unknown" data-household-trust-state { "Checking" }
-                        }
-                        p class="household-trust-card__copy" { "Fetch the HomeServer certificate bundle and install it on this console." }
-                        div class="household-trust-card__action" {
-                            label for="household-trust-server" { "HomeServer address" }
-                            div class="household-trust-card__controls" {
-                                input class="field" id="household-trust-server" data-household-trust-server inputmode="numeric" autocomplete="off" placeholder="HomeServer IP address";
-                                button class="btn btn--primary" type="button" data-household-trust-fetch { "Fetch & Install" }
+                            b class=(format!("system-status system-status--{}", if !trust.caduceus_available { "error" } else if trust.ca_installed { "available" } else { "unknown" })) data-household-trust-state title=(trust.ring_fingerprint.as_deref().unwrap_or("")) {
+                                (if !trust.caduceus_available { "Unavailable" } else if trust.ca_installed { "Bound" } else { "Waiting for HomeServer" })
                             }
                         }
                         div class="household-trust-card__fields" {
-                            span class="system-field" { em { "CA bundle" } strong data-household-trust-installed { (if trust.ca_installed { "Installed" } else { "Not installed" }) } }
-                            span class="system-field system-field--anchor" { em { "Fingerprint" } strong data-household-trust-fingerprint data-bind="system.trust.caSubject" { (trust.ca_subject.as_deref().unwrap_or("—")) } }
-                            span class="system-field" { em { "Role" } strong data-household-trust-role { "—" } }
+                            span class="system-field" { em { "Ring fingerprint" } strong data-household-trust-fingerprint title=(trust.ring_fingerprint.as_deref().unwrap_or("")) { (trust.ring_fingerprint.as_deref().map(|fingerprint| fingerprint.chars().take(20).collect::<String>()).unwrap_or_else(|| "—".to_string())) } }
+                            span class="system-field" { em { "Bound to" } strong data-household-trust-gateway { (if trust.caduceus_available && trust.ca_installed { status.network.gateway.as_deref().unwrap_or("—") } else { "—" }) } }
                         }
+                        div class="household-trust-renewal" data-household-trust-renewal hidden {}
                         p class="household-trust-card__error" data-household-trust-error hidden {}
                     }
                     div class="system-ca-state" {
                         (system_field("Mode", if trust.mode == "https" { "HTTPS" } else { "HTTP" }))
                         (system_field("Active bundle", if trust.ca_installed { "Installed" } else { "Empty" }))
-                        span class="system-field system-field--anchor" { em { "Anchor" } strong data-bind="system.trust.caPath" { (trust.ca_path) } }
+                        @if let Some(path) = trust.ca_path { span class="system-field system-field--anchor" { em { "Anchor" } strong { (path) } } }
                         @if let Some(expiry) = trust.ca_not_after.as_deref() { (system_field("Expires", expiry)) }
                     }
                     details class="system-manual-install" {

@@ -17,6 +17,8 @@
       "exousia/validate",
       "games/provider-keys",
       "games/sync",
+      "interactables",
+      "interactables/:id/run",
       "local-ai/runtime/status",
       "log/receipts",
       "log/reflect",

@@ -67,6 +67,173 @@ fn ssh_password_auth_state() -> String {
     "unknown".to_string()
 }
 
+const HOUSEHOLD_TRUST_CACHE_TTL: Duration = Duration::from_secs(30);
+const HOUSEHOLD_CA_ANCHOR_PATHS: [&str; 2] = [
+    "/etc/ca-certificates/trust-source/anchors/homeserver-house-ca.crt",
+    HOMECONSOLE_CA_ANCHOR_PATH,
+];
+
+#[derive(Clone, Default)]
+struct CachedCaduceusTrustStatus {
+    observed_at: Option<std::time::Instant>,
+    available: bool,
+    bundle_installed: bool,
+    ring_fingerprint: Option<String>,
+}
+
+#[derive(Clone, Default)]
+struct CachedHouseholdInteractables {
+    observed_at: Option<std::time::Instant>,
+    renew: Option<TrustRenewEvidence>,
+}
+
+#[derive(Default)]
+struct HouseholdTrustCache {
+    status: CachedCaduceusTrustStatus,
+    interactables: CachedHouseholdInteractables,
+}
+
+static HOUSEHOLD_TRUST_CACHE: OnceLock<Mutex<HouseholdTrustCache>> = OnceLock::new();
+
+fn household_trust_cache() -> &'static Mutex<HouseholdTrustCache> {
+    HOUSEHOLD_TRUST_CACHE.get_or_init(|| Mutex::new(HouseholdTrustCache::default()))
+}
+
+fn household_trust_status_observation(value: &serde_json::Value) -> CachedCaduceusTrustStatus {
+    let bundle_installed = value
+        .get("bundle_installed")
+        .and_then(serde_json::Value::as_bool);
+    let available = value.get("ok").and_then(serde_json::Value::as_bool) != Some(false)
+        && bundle_installed.is_some();
+    CachedCaduceusTrustStatus {
+        observed_at: Some(std::time::Instant::now()),
+        available,
+        bundle_installed: bundle_installed.unwrap_or(false),
+        ring_fingerprint: available
+            .then(|| {
+                [
+                    "ring_fingerprint",
+                    "ca_fingerprint",
+                    "fingerprint",
+                    "bundle_fingerprint",
+                ]
+                .iter()
+                .find_map(|field| {
+                    value
+                        .get(*field)
+                        .and_then(serde_json::Value::as_str)
+                        .filter(|fingerprint| !fingerprint.is_empty())
+                })
+            })
+            .flatten()
+            .map(str::to_string),
+    }
+}
+
+fn record_household_trust_status(value: &serde_json::Value) {
+    household_trust_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .status = household_trust_status_observation(value);
+}
+
+fn record_household_trust_unavailable() {
+    household_trust_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .status = CachedCaduceusTrustStatus {
+        observed_at: Some(std::time::Instant::now()),
+        ..CachedCaduceusTrustStatus::default()
+    };
+}
+
+fn household_renew_evidence(value: &serde_json::Value) -> Option<TrustRenewEvidence> {
+    let item = value.get("items")?.as_array()?.iter().find(|item| {
+        item.get("id").and_then(serde_json::Value::as_str) == Some("household-trust-renew")
+            && item.get("kind").and_then(serde_json::Value::as_str) == Some("household-trust-renew")
+    })?;
+    let evidence = item.get("evidence")?;
+    Some(TrustRenewEvidence {
+        recorded_fingerprint: evidence.get("recorded_fingerprint")?.as_str()?.to_string(),
+        served_fingerprint: evidence.get("served_fingerprint")?.as_str()?.to_string(),
+        gateway_seat: evidence.get("gateway_seat")?.as_str()?.to_string(),
+    })
+}
+
+fn record_household_interactables(value: &serde_json::Value) {
+    household_trust_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .interactables = CachedHouseholdInteractables {
+        observed_at: Some(std::time::Instant::now()),
+        renew: household_renew_evidence(value),
+    };
+}
+
+fn record_household_interactables_unavailable() {
+    household_trust_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .interactables = CachedHouseholdInteractables {
+        observed_at: Some(std::time::Instant::now()),
+        renew: None,
+    };
+}
+
+fn household_cache_entry_stale(observed_at: Option<std::time::Instant>, force: bool) -> bool {
+    force
+        || observed_at.map_or(true, |observed_at| {
+            observed_at.elapsed() >= HOUSEHOLD_TRUST_CACHE_TTL
+        })
+}
+
+fn invalidate_household_trust_cache() {
+    let mut cache = household_trust_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.status.observed_at = None;
+    cache.interactables.observed_at = None;
+}
+
+fn refresh_household_trust_cache(
+    force: bool,
+) -> (CachedCaduceusTrustStatus, CachedHouseholdInteractables) {
+    let mut cache = household_trust_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let client = CaduceusAccessClient::default();
+    if household_cache_entry_stale(cache.status.observed_at, force) {
+        match client.get_json("/api/v1/cert/status") {
+            Ok(value) => cache.status = household_trust_status_observation(&value),
+            Err(_) => {
+                cache.status = CachedCaduceusTrustStatus {
+                    observed_at: Some(std::time::Instant::now()),
+                    ..CachedCaduceusTrustStatus::default()
+                };
+            }
+        }
+    }
+    if household_cache_entry_stale(cache.interactables.observed_at, force) {
+        cache.interactables = match client.get_json("/api/v1/interactables") {
+            Ok(value) => CachedHouseholdInteractables {
+                observed_at: Some(std::time::Instant::now()),
+                renew: household_renew_evidence(&value),
+            },
+            Err(_) => CachedHouseholdInteractables {
+                observed_at: Some(std::time::Instant::now()),
+                renew: None,
+            },
+        };
+    }
+    (cache.status.clone(), cache.interactables.clone())
+}
+
+fn existing_household_ca_anchor() -> Option<&'static str> {
+    HOUSEHOLD_CA_ANCHOR_PATHS
+        .into_iter()
+        .find(|path| Path::new(path).is_file())
+}
+
 fn trust_status() -> TrustStatus {
     let mode = fs::read_to_string(TRUST_MODE_PATH)
         .ok()
@@ -74,32 +241,35 @@ fn trust_status() -> TrustStatus {
         .and_then(|v| v.get("mode").and_then(|m| m.as_str()).map(str::to_string))
         .filter(|m| m == "http" || m == "https")
         .unwrap_or_else(|| "http".to_string());
+    let (caduceus, interactables) = refresh_household_trust_cache(false);
+    let ca_path = existing_household_ca_anchor();
     TrustStatus {
         mode,
-        ca_installed: Path::new(HOMECONSOLE_CA_ANCHOR_PATH).exists(),
-        ca_subject: ca_metadata("subject"),
-        ca_issuer: ca_metadata("issuer"),
-        ca_not_after: ca_metadata("enddate"),
-        ca_path: HOMECONSOLE_CA_ANCHOR_PATH,
+        ca_installed: if caduceus.available {
+            caduceus.bundle_installed
+        } else {
+            ca_path.is_some()
+        },
+        ca_subject: ca_metadata("subject", ca_path),
+        ca_issuer: ca_metadata("issuer", ca_path),
+        ca_not_after: ca_metadata("enddate", ca_path),
+        ca_path,
         https_probe_url: HOME_ROOT_HTTPS_PROBE,
+        caduceus_available: caduceus.available,
+        ring_fingerprint: caduceus.ring_fingerprint,
+        renew: interactables.renew,
     }
 }
 
-fn ca_metadata(field: &str) -> Option<String> {
-    if !Path::new(HOMECONSOLE_CA_ANCHOR_PATH).exists() {
-        return None;
-    }
+fn ca_metadata(field: &str, path: Option<&str>) -> Option<String> {
+    let path = path?;
     let arg = match field {
         "subject" => "-subject",
         "issuer" => "-issuer",
         "enddate" => "-enddate",
         _ => return None,
     };
-    command_stdout(
-        "openssl",
-        &["x509", "-in", HOMECONSOLE_CA_ANCHOR_PATH, "-noout", arg],
-    )
-    .map(|s| {
+    command_stdout("openssl", &["x509", "-in", path, "-noout", arg]).map(|s| {
         s.replace("subject=", "")
             .replace("issuer=", "")
             .replace("notAfter=", "")

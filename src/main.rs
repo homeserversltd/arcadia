@@ -510,6 +510,14 @@ async fn main() -> anyhow_free::Result<()> {
             post(caduceus_cert_trust_fetch_proxy_route),
         )
         .route(
+            "/api/caduceus/v1/interactables",
+            get(caduceus_interactables_proxy_route),
+        )
+        .route(
+            "/api/caduceus/v1/interactables/:id/run",
+            post(caduceus_interactable_run_proxy_route),
+        )
+        .route(
             "/api/caduceus/v1/update/now",
             post(caduceus_update_now_proxy_route),
         )

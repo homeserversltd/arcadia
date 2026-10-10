@@ -281,7 +281,60 @@ async fn caduceus_update_status_proxy_route() -> impl IntoResponse {
 }
 
 async fn caduceus_cert_status_proxy_route() -> impl IntoResponse {
-    caduceus_json_proxy("/api/v1/cert/status").await
+    match CaduceusAccessClient::default().get_json("/api/v1/cert/status") {
+        Ok(value) => {
+            record_household_trust_status(&value);
+            (StatusCode::OK, Json(value)).into_response()
+        }
+        Err(signal) => {
+            record_household_trust_unavailable();
+            caduceus_proxy_error("/api/v1/cert/status", signal)
+        }
+    }
+}
+
+async fn caduceus_interactables_proxy_route() -> impl IntoResponse {
+    match CaduceusAccessClient::default().get_json("/api/v1/interactables") {
+        Ok(value) => {
+            record_household_interactables(&value);
+            (StatusCode::OK, Json(value)).into_response()
+        }
+        Err(signal) => {
+            record_household_interactables_unavailable();
+            caduceus_proxy_error("/api/v1/interactables", signal)
+        }
+    }
+}
+
+async fn caduceus_interactable_run_proxy_route(
+    AxumPath(id): AxumPath<String>,
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let path = format!(
+        "/api/v1/interactables/{}/run",
+        caduceus_encode_path_segment(&id),
+    );
+    match CaduceusAccessClient::default().post_json_with_target(
+        &path,
+        body,
+        Duration::from_secs(300),
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+    ) {
+        Ok((upstream_status, value)) => {
+            if (200..300).contains(&upstream_status)
+                && value.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+            {
+                invalidate_household_trust_cache();
+                refresh_household_trust_cache(true);
+                state.request_living_refresh();
+            }
+            let status = StatusCode::from_u16(upstream_status).unwrap_or(StatusCode::BAD_GATEWAY);
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error(&path, signal),
+    }
 }
 
 async fn caduceus_cert_trust_fetch_proxy_route(
