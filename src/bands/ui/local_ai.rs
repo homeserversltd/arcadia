@@ -1,6 +1,6 @@
 fn ai_model_view(status: &ConsoleStatus) -> Markup {
-    let installed_models = local_ai_available_models();
-    let selected_model_id = selected_model_id();
+    let installed_models = crate::local_ai_available_models();
+    let selected_model_id = crate::selected_model_id();
     let selected_available = selected_model_id
         .as_ref()
         .is_some_and(|id| installed_models.iter().any(|model| &model.id == id));
@@ -33,7 +33,7 @@ fn ai_model_view(status: &ConsoleStatus) -> Markup {
     ) || status.local_ai.loaded_model_id.is_some()
         || status.local_ai.loaded_model_name.is_some();
     let model_state_class =
-        api_local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
+        crate::api_local_ai_state_class(&status.local_ai.load_state, model_loaded, model_count);
     let load_badge = match status.local_ai.load_state.as_str() {
         "" => "Load state unavailable".to_string(),
         "cold" => "Idle".to_string(),
