@@ -1,7 +1,6 @@
 fn home_view(status: &ConsoleStatus) -> Markup {
     html! {
         section id="view-home" class="view" data-view-panel="home" tabindex="-1" {
-            (priority_strip(status))
             div class="home-operational-grid home-operational-grid--dashboard" {
                 (home_storage_card(status))
                 (home_load_card())
@@ -9,91 +8,6 @@ fn home_view(status: &ConsoleStatus) -> Markup {
                 (home_updates_card(status))
                 (home_local_ai_card(status))
             }
-            div class="active-warning-strip home-warning-strip" data-bind-show="home.warning.visible" hidden[!(status.library.last_sync_state == "error" || status.local_ai.load_state == "error")] {
-                strong data-bind="home.warning.title" {
-                    @if status.library.last_sync_state == "error" {
-                        "Sync failed"
-                    } @else {
-                        "Local AI error"
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn priority_strip(status: &ConsoleStatus) -> Markup {
-    let priority: Option<(String, String, &'static str)> = if !status.network.online {
-        Some((
-            "Network offline".to_string(),
-            "Console network is unavailable; network controls stay in the left pane.".to_string(),
-            "bad",
-        ))
-    } else if status.storage.percent_used >= 90 {
-        Some((
-            format!("Storage low: {} free", status.storage.free),
-            format!("{} used across managed storage.", status.storage.percent),
-            "warn",
-        ))
-    } else if status.library.last_sync_state == "error" {
-        Some((
-            "Sync failed".to_string(),
-            "Latest receipt reports a game-library sync failure.".to_string(),
-            "bad",
-        ))
-    } else if !sync_has_history(status) {
-        Some((
-            "First sync waiting".to_string(),
-            format!(
-                "{} playable ROMs are visible before the first verified sync receipt.",
-                status.library.total_detected_games
-            ),
-            "idle",
-        ))
-    } else if status.library.sync_needed {
-        let changes = status.library.unsynced_added
-            + status.library.unsynced_changed
-            + status.library.unsynced_removed;
-        Some((
-            format!("{} changes waiting for sync", changes),
-            "ROM folder changes are queued for the Sync pane.".to_string(),
-            "warn",
-        ))
-    } else if status.updates.state == "available" {
-        Some((
-            "Update available".to_string(),
-            status
-                .updates
-                .available_version
-                .clone()
-                .unwrap_or_else(|| "Harmonia reports available work.".to_string()),
-            "warn",
-        ))
-    } else if status.local_ai.load_state == "error" {
-        Some((
-            "Local AI error".to_string(),
-            status
-                .local_ai
-                .selected_model_name
-                .clone()
-                .unwrap_or_else(|| "Model load failed.".to_string()),
-            "bad",
-        ))
-    } else {
-        None
-    };
-
-    let (state, _detail, tone) = priority.unwrap_or_else(|| (String::new(), String::new(), "idle"));
-    let badge = if tone == "idle" {
-        "Waiting"
-    } else {
-        "Attention"
-    };
-    let system_tone = if tone == "bad" { "error" } else if tone == "warn" { "starting" } else { "unknown" };
-    html! {
-        article class=(format!("priority-strip priority-strip--{}", tone)) aria-label="Highest priority console state" data-bind-show="home.priority.visible" data-bind-class="home.priority.tone" hidden[state.is_empty()] {
-            strong data-bind="home.priority.state" { (state) }
-            b class=(format!("system-status system-status--{}", system_tone)) data-bind="home.priority.badge" data-bind-class="home.priority.tone" { (badge) }
         }
     }
 }

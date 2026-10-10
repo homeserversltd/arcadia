@@ -1967,7 +1967,6 @@ pub(crate) fn api_home_ai_models(status: &ConsoleStatus) -> Vec<ApiHomeAiModelSt
 }
 
 fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
-    let priority = api_home_priority_state(status);
     let storage_attention = status.storage.percent_used >= 90;
     let updates_ready = status.updates.modules.iter().filter(|module| module.enabled && module.present).count();
     let updates_enabled = status.updates.modules.iter().filter(|module| module.enabled).count();
@@ -1977,7 +1976,12 @@ fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
         || !status.updates.suite_ok;
     let ai_attention = status.local_ai.load_state == "error";
     ApiHomeState {
-        priority,
+        priority: ApiHomePriorityState {
+            visible: false,
+            state: String::new(),
+            badge: "",
+            tone: "idle",
+        },
         storage: ApiHomeStorageState {
             state: if storage_attention { "attention" } else { status.storage.health },
             attention: storage_attention,
@@ -2019,42 +2023,9 @@ fn api_home_state(status: &ConsoleStatus) -> ApiHomeState {
         },
         telemetry: api_home_telemetry_data(),
         warning: ApiHomeWarningState {
-            visible: status.library.last_sync_state == "error" || status.local_ai.load_state == "error",
-            title: if status.library.last_sync_state == "error" { "Sync failed" } else { "Local AI error" },
+            visible: false,
+            title: "",
         },
-    }
-}
-
-fn api_home_priority_state(status: &ConsoleStatus) -> ApiHomePriorityState {
-    let priority: Option<(String, &'static str)> = if !status.network.online {
-        Some(("Network offline".to_string(), "bad"))
-    } else if status.storage.percent_used >= 90 {
-        Some((format!("Storage low: {} free", status.storage.free), "warn"))
-    } else if status.library.last_sync_state == "error" {
-        Some(("Sync failed".to_string(), "bad"))
-    } else if !status.library.first_sync_completed && status.library.last_sync_state != "success" {
-        Some(("First sync waiting".to_string(), "idle"))
-    } else if status.library.sync_needed {
-        let changes = status.library.unsynced_added
-            + status.library.unsynced_changed
-            + status.library.unsynced_removed;
-        Some((format!("{} changes waiting for sync", changes), "warn"))
-    } else if status.updates.state == "available" {
-        Some(("Update available".to_string(), "warn"))
-    } else if status.local_ai.load_state == "error" {
-        Some(("Local AI error".to_string(), "bad"))
-    } else {
-        None
-    };
-    if let Some((state, tone)) = priority {
-        ApiHomePriorityState {
-            visible: true,
-            state,
-            badge: if tone == "idle" { "Waiting" } else { "Attention" },
-            tone,
-        }
-    } else {
-        ApiHomePriorityState { visible: false, state: String::new(), badge: "", tone: "idle" }
     }
 }
 

@@ -1,7 +1,6 @@
 /* Desktop appliance fit: selected launcher panes fit the visible shell; phone/tablet scroll lives in arcadia-viewports.css. */
-.priority-strip { margin-bottom: 8px; min-height: 42px; padding: 8px 10px; gap: 10px; }
-.priority-strip strong, .status-card strong, .active-model strong { font-size: 16px; }
-.priority-strip span, .card-line { font-size: 12px; line-height: 1.22; }
+.status-card strong, .active-model strong { font-size: 16px; }
+.card-line { font-size: 12px; line-height: 1.22; }
 .home-operational-grid { gap: 8px; }
 .operational-card { padding: 8px; }
 .operational-card h3 { font-size: 15px; }
@@ -12,7 +11,6 @@
 .reachability { padding: 4px 7px; font-size: 11px; }
 .inline-actions--compact { gap: 5px; margin-top: 5px; }
 .inline-actions--compact .btn { min-height: 30px; padding: 5px 8px; font-size: 11px; }
-.active-warning-strip { margin-top: 8px; padding: 8px 10px; }
 .status-card-grid, .model-grid, .path-grid { gap: 8px; margin: 8px 0; }
 .status-card { min-height: 78px; padding: 9px; }
 .instruction-card, .folder-card, .settings-panel, .form-card, .active-model, .collapsible-log, .service-list, .storage-summary, .network-section, .network-summary-card, .network-card, .system-card, .access-pin-card { padding: 9px; margin: 7px 0; }

@@ -180,11 +180,7 @@
 @keyframes rise { from { opacity: .55; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .status-card-grid, .model-grid, .path-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ux-grid-gap); margin: var(--ux-grid-gap) 0; }
 .path-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.priority-strip { margin: 0 0 12px; min-height: 54px; padding: 10px 12px; display: grid; grid-template-columns: minmax(180px, auto) minmax(0, 1fr) auto; gap: 12px; align-items: center; border: 1px solid var(--theme-line-strong); border-radius: 20px; background: linear-gradient(145deg, var(--theme-accent-soft), var(--theme-glass)); box-shadow: 0 12px 30px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass); }
-.priority-strip[hidden] { display: none; }
-.priority-strip strong { font-size: 18px; line-height: 1.12; }
-.priority-strip span, .card-line { color: var(--muted); font-size: 13px; line-height: 1.3; }
-.priority-strip .btn { min-height: 34px; padding: 7px 11px; font-size: 12px; }
+.card-line { color: var(--muted); font-size: 13px; line-height: 1.3; }
 .home-operational-grid { display: grid; grid-template-columns: repeat(4, minmax(var(--ux-card-min-inline), 1fr)); gap: var(--ux-grid-gap); }
 .operational-card { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 9px; border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(145deg, var(--theme-bg-raised), color-mix(in srgb, var(--theme-bg-raised) 50%, transparent)); box-shadow: 0 15px 36px color-mix(in srgb, var(--theme-field-surface) 90%, transparent), inset 0 1px 0 var(--theme-glass); }
 .operational-card h3 { margin: 0; font-size: 17px; white-space: nowrap; }
@@ -231,6 +227,3 @@
 .compact-select { width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 12px; color: var(--cream); background: var(--theme-field-surface); }
 .gpu-bar { height: 12px; margin-top: 8px; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--theme-field-surface); }
 .gpu-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--good), var(--orange)); }
-.active-warning-strip { margin-top: 12px; padding: 10px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid color-mix(in srgb, var(--theme-bad) 50%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--theme-bad) 16%, transparent); }
-.active-warning-strip[hidden] { display: none; }
-.active-warning-strip span { color: var(--muted); }
