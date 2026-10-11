@@ -20,9 +20,9 @@ fn modal_button(
     html! { button class=(format!("btn btn--{}", variant.class())) type="button" data-button=(variant.class()) data-observation-action=(observation_action) data-modal-title=(title) data-modal-body=(body) { (label) } }
 }
 
-fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
+fn gui_pin_gate() -> Markup {
     html! {
-        section id="gui-pin-gate" class="pin-auth-container" data-required=(status.gui_pin.pin_required) {
+        section id="gui-pin-gate" class="pin-auth-container face-gate-page" {
             article class="pin-auth-card" {
                 div class="product-mark" { "H" }
                 h1 { "HomeConsole" }
@@ -38,8 +38,22 @@ fn gui_pin_gate(status: &ConsoleStatus) -> Markup {
     }
 }
 
-fn vault_unlock_gate(status: &ConsoleStatus) -> Markup {
-    html! { section id="vault-unlock-gate" class="vault-auth-container" data-required=(status.vault.unlock_required) { article class="vault-auth-card" { div class="product-mark" { "H" } h1 { "HomeConsole" } h2 { "Vault" } p { "Unlock the vault to continue to HomeConsole." } form id="vault-unlock-form" class="settings-form" autocomplete="off" { input class="field field--vault-password" type="password" name="password" placeholder="Vault password" autocomplete="current-password" autofocus; div id="vault-auth-error" class="message message--error" hidden {} button class="btn btn--primary" type="submit" { "Unlock Vault" } } } } }
+fn vault_unlock_gate() -> Markup {
+    html! {
+        section id="vault-unlock-gate" class="vault-auth-container face-gate-page" {
+            article class="vault-auth-card" {
+                div class="product-mark" { "H" }
+                h1 { "HomeConsole" }
+                h2 { "Vault" }
+                p { "Unlock the vault to continue to HomeConsole." }
+                form id="vault-unlock-form" class="settings-form settings-form--vault" autocomplete="off" {
+                    input class="field field--vault-password" type="password" name="password" placeholder="Vault password" autocomplete="current-password" autofocus required;
+                    div id="vault-auth-error" class="message message--error" hidden {}
+                    button class="btn btn--primary" type="submit" { "Unlock Vault" }
+                }
+            }
+        }
+    }
 }
 
 fn theme_boot_script() -> PreEscaped<&'static str> {

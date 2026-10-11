@@ -76,17 +76,57 @@ fn system_access_section(status: &ConsoleStatus) -> Markup {
     let mounted = status.vault.mounted;
     let auto_decrypt = status.vault.auto_decrypt_enabled;
     html! {
-        article class="system-access-panel" aria-label="Access" data-module="caduceus-attendance-access" {
-            header class="system-access-panel__head" { span { "Access" } strong data-admin-projection="true" data-bind="systemPane.adminText" { "Guest" } }
+        article class="system-access-panel" aria-label="Locks" data-module="caduceus-attendance-access" {
+            header class="system-access-panel__head" { span { "Locks" } strong data-admin-projection="true" data-bind="systemPane.adminText" { "Guest" } }
             div class="system-access-stack" {
-                article class="access-pin-card access-pin-card--mode system-access-card" data-module="vault-access" data-bind-class="status.vault.mounted" {
-                    div class="access-pin-state" { span class="access-pin-icon" aria-hidden="true" { (if mounted { "●" } else { "○" }) } div { h3 { "Vault status" } strong data-bind="systemPane.vaultLabel" { (if mounted { "Unlocked" } else { "Locked" }) } p data-bind="systemPane.vaultCopy" { (if auto_decrypt { "Automatically decrypts when the console starts." } else { "Unlock required after the console starts." }) } } }
-                    label class="pin-toggle vault-toggle" { input type="checkbox" role="switch" name="auto_decrypt_enabled" data-vault-auto-decrypt-toggle="true" data-bind-checked="status.vault.auto_decrypt_enabled" checked[auto_decrypt]; span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} } span class="pin-toggle-label" { "Automatically decrypt at boot" } }
-                    @if !mounted { form id="vault-settings-unlock-form" class="settings-form settings-form--vault" autocomplete="off" { input class="field" type="password" name="password" placeholder="Vault password" autocomplete="current-password" required; button class="btn btn--primary" type="submit" { "Unlock Vault" } div id="vault-settings-unlock-message" class="message" hidden {} } }
+                @if status.vault.present {
+                    article class="access-pin-card access-pin-card--mode system-access-card" data-module="vault-access" data-bind-class="status.vault.mounted" {
+                        div class="access-pin-state" {
+                            span class="access-pin-icon" aria-hidden="true" { (if mounted { "●" } else { "○" }) }
+                            div {
+                                h3 { "1 · At boot" }
+                                strong data-bind="systemPane.vaultLabel" { (if mounted { "Unlocked" } else { "Locked" }) }
+                                p data-bind="systemPane.vaultCopy" { (if auto_decrypt { "Automatically decrypts when the console starts." } else { "Unlock required after the console starts." }) }
+                            }
+                        }
+                        label class="pin-toggle vault-toggle" {
+                            input type="checkbox" role="switch" name="auto_decrypt_enabled" data-vault-auto-decrypt-toggle="true" data-bind-checked="status.vault.auto_decrypt_enabled" checked[auto_decrypt];
+                            span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
+                            span class="pin-toggle-label" { "Unlock vault automatically" }
+                        }
+                    }
                 }
-                article class="access-pin-card access-pin-card--mode system-access-card" data-module="gui-pin-access" data-bind-class="status.gui_pin.pin_required" { div class="access-pin-state" { span class="access-pin-icon" aria-hidden="true" { "●" } div { h3 { "Access mode" } strong data-bind="systemPane.pinLabel" { "PIN required" } p data-bind="systemPane.pinCopy" { "Caduceus attendance is required for console administration." } } } label class="pin-toggle" { input type="checkbox" role="switch" name="pin_required" data-pin-required-toggle="true" data-bind-checked="status.gui_pin.pin_required" checked; span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} } span class="pin-toggle-label" { "Require PIN for console access" } } }
-                article class="access-pin-card access-pin-card--change system-access-card" { h3 { "Change access PIN" } form id="gui-pin-change-form" class="settings-form settings-form--pin" autocomplete="off" { label { span { "Current PIN" } input class="field" type="password" name="current_pin" autocomplete="current-password" required; } div class="pin-form-row" { label { span { "New PIN" } input class="field" type="password" name="new_pin" autocomplete="new-password" required minlength="4"; } label { span { "Confirm new PIN" } input class="field" type="password" name="confirm_pin" autocomplete="new-password" required minlength="4"; } } div id="gui-pin-change-message" class="message" hidden {} button class="btn btn--primary" type="submit" { "Change access PIN" } } }
-                (settings_action_row("Default / reset PIN", "Caduceus restores the appliance default; games, settings, storage, and the operating system stay unchanged.", Some("!"), Some(("Caduceus action", "system-status--ok")), html! { button class="btn btn--danger" type="button" data-gui-pin-reset-default="true" { "Reset PIN to default" } div id="gui-pin-reset-message" class="message" hidden {} }, true))
+                article class="access-pin-card access-pin-card--mode system-access-card" data-module="gui-pin-access" data-bind-class="status.gui_pin.pin_required" {
+                    div class="access-pin-state" {
+                        span class="access-pin-icon" aria-hidden="true" { "●" }
+                        div {
+                            h3 { "2 · At console" }
+                            strong data-bind="systemPane.pinLabel" { (if status.gui_pin.pin_required { "PIN required" } else { "PIN not required" }) }
+                            p data-bind="systemPane.pinCopy" { "Caduceus attendance controls console administration." }
+                        }
+                    }
+                    label class="pin-toggle" {
+                        input type="checkbox" role="switch" name="pin_required" data-pin-required-toggle="true" data-bind-checked="status.gui_pin.pin_required" checked[status.gui_pin.pin_required];
+                        span class="pin-toggle-track" aria-hidden="true" { span class="pin-toggle-thumb" {} }
+                        span class="pin-toggle-label" { "Require PIN" }
+                    }
+                }
+                details class="access-pin-card access-pin-card--change system-access-card" {
+                    summary { "Change PIN" }
+                    form id="gui-pin-change-form" class="settings-form settings-form--pin" autocomplete="off" {
+                        label { span { "Current PIN" } input class="field" type="password" name="current_pin" autocomplete="current-password" required; }
+                        div class="pin-form-row" {
+                            label { span { "New PIN" } input class="field" type="password" name="new_pin" autocomplete="new-password" required minlength="4"; }
+                            label { span { "Confirm new PIN" } input class="field" type="password" name="confirm_pin" autocomplete="new-password" required minlength="4"; }
+                        }
+                        div id="gui-pin-change-message" class="message" hidden {}
+                        button class="btn btn--primary" type="submit" { "Change PIN" }
+                    }
+                }
+                details class="access-pin-card access-pin-card--reset system-access-card" {
+                    summary { "Reset to default" }
+                    (settings_action_row("Reset to default PIN", "Caduceus restores the appliance default; games, settings, storage, and the operating system stay unchanged.", Some("!"), Some(("Caduceus action", "system-status--ok")), html! { button class="btn btn--danger" type="button" data-gui-pin-reset-default="true" { "Reset to default" } div id="gui-pin-reset-message" class="message" hidden {} }, true))
+                }
             }
         }
     }

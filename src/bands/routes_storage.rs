@@ -1,5 +1,51 @@
-async fn index(State(state): State<Arc<AppState>>) -> maud::Markup {
-    ui::layout(&state.living_snapshot().status)
+async fn index(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let resolved = resolve_face_stage(&headers).await;
+    let status = (resolved.stage == FaceStage::Console).then(|| {
+        let mut status = state.living_snapshot().status.clone();
+        project_gate_read(&mut status, resolved.gate);
+        status
+    });
+    face_html_response(
+        ui::face_document(resolved.stage.identity(), status.as_ref()),
+        resolved.stage,
+    )
+}
+
+async fn face_stage_route(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let resolved = resolve_face_stage(&headers).await;
+    let status = (resolved.stage == FaceStage::Console).then(|| {
+        let mut status = state.living_snapshot().status.clone();
+        project_gate_read(&mut status, resolved.gate);
+        status
+    });
+    face_html_response(
+        ui::face_fragment(resolved.stage.identity(), status.as_ref()),
+        resolved.stage,
+    )
+}
+
+fn face_html_response(markup: maud::Markup, stage: FaceStage) -> Response {
+    let mut response = markup.into_string().into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, max-age=0"),
+    );
+    if let Ok(value) = HeaderValue::from_str(stage.identity()) {
+        response
+            .headers_mut()
+            .insert("x-arcadia-face-stage", value);
+    }
+    response
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {

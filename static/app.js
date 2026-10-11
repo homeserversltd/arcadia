@@ -1,3 +1,99 @@
+let consoleStageAbortController = null;
+const consoleStageCleanups = new Set();
+let arcadiaConsoleBootRecorded = false;
+let consoleStageInitializationPromise = null;
+let consoleChartLoadPromise = null;
+
+function loadConsoleChartLibrary() {
+  if (consoleChartLoadPromise) return consoleChartLoadPromise;
+  const script = document.createElement('script');
+  script.src = '/static/vendor/chart.umd.min.js';
+  script.async = true;
+  consoleChartLoadPromise = new Promise((resolve) => {
+    script.addEventListener('load', () => resolve(window.Chart || null), { once: true });
+    script.addEventListener('error', () => resolve(null), { once: true });
+  });
+  document.head.appendChild(script);
+  return consoleChartLoadPromise;
+}
+
+function beginConsoleStage() {
+  consoleStageAbortController = new AbortController();
+}
+
+function listenConsole(target, type, listener, options = {}) {
+  if (!consoleStageAbortController) return;
+  target.addEventListener(type, listener, { ...options, signal: consoleStageAbortController.signal });
+}
+
+function registerConsoleCleanup(cleanup) {
+  if (typeof cleanup === 'function') consoleStageCleanups.add(cleanup);
+}
+
+function disposeConsoleStage() {
+  const abortController = consoleStageAbortController;
+  consoleStageAbortController = null;
+  abortController?.abort();
+  [...consoleStageCleanups].reverse().forEach((cleanup) => {
+    try { cleanup(); } catch (_) {}
+  });
+  consoleStageCleanups.clear();
+  window.arcadiaHomeLoadSubscription?.dispose?.();
+  if (typeof controllerPaneUnsubscribe === 'function') controllerPaneUnsubscribe();
+  controllerPaneUnsubscribe = null;
+  ArcadiaControllerTrainerStream?.reset?.();
+  ArcadiaProjector?.unregisterWidget?.('home-load-history');
+  ArcadiaProjector?.reset?.();
+  PopupManager?.closeModal?.();
+  delete window.activateArcadiaView;
+  delete window.arcadiaHomeLoadSubscription;
+  delete window.arcadiaHomeLoadSubscriptionState;
+  delete window.arcadiaControllerProgramming;
+}
+
+async function swapFaceStage() {
+  const response = await fetch('/stage', {
+    headers: { accept: 'text/html', ...caduceusAttendanceHeaders() },
+    cache: 'no-store',
+  });
+  if (!response.ok) throw new Error('Face stage readback failed');
+  const html = await response.text();
+  const incomingDocument = new DOMParser().parseFromString(html, 'text/html');
+  const incoming = incomingDocument.getElementById('face-stage-root');
+  const declaredStage = response.headers.get('x-arcadia-face-stage');
+  const stage = incoming?.dataset.faceStage || '';
+  if (!incoming || !['vault', 'pin', 'console'].includes(stage) || declaredStage !== stage) {
+    throw new Error('Face stage response was unusable');
+  }
+  const current = document.getElementById('face-stage-root');
+  if (current?.dataset.faceStage === 'console') disposeConsoleStage();
+  const mounted = document.importNode(incoming, true);
+  if (current) current.replaceWith(mounted);
+  else document.body.appendChild(mounted);
+  document.body.dataset.faceStage = stage;
+  document.body.dataset.uiSchema = mounted.dataset.uiSchema || '';
+  document.body.dataset.guiPinRequired = mounted.dataset.guiPinRequired || 'false';
+  document.body.dataset.vaultUnlockRequired = mounted.dataset.vaultUnlockRequired || 'false';
+  document.body.classList.remove('pin-open', 'vault-open');
+  if (stage === 'console') await initializeConsoleStage();
+  else if (stage === 'pin') bindGuiPinUnlock();
+  else bindVaultUnlockForm('vault-unlock-form', 'vault-auth-error');
+}
+
+async function lockArcadiaFace() {
+  if (caduceusAttendance) {
+    try {
+      await fetch('/api/v1/exousia/invalidate', {
+        method: 'POST',
+        headers: { accept: 'application/json', ...caduceusAttendanceHeaders() },
+        keepalive: true,
+      });
+    } catch (_) {}
+  }
+  clearCaduceusAttendance();
+  await swapFaceStage();
+}
+
 const PopupManager = (() => {
   const overlay = () => document.getElementById('modal-overlay');
   const title = () => document.getElementById('modal-title');
@@ -169,7 +265,16 @@ const PopupManager = (() => {
 // The single Indra owner is loaded before this adapter. All ordinary app requests cross its same-origin seam.
 const ArcadiaDebug = window.IndraObservationReflection;
 const ArcadiaObservation = window.ArcadiaObservationAdapters;
-const fetch = ArcadiaObservation.request;
+const fetch = (url, options = {}) => {
+  const { caduceusAttendance: includeAttendance = true, ...requestOptions } = options;
+  const attendanceHeaders = includeAttendance
+    ? caduceusAttendanceHeaders()
+    : { 'x-caduceus-document': caduceusDocument };
+  return ArcadiaObservation.request(url, {
+    ...requestOptions,
+    headers: { ...attendanceHeaders, ...(requestOptions.headers || {}) },
+  });
+};
 window.arcadiaDebug = ArcadiaDebug;
 
 const ArcadiaLoading = (() => {
@@ -262,52 +367,6 @@ function initializeArcadiaTheme() {
   });
 }
 
-async function checkGuiPinStatus() {
-  const res = await fetch('/api/gui-pin/status', { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error('GUI PIN status request failed');
-  return await res.json();
-}
-
-async function checkVaultStatus() {
-  const res = await fetch('/api/vault/status', { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error('Vault status request failed');
-  return await res.json();
-}
-
-function setVaultIndicator(mounted) {
-  document.querySelectorAll('[data-chip-kind="vault"]').forEach((badge) => {
-    badge.setAttribute('aria-label', mounted ? 'Vault: Unlocked' : 'Vault: Locked');
-    badge.classList.toggle('status-badge--good', mounted);
-    badge.classList.toggle('status-badge--warn', !mounted);
-    const value = badge.querySelector('strong');
-    if (value) value.textContent = mounted ? 'Unlocked' : 'Locked';
-  });
-}
-
-function validatedVaultStatus(value) {
-  const present = value?.present === true;
-  if (!value || typeof value.mounted !== 'boolean' || typeof value.auto_decrypt_enabled !== 'boolean' || typeof value.unlock_required !== 'boolean' || value.unlock_required !== (present && !value.mounted && !value.auto_decrypt_enabled)) return null;
-  return { ...value, present };
-}
-
-function renderVaultMode({ mounted, auto_decrypt_enabled: autoDecrypt, unlock_required: unlockRequired }) {
-  document.body.dataset.vaultMounted = String(mounted);
-  document.body.dataset.vaultUnlockRequired = String(unlockRequired);
-  document.body.classList.toggle('vault-open', mounted);
-  updateArcadiaShellVisibility();
-  setVaultIndicator(mounted);
-  document.querySelectorAll('[data-vault-auto-decrypt-toggle]').forEach((toggle) => { toggle.checked = autoDecrypt; });
-}
-
-async function initializeVaultGate() {
-  try {
-    const status = validatedVaultStatus(await checkVaultStatus());
-    renderVaultMode(status || { present: false, mounted: false, auto_decrypt_enabled: false, unlock_required: false });
-  } catch (_) {
-    renderVaultMode({ present: false, mounted: false, auto_decrypt_enabled: false, unlock_required: false });
-  }
-}
-
 function bindVaultUnlockForm(id, messageId) {
   const form = document.getElementById(id);
   if (!form) return;
@@ -320,9 +379,9 @@ function bindVaultUnlockForm(id, messageId) {
     if (message) message.hidden = true;
     button.disabled = true; button.textContent = 'Unlocking...';
     try {
-      const data = await postJson('/api/vault/unlock', { password: input.value });
+      const data = await postJson('/api/vault/unlock', { password: input.value }, { attendance: false });
       input.value = '';
-      if (data.success) { renderVaultMode({ present: true, mounted: true, auto_decrypt_enabled: document.querySelector('[data-vault-auto-decrypt-toggle]')?.checked ?? true, unlock_required: false }); PopupManager.showToast(data.message || 'Vault unlocked', 'success'); }
+      if (data.success === true || data.ok === true) { PopupManager.showToast(data.message || 'Vault unlock accepted by Caduceus', 'success'); await swapFaceStage(); }
       else if (message) { message.textContent = data.message || 'Vault could not be unlocked.'; message.hidden = false; }
     } catch (_) { input.value = ''; if (message) { message.textContent = 'Vault unlock request failed.'; message.hidden = false; } }
     finally { button.disabled = false; button.textContent = 'Unlock Vault'; }
@@ -336,7 +395,7 @@ function bindVaultAccess() {
       toggle.disabled = true;
       try {
         const data = await postJson('/api/vault/auto-decrypt', { enabled });
-        if (data.success) { await initializeVaultGate(); PopupManager.showToast(data.message || 'Vault startup setting saved', 'success'); }
+        if (data.success === true || data.ok === true) { PopupManager.showToast(data.message || 'Vault startup setting saved', 'success'); await swapFaceStage(); }
         else { toggle.checked = !enabled; PopupManager.showToast(data.message || 'Vault startup setting not saved', 'error'); }
       } catch (_) { toggle.checked = !enabled; PopupManager.showToast('Vault startup request failed.', 'error'); }
       finally { toggle.disabled = false; }
@@ -376,42 +435,14 @@ function invalidateCaduceusAttendance() {
   clearCaduceusAttendance();
 }
 
-function updateArcadiaShellVisibility() {
-  const vaultUnlockRequired = document.body.dataset.vaultUnlockRequired === 'true';
-  const pinRequired = document.body.dataset.guiPinRequired === 'true';
-  document.getElementById('app')?.toggleAttribute('aria-hidden', pinRequired || vaultUnlockRequired);
-  ArcadiaProjector.applyOverlay({ systemPane: { adminText: caduceusAttendance ? 'Admin' : 'Guest' } });
-}
-
-function openArcadia() {
-  document.body.classList.add('pin-open');
-  document.body.dataset.guiPinRequired = 'false';
-  updateArcadiaShellVisibility();
-}
-
-function keepGuiPinGate() {
-  document.body.classList.remove('pin-open');
-  document.body.dataset.guiPinRequired = 'true';
-  updateArcadiaShellVisibility();
-  document.querySelector('.field--pin')?.focus();
-}
-
-async function initializeGuiPinGate() {
-  let pinRequired = false;
-  try { pinRequired = (await checkGuiPinStatus()).pin_required === true; } catch (_) {}
-  // A loaded document never inherits a prior attendance or local access decision.
-  clearCaduceusAttendance();
-  if (pinRequired) keepGuiPinGate();
-  else openArcadia();
-  setPinIndicator(pinRequired);
-}
-
 function setPinIndicator(required) {
-  document.querySelectorAll('.status-badge').forEach((badge) => {
+  document.querySelectorAll('[data-chip-kind="pin"]').forEach((badge) => {
     if (badge.dataset.chipKind !== 'pin') return;
-    badge.setAttribute('aria-label', required ? 'PIN required for GUI access' : 'GUI open without PIN');
+    badge.setAttribute('aria-label', required ? 'Lock: PIN required' : 'Lock: Open');
     badge.classList.toggle('status-badge--warn', required);
     badge.classList.toggle('status-badge--idle', !required);
+    const value = badge.querySelector('strong');
+    if (value) value.textContent = required ? 'PIN required' : 'Open';
   });
 }
 
@@ -441,7 +472,13 @@ function bindNavigation() {
   };
   window.activateArcadiaView = activate;
   buttons.forEach((button) => button.addEventListener('click', () => activate(button.dataset.view)));
-  document.querySelectorAll('[data-nav-target]').forEach((button) => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-nav-target]').forEach((button) => button.addEventListener('click', async (event) => {
+    if (button.dataset.chipKind === 'pin' && document.body.dataset.guiPinRequired === 'true') {
+      event.preventDefault();
+      try { await lockArcadiaFace(); }
+      catch (_) { PopupManager.showToast('Lock request failed; the current screen remains.', 'error'); }
+      return;
+    }
     activate(button.dataset.navTarget);
     if (button.dataset.focusTarget) {
       setTimeout(() => {
@@ -848,25 +885,134 @@ const ArcadiaProjector = (() => {
 
   function registerWidget(selectorOrName, fn) {
     if (typeof selectorOrName !== 'string' || typeof fn !== 'function') return false;
-    widgets.push({ selectorOrName, fn });
+    const existing = widgets.find((widget) => widget.selectorOrName === selectorOrName);
+    if (existing) existing.fn = fn;
+    else widgets.push({ selectorOrName, fn });
     if (lastDocument) fn(lastDocument, widgetContext(selectorOrName));
     return true;
+  }
+
+  function unregisterWidget(selectorOrName) {
+    const index = widgets.findIndex((widget) => widget.selectorOrName === selectorOrName);
+    if (index < 0) return false;
+    widgets.splice(index, 1);
+    return true;
+  }
+
+  function reset() {
+    lastDocument = null;
+    overlay = {};
   }
 
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
   // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
   // data-bind-copy-value and data-bind-enabled keep presenter-owned controls stable while values change.
-  return { apply, applyOverlay, registerWidget, resolve, project, currentDocument: () => projectedDocument(), captureDrafts, acknowledgeDrafts, resetEdit };
+  return { apply, applyOverlay, registerWidget, unregisterWidget, reset, resolve, project, currentDocument: () => projectedDocument(), captureDrafts, acknowledgeDrafts, resetEdit };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
 
 
+function createAttendedEventStream(url) {
+  const listeners = new Map();
+  const abortController = new AbortController();
+  let reader = null;
+  let closed = false;
+  let errorHandler = null;
+  const stream = {
+    addEventListener(type, listener) {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(listener);
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      abortController.abort();
+      if (reader) void reader.cancel().catch(() => {});
+    },
+  };
+  Object.defineProperty(stream, 'onerror', {
+    get: () => errorHandler,
+    set: (listener) => { errorHandler = typeof listener === 'function' ? listener : null; },
+  });
+  const dispatch = (type, data) => {
+    const event = { type, data };
+    listeners.get(type)?.forEach((listener) => listener.call(stream, event));
+  };
+  (async () => {
+    try {
+      const response = await fetch(url, {
+        headers: { accept: 'text/event-stream' },
+        cache: 'no-store',
+        signal: abortController.signal,
+      });
+      if (!response.ok || !response.body?.getReader) throw new Error('Event stream unavailable');
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let eventName = 'message';
+      let dataLines = [];
+      const dispatchFrame = () => {
+        if (dataLines.length) dispatch(eventName || 'message', dataLines.join('\n'));
+        eventName = 'message';
+        dataLines = [];
+      };
+      while (!closed) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split(/\r?\n\r?\n/);
+        buffer = frames.pop() || '';
+        for (const frame of frames) {
+          eventName = 'message';
+          dataLines = [];
+          for (const line of frame.split(/\r?\n/)) {
+            if (!line || line.startsWith(':')) continue;
+            const colon = line.indexOf(':');
+            const field = colon < 0 ? line : line.slice(0, colon);
+            const fieldValue = colon < 0 ? '' : line.slice(colon + 1).replace(/^ /, '');
+            if (field === 'event') eventName = fieldValue;
+            else if (field === 'data') dataLines.push(fieldValue);
+          }
+          dispatchFrame();
+        }
+      }
+      if (buffer.trim()) {
+        eventName = 'message';
+        dataLines = [];
+        for (const line of buffer.split(/\r?\n/)) {
+          if (line.startsWith('event:')) eventName = line.slice(6).trimStart();
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+        }
+        dispatchFrame();
+      }
+      if (!closed) errorHandler?.call(stream, { type: 'error' });
+    } catch (_) {
+      if (!closed) errorHandler?.call(stream, { type: 'error' });
+    }
+  })();
+  return stream;
+}
+
 const ArcadiaControllerTrainerStream = (() => {
   const subscribers = new Map();
   const state = { source: null, events: 0, lease: null, lastInput: null, lastEvent: '', fallbackSnapshots: 0 };
+  let visibilityListener = null;
   window.arcadiaControllerTrainerStreamState = state;
 
   function hasWatchers() { return subscribers.size > 0; }
+  function attachVisibilityListener() {
+    if (visibilityListener) return;
+    visibilityListener = () => {
+      if (document.visibilityState !== 'visible') close();
+      else connect();
+    };
+    document.addEventListener('visibilitychange', visibilityListener);
+  }
+  function detachVisibilityListener() {
+    if (!visibilityListener) return;
+    document.removeEventListener('visibilitychange', visibilityListener);
+    visibilityListener = null;
+  }
   function close() {
     if (state.source) { state.source.close(); ArcadiaObservation.stream('controller-trainer-sse', 'closed'); }
     state.source = null;
@@ -891,8 +1037,8 @@ const ArcadiaControllerTrainerStream = (() => {
   }
   function connect() {
     if (!hasWatchers() || state.source || document.visibilityState !== 'visible') return;
-    if (!window.EventSource) { fallbackSnapshot(); return; }
-    const source = new EventSource('/api/controllers/trainer/events');
+    if (!window.ReadableStream || !window.TextDecoder) { fallbackSnapshot(); return; }
+    const source = createAttendedEventStream('/api/controllers/trainer/events');
     ArcadiaObservation.stream('controller-trainer-sse', 'opened');
     state.source = source;
     source.addEventListener('lease', (event) => {
@@ -914,19 +1060,24 @@ const ArcadiaControllerTrainerStream = (() => {
   }
   function subscribe(key, fn) {
     if (!key || typeof fn !== 'function') return () => {};
+    attachVisibilityListener();
     subscribers.set(key, fn);
     connect();
     if (state.lastInput) fn(state.lastInput, { eventName: state.lastEvent || 'cached', key, lease: state.lease });
     return () => {
       subscribers.delete(key);
-      if (!hasWatchers()) close();
+      if (!hasWatchers()) { close(); detachVisibilityListener(); }
     };
   }
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') close();
-    else connect();
-  });
-  return { subscribe, close, state };
+  function reset() {
+    subscribers.clear();
+    close();
+    detachVisibilityListener();
+    state.lastInput = null;
+    state.lastEvent = '';
+    state.lease = null;
+  }
+  return { subscribe, close, reset, state };
 })();
 
 function controllerPaneIsActive() {
@@ -1001,11 +1152,11 @@ function bindHomeLoadSubscription() {
     source: null, lease: null, heartbeat: null, renewalTimer: null, retryTimer: null,
     watchdogTimer: null, inFlight: false, followUp: false, events: 0,
     fallbackSnapshots: 0, streamPulls: 0, fallback: false, cachedRoot: null,
-    historyLoaded: false, historyPoints: [], lastFrameAt: 0,
+    historyLoaded: false, historyPoints: [], lastFrameAt: 0, disposed: false,
   };
   window.arcadiaHomeLoadSubscriptionState = state;
-  const homeIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
-  const rootFaceIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active, [data-view-panel="local-ai"].is-active')) && document.visibilityState === 'visible';
+  const homeIsActive = () => !state.disposed && Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
+  const rootFaceIsActive = () => !state.disposed && Boolean(document.querySelector('[data-view-panel="home"].is-active, [data-view-panel="local-ai"].is-active')) && document.visibilityState === 'visible';
   const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
   const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
   const clearWatchdog = () => { if (state.watchdogTimer) clearTimeout(state.watchdogTimer); state.watchdogTimer = null; };
@@ -1057,7 +1208,7 @@ function bindHomeLoadSubscription() {
     state.historyLoaded = true;
     try {
       const response = await fetch('/api/root/history', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
-      if (!response.ok) return;
+      if (state.disposed || !response.ok) return;
       const document = await response.json();
       const tiers = document?.history?.tiers || {};
       const raw = readTier(tiers.raw);
@@ -1083,6 +1234,7 @@ function bindHomeLoadSubscription() {
     state.inFlight = true;
     try {
       const response = await fetchJsonBounded('/api/root', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
+      if (!rootFaceIsActive()) return;
       if (response.ok) {
         const root = await response.json();
         state.cachedRoot = root;
@@ -1097,7 +1249,8 @@ function bindHomeLoadSubscription() {
     if (!rootFaceIsActive()) return;
     try {
       const response = await fetchJsonBounded('/api/root/state', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
-      if (response.ok && rootFaceIsActive()) ArcadiaProjector.apply(await response.json());
+      if (!rootFaceIsActive()) return;
+      if (response.ok) ArcadiaProjector.apply(await response.json());
     } catch (_) {}
   };
   const pullSnapshot = async () => {
@@ -1106,6 +1259,7 @@ function bindHomeLoadSubscription() {
     state.inFlight = true;
     try {
       const response = await fetchJsonBounded('/api/root/pull', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
+      if (!rootFaceIsActive()) return;
       if (!response.ok) throw new Error('snapshot pull failed');
       const root = await response.json();
       if (appendSnapshot(root)) {
@@ -1150,6 +1304,7 @@ function bindHomeLoadSubscription() {
         method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ leaseId: state.lease.leaseId }), cache: 'no-store', keepalive: true,
       });
+      if (!rootFaceIsActive()) return;
       if (!response.ok) throw new Error('lease expired');
       state.lease = await response.json();
       scheduleRenewal();
@@ -1163,10 +1318,10 @@ function bindHomeLoadSubscription() {
     state.fallback = false;
     if (!rootFaceIsActive()) return clearEvents();
     if (homeIsActive()) loadHistoryOnce();
-    if (!('EventSource' in window)) { state.fallback = true; fetchSnapshotOnce(); return scheduleRetry(); }
+    if (!window.ReadableStream || !window.TextDecoder) { state.fallback = true; fetchSnapshotOnce(); return scheduleRetry(); }
     if (state.source) return;
     try {
-      const source = new EventSource('/api/root/events');
+      const source = createAttendedEventStream('/api/root/events');
       ArcadiaObservation.stream('home-root-sse', 'opened');
       state.source = source;
       const onPoke = (eventName) => {
@@ -1201,16 +1356,19 @@ function bindHomeLoadSubscription() {
     } catch (_) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
   };
   const stop = () => { clearEvents(); state.followUp = false; };
+  const dispose = () => { state.disposed = true; stop(); };
   const start = () => {
+    if (state.disposed) return;
     if (!rootFaceIsActive()) return stop();
     setStale(false);
     if (state.cachedRoot) appendSnapshot(state.cachedRoot);
     fetchLivingState();
     startEvents();
   };
-  window.arcadiaHomeLoadSubscription = { start, stop, homeIsActive, startEvents, fetchSnapshotOnce, pullSnapshot, renewLease };
-  document.addEventListener('arcadia:view-change', () => { if (rootFaceIsActive()) start(); else stop(); });
-  document.addEventListener('visibilitychange', () => { if (rootFaceIsActive()) start(); else stop(); });
+  window.arcadiaHomeLoadSubscription = { start, stop, dispose, homeIsActive, startEvents, fetchSnapshotOnce, pullSnapshot, renewLease };
+  listenConsole(document, 'arcadia:view-change', () => { if (rootFaceIsActive()) start(); else stop(); });
+  listenConsole(document, 'visibilitychange', () => { if (rootFaceIsActive()) start(); else stop(); });
+  registerConsoleCleanup(dispose);
   start();
 }
 
@@ -1231,7 +1389,7 @@ function bindGuiPinUnlock() {
       input.value = '';
       if (data.ok && typeof data.attendance === 'string') {
         caduceusAttendance = data.attendance;
-        openArcadia();
+        await swapFaceStage();
         PopupManager.showToast('Arcadia opened', 'success');
       } else {
         clearCaduceusAttendance();
@@ -1265,7 +1423,10 @@ function bindGuiPinAccess() {
       try {
         const data = await postJson('/api/gui-pin/access', { pin_required: nextRequired });
         PopupManager.showToast(data.message || (data.ok ? 'GUI PIN setting saved' : 'GUI PIN setting not saved'), data.ok ? 'success' : 'error');
-        if (data.ok) renderGuiPinMode(data.pin_required !== false);
+        if (data.ok) {
+          renderGuiPinMode(data.pin_required === true);
+          await swapFaceStage();
+        }
         else renderGuiPinMode(previousRequired);
       } catch (_) {
         renderGuiPinMode(previousRequired);
@@ -2474,15 +2635,12 @@ function bindControllerProgramming() {
     });
   });
 
-  if (!window.arcadiaGamepadListenerBound) {
-    window.arcadiaGamepadListenerBound = true;
-    window.addEventListener('gamepadconnected', (event) => {
-      const label = event.gamepad?.id || 'Gamepad';
-      if (document.querySelector('[data-controller-programmer-modal]')) {
-        PopupManager.showToast(`${label} ready in browser`, 'success');
-      }
-    });
-  }
+  listenConsole(window, 'gamepadconnected', (event) => {
+    const label = event.gamepad?.id || 'Gamepad';
+    if (document.querySelector('[data-controller-programmer-modal]')) {
+      PopupManager.showToast(`${label} ready in browser`, 'success');
+    }
+  });
 
   window.arcadiaControllerProgramming = {
     selectedControl: () => selected,
@@ -2499,9 +2657,13 @@ function bindControllerLiveInput() {
   if (!panel) return;
   bindControllerProgramming();
   const refresh = () => controllerPaneWidget(window.arcadiaControllerTrainerStreamState?.lastLivingState || {});
-  document.addEventListener('arcadia:view-change', refresh);
-  document.addEventListener('visibilitychange', refresh);
-  document.addEventListener('arcadia:modal-close', refresh);
+  listenConsole(document, 'arcadia:view-change', refresh);
+  listenConsole(document, 'visibilitychange', refresh);
+  listenConsole(document, 'arcadia:modal-close', () => {
+    ArcadiaControllerTrainerStream.reset();
+    controllerPaneUnsubscribe = null;
+    refresh();
+  });
   refresh();
 }
 
@@ -3589,7 +3751,10 @@ function bindGuiPinResetDefault() {
       if (data.ok) clearMessage('gui-pin-reset-message');
       else setMessage('gui-pin-reset-message', data.message || 'PIN reset failed.', 'error');
       PopupManager.showToast(data.message || (data.ok ? 'PIN reset to default' : 'PIN reset failed'), data.ok ? 'success' : 'error');
-      if (data.ok) renderGuiPinMode(data.pin_required !== false);
+      if (data.ok) {
+        renderGuiPinMode(data.pin_required === true);
+        await swapFaceStage();
+      }
     } catch (_) {
       setMessage('gui-pin-reset-message', 'PIN reset request failed.', 'error');
       PopupManager.showToast('PIN reset request failed', 'error');
@@ -4175,11 +4340,11 @@ function bindHarmoniaServiceSwitch() {
     }
   });
 
-  document.addEventListener('arcadia:view-change', (event) => {
+  listenConsole(document, 'arcadia:view-change', (event) => {
     if (event.detail?.view === 'updates') void refreshStatus();
     else invalidateStatusRequest('Status refreshes when Updates opens.');
   });
-  document.addEventListener('visibilitychange', () => {
+  listenConsole(document, 'visibilitychange', () => {
     if (document.visibilityState === 'visible' && updatesActive()) void refreshStatus();
     else if (document.visibilityState !== 'visible') invalidateStatusRequest('Status refreshes when Updates opens.');
   });
@@ -4205,7 +4370,7 @@ function bindHarmoniaModules() {
     chip.classList.remove('status-badge--good', 'status-badge--warn', 'status-badge--bad', 'status-badge--idle');
     chip.classList.add(`status-badge--${statusClass}`);
   });
-  document.addEventListener('change', async (event) => {
+  listenConsole(document, 'change', async (event) => {
     const input = event.target.closest?.('[data-harmonia-module-switch]');
     if (!input) return;
     const moduleId = input.value
@@ -4228,7 +4393,7 @@ function bindHarmoniaModules() {
       }
     }
   });
-  document.addEventListener('click', (event) => {
+  listenConsole(document, 'click', (event) => {
     const historyButton = event.target.closest?.('[data-harmonia-ledger-open]');
     if (historyButton) {
       event.preventDefault();
@@ -4424,46 +4589,74 @@ function bindSystemTrustAndAccessForms() {
   }
 }
 
-initializeArcadiaTheme();
-bindNavigation();
-bindHomeLoadSubscription();
-bindConsoleActions();
-bindControllerLiveInput();
-bindStorageModals();
-bindProviderKeys();
-bindHarmoniaModules();
-bindGuiPinUnlock();
-bindGuiPinAccess();
-bindVaultUnlockForm('vault-unlock-form', 'vault-auth-error');
-bindVaultUnlockForm('vault-settings-unlock-form', 'vault-settings-unlock-message');
-bindVaultAccess();
-bindGuiPinChange();
-bindGuiPinResetDefault();
-bindNetworkControls();
-bindSystemTrustAndAccessForms();
-bindLocalAIControls();
-initializeOnboarding();
-initializeGuiPinGate();
-initializeVaultGate();
-window.addEventListener('pagehide', invalidateCaduceusAttendance);
-ArcadiaObservation.runtime('boot', 'shell');
-ArcadiaObservation.currentness('shell-view', 'current');
-ArcadiaObservation.runtime('ready', 'shell');
+function bindConsoleModalControls() {
+  listenConsole(document, 'click', (event) => {
+    const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
+    if (close) return PopupManager.closeModal();
+    if (event.target.id === 'modal-overlay') return PopupManager.closeModal();
 
-document.addEventListener('click', (event) => {
-  const close = event.target.closest('#modal-close, [data-action="modal-ok"]');
-  if (close) return PopupManager.closeModal();
-  if (event.target.id === 'modal-overlay') return PopupManager.closeModal();
+    const button = event.target.closest('.btn[data-modal-title]');
+    if (!button) return;
+    event.stopPropagation();
+    const declaredId = button.dataset.observationAction;
+    if (!declaredId || !/^[a-z][a-z0-9:_-]{0,79}$/i.test(declaredId)) return;
+    PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody, surfaceId: `modal:declared:${declaredId}` });
+  });
+  listenConsole(document, 'keydown', (event) => {
+    if (PopupManager.trapFocus(event)) return;
+    if (event.key === 'Escape') PopupManager.closeModal();
+  });
+}
 
-  const button = event.target.closest('.btn[data-modal-title]');
-  if (!button) return;
-  event.stopPropagation();
-  const declaredId = button.dataset.observationAction;
-  if (!declaredId || !/^[a-z][a-z0-9:_-]{0,79}$/i.test(declaredId)) return;
-  PopupManager.showModal({ title: button.dataset.modalTitle, body: button.dataset.modalBody, surfaceId: `modal:declared:${declaredId}` });
-});
+async function initializeConsoleStage() {
+  if (consoleStageAbortController || !document.getElementById('app') || document.body.dataset.faceStage !== 'console') return;
+  if (consoleStageInitializationPromise) return consoleStageInitializationPromise;
+  const initialization = (async () => {
+    let chartLibrary = null;
+    try { chartLibrary = await loadConsoleChartLibrary(); } catch (_) {}
+    if (document.body.dataset.faceStage !== 'console' || !document.getElementById('app')) return;
+    document.body.dataset.chartLibrary = chartLibrary ? 'ready' : 'unavailable';
+    if (!chartLibrary) console.warn('Arcadia chart library unavailable; Console will continue without charts.');
+    if (consoleStageAbortController) return;
+    beginConsoleStage();
+    initializeArcadiaTheme();
+    bindNavigation();
+    bindHomeLoadSubscription();
+    bindConsoleActions();
+    bindControllerLiveInput();
+    bindStorageModals();
+    bindProviderKeys();
+    bindHarmoniaModules();
+    bindGuiPinAccess();
+    bindVaultAccess();
+    bindGuiPinChange();
+    bindGuiPinResetDefault();
+    bindNetworkControls();
+    bindSystemTrustAndAccessForms();
+    bindLocalAIControls();
+    initializeOnboarding();
+    bindConsoleModalControls();
+    if (!arcadiaConsoleBootRecorded) {
+      ArcadiaObservation.runtime('boot', 'shell');
+      ArcadiaObservation.runtime('ready', 'shell');
+      arcadiaConsoleBootRecorded = true;
+    }
+    ArcadiaObservation.currentness('shell-view', 'current');
+  })();
+  consoleStageInitializationPromise = initialization;
+  try { await initialization; }
+  finally {
+    if (consoleStageInitializationPromise === initialization) consoleStageInitializationPromise = null;
+  }
+}
 
-document.addEventListener('keydown', (event) => {
-  if (PopupManager.trapFocus(event)) return;
-  if (event.key === 'Escape') PopupManager.closeModal();
-});
+function initializeFaceStage() {
+  window.addEventListener('pagehide', invalidateCaduceusAttendance);
+  const root = document.getElementById('face-stage-root');
+  const stage = root?.dataset.faceStage || document.body.dataset.faceStage;
+  if (stage === 'console') void initializeConsoleStage();
+  else if (stage === 'pin') bindGuiPinUnlock();
+  else if (stage === 'vault') bindVaultUnlockForm('vault-unlock-form', 'vault-auth-error');
+}
+
+initializeFaceStage();

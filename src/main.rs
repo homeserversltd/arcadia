@@ -54,6 +54,7 @@ include!("bands/routes_ai_runtime.rs");
 include!("bands/routes_ai_settings.rs");
 include!("bands/routes_caduceus.rs");
 include!("bands/caduceus_access.rs");
+include!("bands/face_stage.rs");
 include!("bands/console_system_actions.rs");
 include!("bands/console_access_actions.rs");
 include!("bands/provider_keys.rs");
@@ -263,9 +264,14 @@ async fn living_readiness(
     request: Request,
     next: Next,
 ) -> Response {
-    // Liveness is deliberately available before the first deferred refresh; every
-    // other route is state-backed and must wait for a coherent living snapshot.
-    if request.uri().path() == "/health" || state.living.is_initialized() {
+    // Static face material and the two gate carriers must work before the first
+    // deferred living refresh; Console APIs still wait for a coherent snapshot.
+    let path = request.uri().path();
+    let face_ready = matches!(path, "/health" | "/" | "/stage")
+        || path.starts_with("/static/")
+        || (request.method() == axum::http::Method::POST
+            && matches!(path, "/api/vault/unlock" | "/api/v1/exousia/open"));
+    if face_ready || state.living.is_initialized() {
         return next.run(request).await;
     }
 
@@ -307,6 +313,7 @@ async fn main() -> anyhow_free::Result<()> {
     });
     let app = Router::new()
         .route("/", get(index))
+        .route("/stage", get(face_stage_route))
         .route("/health", get(health))
         .route("/api", get(api_root_route))
         .route("/api/root", get(api_root_route))
@@ -656,11 +663,15 @@ async fn main() -> anyhow_free::Result<()> {
         .route("/static/vendor/chart.umd.min.js", get(vendor_chart_js))
         .route("/static/app.js", get(js))
         .fallback(not_found)
-        .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn_with_state(
             state.clone(),
             living_readiness,
         ))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            face_stage_guard,
+        ))
+        .layer(TraceLayer::new_for_http())
         .with_state(state.clone());
 
     let http = match serve_config.http_bind {
