@@ -30,40 +30,71 @@ include!("system.rs");
 include!("primitives.rs");
 
 pub fn layout(status: &ConsoleStatus) -> Markup {
+    face_document("console", Some(status))
+}
+
+pub fn face_document(stage: &str, status: Option<&ConsoleStatus>) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
             head {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
-                title { (status.product) " / Arcadia" }
+                title { "HomeConsole / Arcadia" }
                 script { (theme_boot_script()) }
                 link rel="stylesheet" href="/static/app.css";
             }
-            body data-ui-schema=(status.ui_contract.schema) data-gui-pin-required="true" data-vault-unlock-required=(status.vault.unlock_required) {
-                (gui_pin_gate(status))
-                (vault_unlock_gate(status))
-                div id="app" class="app-shell" aria-hidden="true" {
-                    (header(status))
-                    div class="workspace" {
-                        (sidebar_launcher())
-                        main class="viewport" aria-live="polite" {
-                            (home_view(status))
-                            (sync_view(status))
-                            (storage_view(status))
-                            (ai_model_view(status))
-                            (controllers_view(status))
-                            (network_view(status))
-                            (updates_view(status))
-                            (system_view(status))
-                        }
-                    }
-                }
-                (modal_root())
-                script src="/static/vendor/chart.umd.min.js" {}
+            body data-face-stage=(stage)
+                data-ui-schema=(status.map(|status| status.ui_contract.schema).unwrap_or(""))
+                data-gui-pin-required=(status.is_some_and(|status| status.gui_pin.pin_required))
+                data-vault-unlock-required=(status.is_some_and(|status| status.vault.unlock_required)) {
+                (face_stage_root(stage, status))
                 script src="/static/indra-observation.js" {}
                 script src="/static/app.js" {}
             }
         }
+    }
+}
+
+pub fn face_fragment(stage: &str, status: Option<&ConsoleStatus>) -> Markup {
+    face_stage_root(stage, status)
+}
+
+fn face_stage_root(stage: &str, status: Option<&ConsoleStatus>) -> Markup {
+    html! {
+        div id="face-stage-root" data-face-stage=(stage)
+            data-ui-schema=(status.map(|status| status.ui_contract.schema).unwrap_or(""))
+            data-gui-pin-required=(status.is_some_and(|status| status.gui_pin.pin_required))
+            data-vault-unlock-required=(status.is_some_and(|status| status.vault.unlock_required)) {
+            @if stage == "vault" {
+                (vault_unlock_gate())
+            } @else if stage == "pin" {
+                (gui_pin_gate())
+            } @else if let Some(status) = status {
+                (console_surface(status))
+            }
+        }
+    }
+}
+
+fn console_surface(status: &ConsoleStatus) -> Markup {
+    html! {
+        div id="app" class="app-shell" {
+            (header(status))
+            div class="workspace" {
+                (sidebar_launcher())
+                main class="viewport" aria-live="polite" {
+                    (home_view(status))
+                    (sync_view(status))
+                    (storage_view(status))
+                    (ai_model_view(status))
+                    (controllers_view(status))
+                    (network_view(status))
+                    (updates_view(status))
+                    (system_view(status))
+                }
+            }
+        }
+        (modal_root())
     }
 }

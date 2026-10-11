@@ -1,4 +1,5 @@
 fn console_status(state: &AppState) -> ConsoleStatus {
+    let gate = caduceus_gate_read();
     let storage = storage_status();
     let network = network_status();
     let library = library_status(&storage);
@@ -25,8 +26,8 @@ fn console_status(state: &AppState) -> ConsoleStatus {
             ui: "top-header-left-launcher-focused-viewports",
         },
         runtime: runtime_status(state.started_unix),
-        gui_pin: gui_pin_status(),
-        vault: vault_status(),
+        gui_pin: gui_pin_status_from_gate(gate),
+        vault: vault_status_from_gate(gate),
         surfaces,
         samba,
         network: network.clone(),
@@ -47,9 +48,10 @@ fn console_status(state: &AppState) -> ConsoleStatus {
 }
 
 fn console_status_from_parts(state: &AppState, network: NetworkStatus, storage: StorageStatus, library: LibraryStatus, local_ai: LocalAiStatus, controllers: ControllerStatus) -> ConsoleStatus {
+    let gate = caduceus_gate_read();
     let (surfaces, samba) = surface_and_samba_status(&state.canonical_url, &network);
     let hostname = hostname();
-    ConsoleStatus { schema: "arcadia.home_state.v2", product: state.product.clone(), canonical_url: state.canonical_url.clone(), identity: IdentityStatus { product_name: state.product.clone(), hostname: hostname.clone(), local_domain: Some("home.arpa".to_string()), netbios_name: Some("HOMECONSOLE".to_string()), web_origin: state.canonical_url.trim_end_matches('/').to_string(), version: env!("CARGO_PKG_VERSION").to_string() }, arcadia: ArcadiaStatus { service: service_state("arcadia.service"), version: env!("CARGO_PKG_VERSION"), mode: "unity-appliance-shell", ui: "top-header-left-launcher-focused-viewports" }, runtime: runtime_status(state.started_unix), gui_pin: gui_pin_status(), vault: vault_status(), surfaces, samba, network: network.clone(), local_ai, controllers, updates: updates_status(), system: system_admin_status(&network, &hostname), benchmark: benchmark_status(), library, storage, ui_contract: UiContract { schema: "arcadia.ui.contract.v6", button_variants: ["primary", "secondary", "danger"], composition: "top header, sidebar launcher, state-first operational viewport", modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers" } }
+    ConsoleStatus { schema: "arcadia.home_state.v2", product: state.product.clone(), canonical_url: state.canonical_url.clone(), identity: IdentityStatus { product_name: state.product.clone(), hostname: hostname.clone(), local_domain: Some("home.arpa".to_string()), netbios_name: Some("HOMECONSOLE".to_string()), web_origin: state.canonical_url.trim_end_matches('/').to_string(), version: env!("CARGO_PKG_VERSION").to_string() }, arcadia: ArcadiaStatus { service: service_state("arcadia.service"), version: env!("CARGO_PKG_VERSION"), mode: "unity-appliance-shell", ui: "top-header-left-launcher-focused-viewports" }, runtime: runtime_status(state.started_unix), gui_pin: gui_pin_status_from_gate(gate), vault: vault_status_from_gate(gate), surfaces, samba, network: network.clone(), local_ai, controllers, updates: updates_status(), system: system_admin_status(&network, &hostname), benchmark: benchmark_status(), library, storage, ui_contract: UiContract { schema: "arcadia.ui.contract.v6", button_variants: ["primary", "secondary", "danger"], composition: "top header, sidebar launcher, state-first operational viewport", modal: "confirmation/readback only; GUI PIN changes post to local root-owned helpers" } }
 }
 
 fn network_status_from_state(state: &NetworkState) -> NetworkStatus {

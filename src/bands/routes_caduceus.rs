@@ -210,44 +210,28 @@ async fn caduceus_health_api_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/health").await
 }
 
-async fn caduceus_vault_status_proxy_route() -> impl IntoResponse {
-    let fallback = || {
-        (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "present": false,
-                "mounted": false,
-                "auto_decrypt_enabled": false,
-                "unlock_required": false,
-            })),
-        )
-            .into_response()
-    };
-    match CaduceusAccessClient::default().get_json("/api/v1/storage/vault/status") {
-        Ok(value) => {
-            let present = value.get("present").and_then(|item| item.as_bool()).unwrap_or(false);
-            let Some(mounted) = value.get("mounted").and_then(|item| item.as_bool()) else {
-                return fallback();
-            };
-            let Some(auto_decrypt_enabled) = value
-                .get("auto_decrypt_enabled")
-                .and_then(|item| item.as_bool())
-            else {
-                return fallback();
-            };
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "present": present,
-                    "mounted": mounted,
-                    "auto_decrypt_enabled": auto_decrypt_enabled,
-                    "unlock_required": present && !mounted && !auto_decrypt_enabled,
-                })),
-            )
-                .into_response()
-        }
-        Err(_) => fallback(),
-    }
+async fn caduceus_vault_status_proxy_route() -> Response {
+    let gate = tokio::task::spawn_blocking(caduceus_gate_read)
+        .await
+        .unwrap_or(None);
+    let (present, mounted, auto_decrypt_enabled, unlock_required) = gate
+        .map(|gate| (
+            gate.vault.present,
+            gate.vault.mounted,
+            gate.vault.auto_decrypt_enabled,
+            gate.vault.unlock_required,
+        ))
+        .unwrap_or((false, false, false, false));
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "present": present,
+            "mounted": mounted,
+            "auto_decrypt_enabled": auto_decrypt_enabled,
+            "unlock_required": unlock_required,
+        })),
+    )
+        .into_response()
 }
 async fn caduceus_vault_unlock_proxy_route(
     headers: axum::http::HeaderMap,

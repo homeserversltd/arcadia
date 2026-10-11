@@ -153,6 +153,74 @@ const CADUCEUS_MAX_RESPONSE_HEADERS: usize = 4096;
 const CADUCEUS_MAX_COMMAND_RESPONSE_BODY: usize = 16 * 1024;
 const CADUCEUS_MAX_OBSERVATION_RESPONSE_BODY: usize = 32 * 1024 * 1024;
 
+#[derive(Clone, Copy)]
+struct GateVaultRead {
+    present: bool,
+    mounted: bool,
+    auto_decrypt_enabled: bool,
+    unlock_required: bool,
+}
+
+#[derive(Clone, Copy)]
+struct GatePinRead {
+    pin_required: bool,
+}
+
+#[derive(Clone, Copy)]
+struct GateRead {
+    vault: GateVaultRead,
+    pin: GatePinRead,
+}
+
+static CADUCEUS_GATE_CACHE: OnceLock<Mutex<Option<GateRead>>> = OnceLock::new();
+
+impl GateRead {
+    fn parse(value: &serde_json::Value) -> Option<Self> {
+        let boolean = |value: &serde_json::Value, key: &str| value.get(key)?.as_bool();
+        if boolean(value, "ok") != Some(true) {
+            return None;
+        }
+        let vault = value.get("vault")?;
+        let pin = value.get("pin")?;
+        let _vault_readable = boolean(vault, "readable")?;
+        let _pin_readable = boolean(pin, "readable")?;
+        Some(Self {
+            vault: GateVaultRead {
+                present: boolean(vault, "present")?,
+                mounted: boolean(vault, "mounted")?,
+                auto_decrypt_enabled: boolean(vault, "auto_decrypt_enabled")?,
+                unlock_required: boolean(vault, "unlock_required")?,
+            },
+            pin: GatePinRead {
+                pin_required: boolean(pin, "pin_required")?,
+            },
+        })
+    }
+}
+
+fn caduceus_gate_read() -> Option<GateRead> {
+    let gate = CaduceusAccessClient::default()
+        .get_json("/api/v1/access/gate")
+        .ok()
+        .as_ref()
+        .and_then(GateRead::parse);
+    if let Ok(mut cached) = CADUCEUS_GATE_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *cached = gate;
+    }
+    gate
+}
+
+fn cached_caduceus_gate_read() -> Option<GateRead> {
+    CADUCEUS_GATE_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|cached| *cached)
+}
+
 #[derive(Debug)]
 enum CaduceusTransportError {
     Connect(std::io::Error),
@@ -763,11 +831,27 @@ async fn caduceus_vault_unlock_route(
     headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    caduceus_action_response(caduceus_attended_json_call(
-        "/api/v1/storage/vault/unlock",
-        &headers,
-        body,
-    ))
+    if !same_origin_state_change(&headers) {
+        return attendance_refusal(StatusCode::FORBIDDEN, "caduceus-attendance-origin-refused");
+    }
+    let result = tokio::task::spawn_blocking(move || {
+        CaduceusAccessClient::default().post_json_with_target(
+            "/api/v1/storage/vault/unlock",
+            body,
+            CADUCEUS_ACCESS_TIMEOUT,
+            serde_json::Value::Null,
+            serde_json::Value::Null,
+        )
+    })
+    .await
+    .unwrap_or(Err("caduceus-attendance-worker-failed"));
+    match result {
+        Ok((status, value)) => {
+            let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY);
+            (status, Json(value)).into_response()
+        }
+        Err(signal) => caduceus_proxy_error("/api/v1/storage/vault/unlock", signal),
+    }
 }
 
 async fn caduceus_vault_auto_decrypt_route(
