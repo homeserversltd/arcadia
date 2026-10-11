@@ -296,7 +296,7 @@ pub struct ApiSystemPaneState {
 fn api_system_pane_state(status: &ConsoleStatus) -> ApiSystemPaneState {
     ApiSystemPaneState {
         vault_label: if status.vault.mounted { "Unlocked" } else { "Locked" },
-        vault_copy: if status.vault.auto_decrypt_enabled { "Automatically decrypts when the console starts." } else { "Unlock required after the console starts." },
+        vault_copy: if status.vault.auto_decrypt_enabled { "Automatically decrypts when the console starts." } else { "Asks for the vault password at boot." },
         pin_label: if status.gui_pin.pin_required { "PIN required" } else { "Open without PIN" },
         pin_copy: if status.gui_pin.pin_required { "PIN required before accessing HomeConsole." } else { "HomeConsole opens without a PIN." },
         // The living-state document has no browser lease; attendance is overlaid by the lease presenter.
@@ -1118,8 +1118,16 @@ async fn api_root_history_route() -> Json<serde_json::Value> {
     }))
 }
 
-async fn api_root_state_route(State(state): State<Arc<AppState>>) -> Json<ApiLivingStateDocument> {
-    Json(state.living_snapshot().document.clone())
+async fn api_root_state_route(
+    State(state): State<Arc<AppState>>,
+    resolved: Option<axum::Extension<ResolvedFaceStage>>,
+) -> Json<ApiLivingStateDocument> {
+    let mut document = state.living_snapshot().document.clone();
+    if let Some(axum::Extension(resolved)) = resolved {
+        project_gate_read(&mut document.status, resolved.gate);
+        document.system_pane = api_system_pane_state(&document.status);
+    }
+    Json(document)
 }
 
 async fn api_root_events_renew_route(

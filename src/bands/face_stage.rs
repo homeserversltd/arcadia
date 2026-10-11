@@ -15,6 +15,7 @@ impl FaceStage {
     }
 }
 
+#[derive(Clone, Copy)]
 struct ResolvedFaceStage {
     stage: FaceStage,
     gate: Option<GateRead>,
@@ -81,7 +82,7 @@ fn project_gate_read(status: &mut ConsoleStatus, gate: Option<GateRead>) {
 
 async fn face_stage_guard(
     State(_state): State<Arc<AppState>>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let path = request.uri().path();
@@ -100,6 +101,9 @@ async fn face_stage_guard(
         }
     };
     if admitted {
+        if resolved.stage == FaceStage::Console {
+            request.extensions_mut().insert(resolved);
+        }
         next.run(request).await
     } else {
         match resolved.stage {
