@@ -4374,6 +4374,7 @@ async function initializeConsoleStage() {
     if (!chartLibrary) console.warn('Arcadia chart library unavailable; Console will continue without charts.');
     if (consoleStageAbortController) return;
     beginConsoleStage();
+    ArcadiaProjector.applyOverlay({ systemPane: { adminText: caduceusAttendance ? 'Admin' : 'Guest' } });
     initializeArcadiaTheme();
     bindNavigation();
     bindHomeLoadSubscription();

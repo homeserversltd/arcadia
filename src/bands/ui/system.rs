@@ -86,7 +86,7 @@ fn system_access_section(status: &ConsoleStatus) -> Markup {
                             div {
                                 h3 { "1 · At boot" }
                                 strong data-bind="systemPane.vaultLabel" { (if mounted { "Unlocked" } else { "Locked" }) }
-                                p data-bind="systemPane.vaultCopy" { (if auto_decrypt { "Automatically decrypts when the console starts." } else { "Unlock required after the console starts." }) }
+                                p data-bind="systemPane.vaultCopy" { (if auto_decrypt { "Automatically decrypts when the console starts." } else { "Asks for the vault password at boot." }) }
                             }
                         }
                         label class="pin-toggle vault-toggle" {

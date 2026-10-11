@@ -3,11 +3,10 @@ async fn index(
     headers: axum::http::HeaderMap,
 ) -> Response {
     let resolved = resolve_face_stage(&headers).await;
-    let status = (resolved.stage == FaceStage::Console).then(|| {
-        let mut status = state.living_snapshot().status.clone();
-        project_gate_read(&mut status, resolved.gate);
-        status
-    });
+    let status = match console_stage_status(&state, resolved) {
+        Ok(status) => status,
+        Err(response) => return response,
+    };
     face_html_response(
         ui::face_document(resolved.stage.identity(), status.as_ref()),
         resolved.stage,
@@ -19,15 +18,40 @@ async fn face_stage_route(
     headers: axum::http::HeaderMap,
 ) -> Response {
     let resolved = resolve_face_stage(&headers).await;
-    let status = (resolved.stage == FaceStage::Console).then(|| {
-        let mut status = state.living_snapshot().status.clone();
-        project_gate_read(&mut status, resolved.gate);
-        status
-    });
+    let status = match console_stage_status(&state, resolved) {
+        Ok(status) => status,
+        Err(response) => return response,
+    };
     face_html_response(
         ui::face_fragment(resolved.stage.identity(), status.as_ref()),
         resolved.stage,
     )
+}
+
+// The Console stage reads the living snapshot; before the first deferred refresh it
+// answers the same retryable 503 as living_readiness instead of panicking.
+fn console_stage_status(
+    state: &AppState,
+    resolved: ResolvedFaceStage,
+) -> Result<Option<ConsoleStatus>, Response> {
+    if resolved.stage != FaceStage::Console {
+        return Ok(None);
+    }
+    let Some(snapshot) = state.living.try_snapshot() else {
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            [(header::RETRY_AFTER, HeaderValue::from_static("1"))],
+            Json(serde_json::json!({
+                "ok": false,
+                "error": "living state is initializing",
+                "retryable": true,
+            })),
+        )
+            .into_response());
+    };
+    let mut status = snapshot.status.clone();
+    project_gate_read(&mut status, resolved.gate);
+    Ok(Some(status))
 }
 
 fn face_html_response(markup: maud::Markup, stage: FaceStage) -> Response {
@@ -59,8 +83,15 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
     })
 }
 
-async fn status(State(state): State<Arc<AppState>>) -> Json<ConsoleStatus> {
-    Json(state.living_snapshot().status.clone())
+async fn status(
+    State(state): State<Arc<AppState>>,
+    resolved: Option<axum::Extension<ResolvedFaceStage>>,
+) -> Json<ConsoleStatus> {
+    let mut status = state.living_snapshot().status.clone();
+    if let Some(axum::Extension(resolved)) = resolved {
+        project_gate_read(&mut status, resolved.gate);
+    }
+    Json(status)
 }
 
 async fn storage_state_route(State(state): State<Arc<AppState>>) -> Json<StorageStatus> {
