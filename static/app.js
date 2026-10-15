@@ -24,17 +24,33 @@ const PopupManager = (() => {
 
   let pendingConfirmResolve = null;
   let openSurface = null;
+  let mountedNodeRestore = null;
 
-  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '', surfaceId, parentSurfaceId = '' }) {
+  function restoreMountedNode() {
+    const saved = mountedNodeRestore;
+    if (!saved) return;
+    mountedNodeRestore = null;
+    const { node, parent, nextSibling, hidden } = saved;
+    if (parent) parent.insertBefore(node, nextSibling?.parentNode === parent ? nextSibling : null);
+    node.hidden = hidden;
+  }
+
+  function showModal({ title: modalTitle, body, hideDefaultAction = false, variant = '', surfaceId, parentSurfaceId = '', restoreNode = false }) {
     const el = overlay();
     if (!el) return;
-    previousFocus = document.activeElement;
+    const replacingMountedNode = Boolean(mountedNodeRestore);
+    if (el.hidden || !replacingMountedNode) previousFocus = document.activeElement;
     title().textContent = modalTitle || 'Arcadia Console';
     setOverlayVariant(el, variant);
     const card = el.querySelector('.modal-card');
     if (card) setCardVariant(card, variant);
     document.body.classList.toggle('modal-fullscreen-open', variant === 'fullscreen');
     const target = content();
+    restoreMountedNode();
+    if (restoreNode && body instanceof Node && body.parentNode) {
+      mountedNodeRestore = { node: body, parent: body.parentNode, nextSibling: body.nextSibling, hidden: body.hidden };
+      body.hidden = false;
+    }
     target.textContent = '';
     if (body instanceof Node) target.appendChild(body);
     else target.textContent = body || '';
@@ -55,6 +71,7 @@ const PopupManager = (() => {
     const card = el.querySelector('.modal-card');
     if (card) setCardVariant(card, '');
     document.body.classList.remove('modal-fullscreen-open');
+    restoreMountedNode();
     content().textContent = '';
     actions()?.removeAttribute('hidden');
     if (openSurface) window.ArcadiaObservationAdapters?.presenter(openSurface.id, openSurface.class, 'closed', openSurface.parent);
@@ -489,6 +506,168 @@ const ArcadiaProjector = (() => {
     return Array.from(root.querySelectorAll(selector)).filter((node) => includeGenerated || !node.closest('[data-projector-generated="true"]'));
   }
 
+  const editStates = new WeakMap();
+  const editSequenceModulus = 0x80000000;
+
+  function isDraftControl(node) {
+    return node?.dataset?.bindEdit === 'draft'
+      && (node instanceof HTMLInputElement || node instanceof HTMLSelectElement || node instanceof HTMLTextAreaElement)
+      && (node.hasAttribute('data-bind-checked') || node.hasAttribute('data-bind-value'));
+  }
+
+  function normalizeEditValue(node, value) {
+    if (node.hasAttribute('data-bind-checked')) return Boolean(value);
+    const text = value == null ? '' : asText(value);
+    if (node instanceof HTMLInputElement && node.type === 'number' && text !== '') {
+      const number = Number(text);
+      if (Number.isFinite(number)) return number;
+    }
+    return text;
+  }
+
+  function readEditValue(node) {
+    return node.hasAttribute('data-bind-checked')
+      ? Boolean(node.checked)
+      : normalizeEditValue(node, node.value);
+  }
+
+  function writeEditValue(node, value) {
+    if (node.hasAttribute('data-bind-checked')) node.checked = Boolean(value);
+    else node.value = value == null ? '' : asText(value);
+  }
+
+  function editBindingValue(node, state = projectedDocument()) {
+    const path = node.hasAttribute('data-bind-checked') ? node.dataset.bindChecked : node.dataset.bindValue;
+    return resolve(path, state);
+  }
+
+  function nextEditSequence(sequence) {
+    return (sequence + 1) % editSequenceModulus;
+  }
+
+  function editSequenceIsNewer(candidate, previous) {
+    if (previous == null) return true;
+    const distance = (candidate - previous + editSequenceModulus) % editSequenceModulus;
+    return distance > 0 && distance < editSequenceModulus / 2;
+  }
+
+  function editStateFor(node, projectedValue, priorValue) {
+    let state = editStates.get(node);
+    if (state) return state;
+    const initial = projectedValue === undefined
+      ? (node.hasAttribute('data-bind-checked') ? node.defaultChecked : node.defaultValue)
+      : projectedValue;
+    const current = readEditValue(node);
+    const previous = priorValue === undefined
+      ? current
+      : normalizeEditValue(node, priorValue);
+    state = {
+      baseline: normalizeEditValue(node, initial === undefined ? current : initial),
+      dirty: false,
+      revision: 0,
+      submission: 0,
+      acknowledgedSubmission: null,
+      lastValue: previous,
+      hold: null,
+    };
+    editStates.set(node, state);
+    return state;
+  }
+
+  function projectDraftControl(node, value) {
+    if (!isDraftControl(node)) return false;
+    const incoming = normalizeEditValue(node, value);
+    const state = editStateFor(node, incoming);
+    const current = readEditValue(node);
+    if (state.hold && incoming !== state.hold.value) {
+      state.baseline = state.hold.value;
+      state.dirty = current !== state.baseline;
+      return true;
+    }
+    if (state.hold) state.hold = null;
+    state.baseline = incoming;
+    if (state.dirty && current !== incoming) return true;
+    writeEditValue(node, incoming);
+    state.dirty = false;
+    state.lastValue = incoming;
+    return true;
+  }
+
+  function draftNodes(root) {
+    const nodes = [];
+    if (isDraftControl(root)) nodes.push(root);
+    root?.querySelectorAll?.('[data-bind-edit="draft"]').forEach((node) => {
+      if (isDraftControl(node)) nodes.push(node);
+    });
+    return nodes;
+  }
+
+  function captureDrafts(root, submittedValues) {
+    if (!submittedValues || typeof submittedValues !== 'object') return [];
+    const captured = [];
+    draftNodes(root).forEach((node) => {
+      const name = node.name;
+      if (!name || !Object.prototype.hasOwnProperty.call(submittedValues, name)) return;
+      const state = editStateFor(node, editBindingValue(node));
+      state.submission = nextEditSequence(state.submission);
+      captured.push({
+        node,
+        revision: state.revision,
+        submission: state.submission,
+        current: readEditValue(node),
+        value: normalizeEditValue(node, submittedValues[name]),
+      });
+    });
+    return captured;
+  }
+
+  function acknowledgeDrafts(captured) {
+    (captured || []).forEach((entry) => {
+      const state = editStates.get(entry.node);
+      if (!state || !editSequenceIsNewer(entry.submission, state.acknowledgedSubmission)) return;
+      state.acknowledgedSubmission = entry.submission;
+      state.baseline = entry.value;
+      state.hold = { value: entry.value };
+      const current = readEditValue(entry.node);
+      const unchanged = state.revision === entry.revision && current === entry.current;
+      if (unchanged) {
+        writeEditValue(entry.node, entry.value);
+        state.dirty = false;
+        state.lastValue = entry.value;
+      } else {
+        state.dirty = current !== entry.value;
+        state.lastValue = current;
+      }
+    });
+  }
+
+  function resetEdit(node, value) {
+    if (!isDraftControl(node)) return false;
+    const state = editStateFor(node, editBindingValue(node));
+    const resetValue = normalizeEditValue(node, value);
+    state.revision = nextEditSequence(state.revision);
+    state.baseline = resetValue;
+    state.dirty = false;
+    state.hold = null;
+    state.lastValue = resetValue;
+    writeEditValue(node, resetValue);
+    return true;
+  }
+
+  function recordEdit(event) {
+    const node = event.target;
+    if (!isDraftControl(node)) return;
+    const priorValue = node.hasAttribute('data-bind-checked') ? node.defaultChecked : node.defaultValue;
+    const state = editStateFor(node, editBindingValue(node), priorValue);
+    const current = readEditValue(node);
+    if (current !== state.lastValue) state.revision = nextEditSequence(state.revision);
+    state.lastValue = current;
+    state.dirty = current !== state.baseline;
+  }
+
+  document.addEventListener('input', recordEdit);
+  document.addEventListener('change', recordEdit);
+
   function projectScalarBindings(root, state, includeGenerated = false, shouldProject = () => true) {
     boundNodes(root, '[data-bind]', includeGenerated).forEach((node) => {
       if (shouldProject(node, node.dataset.bind)) node.textContent = formatBinding(resolve(node.dataset.bind, state), node.dataset.bindFormat || '');
@@ -507,13 +686,14 @@ const ArcadiaProjector = (() => {
     });
     boundNodes(root, '[data-bind-checked]', includeGenerated).forEach((node) => {
       if (!shouldProject(node, node.dataset.bindChecked)) return;
-      node.checked = Boolean(resolve(node.dataset.bindChecked, state));
+      const checked = Boolean(resolve(node.dataset.bindChecked, state));
+      if (!projectDraftControl(node, checked)) node.checked = checked;
     });
     boundNodes(root, '[data-bind-value]', includeGenerated).forEach((node) => {
       if (!shouldProject(node, node.dataset.bindValue)) return;
       const raw = resolve(node.dataset.bindValue, state);
       const value = asText(raw);
-      node.value = value;
+      if (!projectDraftControl(node, value)) node.value = value;
       if (node.dataset.bindAriaLabel && shouldProject(node, node.dataset.bindAriaLabel)) node.setAttribute('aria-label', asText(resolve(node.dataset.bindAriaLabel, state)));
     });
     boundNodes(root, '[data-bind-zero-dash]', includeGenerated).forEach((node) => {
@@ -676,7 +856,7 @@ const ArcadiaProjector = (() => {
   // data-bind-class projects normalized values into data-state="<value>"; CSS may target that stable state attribute.
   // data-bind-style-var="--var:path" projects a document value into a CSS custom property without pane knowledge.
   // data-bind-copy-value and data-bind-enabled keep presenter-owned controls stable while values change.
-  return { apply, applyOverlay, registerWidget, resolve, project, currentDocument: () => projectedDocument() };
+  return { apply, applyOverlay, registerWidget, resolve, project, currentDocument: () => projectedDocument(), captureDrafts, acknowledgeDrafts, resetEdit };
 })();
 window.ArcadiaProjector = ArcadiaProjector;
 
@@ -825,6 +1005,7 @@ function bindHomeLoadSubscription() {
   };
   window.arcadiaHomeLoadSubscriptionState = state;
   const homeIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active')) && document.visibilityState === 'visible';
+  const rootFaceIsActive = () => Boolean(document.querySelector('[data-view-panel="home"].is-active, [data-view-panel="local-ai"].is-active')) && document.visibilityState === 'visible';
   const clearRenewal = () => { if (state.renewalTimer) clearTimeout(state.renewalTimer); state.renewalTimer = null; };
   const clearRetry = () => { if (state.retryTimer) clearTimeout(state.retryTimer); state.retryTimer = null; };
   const clearWatchdog = () => { if (state.watchdogTimer) clearTimeout(state.watchdogTimer); state.watchdogTimer = null; };
@@ -898,7 +1079,7 @@ function bindHomeLoadSubscription() {
     finally { clearTimeout(timer); }
   };
   const fetchSnapshotOnce = async () => {
-    if (!homeIsActive() || state.inFlight) return;
+    if (!rootFaceIsActive() || state.inFlight) return;
     state.inFlight = true;
     try {
       const response = await fetchJsonBounded('/api/root', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
@@ -913,13 +1094,14 @@ function bindHomeLoadSubscription() {
     finally { state.inFlight = false; }
   };
   const fetchLivingState = async () => {
+    if (!rootFaceIsActive()) return;
     try {
       const response = await fetchJsonBounded('/api/root/state', { headers: { Accept: 'application/json', ...caduceusAttendanceHeaders() }, cache: 'no-store' });
-      if (response.ok) ArcadiaProjector.apply(await response.json());
+      if (response.ok && rootFaceIsActive()) ArcadiaProjector.apply(await response.json());
     } catch (_) {}
   };
   const pullSnapshot = async () => {
-    if (!homeIsActive()) return;
+    if (!rootFaceIsActive()) return;
     if (state.inFlight) { state.followUp = true; return; }
     state.inFlight = true;
     try {
@@ -935,19 +1117,19 @@ function bindHomeLoadSubscription() {
     } catch (_) { ArcadiaObservation.currentness('status-refresh', 'stale'); }
     finally {
       state.inFlight = false;
-      if (state.followUp && homeIsActive()) { state.followUp = false; pullSnapshot(); }
+      if (state.followUp && rootFaceIsActive()) { state.followUp = false; pullSnapshot(); }
     }
   };
   const scheduleRetry = () => {
     clearRetry();
-    if (!homeIsActive()) return;
+    if (!rootFaceIsActive()) return;
     state.retryTimer = setTimeout(() => { state.retryTimer = null; startEvents(); }, retryMs);
   };
   const scheduleWatchdog = () => {
     clearWatchdog();
     state.watchdogTimer = setTimeout(() => {
       state.watchdogTimer = null;
-      if (!homeIsActive() || !state.source) return;
+      if (!rootFaceIsActive() || !state.source) return;
       setStale(true);
       ArcadiaObservation.currentness('home-root-sse', 'stale');
       clearEvents();
@@ -958,11 +1140,11 @@ function bindHomeLoadSubscription() {
   };
   const scheduleRenewal = () => {
     clearRenewal();
-    if (!homeIsActive() || !state.lease?.leaseId) return;
+    if (!rootFaceIsActive() || !state.lease?.leaseId) return;
     state.renewalTimer = setTimeout(renewLease, Math.max(1000, Number(state.lease.renewAfterSeconds || 10) * 1000));
   };
   const renewLease = async () => {
-    if (!homeIsActive() || !state.lease?.leaseId) return clearRenewal();
+    if (!rootFaceIsActive() || !state.lease?.leaseId) return clearRenewal();
     try {
       const response = await fetchJsonBounded('/api/root/events/renew', {
         method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -973,14 +1155,14 @@ function bindHomeLoadSubscription() {
       scheduleRenewal();
     } catch (_) {
       clearEvents();
-      if (homeIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
+      if (rootFaceIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
     }
   };
   const startEvents = () => {
     clearRetry();
     state.fallback = false;
-    if (!homeIsActive()) return clearEvents();
-    loadHistoryOnce();
+    if (!rootFaceIsActive()) return clearEvents();
+    if (homeIsActive()) loadHistoryOnce();
     if (!('EventSource' in window)) { state.fallback = true; fetchSnapshotOnce(); return scheduleRetry(); }
     if (state.source) return;
     try {
@@ -988,12 +1170,14 @@ function bindHomeLoadSubscription() {
       ArcadiaObservation.stream('home-root-sse', 'opened');
       state.source = source;
       const onPoke = (eventName) => {
-        if (!homeIsActive()) return clearEvents();
+        if (!rootFaceIsActive()) return clearEvents();
         state.lastFrameAt = Date.now();
         setStale(false);
         scheduleWatchdog();
-        if (eventName === 'stats.tick') pullSnapshot();
-        else fetchLivingState();
+        if (eventName === 'stats.tick') {
+          pullSnapshot();
+          if (!homeIsActive()) fetchLivingState();
+        } else fetchLivingState();
       };
       source.addEventListener('stats.tick', () => onPoke('stats.tick'));
       source.addEventListener('state.changed', () => onPoke('state.changed'));
@@ -1005,27 +1189,28 @@ function bindHomeLoadSubscription() {
       });
       source.addEventListener('expired', () => {
         clearEvents();
-        if (homeIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
+        if (rootFaceIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
       });
       source.onerror = () => {
         ArcadiaObservation.runtime('degraded', 'home-root-sse');
         ArcadiaObservation.currentness('home-root-sse', 'stale');
         clearEvents();
-        if (homeIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
+        if (rootFaceIsActive()) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
       };
       scheduleWatchdog();
     } catch (_) { state.fallback = true; fetchSnapshotOnce(); scheduleRetry(); }
   };
   const stop = () => { clearEvents(); state.followUp = false; };
   const start = () => {
-    if (!homeIsActive()) return stop();
+    if (!rootFaceIsActive()) return stop();
     setStale(false);
     if (state.cachedRoot) appendSnapshot(state.cachedRoot);
+    fetchLivingState();
     startEvents();
   };
   window.arcadiaHomeLoadSubscription = { start, stop, homeIsActive, startEvents, fetchSnapshotOnce, pullSnapshot, renewLease };
-  document.addEventListener('arcadia:view-change', () => { if (homeIsActive()) start(); else stop(); });
-  document.addEventListener('visibilitychange', () => { if (homeIsActive()) start(); else stop(); });
+  document.addEventListener('arcadia:view-change', () => { if (rootFaceIsActive()) start(); else stop(); });
+  document.addEventListener('visibilitychange', () => { if (rootFaceIsActive()) start(); else stop(); });
   start();
 }
 
@@ -3101,100 +3286,167 @@ async function requestAIState() {
 
 async function postAI(endpoint, body = {}, label = 'Local AI action') {
   const data = await postJson(endpoint, body);
+  const message = data.message || (data.ok ? label : 'Local AI action unavailable.');
   if (data.ok) clearMessage('ai-message');
-  else setMessage('ai-message', data.message || label, 'error');
-  PopupManager.showToast(data.message || label, data.ok ? 'success' : 'error');
+  else setMessage('ai-message', message, 'error');
+  PopupManager.showToast(message, data.ok ? 'success' : 'error');
   return data;
 }
 
+async function postLocalAIWithDrafts(form, endpoint, body, label, submittedValues = body) {
+  const captured = ArcadiaProjector.captureDrafts(form, submittedValues);
+  const data = await postAI(endpoint, body, label);
+  if (data?.ok === true) ArcadiaProjector.acknowledgeDrafts(captured);
+  return data;
+}
+
+let localAIDisclosureOrigin = null;
+let localAIControlsBound = false;
+
+function resetLocalAIDisclosure() {
+  document.querySelectorAll('[data-ai-modal][aria-expanded="true"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+  localAIDisclosureOrigin = null;
+}
+
+function openLocalAIDisclosure(name, trigger) {
+  const owner = document.getElementById('local-ai-modal-owner');
+  const section = Array.from(owner?.querySelectorAll('[data-ai-modal-section]') || []).find((node) => node.dataset.aiModalSection === name);
+  if (!section) return;
+  const returnFocus = localAIDisclosureOrigin || trigger;
+  if (localAIDisclosureOrigin) PopupManager.closeModal();
+  document.querySelectorAll('[data-ai-modal]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+  localAIDisclosureOrigin = returnFocus;
+  returnFocus?.setAttribute('aria-expanded', 'true');
+  const nativeTitle = section.querySelector('[data-modal-title]')?.textContent?.trim() || 'Local AI';
+  PopupManager.showModal({
+    title: nativeTitle,
+    body: section,
+    hideDefaultAction: true,
+    variant: 'local-ai',
+    surfaceId: 'modal:local-ai',
+    parentSurfaceId: 'pane:local-ai',
+    restoreNode: true,
+  });
+}
+
 function bindLocalAIControls() {
-  document.querySelectorAll('[data-ai-action]').forEach((button) => {
-    button.addEventListener('click', async (event) => {
+  if (localAIControlsBound) return;
+  localAIControlsBound = true;
+  document.addEventListener('arcadia:modal-close', resetLocalAIDisclosure);
+  document.addEventListener('arcadia:modal-open', (event) => {
+    if (event.detail?.variant !== 'local-ai') resetLocalAIDisclosure();
+  });
+  document.addEventListener('click', async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const disclosure = target.closest('[data-ai-modal]');
+    if (disclosure) {
       event.preventDefault();
-      const action = button.dataset.aiAction;
-      const modelId = button.dataset.modelId || null;
-      const filename = button.dataset.filename || null;
-      const original = button.textContent;
-      button.disabled = true;
-      button.textContent = action.includes('download') ? 'Downloading…' : 'Working…';
+      openLocalAIDisclosure(disclosure.dataset.aiModal, disclosure);
+      return;
+    }
+    const hfSelect = target.closest('[data-ai-hf-select]');
+    if (hfSelect) {
+      const filename = hfSelect.dataset.filename;
+      const input = hfForm()?.querySelector('input[name="filename"]');
+      if (filename && input) input.value = filename;
+      return;
+    }
+    const logsButton = target.closest('[data-ai-logs]');
+    if (logsButton) {
       try {
-        if (action === 'runtime-check-update') await postAI('/api/ai/runtime/check-update', {}, 'Runtime check complete');
-        else if (action === 'runtime-update') await postAI('/api/ai/runtime/update', {}, 'Runtime update started');
-        else if (action === 'runtime-restart') await postAI('/api/ai/runtime/restart', {}, 'Runtime restart complete');
-        else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'recommended' }, 'Recommended model install');
-        else if (action === 'model-select') await postAI('/api/ai/model/select', { modelId }, 'Model selected');
-        else if (action === 'model-load') await postAI('/api/ai/model/load', { modelId }, 'Model load requested');
-        else if (action === 'model-unload') await postAI('/api/ai/model/unload', {}, 'Model unloaded');
-        else if (action === 'model-remove') {
-          if (!window.confirm('Remove this model from console storage?\nGames and artwork are not affected.')) return;
-          await postAI('/api/ai/models/remove', { modelId, filename, confirm: 'REMOVE_MODEL' }, 'Model removed');
-        }
-        else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'API enabled');
-        else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'API disabled');
-        else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'API tested');
-        else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
-        else if (action === 'lan-enable') await applyLocalAIPort(true);
-        else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
-        else if (action === 'hf-list-files') await fetchHFFiles();
-        else if (action === 'hf-download') await downloadHFModel();
-      } catch (_) {
-        setMessage('ai-message', 'Local AI request failed.', 'error');
-        PopupManager.showToast('Local AI request failed', 'error');
-      } finally {
-        button.disabled = false;
-        button.textContent = original;
+        const state = await requestAIState();
+        const activity = state.activity || {};
+        PopupManager.showModal({ title: 'Local AI Logs', body: [activity.runtimeUpdateLog, activity.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
+      } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
+      return;
+    }
+    const revert = target.closest('[data-ai-port-revert]');
+    if (revert) {
+      const form = document.getElementById('ai-lan-form');
+      const input = form?.querySelector('input[name="port"]');
+      const activePort = form?.getAttribute('data-active-port');
+      if (input && activePort != null) ArcadiaProjector.resetEdit(input, activePort);
+      return;
+    }
+    const button = target.closest('[data-ai-action]');
+    if (!button) return;
+    event.preventDefault();
+    const action = button.dataset.aiAction;
+    const modelId = button.dataset.modelId || null;
+    const filename = button.dataset.filename || null;
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = action.includes('download') ? 'Downloading…' : 'Working…';
+    try {
+      if (action === 'runtime-check-update') await postAI('/api/ai/runtime/check-update', {}, 'Runtime check complete');
+      else if (action === 'runtime-update') await postAI('/api/ai/runtime/update', {}, 'Runtime update started');
+      else if (action === 'runtime-restart') await postAI('/api/ai/runtime/restart', {}, 'Runtime restart complete');
+      else if (action === 'install-recommended') await postAI('/api/ai/models/install-recommended', { id: modelId || 'recommended' }, 'Recommended model install');
+      else if (action === 'model-select') await postAI('/api/ai/model/select', { modelId }, 'Model selected');
+      else if (action === 'model-load') await postAI('/api/ai/model/load', { modelId }, 'Model load requested');
+      else if (action === 'model-unload') await postAI('/api/ai/model/unload', {}, 'Model unloaded');
+      else if (action === 'model-remove') {
+        if (!window.confirm('Remove this model from console storage?\nGames and artwork are not affected.')) return;
+        await postAI('/api/ai/models/remove', { modelId, filename, confirm: 'REMOVE_MODEL' }, 'Model removed');
       }
-    });
+      else if (action === 'inference-enable') await postAI('/api/ai/inference/set-enabled', { enabled: true }, 'API enabled');
+      else if (action === 'inference-disable') await postAI('/api/ai/inference/set-enabled', { enabled: false }, 'API disabled');
+      else if (action === 'inference-test') await postAI('/api/ai/inference/test', {}, 'API tested');
+      else if (action === 'models-rescan') await postAI('/api/ai/models/rescan', {}, 'Models rescanned');
+      else if (action === 'lan-enable') await applyLocalAIPort(true);
+      else if (action === 'lan-disable') await postAI('/api/ai/inference/set-lan-access', { enabled: false }, 'LAN disabled');
+      else if (action === 'hf-list-files') await fetchHFFiles();
+      else if (action === 'hf-download') await downloadHFModel();
+    } catch (_) {
+      setMessage('ai-message', 'Local AI request failed.', 'error');
+      PopupManager.showToast('Local AI request failed', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
   });
-  const importForm = document.getElementById('ai-import-form');
-  if (importForm) importForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const input = importForm.querySelector('input[type="file"]');
-    const file = input?.files?.[0];
-    if (!file) return PopupManager.showToast('Choose a .gguf model file first', 'error');
-    if (!file.name.toLowerCase().endsWith('.gguf')) return PopupManager.showToast('Only .gguf model files are supported', 'error');
-    const progress = document.getElementById('ai-import-progress');
-    const data = new FormData();
-    data.append('model', file, file.name);
-    if (progress) { progress.hidden = false; progress.value = 10; }
-    try {
-      const res = await fetch('/api/ai/models/import', { method: 'POST', body: data, headers: { accept: 'application/json' } });
-      const payload = await res.json().catch(() => ({}));
-      if (progress) progress.value = 100;
-      PopupManager.showToast(payload.message || (res.ok ? 'Model imported' : 'Model import failed'), res.ok && payload.ok !== false ? 'success' : 'error');
-      if (!res.ok || payload.ok === false) setMessage('ai-message', payload.message || 'Model import failed.', 'error'); else clearMessage('ai-message');
-    } catch (_) { PopupManager.showToast('Model import request failed', 'error'); }
+  document.addEventListener('submit', async (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.id === 'ai-import-form') {
+      event.preventDefault();
+      const input = form.querySelector('input[type="file"]');
+      const file = input?.files?.[0];
+      if (!file) return PopupManager.showToast('Choose a .gguf model file first', 'error');
+      if (!file.name.toLowerCase().endsWith('.gguf')) return PopupManager.showToast('Only .gguf model files are supported', 'error');
+      const progress = document.getElementById('ai-import-progress');
+      const data = new FormData();
+      data.append('model', file, file.name);
+      if (progress) { progress.hidden = false; progress.value = 10; }
+      try {
+        const res = await fetch('/api/ai/models/import', { method: 'POST', body: data, headers: { accept: 'application/json' } });
+        const payload = await res.json().catch(() => ({}));
+        if (progress) progress.value = 100;
+        PopupManager.showToast(payload.message || (res.ok ? 'Model imported' : 'Model import failed'), res.ok && payload.ok !== false ? 'success' : 'error');
+        if (!res.ok || payload.ok === false) setMessage('ai-message', payload.message || 'Model import failed.', 'error'); else clearMessage('ai-message');
+      } catch (_) { PopupManager.showToast('Model import request failed', 'error'); }
+      return;
+    }
+    if (form.id === 'ai-lan-form') {
+      event.preventDefault();
+      await saveLocalAIPort();
+      return;
+    }
+    if (form.id === 'ai-settings-form') {
+      event.preventDefault();
+      const val = (name) => form.querySelector(`[name="${name}"]`);
+      const body = {
+        contextSize: Number(val('contextSize')?.value || 4096),
+        gpuLayers: Number(val('gpuLayers')?.value || -1),
+        threads: Number(val('threads')?.value || 0),
+        batch: Number(val('batch')?.value || 512),
+        startApiOnBoot: Boolean(val('startApiOnBoot')?.checked),
+        autoLoadLastModel: Boolean(val('autoLoadLastModel')?.checked),
+      };
+      await postLocalAIWithDrafts(form, '/api/ai/settings', body, 'Local AI settings saved');
+    }
   });
-  const lanForm = document.getElementById('ai-lan-form');
-  if (lanForm) lanForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await saveLocalAIPort();
-  });
-  lanForm?.querySelector('[data-ai-port-revert]')?.addEventListener('click', () => {
-    const active = lanForm.dataset.activePort || '7777';
-    const input = lanForm.querySelector('input[name="port"]');
-    if (input) input.value = active;
-  });
-  const settingsForm = document.getElementById('ai-settings-form');
-  if (settingsForm) settingsForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const val = (name) => settingsForm.querySelector(`[name="${name}"]`);
-    await postAI('/api/ai/settings', {
-      contextSize: Number(val('contextSize')?.value || 4096),
-      gpuLayers: Number(val('gpuLayers')?.value || -1),
-      threads: Number(val('threads')?.value || 0),
-      batch: Number(val('batch')?.value || 512),
-      startApiOnBoot: Boolean(val('startApiOnBoot')?.checked),
-      autoLoadLastModel: Boolean(val('autoLoadLastModel')?.checked),
-    }, 'Local AI settings saved');
-  });
-  document.querySelectorAll('[data-ai-logs]').forEach((button) => button.addEventListener('click', async () => {
-    try {
-      const state = await requestAIState();
-      const a = state.activity || {};
-      PopupManager.showModal({ title: 'Local AI Logs', body: [a.runtimeUpdateLog, a.inferenceServerLog].filter(Boolean).join('\n\n') || 'No Local AI logs reported.', surfaceId: 'modal:local-ai-logs' });
-    } catch (_) { PopupManager.showToast('Local AI logs unavailable', 'error'); }
-  }));
 }
 
 function localAIPortPayload() {
@@ -3208,6 +3460,7 @@ function localAIPortPayload() {
 }
 
 async function saveLocalAIPort() {
+  const form = document.getElementById('ai-lan-form');
   let payload;
   try { payload = localAIPortPayload(); }
   catch (error) {
@@ -3215,10 +3468,11 @@ async function saveLocalAIPort() {
     PopupManager.showToast(error.message, 'error');
     return null;
   }
-  return await postAI('/api/ai/settings', { lanPort: payload.port }, 'Local AI port saved');
+  return await postLocalAIWithDrafts(form, '/api/ai/settings', { lanPort: payload.port }, 'Local AI port saved', { port: payload.port });
 }
 
 async function applyLocalAIPort(enableLan) {
+  const form = document.getElementById('ai-lan-form');
   let payload;
   try { payload = localAIPortPayload(); }
   catch (error) {
@@ -3226,7 +3480,7 @@ async function applyLocalAIPort(enableLan) {
     PopupManager.showToast(error.message, 'error');
     return null;
   }
-  return await postAI('/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port }, 'LAN access applied');
+  return await postLocalAIWithDrafts(form, '/api/ai/inference/set-lan-access', { enabled: Boolean(enableLan), port: payload.port }, 'LAN access applied', { port: payload.port });
 }
 
 function hfForm() { return document.querySelector('[data-hf-installer]'); }
@@ -3241,24 +3495,15 @@ function hfRequest() {
 async function fetchHFFiles() {
   const req = hfRequest();
   const data = await postJson('/api/ai/models/huggingface/list-files', { repoId: req.repoId, revision: req.revision });
-  const root = document.getElementById('hf-file-results');
-  if (root) {
-    root.textContent = '';
-    (data.files || []).forEach((file) => {
-      const row = document.createElement('div');
-      row.className = 'network-row';
-      row.innerHTML = `<span><strong>${escapeHtml(file.filename)}</strong><em>${file.sizeBytes ? formatBytes(file.sizeBytes) : 'Size unknown'}</em></span>`;
-      const select = document.createElement('button');
-      select.className = 'btn btn--secondary';
-      select.type = 'button';
-      select.textContent = 'Select';
-      select.addEventListener('click', () => { const f = hfForm()?.querySelector('input[name="filename"]'); if (f) f.value = file.filename; });
-      row.appendChild(select);
-      root.appendChild(row);
-    });
-    if (!data.files?.length) root.textContent = data.message || 'No compatible .gguf files found.';
-  }
-  PopupManager.showToast(data.message || 'Hugging Face files fetched', data.ok ? 'success' : 'error');
+  const files = Array.isArray(data.files) ? data.files.map((file) => ({
+    filename: file.filename,
+    sizeLabel: file.sizeBytes == null || !Number.isFinite(Number(file.sizeBytes)) ? 'Size unknown' : formatBytes(Number(file.sizeBytes)),
+  })) : [];
+  ArcadiaProjector.applyOverlay({ localAiFiles: files });
+  const installer = document.querySelector('[data-hf-installer]');
+  if (installer) ArcadiaProjector.project(installer, ArcadiaProjector.currentDocument());
+  const message = data.message || (data.ok ? 'Hugging Face files fetched' : 'Hugging Face files unavailable.');
+  PopupManager.showToast(message, data.ok ? 'success' : 'error');
 }
 async function downloadHFModel() {
   const req = hfRequest();

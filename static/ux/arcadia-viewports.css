@@ -14,8 +14,8 @@
     --ux-launcher-icon-max-size: 34px;
   }
   .app-shell { padding: 10px; }
-  .top-header { align-items: flex-start; flex-direction: column; }
-  .header-indicators { margin-left: 0; justify-content: flex-start; }
+  .top-header { align-items: stretch; flex-direction: column; }
+  .header-indicators { width: 100%; max-width: 100%; margin-left: 0; justify-content: flex-start; }
   .workspace { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
   .sidebar-launcher { padding: 8px; }
   .launcher-label { font-size: 11px; }
@@ -25,15 +25,23 @@
   .settings-action-row__action { grid-column: 2; justify-items: start; }
   .load-home-card { grid-column: auto; }
   .system-redo, .system-power-panel, .system-power-actions, .sync-rom-panel { grid-template-columns: 1fr; }
+  .view[data-view-panel="system"].is-active { height: auto; max-height: none; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+  .view[data-view-panel="system"].is-active .system-redo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; min-height: 0; align-items: stretch; }
+  .view[data-view-panel="system"].is-active .system-access-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; overflow: visible; }
+  .view[data-view-panel="system"].is-active .system-ca-panel { overflow: visible; }
   .system-button-tile { aspect-ratio: auto; max-height: none; grid-auto-rows: minmax(44px, auto); }
   .system-ca-state, .system-ca-form { grid-template-columns: 1fr; }
   .storage-hero { grid-template-columns: 1fr; }
   .section-heading { align-items: start; flex-direction: column; }
-  .local-ai-hero { grid-template-columns: auto minmax(0, 1fr); }
-  .local-ai-hero-endpoint { grid-column: 1 / -1; }
-  .local-ai-state-list, .local-ai-access-grid { grid-template-columns: 1fr; }
   .sync-orb-stage { grid-template-columns: auto minmax(0, 1fr); }
   .sync-orb-actions { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) and (min-width: 721px) {
+  .view[data-view-panel="local-ai"].is-active { overflow-x: hidden; overflow-y: auto; }
+  .view[data-view-panel="local-ai"] .local-ai-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .view[data-view-panel="local-ai"] .local-ai-card--library { grid-column: 1 / -1; }
+  .view[data-view-panel="local-ai"] .local-ai-model-row,
+  .modal-card--local-ai .local-ai-model-row { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   :root {
@@ -56,10 +64,43 @@
   .view { padding: 20px; }
   .status-card-grid, .model-grid, .path-grid, .provider-status-grid, .home-operational-grid, .storage-category-grid, .storage-hero-stats, .system-grid, .system-field-grid, .system-endpoints, .system-port-list, .storage-two-column, .locations-grid, .cleanup-grid, .folder-detail-grid, .storage-drill-grid, .system-access-stack, .pin-form-row, .sync-rom-panel, .sync-running-panel, .harmonia-default-grid, .harmonia-update-tiles { grid-template-columns: 1fr; }
   .system-card--services, .system-card--logs, .system-card--networking { grid-column: auto; }
+  .view[data-view-panel="system"].is-active { display: block; height: auto; min-height: 0; overflow: visible; }
+  .view[data-view-panel="system"].is-active .system-redo { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; height: auto; }
+  .view[data-view-panel="system"].is-active .system-access-stack { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
   .system-service-row { grid-template-columns: 1fr; align-items: start; }
 .system-row-actions { justify-content: flex-start; }
   .storage-model-row, .storage-table-row > summary, .storage-table-row.storage-table-head, .location-row { grid-template-columns: 1fr; align-items: start; }
   .view[data-view-panel="home"].is-active, .view[data-view-panel="storage"].is-active, .view[data-view-panel="local-ai"].is-active, .view[data-view-panel="network"].is-active, .view[data-view-panel="system"].is-active { display: block; }
+  .view[data-view-panel="local-ai"].is-active { height: auto; overflow: visible; }
+  .view[data-view-panel="local-ai"] .local-ai-page { min-height: 0; }
+  .view[data-view-panel="local-ai"] .local-ai-overview-grid { grid-template-columns: minmax(0, 1fr); }
+  .view[data-view-panel="local-ai"] .local-ai-card--library { grid-column: auto; }
+  .view[data-view-panel="local-ai"] .local-ai-model-row,
+  .view[data-view-panel="local-ai"] .local-ai-library-row,
+  .view[data-view-panel="local-ai"] .local-ai-engine-row,
+  .view[data-view-panel="local-ai"] .local-ai-lane-row { grid-template-columns: minmax(0, 1fr); }
+  .modal-card--local-ai .local-ai-settings-grid,
+  .modal-card--local-ai .local-ai-facts,
+  .modal-card--local-ai .local-ai-library-row,
+  .modal-card--local-ai .local-ai-engine-row,
+  .modal-card--local-ai .local-ai-model-row,
+  .modal-card--local-ai .local-ai-lane-row,
+  .modal-card--local-ai .local-ai-hf-row {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    max-inline-size: 100%;
+  }
+  .modal-card--local-ai .local-ai-settings-grid > *,
+  .modal-card--local-ai .local-ai-facts > *,
+  .modal-card--local-ai .local-ai-library-row > *,
+  .modal-card--local-ai .local-ai-engine-row > *,
+  .modal-card--local-ai .local-ai-model-row > *,
+  .modal-card--local-ai .local-ai-lane-row > *,
+  .modal-card--local-ai .local-ai-hf-row > * {
+    min-width: 0;
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+  }
   .view[data-view-panel="home"] .home-operational-grid, .view[data-view-panel="storage"] .storage-category-list, .view[data-view-panel="network"] .network-workbench { grid-template-columns: 1fr; }
   .view[data-view-panel="home"] .storage-mini-rows, .view[data-view-panel="home"] .compact-select-label, .view[data-view-panel="home"] .state-row:nth-child(n+3), .view[data-view-panel="home"] .reachability:nth-child(n+3), .view[data-view-panel="home"] .inline-actions--compact .btn:nth-child(n+3), .view[data-view-panel="home"] .sync-folder-list, .view[data-view-panel="sync"] .sync-folder-list, .view[data-view-panel="sync"] .sync-result-card, .view[data-view-panel="updates"] .harmonia-module-grid, .view[data-view-panel="updates"] .harmonia-receipts, .view[data-view-panel="system"] .system-card--ssh .system-field:nth-child(n+4), .view[data-view-panel="system"] .system-card--trust .system-field:nth-child(n+4), .view[data-view-panel="system"] .system-card--ssh .command-box, .view[data-view-panel="system"] .system-card--ssh .settings-form, .view[data-view-panel="system"] .system-card--trust .settings-form, .view[data-view-panel="system"] .system-card--services .system-service-row:nth-child(n+4), .view[data-view-panel="storage"] .storage-compact-entry, .view[data-view-panel="storage"] .storage-category-row em, .view[data-view-panel="storage"] .storage-category-mini, .view[data-view-panel="storage"] .storage-category-row .btn:nth-of-type(n+2), .view[data-view-panel="network"] .network-compact-grid .system-field:nth-child(n+4), .view[data-view-panel="network"] .network-service-row:nth-child(n+3) { display: revert; }
   .view[data-view-panel="storage"] .storage-category-row, .view[data-view-panel="network"] .network-service-row { grid-template-columns: 1fr; }
