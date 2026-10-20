@@ -511,60 +511,6 @@ fn json_content_type(headers: &axum::http::HeaderMap) -> bool {
         })
 }
 
-fn same_origin_state_change(headers: &axum::http::HeaderMap) -> bool {
-    let Some(origin) = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return false;
-    };
-    let Some((scheme, authority)) = origin.split_once("://") else {
-        return false;
-    };
-    if !matches!(scheme, "http" | "https")
-        || authority.is_empty()
-        || authority.contains(['/', '?', '#', '@'])
-    {
-        return false;
-    }
-    let host = headers
-        .get("x-forwarded-host")
-        .or_else(|| headers.get(header::HOST))
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(str::trim);
-    let Some(host) = host else {
-        return false;
-    };
-    let normalized_origin = normalized_authority(authority, scheme);
-    let normalized_host = normalized_authority(host, scheme);
-    if normalized_origin.is_none() || normalized_origin != normalized_host {
-        return false;
-    }
-    headers
-        .get("x-forwarded-proto")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.split(',').next())
-        .map(str::trim)
-        .is_none_or(|proto| proto.eq_ignore_ascii_case(scheme))
-}
-
-fn normalized_authority(raw: &str, scheme: &str) -> Option<String> {
-    let raw = raw.trim().to_ascii_lowercase();
-    if raw.is_empty() || raw.contains(['/', '?', '#', '@']) || raw.starts_with(':') {
-        return None;
-    }
-    let default_port = if scheme == "https" { 443 } else { 80 };
-    let (host, port) = match raw.rsplit_once(':') {
-        Some((host, port)) if !host.is_empty() => match port.parse::<u16>() {
-            Ok(port) => (host, port),
-            Err(_) => (raw.as_str(), default_port),
-        },
-        _ => (raw.as_str(), default_port),
-    };
-    (!host.is_empty()).then(|| format!("{host}:{port}"))
-}
-
 fn attendance_failure_status(call: &AttendanceCall) -> StatusCode {
     if call.ok {
         StatusCode::OK
@@ -572,6 +518,7 @@ fn attendance_failure_status(call: &AttendanceCall) -> StatusCode {
         call.code.as_str(),
         "caduceus-attendance-refused"
             | "caduceus-attendance-pin-refused"
+            | "caduceus-attendance-pin-wrong"
             | "caduceus-attendance-not-current"
             | "caduceus-attendance-invalid"
             | "caduceus-attendance-required"
@@ -613,9 +560,6 @@ async fn caduceus_attendance_open_route(
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !same_origin_state_change(&headers) {
-        return attendance_refusal(StatusCode::FORBIDDEN, "caduceus-attendance-origin-refused");
-    }
     if !json_content_type(&headers) || body.len() > CADUCEUS_ACCESS_MAX_REQUEST {
         return attendance_refusal(
             StatusCode::BAD_REQUEST,
