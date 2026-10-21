@@ -407,33 +407,77 @@ fn harmonia_module_toggle_response(
 }
 
 
+fn caduceus_ledger_seats() -> &'static [Result<Option<String>, String>; 2] {
+    static SEATS: OnceLock<[Result<Option<String>, String>; 2]> = OnceLock::new();
+    // The first Local AI collection loads the public seats during startup.
+    // An unavailable seat selects primitive reading; no private field-list copy.
+    SEATS.get_or_init(|| ["caduceus.receipts.ledger.v1", "harmonia.ledger.entry.v1"].map(|id| {
+        let seat = CaduceusAccessClient::default().get_json(&format!("/api/v1/schema/{id}")).ok();
+        let schema = seat.as_ref().and_then(|seat| seat.get("schema"))
+            .and_then(serde_json::Value::as_str);
+        match schema {
+            Some(schema) if schema != id => Err(format!("caduceus-ledger-schema-desync: expected {id}, observed {schema}")),
+            _ => Ok(schema.map(str::to_string)),
+        }
+    }))
+}
+
+fn caduceus_receipts_ledger(page: usize, per_page: usize, module: Option<&str>) -> Result<serde_json::Value, String> {
+    let [page_seat, entry_seat] = caduceus_ledger_seats();
+    let page_schema = page_seat.as_ref().map_err(Clone::clone)?;
+    let entry_schema = entry_seat.as_ref().map_err(Clone::clone)?;
+    let mut path = format!("/api/v1/log/receipts?page={page}&per_page={per_page}");
+    if let Some(module) = module {
+        path.push_str("&module=");
+        path.push_str(&caduceus_encode_path_segment(module));
+    }
+    let (status, value) = CaduceusAccessClient::default().get_json_with_status(&path)
+        .map_err(str::to_string)?;
+    if !(200..300).contains(&status) || value.get("ok").and_then(serde_json::Value::as_bool) == Some(false) {
+        return Err(json_string_any(&value, &["firstMissingSignal", "first_missing_signal"])
+            .filter(|signal| !signal.is_empty() && signal != "none")
+            .unwrap_or_else(|| "caduceus-ledger-unavailable".to_string()));
+    }
+    if let (Some(expected), Some(observed)) = (page_schema, value.get("schema").and_then(serde_json::Value::as_str)) {
+        if observed != expected {
+            return Err(format!("caduceus-ledger-schema-desync: expected {expected}, observed {observed}"));
+        }
+    }
+    for item in value.get("entries").and_then(serde_json::Value::as_array).into_iter().flatten() {
+        let entry = item.get("entry").unwrap_or(item);
+        if let (Some(expected), Some(observed)) = (entry_schema, entry.get("schema").and_then(serde_json::Value::as_str)) {
+            if observed != expected {
+                return Err(format!("caduceus-ledger-schema-desync: expected {expected}, observed {observed}"));
+            }
+        }
+    }
+    Ok(value)
+}
+
 async fn harmonia_ledger_route(
     Query(query): Query<HarmoniaLedgerQuery>,
 ) -> (StatusCode, Json<HarmoniaLedgerResponse>) {
     let page = query.page.unwrap_or(1).max(1);
     let per_page = query.per_page.unwrap_or(10).clamp(1, 25);
-    let path = format!("/api/v1/log/receipts?page={page}&per_page={per_page}");
-    let Ok(value) = CaduceusAccessClient::default().get_json(&path) else {
-        return (
+    let value = match caduceus_receipts_ledger(page, per_page, None) {
+        Ok(value) => value,
+        Err(signal) => return (
             StatusCode::BAD_GATEWAY,
             Json(HarmoniaLedgerResponse {
                 ok: false,
                 action: "harmonia-ledger-page",
                 profile_id: "homeconsole",
-                ledger_path: HARMONIA_HOMECONSOLE_LEDGER,
+                ledger_path: None,
                 page,
                 per_page,
                 total_entries: 0,
                 total_pages: 1,
                 entries: Vec::new(),
-                message: "Caduceus ledger route is unreachable.".to_string(),
+                message: signal.clone(),
+                first_missing_signal: signal,
             }),
-        );
+        ),
     };
-    let _ledger_path = value
-        .get("ledgerPath")
-        .and_then(|v| v.as_str())
-        .unwrap_or(HARMONIA_HOMECONSOLE_LEDGER);
     let total_entries = value
         .get("totalEntries")
         .and_then(|v| v.as_u64())
@@ -454,7 +498,7 @@ async fn harmonia_ledger_route(
                 .iter()
                 .filter_map(|item| {
                     let ordinal = item.get("ordinal").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-                    let mut entry = item.get("entry").cloned().unwrap_or(serde_json::Value::Null);
+                    let mut entry = item.get("entry").unwrap_or(item).clone();
                     redact_json_value(&mut entry);
                     Some(harmonia_ledger_entry(ordinal, entry))
                 })
@@ -472,12 +516,14 @@ async fn harmonia_ledger_route(
             ok: true,
             action: "harmonia-ledger-page",
             profile_id: "homeconsole",
-            ledger_path: HARMONIA_HOMECONSOLE_LEDGER,
+            ledger_path: None,
             page: bounded_page,
             per_page,
             total_entries,
             total_pages,
             entries,
+            first_missing_signal: json_string_any(&value, &["firstMissingSignal", "first_missing_signal"])
+                .unwrap_or_else(|| "none".to_string()),
             message,
         }),
     )
@@ -486,7 +532,7 @@ async fn harmonia_ledger_route(
 fn harmonia_ledger_entry(ordinal: usize, entry: serde_json::Value) -> HarmoniaLedgerEntry {
     HarmoniaLedgerEntry {
         ordinal,
-        stamp: json_string_any(&entry, &["stamp", "timestamp", "completed_at", "started_at", "created_at"])
+        stamp: json_string_any(&entry, &["recorded_at", "stamp", "timestamp", "completed_at", "started_at", "created_at"])
             .unwrap_or_else(|| format!("entry-{ordinal}")),
         schema: json_string_any(&entry, &["schema"]).unwrap_or_else(|| "harmonia.ledger.entry".to_string()),
         profile_id: json_string_any(&entry, &["profile_id", "profileId", "profile"]).unwrap_or_else(|| "homeconsole".to_string()),

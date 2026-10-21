@@ -94,13 +94,33 @@ fn local_ai_state_from_status(state: &AppState, storage: &StorageStatus, status:
             }
             .to_string(),
             last_error: None,
-            runtime_update_log: redacted_log(
-                "/var/lib/harmonia/receipts/local-ai-runtime-latest/events.jsonl",
-            ),
+            runtime_update_log: local_ai_runtime_update_log(),
             inference_server_log: redacted_log("/var/log/llama-server.log"),
         },
         settings: ai_settings_state(&cfg),
         client_handoff: ai_client_handoff(&cfg, inference_listening, endpoint),
+    }
+}
+
+fn local_ai_runtime_update_log() -> String {
+    let value = match caduceus_receipts_ledger(1, 25, Some("local-ai-runtime")) {
+        Ok(value) => value,
+        Err(signal) => return signal,
+    };
+    let lines = value.get("entries").and_then(serde_json::Value::as_array)
+        .into_iter().flatten()
+        .map(|item| item.get("entry").unwrap_or(item))
+        .filter(|entry| json_string_any(entry, &["module_id", "moduleId", "module"]).as_deref() == Some("local-ai-runtime"))
+        .map(|entry| {
+            let mut entry = entry.clone();
+            redact_json_value(&mut entry);
+            entry.to_string()
+        })
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        "No Local AI runtime updates reported.".to_string()
+    } else {
+        lines.join("\n")
     }
 }
 

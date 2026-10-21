@@ -11,7 +11,6 @@ const CADUCEUS_STAFF_SOCKET: &str = "/run/caduceus/staff.sock";
 const HARMONIA_BIN: &str = "/usr/local/bin/harmonia";
 const HOMECONSOLE_PROFILE: &str = "/etc/harmonia/profiles/homeconsole/index.json";
 const HOMECONSOLE_SYNC_MODULE: &str = "/etc/harmonia/modules/homeconsole/sync/index.json";
-const HARMONIA_HOMECONSOLE_LEDGER: &str = "/var/lib/harmonia/receipts/homeconsole-ledger.jsonl";
 const ARCH_GAME_SYNC_BIN: &str = "/usr/local/bin/arch-game-sync";
 const SYSTEMCTL_BIN: &str = "/usr/bin/systemctl";
 const SYSTEMD_RUN_BIN: &str = "/usr/bin/systemd-run";

@@ -91,11 +91,12 @@ struct HarmoniaLedgerResponse {
     ok: bool,
     action: &'static str,
     profile_id: &'static str,
-    ledger_path: &'static str,
+    ledger_path: Option<String>,
     page: usize,
     per_page: usize,
     total_entries: usize,
     total_pages: usize,
     entries: Vec<HarmoniaLedgerEntry>,
+    first_missing_signal: String,
     message: String,
 }

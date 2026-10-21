@@ -3965,7 +3965,7 @@ function renderHarmoniaLedgerPage(content, data) {
   const runs = harmoniaLedgerRuns(data.entries || []);
   const meta = document.createElement('div');
   meta.className = 'harmonia-ledger-meta';
-  meta.innerHTML = `<strong>${escapeHtml(data.message || 'Harmonia ledger')}</strong><span>${escapeHtml(data.ledgerPath || '')}</span>`;
+  meta.innerHTML = `<strong>${escapeHtml(data.message || 'Harmonia ledger')}</strong>`;
   content.appendChild(meta);
   const list = document.createElement('div');
   list.className = 'harmonia-ledger-list';

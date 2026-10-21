@@ -381,6 +381,17 @@ impl Default for CaduceusAccessClient {
 }
 
 impl CaduceusAccessClient {
+    fn get_json_with_status(&self, path: &str) -> Result<(u16, serde_json::Value), &'static str> {
+        let (status, response) = caduceus_raw_request(
+            "GET",
+            path,
+            None,
+            CADUCEUS_ACCESS_TIMEOUT,
+            CADUCEUS_MAX_OBSERVATION_RESPONSE_BODY,
+        ).map_err(caduceus_http_error)?;
+        Ok((status, caduceus_receipt_response(status, response)?))
+    }
+
     fn get_json(&self, path: &str) -> Result<serde_json::Value, &'static str> {
         let (status, response) = caduceus_raw_request(
             "GET",
