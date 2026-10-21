@@ -234,10 +234,9 @@ async fn caduceus_vault_status_proxy_route() -> Response {
         .into_response()
 }
 async fn caduceus_vault_unlock_proxy_route(
-    headers: axum::http::HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Response {
-    caduceus_vault_unlock_route(headers, Json(body)).await
+    caduceus_vault_unlock_route(Json(body)).await
 }
 async fn caduceus_vault_auto_decrypt_proxy_route(
     headers: axum::http::HeaderMap,
