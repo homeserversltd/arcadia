@@ -549,10 +549,6 @@ async fn main() -> anyhow_free::Result<()> {
             get(caduceus_receipts_ledger_proxy_route),
         )
         .route(
-            "/api/caduceus/v1/gui/update/now",
-            post(caduceus_gui_update_now_proxy_route),
-        )
-        .route(
             "/api/caduceus/v1/local-ai/runtime/status",
             get(caduceus_local_ai_runtime_status_proxy_route),
         )

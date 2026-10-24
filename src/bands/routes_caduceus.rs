@@ -416,25 +416,6 @@ async fn caduceus_receipts_ledger_proxy_route(
     }
 }
 
-async fn caduceus_gui_update_now_proxy_route() -> impl IntoResponse {
-    match CaduceusAccessClient::default().post_json_with_timeout(
-        "/api/v1/update/now",
-        serde_json::json!({}),
-        Duration::from_secs(300)
-    ) {
-        Ok(value) => {
-            let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
-            let status = if ok {
-                StatusCode::OK
-            } else {
-                StatusCode::BAD_GATEWAY
-            };
-            (status, Json(value)).into_response()
-        }
-        Err(signal) => caduceus_proxy_error("/api/v1/update/now", signal),
-    }
-}
-
 async fn caduceus_local_ai_runtime_status_proxy_route() -> impl IntoResponse {
     caduceus_json_proxy("/api/v1/local-ai/runtime/status").await
 }
