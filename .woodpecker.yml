@@ -146,9 +146,48 @@ steps:
         export GIT_CONFIG_COUNT=1
         export GIT_CONFIG_KEY_0=credential.https://git.home.arpa.helper
         export GIT_CONFIG_VALUE_0='!f() { if [ "$${1}" = get ]; then printf "username=x-token\npassword=%s\n" "$${FORGEJO_TOKEN}"; fi; }; f'
-        git clone --depth 1 --no-checkout https://git.home.arpa/HOMESERVERSLTD/wukong-staff.git wukong-staff
-        git -C wukong-staff fetch --depth 1 origin "$${WUKONG_STAFF_SHA}"
-        git -C wukong-staff checkout --detach "$${WUKONG_STAFF_SHA}"
+        bootstrap_error="$(mktemp)"
+        trap 'rm -f "$${bootstrap_error}"' EXIT
+        bootstrap_budget=300
+        bootstrap_delay=5
+        if [ "$${WUKONG_BOOTSTRAP_PROOF:-}" = 1 ]; then
+          bootstrap_budget=6
+          bootstrap_delay=1
+        fi
+        bootstrap_deadline=$(( $(date +%s) + bootstrap_budget ))
+        while :; do
+          bootstrap_remaining=$(( bootstrap_deadline - $(date +%s) ))
+          if timeout "$${bootstrap_remaining}" sh -c '
+            git clone --depth 1 --no-checkout https://git.home.arpa/HOMESERVERSLTD/wukong-staff.git wukong-staff &&
+            git -C wukong-staff fetch --depth 1 origin "$${WUKONG_STAFF_SHA}" &&
+            git -C wukong-staff checkout --detach "$${WUKONG_STAFF_SHA}"
+          ' > /dev/null 2> "$${bootstrap_error}"; then
+            break
+          else
+            bootstrap_status=$?
+          fi
+          rm -rf wukong-staff
+          bootstrap_remaining=$(( bootstrap_deadline - $(date +%s) ))
+          if [ "$${bootstrap_remaining}" -le 0 ]; then
+            cat "$${bootstrap_error}" >&2
+            exit "$${bootstrap_status}"
+          fi
+          bootstrap_wait=$${bootstrap_delay}
+          if [ "$${bootstrap_wait}" -gt "$${bootstrap_remaining}" ]; then
+            bootstrap_wait=$${bootstrap_remaining}
+          fi
+          sleep "$${bootstrap_wait}"
+          if [ "$${bootstrap_delay}" -lt 30 ]; then
+            bootstrap_delay=$(( bootstrap_delay * 2 ))
+            if [ "$${bootstrap_delay}" -gt 30 ]; then bootstrap_delay=30; fi
+          fi
+          if [ "$(date +%s)" -ge "$${bootstrap_deadline}" ]; then
+            cat "$${bootstrap_error}" >&2
+            exit "$${bootstrap_status}"
+          fi
+        done
+        rm -f "$${bootstrap_error}"
+        trap - EXIT
         test "$(git -C wukong-staff rev-parse HEAD)" = "$${WUKONG_STAFF_SHA}"
         export WUKONG_MEMBER_ROOT="$${PWD}"
         exec sh wukong-staff/ci/arcadia/pipeline.sh
